@@ -19,9 +19,13 @@ package "go-selector" {
 
   interface "GetBlockFunc func(cid) block.Block" as GetBlockFunc
 
-  object "Package Public Functions" as goSelectorPF {
-    Select(Selector, root Node, getBlockFunc GetBlockFunc) SelectionTraverser
+  interface SelectorQuerier {
+    Select(Selector, root Node) SelectionTraverser
     Validate(Selector, root Node, incomingResponses SelectionTraverser) SelectionTraverser
+  }
+
+  object "Package Public Functions" as goSelectorPF {
+    NewSelectorQuerier(getBlockFunc GetBlockFunc) SelectorQuerier
   }
 }
 
@@ -30,13 +34,14 @@ package "go-graphsync" {
       network : GraphySyncNetwork
       requestManager : RequestManager
       responseManager: ResponseManager
-      getBlockFunc: GetBlockFunc
+      selectorQuerier: SelectorQuerier
 
       Request(p peer.ID, selector Selector, root Node) SelectionTraverser
       ReceiveMessage(ctx context.Context, sender peer.ID, incoming GraphSyncMessage)
       ReceiveError(error)
     }
   
+  GraphSync *-- SelectorQuerier
 
   package network {
     interface Receiver {
@@ -65,10 +70,12 @@ package "go-graphsync" {
   package requestmanager {
   class RequestManager {
     network : GraphSyncNetwork
+    selectorQuerier: SelectorQuerier
+
     SendRequest(p peer.ID, selector Selector, node rootNode) SelectionTraverser
     ProcessResponses(responses []GraphSyncResponse)
   }
-  goSelectorPF .. RequestManager
+  SelectorQuerier --* RequestManager
   RequestManager *-- GraphSyncNetwork
   GraphSync *-- RequestManager
   note as requestManager
@@ -81,10 +88,10 @@ package "go-graphsync" {
   package responsemanager {
   class ResponseManager {
     network : GraphySyncNetwork
-    getBlockFunc : GetBlockFunc
+    selectorQuerier: SelectorQuerier
     ProcessRequests(p peer.ID, requests []GraphSyncRequests)
   }
-  goSelectorPF .. ResponseManager
+  SelectorQuerier --* ResponseManager
   ResponseManager *-- GraphSyncNetwork
   GraphSync *-- ResponseManager
   note as responseManagerNote
@@ -140,6 +147,7 @@ package "go-graphsync" {
 package "go-filecoin" {
   class "go-filecoin" {
     graphSync : GraphSync
+    selectorQuerier: SelectorQuerier
     host: libp2pHost.Host
   }
 
@@ -147,6 +155,9 @@ package "go-filecoin" {
   "go-filecoin" .. goGraphsyncPf
   "go-filecoin" .. goGraphSyncNetworkPF
   "go-filecoin" .. Selector
+  "go-filecoin" *-- SelectorQuerier
+  "go-filecoin" .. goSelectorPF
+
 }
 
 @enduml
