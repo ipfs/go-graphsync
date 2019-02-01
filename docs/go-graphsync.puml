@@ -1,0 +1,152 @@
+@startuml "GraphSync"
+
+note top of "go-selector"
+  Is this the right name for this package?
+end note
+
+package "go-selector" {
+
+  interface Selector {
+  }
+  
+  interface SelectionResponse {
+  }
+  
+  interface SelectionTraverser {
+    Next() SelectionResponse, err
+    Cancel()
+  }
+
+  interface "GetBlockFunc func(cid) block.Block" as GetBlockFunc
+
+  object "Package Public Functions" as goSelectorPF {
+    Select(Selector, root Node, getBlockFunc GetBlockFunc) SelectionTraverser
+    Validate(Selector, root Node, incomingResponses SelectionTraverser) SelectionTraverser
+  }
+}
+
+package "go-graphsync" {
+    class GraphSync {
+      network : GraphySyncNetwork
+      requestManager : RequestManager
+      responseManager: ResponseManager
+      getBlockFunc: GetBlockFunc
+
+      Request(p peer.ID, selector Selector, root Node) SelectionTraverser
+      ReceiveMessage(ctx context.Context, sender peer.ID, incoming GraphSyncMessage)
+      ReceiveError(error)
+    }
+  
+
+  package network {
+    interface Receiver {
+      ReceiveMessage(ctx context.Context, sender peer.ID, incoming GraphSyncMessage)
+      ReceiveError(error)
+    }
+
+    interface GraphSyncNetwork {
+      SendMessage(ctx context.Context, receiver peer.Id, m GraphSyncMessage)
+      SetDelegate(receiver Receiver)
+    }
+
+    Receiver <|-- GraphSync : receiver for
+
+    class libP2PGraphSyncNetwork {
+
+    }
+    GraphSyncNetwork <|-- libP2PGraphSyncNetwork
+    
+    object "Package Public Functions" as goGraphSyncNetworkPF {
+      NewLibP2PNetwork(host libp2pHost.Host) GraphSyncNetwork
+    }
+    goGraphSyncNetworkPF .. libP2PGraphSyncNetwork 
+  }
+
+  package requestmanager {
+  class RequestManager {
+    network : GraphSyncNetwork
+    SendRequest(p peer.ID, selector Selector, node rootNode) SelectionTraverser
+    ProcessResponses(responses []GraphSyncResponse)
+  }
+  goSelectorPF .. RequestManager
+  RequestManager *-- GraphSyncNetwork
+  GraphSync *-- RequestManager
+  note as requestManager
+    The ResponseManager uses Validate from go-selector
+    to filter incoming Responses based on whether they are valid and produce
+    a traverser that only returns valid responses
+  end note
+  }
+
+  package responsemanager {
+  class ResponseManager {
+    network : GraphySyncNetwork
+    getBlockFunc : GetBlockFunc
+    ProcessRequests(p peer.ID, requests []GraphSyncRequests)
+  }
+  goSelectorPF .. ResponseManager
+  ResponseManager *-- GraphSyncNetwork
+  GraphSync *-- ResponseManager
+  note as responseManagerNote
+    The ResponseManager uses Select from go-selector
+    to translate the raw bytes into a selector and then
+    traverse the graph to produce a list of blocks
+
+    Question: how to know if response is partial?
+  end note
+  }
+  package message {
+    object "Package Public Functions" as goGraphSyncMessagePF {
+      func FromPBReader(pbr ggio.Reader) (GraphSyncMessage, error)
+    }
+    goGraphSyncMessagePF .. libP2PGraphSyncNetwork
+
+    class GraphSyncRequest {
+      Selector Selector
+      Root     Node
+      Priority Priority
+      {field} Expires time.Duration
+      Id       int
+      IsCancel bool
+    }
+
+    class GraphSyncResponse {
+      RequestId int
+      Status GraphSyncStatus
+    }
+
+    interface GraphSyncMessage {
+      Requests() : []GraphSyncRequest
+      Responses() : []GraphSyncResponse
+    }
+
+    interface Exportable {
+      ToProtoV0()
+      ToProtoV1()
+	  }
+
+    Exportable --|> GraphSyncMessage
+    GraphSyncRequest --* GraphSyncMessage
+    GraphSyncResponse --* GraphSyncMessage
+    
+  }
+
+  object "PackagePublicFunctions" as goGraphsyncPf {
+    New(ctx context.Context, network GraphSyncNetwork, getBlockFunc GetBlockFunc) GraphSync
+  }
+
+}
+
+package "go-filecoin" {
+  class "go-filecoin" {
+    graphSync : GraphSync
+    host: libp2pHost.Host
+  }
+
+  "go-filecoin" *-- GraphSync
+  "go-filecoin" .. goGraphsyncPf
+  "go-filecoin" .. goGraphSyncNetworkPF
+  "go-filecoin" .. Selector
+}
+
+@enduml
