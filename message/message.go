@@ -2,11 +2,13 @@ package message
 
 import (
 	"fmt"
+	"io"
 
 	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
 	pb "github.com/ipfs/go-graphsync/message/pb"
 	gsselector "github.com/ipfs/go-graphsync/selector"
+	inet "github.com/libp2p/go-libp2p-net"
 )
 
 // GraphSyncRequestID is a unique identifier for a GraphSync request.
@@ -25,39 +27,39 @@ const (
 	// Informational Response Codes (partial)
 
 	// RequestAcknowledged means the request was received and is being worked on.
-	RequestAcknowledged = 10
+	RequestAcknowledged = GraphSyncResponseStatusCode(10)
 	// AdditionalPeers means additional peers were found that may be able
 	// to satisfy the request and contained in the extra block of the response.
-	AdditionalPeers = 11
+	AdditionalPeers = GraphSyncResponseStatusCode(11)
 	// NotEnoughGas means fulfilling this request requires payment.
-	NotEnoughGas = 12
+	NotEnoughGas = GraphSyncResponseStatusCode(12)
 	// OtherProtocol means a different type of response than GraphSync is
 	// contained in extra.
-	OtherProtocol = 13
+	OtherProtocol = GraphSyncResponseStatusCode(13)
 
 	// Success Response Codes (request terminated)
 
 	// RequestCompletedFull means the entire fulfillment of the GraphSync request
 	// was sent back.
-	RequestCompletedFull = 20
+	RequestCompletedFull = GraphSyncResponseStatusCode(20)
 	// RequestCompletedPartial means the response is completed, and part of the
 	// GraphSync request was sent back, but not the complete request.
-	RequestCompletedPartial = 21
+	RequestCompletedPartial = GraphSyncResponseStatusCode(21)
 
 	// Error Response Codes (request terminated)
 
 	// RequestRejected means the node did not accept the incoming request.
-	RequestRejected = 30
+	RequestRejected = GraphSyncResponseStatusCode(30)
 	// RequestFailedBusy means the node is too busy, try again later. Backoff may
 	// be contained in extra.
-	RequestFailedBusy = 31
+	RequestFailedBusy = GraphSyncResponseStatusCode(31)
 	// RequestFailedUnknown means the request failed for an unspecified reason. May
 	// contain data about why in extra.
-	RequestFailedUnknown = 32
+	RequestFailedUnknown = GraphSyncResponseStatusCode(32)
 	// RequestFailedLegal means the request failed for legal reasons.
-	RequestFailedLegal = 33
+	RequestFailedLegal = GraphSyncResponseStatusCode(33)
 	// RequestFailedContentNotFound means the respondent does not have the content.
-	RequestFailedContentNotFound = 34
+	RequestFailedContentNotFound = GraphSyncResponseStatusCode(34)
 )
 
 // GraphSyncRequest is an interface for accessing data on request contained in a
@@ -105,6 +107,7 @@ type GraphSyncMessage interface {
 // Exportable is an interface that can serialize to a protobuf
 type Exportable interface {
 	ToProto() *pb.Message
+	ToNet(w io.Writer) error
 }
 
 type graphSyncRequest struct {
@@ -220,6 +223,14 @@ func (gsm *graphSyncMessage) AddResponse(requestID GraphSyncRequestID,
 	}
 }
 
+// FromNet can read a network stream to deserialized a GraphSyncMessage
+func FromNet(r io.Reader,
+	decodeSelector DecodeSelectorFunc,
+	decodeSelectionResponse DecodeSelectionResponseFunc) (GraphSyncMessage, error) {
+	pbr := ggio.NewDelimitedReader(r, inet.MessageSizeMax)
+	return FromPBReader(pbr, decodeSelector, decodeSelectionResponse)
+}
+
 // FromPBReader can deserialize a protobuf message into a GraphySyncMessage.
 func FromPBReader(pbr ggio.Reader,
 	decodeSelector DecodeSelectorFunc,
@@ -254,6 +265,12 @@ func (gsm *graphSyncMessage) ToProto() *pb.Message {
 		})
 	}
 	return pbm
+}
+
+func (gsm *graphSyncMessage) ToNet(w io.Writer) error {
+	pbw := ggio.NewDelimitedWriter(w)
+
+	return pbw.WriteMsg(gsm.ToProto())
 }
 
 func (gsm *graphSyncMessage) Loggable() map[string]interface{} {

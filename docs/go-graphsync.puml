@@ -122,6 +122,9 @@ package "go-graphsync" {
       func FromPBReader(pbr ggio.Reader,
       decodeSelectionResponseFunc: DecodeSelectionResponseFunc,
       decodeSelectorFunc: DecodeSelectorFunc) (GraphSyncMessage, error)
+      func FromNet(r io.Reader,
+      decodeSelectionResponseFunc: DecodeSelectionResponseFunc,
+      decodeSelectorFunc: DecodeSelectorFunc) (GraphSyncMessage, error)
     }
     goGraphSyncMessagePF .. libP2PGraphSyncNetwork
 
@@ -145,6 +148,7 @@ package "go-graphsync" {
 
     interface Exportable {
       ToProto()
+      ToNet(w io.Writer) error
 	  }
 
     Exportable --|> GraphSyncMessage

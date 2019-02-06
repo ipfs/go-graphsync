@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -63,7 +64,7 @@ func TestAppendingRequests(t *testing.T) {
 func TestAppendingResponses(t *testing.T) {
 	selectionResponse := testselector.GenerateSelectionResponse()
 	requestID := GraphSyncRequestID(rand.Int31())
-	status := GraphSyncResponseStatusCode(RequestAcknowledged)
+	status := RequestAcknowledged
 
 	gsm := New()
 	gsm.AddResponse(requestID, status, selectionResponse)
@@ -124,5 +125,65 @@ func TestRequestCancel(t *testing.T) {
 	if request.ID() != id ||
 		request.IsCancel() != true {
 		t.Fatal("Did not properly add cancel request to message")
+	}
+}
+
+func TestToNetFromNetEquivalency(t *testing.T) {
+	selector := testselector.GenerateSelector()
+	root := testselector.GenerateRootCid()
+	selectionResponse := testselector.GenerateSelectionResponse()
+	id := GraphSyncRequestID(rand.Int31())
+	priority := GraphSyncPriority(rand.Int31())
+	status := RequestAcknowledged
+
+	gsm := New()
+	gsm.AddRequest(id, selector, root, priority)
+	gsm.AddResponse(id, status, selectionResponse)
+
+	buf := new(bytes.Buffer)
+	err := gsm.ToNet(buf)
+	if err != nil {
+		t.Fatal("Unable to serialize GraphSyncMessage")
+	}
+	deserialized, err := FromNet(buf,
+		testselector.MockDecodeSelectorFunc,
+		testselector.MockDecodeSelectionResponseFunc,
+	)
+	if err != nil {
+		t.Fatal("Error deserializing protobuf message")
+	}
+
+	requests := gsm.Requests()
+	if len(requests) != 1 {
+		t.Fatal("Did not add request to message")
+	}
+	request := requests[0]
+	deserializedRequests := deserialized.Requests()
+	if len(deserializedRequests) != 1 {
+		t.Fatal("Did not add request to deserialized message")
+	}
+	deserializedRequest := deserializedRequests[0]
+	if deserializedRequest.ID() != request.ID() ||
+		deserializedRequest.IsCancel() != request.IsCancel() ||
+		deserializedRequest.Priority() != request.Priority() ||
+		!reflect.DeepEqual(deserializedRequest.Root(), request.Root()) ||
+		!reflect.DeepEqual(deserializedRequest.Selector(), request.Selector()) {
+		t.Fatal("Did not keep requests when writing to stream and back")
+	}
+
+	responses := gsm.Responses()
+	if len(responses) != 1 {
+		t.Fatal("Did not add response to message")
+	}
+	response := responses[0]
+	deserializedResponses := deserialized.Responses()
+	if len(deserializedResponses) != 1 {
+		t.Fatal("Did not add response to message")
+	}
+	deserializedResponse := deserializedResponses[0]
+	if deserializedResponse.RequestID() != response.RequestID() ||
+		deserializedResponse.Status() != response.Status() ||
+		!reflect.DeepEqual(deserializedResponse.Response(), response.Response()) {
+		t.Fatal("Did not keep responses when writing to stream and back")
 	}
 }
