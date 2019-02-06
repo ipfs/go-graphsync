@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package graphsync.message.pb;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+message Message {
+
+  message Request {
+    int32 id = 1;       // unique id set on the requester side
+    bytes root = 2;     // ipld root node for selector
+    bytes selector = 3; // ipld selector to retrieve
+    bytes extra = 4;    // aux information. useful for other protocols
+    int32 priority = 5;	// the priority (normalized). default to 1
+    bool  cancel = 7;   // whether this cancels a request
+  }
+
+  message Response {
+    int32 id = 1;     // the request id
+    int32 status = 2; // a status code.
+    bytes data = 3; // core response data
+    bytes extra = 4; // additional data
+  }
+
+  // the actual data included in this message
+  repeated Request reqlist = 1 [(gogoproto.nullable) = false];
+  repeated Response reslist = 2 [(gogoproto.nullable) = false];
+}
