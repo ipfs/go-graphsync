@@ -126,9 +126,9 @@ func GenerateSelectionResponse() gsselector.SelectionResponse {
 	return node
 }
 
-// GenerateRootNode generates a new mock ipld Node to serve as a root node
-func GenerateRootNode() ipld.Node {
+// GenerateRootCid generates a new mock CID to serve as a root
+func GenerateRootCid() cid.Cid {
 	node := newNode(randomBytes(blockSize, seedSeq))
 	seedSeq++
-	return node
+	return node.Cid()
 }

@@ -1,6 +1,7 @@
 package selector
 
 import (
+	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
@@ -24,6 +25,6 @@ type SelectionTraverser interface {
 
 // SelectorQuerier can be used to make and validate selector queries.
 type SelectorQuerier interface {
-	Select(Selector, root ipld.Node) SelectionTraverser
-	Validate(Selector, root ipld.Node, incomingResponses SelectionTraverser) SelectionTraverser
+	Select(Selector, root cid.Cid) SelectionTraverser
+	Validate(Selector, root cid.Cid, incomingResponses SelectionTraverser) SelectionTraverser
 }

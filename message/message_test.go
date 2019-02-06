@@ -10,12 +10,12 @@ import (
 
 func TestAppendingRequests(t *testing.T) {
 	selector := testselector.GenerateSelector()
-	rootNode := testselector.GenerateRootNode()
+	root := testselector.GenerateRootCid()
 	id := GraphSyncRequestID(rand.Int31())
 	priority := GraphSyncPriority(rand.Int31())
 
 	gsm := New()
-	gsm.AddRequest(id, selector, rootNode, priority)
+	gsm.AddRequest(id, selector, root, priority)
 	requests := gsm.Requests()
 	if len(requests) != 1 {
 		t.Fatal("Did not add request to message")
@@ -24,7 +24,7 @@ func TestAppendingRequests(t *testing.T) {
 	if request.ID() != id ||
 		request.IsCancel() != false ||
 		request.Priority() != priority ||
-		!reflect.DeepEqual(request.Root(), rootNode) ||
+		!reflect.DeepEqual(request.Root(), root) ||
 		!reflect.DeepEqual(request.Selector(), selector) {
 		t.Fatal("Did not properly add request to message")
 	}
@@ -34,13 +34,12 @@ func TestAppendingRequests(t *testing.T) {
 	if pbRequest.Id != int32(id) ||
 		pbRequest.Priority != int32(priority) ||
 		pbRequest.Cancel != false ||
-		!reflect.DeepEqual(pbRequest.Root, rootNode.RawData()) ||
+		!reflect.DeepEqual(pbRequest.Root, root.Bytes()) ||
 		!reflect.DeepEqual(pbRequest.Selector, selector.RawData()) {
 		t.Fatal("Did not properly serialize message to protobuf")
 	}
 
 	deserialized, err := newMessageFromProto(*pbMessage,
-		testselector.MockDecodeRootNodeFunc,
 		testselector.MockDecodeSelectorFunc,
 		testselector.MockDecodeSelectionResponseFunc,
 	)
@@ -55,7 +54,7 @@ func TestAppendingRequests(t *testing.T) {
 	if deserializedRequest.ID() != id ||
 		deserializedRequest.IsCancel() != false ||
 		deserializedRequest.Priority() != priority ||
-		!reflect.DeepEqual(deserializedRequest.Root(), rootNode) ||
+		!reflect.DeepEqual(deserializedRequest.Root(), root) ||
 		!reflect.DeepEqual(deserializedRequest.Selector(), selector) {
 		t.Fatal("Did not properly deserialize protobuf messages so requests are equal")
 	}
@@ -88,7 +87,6 @@ func TestAppendingResponses(t *testing.T) {
 	}
 
 	deserialized, err := newMessageFromProto(*pbMessage,
-		testselector.MockDecodeRootNodeFunc,
 		testselector.MockDecodeSelectorFunc,
 		testselector.MockDecodeSelectionResponseFunc,
 	)
@@ -109,12 +107,12 @@ func TestAppendingResponses(t *testing.T) {
 
 func TestRequestCancel(t *testing.T) {
 	selector := testselector.GenerateSelector()
-	rootNode := testselector.GenerateRootNode()
+	root := testselector.GenerateRootCid()
 	id := GraphSyncRequestID(rand.Int31())
 	priority := GraphSyncPriority(rand.Int31())
 
 	gsm := New()
-	gsm.AddRequest(id, selector, rootNode, priority)
+	gsm.AddRequest(id, selector, root, priority)
 
 	gsm.Cancel(id)
 

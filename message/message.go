@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	ggio "github.com/gogo/protobuf/io"
+	cid "github.com/ipfs/go-cid"
 	pb "github.com/ipfs/go-graphsync/message/pb"
 	gsselector "github.com/ipfs/go-graphsync/selector"
-	ipld "github.com/ipfs/go-ipld-format"
 )
 
 // GraphSyncRequestID is a unique identifier for a GraphSync request.
@@ -64,7 +64,7 @@ const (
 // GraphSyncMessage.
 type GraphSyncRequest interface {
 	Selector() gsselector.Selector
-	Root() ipld.Node
+	Root() cid.Cid
 	Priority() GraphSyncPriority
 	ID() GraphSyncRequestID
 	IsCancel() bool
@@ -87,7 +87,7 @@ type GraphSyncMessage interface {
 
 	AddRequest(id GraphSyncRequestID,
 		selector gsselector.Selector,
-		root ipld.Node,
+		root cid.Cid,
 		priority GraphSyncPriority)
 
 	Cancel(id GraphSyncRequestID)
@@ -109,7 +109,7 @@ type Exportable interface {
 
 type graphSyncRequest struct {
 	selector gsselector.Selector
-	root     ipld.Node
+	root     cid.Cid
 	priority GraphSyncPriority
 	id       GraphSyncRequestID
 	isCancel bool
@@ -130,10 +130,6 @@ type graphSyncMessage struct {
 // the Selector interface from a raw byte array.
 type DecodeSelectorFunc func([]byte) gsselector.Selector
 
-// DecodeRootNodeFunc is a function that can build a type that satisfies
-// the ipld.Node interface from a raw byte array.
-type DecodeRootNodeFunc func([]byte) ipld.Node
-
 // DecodeSelectionResponseFunc is a function that can build a type that satisfies
 // the SelectionResponse interface from a raw byte array.
 type DecodeSelectionResponseFunc func([]byte) gsselector.SelectionResponse
@@ -151,13 +147,15 @@ func newMsg() *graphSyncMessage {
 }
 
 func newMessageFromProto(pbm pb.Message,
-	decodeRootNode DecodeRootNodeFunc,
 	decodeSelector DecodeSelectorFunc,
 	decodeSelectionResponse DecodeSelectionResponseFunc) (GraphSyncMessage, error) {
 	gsm := newMsg()
 	for _, req := range pbm.Reqlist {
 		selector := decodeSelector(req.Selector)
-		root := decodeRootNode(req.Root)
+		root, err := cid.Cast([]byte(req.Root))
+		if err != nil {
+			return nil, fmt.Errorf("incorrectly formatted cid in request queery: %s", err)
+		}
 		gsm.addRequest(GraphSyncRequestID(req.Id), selector, root, GraphSyncPriority(req.Priority), req.Cancel)
 	}
 
@@ -187,12 +185,12 @@ func (gsm *graphSyncMessage) Responses() []GraphSyncResponse {
 
 func (gsm *graphSyncMessage) Cancel(id GraphSyncRequestID) {
 	delete(gsm.requests, id)
-	gsm.addRequest(id, nil, nil, 0, true)
+	gsm.addRequest(id, nil, cid.Cid{}, 0, true)
 }
 
 func (gsm *graphSyncMessage) AddRequest(id GraphSyncRequestID,
 	selector gsselector.Selector,
-	root ipld.Node,
+	root cid.Cid,
 	priority GraphSyncPriority,
 ) {
 	gsm.addRequest(id, selector, root, priority, false)
@@ -200,7 +198,7 @@ func (gsm *graphSyncMessage) AddRequest(id GraphSyncRequestID,
 
 func (gsm *graphSyncMessage) addRequest(id GraphSyncRequestID,
 	selector gsselector.Selector,
-	root ipld.Node,
+	root cid.Cid,
 	priority GraphSyncPriority,
 	isCancel bool) {
 	gsm.requests[id] = &graphSyncRequest{
@@ -224,7 +222,6 @@ func (gsm *graphSyncMessage) AddResponse(requestID GraphSyncRequestID,
 
 // FromPBReader can deserialize a protobuf message into a GraphySyncMessage.
 func FromPBReader(pbr ggio.Reader,
-	decodeRootNode DecodeRootNodeFunc,
 	decodeSelector DecodeSelectorFunc,
 	decodeSelectionResponse DecodeSelectionResponseFunc) (GraphSyncMessage, error) {
 	pb := new(pb.Message)
@@ -232,7 +229,7 @@ func FromPBReader(pbr ggio.Reader,
 		return nil, err
 	}
 
-	return newMessageFromProto(*pb, decodeRootNode, decodeSelector, decodeSelectionResponse)
+	return newMessageFromProto(*pb, decodeSelector, decodeSelectionResponse)
 }
 
 func (gsm *graphSyncMessage) ToProto() *pb.Message {
@@ -241,7 +238,7 @@ func (gsm *graphSyncMessage) ToProto() *pb.Message {
 	for _, request := range gsm.requests {
 		pbm.Reqlist = append(pbm.Reqlist, pb.Message_Request{
 			Id:       int32(request.id),
-			Root:     request.root.RawData(),
+			Root:     request.root.Bytes(),
 			Selector: request.selector.RawData(),
 			Priority: int32(request.priority),
 			Cancel:   request.isCancel,
@@ -275,7 +272,7 @@ func (gsm *graphSyncMessage) Loggable() map[string]interface{} {
 }
 
 func (gsr *graphSyncRequest) ID() GraphSyncRequestID        { return gsr.id }
-func (gsr *graphSyncRequest) Root() ipld.Node               { return gsr.root }
+func (gsr *graphSyncRequest) Root() cid.Cid                 { return gsr.root }
 func (gsr *graphSyncRequest) Selector() gsselector.Selector { return gsr.selector }
 func (gsr *graphSyncRequest) Priority() GraphSyncPriority   { return gsr.priority }
 func (gsr *graphSyncRequest) IsCancel() bool                { return gsr.isCancel }

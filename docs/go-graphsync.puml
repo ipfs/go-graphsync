@@ -25,8 +25,8 @@ package "go-selector" {
   interface "GetBlockFunc func(cid) block.Block" as GetBlockFunc
 
   interface SelectorQuerier {
-    Select(Selector, root Node) SelectionTraverser
-    Validate(Selector, root Node, incomingResponses SelectionTraverser) SelectionTraverser
+    Select(Selector, root Cid) SelectionTraverser
+    Validate(Selector, root Cid, incomingResponses SelectionTraverser) SelectionTraverser
   }
 
   object "Package Public Functions" as goSelectorPF {
@@ -45,7 +45,7 @@ package "go-graphsync" {
       responseManager: ResponseManager
       selectorQuerier: SelectorQuerier
 
-      Request(p peer.ID, selector Selector, root Node) SelectionTraverser
+      Request(p peer.ID, selector Selector, root Cid) SelectionTraverser
       ReceiveMessage(ctx context.Context, sender peer.ID, incoming GraphSyncMessage)
       ReceiveError(error)
     }
@@ -74,8 +74,7 @@ package "go-graphsync" {
     object "Package Public Functions" as goGraphSyncNetworkPF {
       NewLibP2PNetwork(host libp2pHost.Host,
       decodeSelectionResponseFunc: DecodeSelectionResponseFunc,
-      decodeSelectorFunc: DecodeSelectorFunc,
-      decodeRootNodeFunc: DecodeRootNodeFunc) GraphSyncNetwork
+      decodeSelectorFunc: DecodeSelectorFunc) GraphSyncNetwork
     }
     goGraphSyncNetworkPF .. libP2PGraphSyncNetwork 
   }
@@ -85,7 +84,7 @@ package "go-graphsync" {
     network : GraphSyncNetwork
     selectorQuerier: SelectorQuerier
 
-    SendRequest(p peer.ID, selector Selector, node rootNode) SelectionTraverser
+    SendRequest(p peer.ID, selector Selector, root Cid) SelectionTraverser
     ProcessResponses(responses []GraphSyncResponse)
   }
   SelectorQuerier --* RequestManager
@@ -118,19 +117,17 @@ package "go-graphsync" {
   package message {
     interface "DecodeSelectionResponseFunc func([]byte) SelectionResponse" as DecodeSelectionResponseFunc
   interface "DecodeSelectorFunc func([]byte) Selector" as DecodeSelectorFunc
-  interface "DecodeRootNodeFunc func([]byte) Node" as DecodeRootNodeFunc
 
     object "Package Public Functions" as goGraphSyncMessagePF {
       func FromPBReader(pbr ggio.Reader,
       decodeSelectionResponseFunc: DecodeSelectionResponseFunc,
-      decodeSelectorFunc: DecodeSelectorFunc,
-      decodeRootNodeFunc: DecodeRootNodeFunc) (GraphSyncMessage, error)
+      decodeSelectorFunc: DecodeSelectorFunc) (GraphSyncMessage, error)
     }
     goGraphSyncMessagePF .. libP2PGraphSyncNetwork
 
     interface GraphSyncRequest {
       Selector() Selector
-      Root()     Node
+      Root()     Cid
       Priority() Priority
       ID()       int
       IsCancel() bool
@@ -169,7 +166,6 @@ package "go-filecoin" {
     host: libp2pHost.Host
     decodeSelectionResponseFunc: DecodeSelectionResponseFunc
     decodeSelectorFunc: DecodeSelectorFunc
-    decodeRootNodeFunc: DecodeRootNodeFunc
   }
 
   "go-filecoin" *-- GraphSync
