@@ -1,5 +1,10 @@
 @startuml "GraphSync"
 
+
+package "go-ipld-format" {
+  interface Node
+}
+
 note top of "go-selector"
   Is this the right name for this package?
 end note
@@ -27,9 +32,13 @@ package "go-selector" {
   object "Package Public Functions" as goSelectorPF {
     NewSelectorQuerier(getBlockFunc GetBlockFunc) SelectorQuerier
   }
+
+  Node <|-- Selector
+  Node <|-- SelectionResponse
 }
 
 package "go-graphsync" {
+  
     class GraphSync {
       network : GraphySyncNetwork
       requestManager : RequestManager
@@ -44,6 +53,7 @@ package "go-graphsync" {
   GraphSync *-- SelectorQuerier
 
   package network {
+    
     interface Receiver {
       ReceiveMessage(ctx context.Context, sender peer.ID, incoming GraphSyncMessage)
       ReceiveError(error)
@@ -57,12 +67,15 @@ package "go-graphsync" {
     Receiver <|-- GraphSync : receiver for
 
     class libP2PGraphSyncNetwork {
-
     }
+
     GraphSyncNetwork <|-- libP2PGraphSyncNetwork
     
     object "Package Public Functions" as goGraphSyncNetworkPF {
-      NewLibP2PNetwork(host libp2pHost.Host) GraphSyncNetwork
+      NewLibP2PNetwork(host libp2pHost.Host,
+      decodeSelectionResponseFunc: DecodeSelectionResponseFunc,
+      decodeSelectorFunc: DecodeSelectorFunc,
+      decodeRootNodeFunc: DecodeRootNodeFunc) GraphSyncNetwork
     }
     goGraphSyncNetworkPF .. libP2PGraphSyncNetwork 
   }
@@ -103,23 +116,29 @@ package "go-graphsync" {
   end note
   }
   package message {
+    interface "DecodeSelectionResponseFunc func([]byte) SelectionResponse" as DecodeSelectionResponseFunc
+  interface "DecodeSelectorFunc func([]byte) Selector" as DecodeSelectorFunc
+  interface "DecodeRootNodeFunc func([]byte) Node" as DecodeRootNodeFunc
+
     object "Package Public Functions" as goGraphSyncMessagePF {
-      func FromPBReader(pbr ggio.Reader) (GraphSyncMessage, error)
+      func FromPBReader(pbr ggio.Reader,
+      decodeSelectionResponseFunc: DecodeSelectionResponseFunc,
+      decodeSelectorFunc: DecodeSelectorFunc,
+      decodeRootNodeFunc: DecodeRootNodeFunc) (GraphSyncMessage, error)
     }
     goGraphSyncMessagePF .. libP2PGraphSyncNetwork
 
-    class GraphSyncRequest {
-      Selector Selector
-      Root     Node
-      Priority Priority
-      {field} Expires time.Duration
-      Id       int
-      IsCancel bool
+    interface GraphSyncRequest {
+      Selector() Selector
+      Root()     Node
+      Priority() Priority
+      ID()       int
+      IsCancel() bool
     }
 
-    class GraphSyncResponse {
-      RequestId int
-      Status GraphSyncStatus
+    interface GraphSyncResponse {
+      RequestID() int
+      Status() GraphSyncStatus
     }
 
     interface GraphSyncMessage {
@@ -128,8 +147,7 @@ package "go-graphsync" {
     }
 
     interface Exportable {
-      ToProtoV0()
-      ToProtoV1()
+      ToProto()
 	  }
 
     Exportable --|> GraphSyncMessage
@@ -149,6 +167,9 @@ package "go-filecoin" {
     graphSync : GraphSync
     selectorQuerier: SelectorQuerier
     host: libp2pHost.Host
+    decodeSelectionResponseFunc: DecodeSelectionResponseFunc
+    decodeSelectorFunc: DecodeSelectorFunc
+    decodeRootNodeFunc: DecodeRootNodeFunc
   }
 
   "go-filecoin" *-- GraphSync
