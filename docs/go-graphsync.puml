@@ -158,7 +158,7 @@ package "go-graphsync" {
   }
 
   object "PackagePublicFunctions" as goGraphsyncPf {
-    New(ctx context.Context, network GraphSyncNetwork, getBlockFunc GetBlockFunc) GraphSync
+    New(ctx context.Context, network GraphSyncNetwork, selectorQuerier SelectorQuerier) GraphSync
   }
 
 }

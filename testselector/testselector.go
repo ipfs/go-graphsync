@@ -106,12 +106,6 @@ func MockDecodeSelectionResponseFunc(data []byte) gsselector.SelectionResponse {
 	return newNode(data)
 }
 
-// MockDecodeRootNodeFunc decodes raw data to a type that satisfies an
-// IPLD node interface
-func MockDecodeRootNodeFunc(data []byte) ipld.Node {
-	return newNode(data)
-}
-
 // GenerateSelector returns a new mock Selector
 func GenerateSelector() gsselector.Selector {
 	node := newNode(randomBytes(blockSize, seedSeq))

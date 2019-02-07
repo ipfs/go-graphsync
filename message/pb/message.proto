@@ -12,7 +12,7 @@ message Message {
     bytes selector = 3; // ipld selector to retrieve
     bytes extra = 4;    // aux information. useful for other protocols
     int32 priority = 5;	// the priority (normalized). default to 1
-    bool  cancel = 7;   // whether this cancels a request
+    bool  cancel = 6;   // whether this cancels a request
   }
 
   message Response {
