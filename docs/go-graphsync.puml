@@ -62,6 +62,13 @@ package "go-graphsync" {
     interface GraphSyncNetwork {
       SendMessage(ctx context.Context, receiver peer.Id, m GraphSyncMessage)
       SetDelegate(receiver Receiver)
+      NewMessageSender(context.Context, peer.ID) (MessageSender, error)
+    }
+    
+    interface MessageSender {
+	    SendMsg(context.Context, GraphSyncMessage) error
+	    Close() error
+	    Reset() error
     }
 
     Receiver <|-- GraphSync : receiver for
