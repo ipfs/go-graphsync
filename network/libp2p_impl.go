@@ -14,6 +14,7 @@ import (
 	host "github.com/libp2p/go-libp2p-host"
 	inet "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
+	pstore "github.com/libp2p/go-libp2p-peerstore"
 )
 
 var log = logging.Logger("graphsync_network")
@@ -128,6 +129,10 @@ func (gsnet *libp2pGraphSyncNetwork) SendMessage(
 
 func (gsnet *libp2pGraphSyncNetwork) SetDelegate(r Receiver) {
 	gsnet.receiver = r
+}
+
+func (gsnet *libp2pGraphSyncNetwork) ConnectTo(ctx context.Context, p peer.ID) error {
+	return gsnet.host.Connect(ctx, pstore.PeerInfo{ID: p})
 }
 
 // handleNewStream receives a new stream from the network.

@@ -54,10 +54,6 @@ func TestMessageSendAndReceive(t *testing.T) {
 	if err != nil {
 		t.Fatal("error linking hosts")
 	}
-	_, err = mn.ConnectPeers(host1.ID(), host2.ID())
-	if err != nil {
-		t.Fatal("error linking peers")
-	}
 	gsnet1 := NewFromLibp2pHost(host1,
 		testselector.MockDecodeSelectorFunc,
 		testselector.MockDecodeSelectionResponseFunc)
@@ -80,6 +76,11 @@ func TestMessageSendAndReceive(t *testing.T) {
 	sent := gsmsg.New()
 	sent.AddRequest(id, selector, root, priority)
 	sent.AddResponse(id, status, selectionResponse)
+
+	err = gsnet1.ConnectTo(ctx, host2.ID())
+	if err != nil {
+		t.Fatal("Unable to connect peers")
+	}
 
 	gsnet1.SendMessage(ctx, host2.ID(), sent)
 

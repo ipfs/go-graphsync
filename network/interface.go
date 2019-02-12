@@ -27,6 +27,9 @@ type GraphSyncNetwork interface {
 	// network.
 	SetDelegate(Receiver)
 
+	// ConnectTo establishes a connection to the given peer
+	ConnectTo(context.Context, peer.ID) error
+
 	NewMessageSender(context.Context, peer.ID) (MessageSender, error)
 }
 
