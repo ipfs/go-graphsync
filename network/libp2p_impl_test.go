@@ -8,7 +8,7 @@ import (
 	"time"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/testselector"
+	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/libp2p/go-libp2p-peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 )
@@ -55,20 +55,20 @@ func TestMessageSendAndReceive(t *testing.T) {
 		t.Fatal("error linking hosts")
 	}
 	gsnet1 := NewFromLibp2pHost(host1,
-		testselector.MockDecodeSelectorFunc,
-		testselector.MockDecodeSelectionResponseFunc)
+		testutil.MockDecodeSelectorFunc,
+		testutil.MockDecodeSelectionResponseFunc)
 	gsnet2 := NewFromLibp2pHost(host2,
-		testselector.MockDecodeSelectorFunc,
-		testselector.MockDecodeSelectionResponseFunc)
+		testutil.MockDecodeSelectorFunc,
+		testutil.MockDecodeSelectionResponseFunc)
 	r := &receiver{
 		messageReceived: make(chan struct{}),
 	}
 	gsnet1.SetDelegate(r)
 	gsnet2.SetDelegate(r)
 
-	selector := testselector.GenerateSelector()
-	root := testselector.GenerateRootCid()
-	selectionResponse := testselector.GenerateSelectionResponse()
+	selector := testutil.GenerateSelector()
+	root := testutil.GenerateRootCid()
+	selectionResponse := testutil.GenerateSelectionResponse()
 	id := gsmsg.GraphSyncRequestID(rand.Int31())
 	priority := gsmsg.GraphSyncPriority(rand.Int31())
 	status := gsmsg.RequestAcknowledged

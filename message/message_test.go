@@ -6,12 +6,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ipfs/go-graphsync/testselector"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestAppendingRequests(t *testing.T) {
-	selector := testselector.GenerateSelector()
-	root := testselector.GenerateRootCid()
+	selector := testutil.GenerateSelector()
+	root := testutil.GenerateRootCid()
 	id := GraphSyncRequestID(rand.Int31())
 	priority := GraphSyncPriority(rand.Int31())
 
@@ -41,8 +41,8 @@ func TestAppendingRequests(t *testing.T) {
 	}
 
 	deserialized, err := newMessageFromProto(*pbMessage,
-		testselector.MockDecodeSelectorFunc,
-		testselector.MockDecodeSelectionResponseFunc,
+		testutil.MockDecodeSelectorFunc,
+		testutil.MockDecodeSelectionResponseFunc,
 	)
 	if err != nil {
 		t.Fatal("Error deserializing protobuf message")
@@ -62,7 +62,7 @@ func TestAppendingRequests(t *testing.T) {
 }
 
 func TestAppendingResponses(t *testing.T) {
-	selectionResponse := testselector.GenerateSelectionResponse()
+	selectionResponse := testutil.GenerateSelectionResponse()
 	requestID := GraphSyncRequestID(rand.Int31())
 	status := RequestAcknowledged
 
@@ -88,8 +88,8 @@ func TestAppendingResponses(t *testing.T) {
 	}
 
 	deserialized, err := newMessageFromProto(*pbMessage,
-		testselector.MockDecodeSelectorFunc,
-		testselector.MockDecodeSelectionResponseFunc,
+		testutil.MockDecodeSelectorFunc,
+		testutil.MockDecodeSelectionResponseFunc,
 	)
 	if err != nil {
 		t.Fatal("Error deserializing protobuf message")
@@ -107,8 +107,8 @@ func TestAppendingResponses(t *testing.T) {
 }
 
 func TestRequestCancel(t *testing.T) {
-	selector := testselector.GenerateSelector()
-	root := testselector.GenerateRootCid()
+	selector := testutil.GenerateSelector()
+	root := testutil.GenerateRootCid()
 	id := GraphSyncRequestID(rand.Int31())
 	priority := GraphSyncPriority(rand.Int31())
 
@@ -129,9 +129,9 @@ func TestRequestCancel(t *testing.T) {
 }
 
 func TestToNetFromNetEquivalency(t *testing.T) {
-	selector := testselector.GenerateSelector()
-	root := testselector.GenerateRootCid()
-	selectionResponse := testselector.GenerateSelectionResponse()
+	selector := testutil.GenerateSelector()
+	root := testutil.GenerateRootCid()
+	selectionResponse := testutil.GenerateSelectionResponse()
 	id := GraphSyncRequestID(rand.Int31())
 	priority := GraphSyncPriority(rand.Int31())
 	status := RequestAcknowledged
@@ -146,8 +146,8 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 		t.Fatal("Unable to serialize GraphSyncMessage")
 	}
 	deserialized, err := FromNet(buf,
-		testselector.MockDecodeSelectorFunc,
-		testselector.MockDecodeSelectionResponseFunc,
+		testutil.MockDecodeSelectorFunc,
+		testutil.MockDecodeSelectionResponseFunc,
 	)
 	if err != nil {
 		t.Fatal("Error deserializing protobuf message")
