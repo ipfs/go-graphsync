@@ -54,28 +54,23 @@ func TestMessageSendAndReceive(t *testing.T) {
 	if err != nil {
 		t.Fatal("error linking hosts")
 	}
-	gsnet1 := NewFromLibp2pHost(host1,
-		testutil.MockDecodeSelectorFunc,
-		testutil.MockDecodeSelectionResponseFunc)
-	gsnet2 := NewFromLibp2pHost(host2,
-		testutil.MockDecodeSelectorFunc,
-		testutil.MockDecodeSelectionResponseFunc)
+	gsnet1 := NewFromLibp2pHost(host1)
+	gsnet2 := NewFromLibp2pHost(host2)
 	r := &receiver{
 		messageReceived: make(chan struct{}),
 	}
 	gsnet1.SetDelegate(r)
 	gsnet2.SetDelegate(r)
 
-	selector := testutil.GenerateSelector()
-	root := testutil.GenerateRootCid()
-	selectionResponse := testutil.GenerateSelectionResponse()
+	selector := testutil.RandomBytes(100)
+	extra := testutil.RandomBytes(100)
 	id := gsmsg.GraphSyncRequestID(rand.Int31())
 	priority := gsmsg.GraphSyncPriority(rand.Int31())
 	status := gsmsg.RequestAcknowledged
 
 	sent := gsmsg.New()
-	sent.AddRequest(id, selector, root, priority)
-	sent.AddResponse(id, status, selectionResponse)
+	sent.AddRequest(id, selector, priority)
+	sent.AddResponse(id, status, extra)
 
 	err = gsnet1.ConnectTo(ctx, host2.ID())
 	if err != nil {
@@ -110,11 +105,9 @@ func TestMessageSendAndReceive(t *testing.T) {
 	if receivedRequest.ID() != sentRequest.ID() ||
 		receivedRequest.IsCancel() != sentRequest.IsCancel() ||
 		receivedRequest.Priority() != sentRequest.Priority() ||
-		!reflect.DeepEqual(receivedRequest.Root(), sentRequest.Root()) ||
 		!reflect.DeepEqual(receivedRequest.Selector(), sentRequest.Selector()) {
 		t.Fatal("Sent message requests did not match received message requests")
 	}
-
 	sentResponses := sent.Responses()
 	if len(sentResponses) != 1 {
 		t.Fatal("Did not add response to sent message")
@@ -127,7 +120,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	receivedResponse := receivedResponses[0]
 	if receivedResponse.RequestID() != sentResponse.RequestID() ||
 		receivedResponse.Status() != sentResponse.Status() ||
-		!reflect.DeepEqual(receivedResponse.Response(), sentResponse.Response()) {
+		!reflect.DeepEqual(receivedResponse.Extra(), sentResponse.Extra()) {
 		t.Fatal("Sent message responses did not match received message responses")
 	}
 }
