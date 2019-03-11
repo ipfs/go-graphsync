@@ -45,6 +45,10 @@ github.com/ipfs/go-ipfs-util v0.0.1 h1:Wz9bL2wB2YBJqggkA4dD7oSmqB4cAnpNbGrlHJulv
 github.com/ipfs/go-ipfs-util v0.0.1/go.mod h1:spsl5z8KUnrve+73pOhSVZND1SIxPW5RyBCNzQxlJBc=
 github.com/ipfs/go-log v0.0.1 h1:9XTUN/rW64BCG1YhPK9Hoy3q8nr4gOmHHBpgFdfw6Lc=
 github.com/ipfs/go-log v0.0.1/go.mod h1:kL1d2/hzSpI0thNYjiKfjanbVNU+IIGA/WnNESY9leM=
+github.com/ipld/go-ipld-prime v0.0.0-20190227132703-aaea73ad73c5 h1:Fm+tk5iaitTL/3L1nRlwibgLFtI5Eld4nIrjX4ajcKY=
+github.com/ipld/go-ipld-prime v0.0.0-20190227132703-aaea73ad73c5/go.mod h1:hSGXgXt4BSdqvjA3Kkxhzcg4Rsk9yvIeEuEVCPCi7/A=
+github.com/ipld/go-ipld-prime v0.0.0-20190306022502-066284669cf6 h1:FJW7rDl8g/580E6ZuR5rXzDT/9SsJvCuAEQCq8cbdPQ=
+github.com/ipld/go-ipld-prime v0.0.0-20190306022502-066284669cf6/go.mod h1:hSGXgXt4BSdqvjA3Kkxhzcg4Rsk9yvIeEuEVCPCi7/A=
 github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c h1:uUx61FiAa1GI6ZmVd2wf2vULeQZIKG66eybjNXKYCz4=
 github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c/go.mod h1:sdx1xVM9UuLw1tXnhJWN3piypTUO3vCIHYmG15KE/dU=
 github.com/jbenet/goprocess v0.0.0-20160826012719-b497e2f366b8 h1:bspPhN+oKYFk5fcGNuQzp6IGzYQSenLEgH3s6jkXrWw=
@@ -103,6 +107,8 @@ github.com/opentracing/opentracing-go v1.0.2 h1:3jA2P6O1F9UOrWVpwrIo17pu01KWvNWg
 github.com/opentracing/opentracing-go v1.0.2/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/polydawn/refmt v0.0.0-20190221155625-df39d6c2d992 h1:bzMe+2coZJYHnhGgVlcQKuRy4FSny4ds8dLQjw5P1XE=
+github.com/polydawn/refmt v0.0.0-20190221155625-df39d6c2d992/go.mod h1:uIp+gprXxxrWSjjklXD+mN4wed/tMfjMMmN/9+JsA9o=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
 github.com/syndtr/goleveldb v1.0.0/go.mod h1:ZVVdQEZoIme9iO1Ch2Jdy24qqXrMMOU6lpPAyBWyWuQ=
