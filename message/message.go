@@ -105,6 +105,8 @@ type GraphSyncMessage interface {
 
 	AddBlock(blocks.Block)
 
+	Empty() bool
+
 	Exportable
 
 	Loggable() map[string]interface{}
@@ -178,6 +180,10 @@ func newMessageFromProto(pbm pb.Message) (GraphSyncMessage, error) {
 	}
 
 	return gsm, nil
+}
+
+func (gsm *graphSyncMessage) Empty() bool {
+	return len(gsm.blocks) == 0 && len(gsm.requests) == 0 && len(gsm.responses) == 0
 }
 
 func (gsm *graphSyncMessage) Requests() []GraphSyncRequest {
