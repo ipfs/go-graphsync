@@ -12,13 +12,18 @@ func newResponseCollector(ctx context.Context) *responseCollector {
 
 func (rc *responseCollector) collectResponses(
 	requestCtx context.Context,
-	incomingResponses <-chan ResponseProgress, cancelRequest func()) <-chan ResponseProgress {
+	incomingResponses <-chan ResponseProgress,
+	incomingErrors <-chan ResponseError,
+	cancelRequest func()) (<-chan ResponseProgress, <-chan ResponseError) {
 
 	returnedResponses := make(chan ResponseProgress)
-	var receivedResponses []ResponseProgress
+	returnedErrors := make(chan ResponseError)
 
 	go func() {
+		var receivedResponses []ResponseProgress
+		var receivedErrors []ResponseError
 		defer close(returnedResponses)
+		defer close(returnedErrors)
 		outgoingResponses := func() chan<- ResponseProgress {
 			if len(receivedResponses) == 0 {
 				return nil
@@ -31,7 +36,20 @@ func (rc *responseCollector) collectResponses(
 			}
 			return receivedResponses[0]
 		}
-		for len(receivedResponses) > 0 || incomingResponses != nil {
+		outgoingErrors := func() chan<- ResponseError {
+			if len(receivedErrors) == 0 {
+				return nil
+			}
+			return returnedErrors
+		}
+		nextError := func() ResponseError {
+			if len(receivedErrors) == 0 {
+				return ResponseError{}
+			}
+			return receivedErrors[0]
+		}
+
+		for len(receivedResponses) > 0 || len(receivedErrors) > 0 || incomingResponses != nil || incomingErrors != nil {
 			select {
 			case <-rc.ctx.Done():
 				return
@@ -48,8 +66,16 @@ func (rc *responseCollector) collectResponses(
 				}
 			case outgoingResponses() <- nextResponse():
 				receivedResponses = receivedResponses[1:]
+			case error, ok := <-incomingErrors:
+				if !ok {
+					incomingErrors = nil
+				} else {
+					receivedErrors = append(receivedErrors, error)
+				}
+			case outgoingErrors() <- nextError():
+				receivedErrors = receivedErrors[1:]
 			}
 		}
 	}()
-	return returnedResponses
+	return returnedResponses, returnedErrors
 }

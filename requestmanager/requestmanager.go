@@ -19,6 +19,16 @@ import (
 // for now, it's just a block.
 type ResponseProgress = blocks.Block
 
+// ResponseError is an error that occurred during a traversal.
+// It can be either a "non-terminal" error -- meaning progress will
+// continue to happen in the future.
+// or it can be a terminal error, meaning no further progress or errors
+// will emit.
+type ResponseError struct {
+	IsTerminal bool
+	Error      error
+}
+
 const (
 	// maxPriority is the max priority as defined by the bitswap protocol
 	maxPriority = gsmsg.GraphSyncPriority(math.MaxInt32)
@@ -81,8 +91,9 @@ func (rm *RequestManager) SetDelegate(peerHandler PeerHandler) {
 }
 
 type inProgressRequest struct {
-	requestID gsmsg.GraphSyncRequestID
-	incoming  chan ResponseProgress
+	requestID     gsmsg.GraphSyncRequestID
+	incoming      chan ResponseProgress
+	incomingError chan ResponseError
 }
 
 type newRequestMessage struct {
@@ -92,9 +103,11 @@ type newRequestMessage struct {
 }
 
 // SendRequest initiates a new GraphSync request to the given peer.
-func (rm *RequestManager) SendRequest(ctx context.Context, p peer.ID, cidRootedSelector ipld.Node) (<-chan ResponseProgress, error) {
+func (rm *RequestManager) SendRequest(ctx context.Context,
+	p peer.ID,
+	cidRootedSelector ipld.Node) (<-chan ResponseProgress, <-chan ResponseError) {
 	if len(rm.ipldBridge.ValidateSelectorSpec(cidRootedSelector)) != 0 {
-		return nil, fmt.Errorf("Invalid Selector Spec")
+		return rm.singleErrorResponse(fmt.Errorf("Invalid Selector Spec"))
 	}
 
 	inProgressRequestChan := make(chan inProgressRequest)
@@ -102,35 +115,53 @@ func (rm *RequestManager) SendRequest(ctx context.Context, p peer.ID, cidRootedS
 	select {
 	case rm.messages <- &newRequestMessage{p, cidRootedSelector, inProgressRequestChan}:
 	case <-rm.ctx.Done():
-		ch := make(chan ResponseProgress)
-		close(ch)
-		return ch, nil
+		return rm.emptyResponse()
 	case <-ctx.Done():
-		ch := make(chan ResponseProgress)
-		close(ch)
-		return ch, nil
+		return rm.emptyResponse()
 	}
 	var receivedInProgressRequest inProgressRequest
 	select {
 	case <-rm.ctx.Done():
-		ch := make(chan ResponseProgress)
-		close(ch)
-		return ch, nil
+		return rm.emptyResponse()
 	case receivedInProgressRequest = <-inProgressRequestChan:
 	}
 
-	return rm.rc.collectResponses(ctx, receivedInProgressRequest.incoming, func() {
-		rm.cancelRequest(receivedInProgressRequest.requestID, receivedInProgressRequest.incoming)
-	}), nil
+	return rm.rc.collectResponses(ctx,
+		receivedInProgressRequest.incoming,
+		receivedInProgressRequest.incomingError,
+		func() {
+			rm.cancelRequest(receivedInProgressRequest.requestID,
+				receivedInProgressRequest.incoming,
+				receivedInProgressRequest.incomingError)
+		})
+}
+
+func (rm *RequestManager) emptyResponse() (chan ResponseProgress, chan ResponseError) {
+	ch := make(chan ResponseProgress)
+	close(ch)
+	errCh := make(chan ResponseError)
+	close(errCh)
+	return ch, errCh
+}
+
+func (rm *RequestManager) singleErrorResponse(err error) (chan ResponseProgress, chan ResponseError) {
+	ch := make(chan ResponseProgress)
+	close(ch)
+	errCh := make(chan ResponseError, 1)
+	errCh <- ResponseError{true, err}
+	close(errCh)
+	return ch, errCh
 }
 
 type cancelRequestMessage struct {
 	requestID gsmsg.GraphSyncRequestID
 }
 
-func (rm *RequestManager) cancelRequest(requestID gsmsg.GraphSyncRequestID, incomingResponses chan ResponseProgress) {
+func (rm *RequestManager) cancelRequest(requestID gsmsg.GraphSyncRequestID,
+	incomingResponses chan ResponseProgress,
+	incomingErrors chan ResponseError) {
 	cancelMessageChannel := rm.messages
-	for {
+	for cancelMessageChannel != nil || incomingResponses != nil || incomingErrors != nil {
 		select {
 		case cancelMessageChannel <- &cancelRequestMessage{requestID}:
 			cancelMessageChannel = nil
@@ -138,7 +169,11 @@ func (rm *RequestManager) cancelRequest(requestID gsmsg.GraphSyncRequestID, inco
 		// messages get processed before our cancel message
 		case _, ok := <-incomingResponses:
 			if !ok {
-				return
+				incomingResponses = nil
+			}
+		case _, ok := <-incomingErrors:
+			if !ok {
+				incomingErrors = nil
 			}
 		case <-rm.ctx.Done():
 			return
@@ -192,14 +227,19 @@ func (rm *RequestManager) cleanupInProcessRequests() {
 }
 
 func (nrm *newRequestMessage) handle(rm *RequestManager) {
-	inProgressChan := make(chan ResponseProgress)
+	var inProgressChan chan ResponseProgress
+	var inProgressErr chan ResponseError
+
 	requestID := rm.nextRequestID
 	rm.nextRequestID++
-	selectorBytes, err := rm.ipldBridge.EncodeNode(nrm.selector)
 
+	selectorBytes, err := rm.ipldBridge.EncodeNode(nrm.selector)
 	if err != nil {
-		close(inProgressChan)
+		inProgressChan, inProgressErr = rm.singleErrorResponse(err)
 	} else {
+		inProgressChan = make(chan ResponseProgress)
+		inProgressErr = make(chan ResponseError)
+		close(inProgressErr)
 		ctx, cancel := context.WithCancel(rm.ctx)
 
 		rm.inProgressRequestStatuses[requestID] = &inProgressRequestStatus{
@@ -211,8 +251,9 @@ func (nrm *newRequestMessage) handle(rm *RequestManager) {
 
 	select {
 	case nrm.inProgressRequestChan <- inProgressRequest{
-		requestID: requestID,
-		incoming:  inProgressChan,
+		requestID:     requestID,
+		incoming:      inProgressChan,
+		incomingError: inProgressErr,
 	}:
 	case <-rm.ctx.Done():
 	}

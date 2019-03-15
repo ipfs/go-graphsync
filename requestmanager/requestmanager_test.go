@@ -64,12 +64,8 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	s1 := testbridge.NewMockSelectorSpec(testutil.GenerateCids(5))
 	s2 := testbridge.NewMockSelectorSpec(testutil.GenerateCids(5))
 
-	returnedBlocksChan1, err1 := requestManager.SendRequest(requestCtx, peers[0], s1)
-	returnedBlocksChan2, err2 := requestManager.SendRequest(requestCtx, peers[1], s2)
-
-	if err1 != nil || err2 != nil {
-		t.Fatal("Request setup failed")
-	}
+	returnedBlocksChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx, peers[0], s1)
+	returnedBlocksChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx, peers[1], s2)
 
 	requestRecords := make([]requestRecord, 0, 2)
 	for i := 0; i < 2; i++ {
@@ -168,6 +164,30 @@ collectSecondBlocks:
 			}
 		}
 	}
+collectFirstErrors:
+	for {
+		select {
+		case _, ok := <-returnedErrorChan1:
+			if !ok {
+				break collectFirstErrors
+			}
+			t.Fatal("errors were sent but shouldn't have been")
+		case <-requestCtx.Done():
+			t.Fatal("errors channel never closed")
+		}
+	}
+collectSecondErrors:
+	for {
+		select {
+		case _, ok := <-returnedErrorChan2:
+			if !ok {
+				break collectSecondErrors
+			}
+			t.Fatal("errors were sent but shouldn't have been")
+		case <-requestCtx.Done():
+			t.Fatal("errors channel never closed")
+		}
+	}
 }
 
 func TestCancelRequestInProgress(t *testing.T) {
@@ -189,12 +209,9 @@ func TestCancelRequestInProgress(t *testing.T) {
 	s1 := testbridge.NewMockSelectorSpec(testutil.GenerateCids(5))
 	s2 := testbridge.NewMockSelectorSpec(testutil.GenerateCids(5))
 
-	returnedBlocksChan1, err1 := requestManager.SendRequest(requestCtx1, peers[0], s1)
-	returnedBlocksChan2, err2 := requestManager.SendRequest(requestCtx2, peers[1], s2)
+	returnedBlocksChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx1, peers[0], s1)
+	returnedBlocksChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx2, peers[1], s2)
 
-	if err1 != nil || err2 != nil {
-		t.Fatal("Request setup failed")
-	}
 	requestRecords := make([]requestRecord, 0, 2)
 	for i := 0; i < 2; i++ {
 		select {
@@ -294,6 +311,30 @@ collectSecondBlocks:
 			}
 		}
 	}
+collectFirstErrors:
+	for {
+		select {
+		case _, ok := <-returnedErrorChan1:
+			if !ok {
+				break collectFirstErrors
+			}
+			t.Fatal("errors were sent but shouldn't have been")
+		case <-requestCtx.Done():
+			t.Fatal("errors channel never closed")
+		}
+	}
+collectSecondErrors:
+	for {
+		select {
+		case _, ok := <-returnedErrorChan2:
+			if !ok {
+				break collectSecondErrors
+			}
+			t.Fatal("errors were sent but shouldn't have been")
+		case <-requestCtx.Done():
+			t.Fatal("errors channel never closed")
+		}
+	}
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {
@@ -311,11 +352,8 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	peers := testutil.GeneratePeers(2)
 
 	s := testbridge.NewMockSelectorSpec(testutil.GenerateCids(5))
-	returnedBlocksChan, err := requestManager.SendRequest(requestCtx, peers[0], s)
+	returnedBlocksChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
 
-	if err != nil {
-		t.Fatal("Request setup failed")
-	}
 	var rr requestRecord
 	select {
 	case rr = <-requestRecordChan:
@@ -372,6 +410,18 @@ collectFirstBlocks:
 			t.Fatal("wrong block sent")
 		}
 	}
+collectFirstErrors:
+	for {
+		select {
+		case _, ok := <-returnedErrorChan:
+			if !ok {
+				break collectFirstErrors
+			}
+			t.Fatal("errors were sent but shouldn't have been")
+		case <-requestCtx.Done():
+			t.Fatal("errors channel never closed")
+		}
+	}
 }
 
 func TestInvalidSelector(t *testing.T) {
@@ -388,10 +438,27 @@ func TestInvalidSelector(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 
 	s := testbridge.NewInvalidSelectorSpec(testutil.GenerateCids(5))
-	_, err := requestManager.SendRequest(requestCtx, peers[0], s)
+	returnedBlocksChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
 
-	if err == nil {
-		t.Fatal("Selector should not have validated but it did")
+	select {
+	case err := <-returnedErrorChan:
+		if err.Error == nil || err.IsTerminal != true {
+			t.Fatal("should have sent a single terminal error but did not")
+		}
+	case <-requestCtx.Done():
+		t.Fatal("no errors sent")
+	}
+collectFirstBlocks:
+	for {
+		select {
+		case _, ok := <-returnedBlocksChan:
+			if !ok {
+				break collectFirstBlocks
+			}
+			t.Fatal("blocks were sent but shouldn't have been")
+		case <-requestCtx.Done():
+			t.Fatal("blocks channel never closed")
+		}
 	}
 }
 
@@ -409,10 +476,15 @@ func TestUnencodableSelector(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 
 	s := testbridge.NewUnencodableSelectorSpec(testutil.GenerateCids(5))
-	returnedBlocksChan, err := requestManager.SendRequest(requestCtx, peers[0], s)
+	returnedBlocksChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
 
-	if err != nil {
-		t.Fatal("Request setup failed")
+	select {
+	case err := <-returnedErrorChan:
+		if err.Error == nil || err.IsTerminal != true {
+			t.Fatal("should have sent a single terminal error but did not")
+		}
+	case <-requestCtx.Done():
+		t.Fatal("no errors sent")
 	}
 collectFirstBlocks:
 	for {
