@@ -8,13 +8,27 @@ import (
 )
 
 type mockSelectorSpec struct {
-	cidsVisited []cid.Cid
+	cidsVisited    []cid.Cid
+	failValidation bool
+	failEncode     bool
 }
 
 // NewMockSelectorSpec returns a new mock selector that will visit the given
 // cids.
 func NewMockSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
-	return &mockSelectorSpec{cidsVisited}
+	return &mockSelectorSpec{cidsVisited, false, false}
+}
+
+// NewInvalidSelectorSpec returns a spec that will fail when you attempt to
+// validate it or decompose to a node + selector.
+func NewInvalidSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
+	return &mockSelectorSpec{cidsVisited, true, false}
+}
+
+// NewUnencodableSelectorSpec returns a spec that will fail when you attempt to
+// encode it.
+func NewUnencodableSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
+	return &mockSelectorSpec{cidsVisited, false, true}
 }
 
 func (mss *mockSelectorSpec) Kind() ipld.ReprKind { return ipld.ReprKind_Null }

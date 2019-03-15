@@ -42,8 +42,8 @@ func (mb *mockIPLDBridge) ComposeLinkLoader(actualLoader ipldbridge.RawLoader) i
 }
 
 func (mb *mockIPLDBridge) ValidateSelectorSpec(cidRootedSelector ipld.Node) []error {
-	_, ok := cidRootedSelector.(*mockSelectorSpec)
-	if !ok {
+	spec, ok := cidRootedSelector.(*mockSelectorSpec)
+	if !ok || spec.failValidation {
 		return []error{fmt.Errorf("not a selector")}
 	}
 	return nil
@@ -51,7 +51,7 @@ func (mb *mockIPLDBridge) ValidateSelectorSpec(cidRootedSelector ipld.Node) []er
 
 func (mb *mockIPLDBridge) EncodeNode(node ipld.Node) ([]byte, error) {
 	spec, ok := node.(*mockSelectorSpec)
-	if ok {
+	if ok && !spec.failEncode {
 		data, err := json.Marshal(spec.cidsVisited)
 		if err != nil {
 			return nil, err
@@ -65,14 +65,14 @@ func (mb *mockIPLDBridge) DecodeNode(data []byte) (ipld.Node, error) {
 	var cidsVisited []cid.Cid
 	err := json.Unmarshal(data, &cidsVisited)
 	if err == nil {
-		return &mockSelectorSpec{cidsVisited}, nil
+		return &mockSelectorSpec{cidsVisited, false, false}, nil
 	}
 	return nil, fmt.Errorf("format not supported")
 }
 
 func (mb *mockIPLDBridge) DecodeSelectorSpec(cidRootedSelector ipld.Node) (ipld.Node, ipldbridge.Selector, error) {
 	spec, ok := cidRootedSelector.(*mockSelectorSpec)
-	if !ok {
+	if !ok || spec.failValidation {
 		return nil, nil, fmt.Errorf("not a selector")
 	}
 	return nil, newMockSelector(spec), nil
