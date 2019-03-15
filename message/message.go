@@ -66,6 +66,28 @@ const (
 	RequestFailedContentNotFound = GraphSyncResponseStatusCode(34)
 )
 
+// IsTerminalSuccessCode returns true if the response code indicates the
+// request terminated successfully.
+func IsTerminalSuccessCode(status GraphSyncResponseStatusCode) bool {
+	return status == RequestCompletedFull ||
+		status == RequestCompletedPartial
+}
+
+// IsTerminalFailureCode returns true if the response code indicates the
+// request terminated in failure.
+func IsTerminalFailureCode(status GraphSyncResponseStatusCode) bool {
+	return status == RequestFailedBusy ||
+		status == RequestFailedContentNotFound ||
+		status == RequestFailedLegal ||
+		status == RequestFailedUnknown
+}
+
+// IsTerminalResponseCode returns true if the response code signals
+// the end of the request
+func IsTerminalResponseCode(status GraphSyncResponseStatusCode) bool {
+	return IsTerminalSuccessCode(status) || IsTerminalFailureCode(status)
+}
+
 // GraphSyncRequest is an interface for accessing data on request contained in a
 // GraphSyncMessage.
 type GraphSyncRequest interface {
