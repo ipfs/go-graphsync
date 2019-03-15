@@ -363,3 +363,28 @@ func TestUnencodableSelector(t *testing.T) {
 	verifySingleTerminalError(requestCtx, t, returnedErrorChan)
 	verifyEmptyBlocks(requestCtx, t, returnedBlocksChan)
 }
+
+func TestFailedRequest(t *testing.T) {
+	requestRecordChan := make(chan requestRecord, 2)
+	fph := &fakePeerHandler{requestRecordChan}
+	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
+	ctx := context.Background()
+	requestManager := New(ctx, fakeIPLDBridge)
+	requestManager.SetDelegate(fph)
+	requestManager.Startup()
+
+	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	peers := testutil.GeneratePeers(2)
+
+	s := testbridge.NewMockSelectorSpec(testutil.GenerateCids(5))
+	returnedBlocksChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
+
+	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+	msg := gsmsg.New()
+	msg.AddResponse(rr.requestID, gsmsg.RequestFailedContentNotFound, nil)
+	requestManager.ProcessResponses(msg)
+
+	verifySingleTerminalError(requestCtx, t, returnedErrorChan)
+	verifyEmptyBlocks(requestCtx, t, returnedBlocksChan)
+}

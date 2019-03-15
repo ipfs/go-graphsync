@@ -39,6 +39,13 @@ type inProgressRequestStatus struct {
 	cancelFn        func()
 	p               peer.ID
 	responseChannel chan ResponseProgress
+	errorChannel    chan ResponseError
+}
+
+func (ipr *inProgressRequestStatus) shutdown() {
+	close(ipr.responseChannel)
+	close(ipr.errorChannel)
+	ipr.cancelFn()
 }
 
 // PeerHandler is an interface that can send requests to peers
@@ -221,8 +228,7 @@ func (rm *RequestManager) run() {
 
 func (rm *RequestManager) cleanupInProcessRequests() {
 	for _, requestStatus := range rm.inProgressRequestStatuses {
-		close(requestStatus.responseChannel)
-		requestStatus.cancelFn()
+		requestStatus.shutdown()
 	}
 }
 
@@ -239,11 +245,10 @@ func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	} else {
 		inProgressChan = make(chan ResponseProgress)
 		inProgressErr = make(chan ResponseError)
-		close(inProgressErr)
 		ctx, cancel := context.WithCancel(rm.ctx)
 
 		rm.inProgressRequestStatuses[requestID] = &inProgressRequestStatus{
-			ctx, cancel, nrm.p, inProgressChan,
+			ctx, cancel, nrm.p, inProgressChan, inProgressErr,
 		}
 		rm.peerHandler.SendRequest(nrm.p, requestID, selectorBytes, maxPriority)
 		// not starting a traversal atm
@@ -266,9 +271,8 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 	}
 
 	rm.peerHandler.CancelRequest(inProgressRequestStatus.p, crm.requestID)
-	close(inProgressRequestStatus.responseChannel)
 	delete(rm.inProgressRequestStatuses, crm.requestID)
-	inProgressRequestStatus.cancelFn()
+	inProgressRequestStatus.shutdown()
 }
 
 func (prm *processResponseMessage) handle(rm *RequestManager) {
@@ -293,11 +297,34 @@ func (prm *processResponseMessage) handle(rm *RequestManager) {
 		// reason for termination and closing the channel
 		if gsmsg.IsTerminalResponseCode(response.Status()) {
 			requestStatus, ok := rm.inProgressRequestStatuses[response.RequestID()]
+
 			if ok {
-				close(requestStatus.responseChannel)
+				if gsmsg.IsTerminalFailureCode(response.Status()) {
+					responseError := rm.generateResponseErrorFromStatus(response.Status())
+					select {
+					case requestStatus.errorChannel <- responseError:
+					case <-rm.ctx.Done():
+					case <-requestStatus.ctx.Done():
+					}
+				}
 				delete(rm.inProgressRequestStatuses, response.RequestID())
-				requestStatus.cancelFn()
+				requestStatus.shutdown()
 			}
 		}
+	}
+}
+
+func (rm *RequestManager) generateResponseErrorFromStatus(status gsmsg.GraphSyncResponseStatusCode) ResponseError {
+	switch status {
+	case gsmsg.RequestFailedBusy:
+		return ResponseError{true, fmt.Errorf("Request Failed - Peer Is Busy")}
+	case gsmsg.RequestFailedContentNotFound:
+		return ResponseError{true, fmt.Errorf("Request Failed - Content Not Found")}
+	case gsmsg.RequestFailedLegal:
+		return ResponseError{true, fmt.Errorf("Request Failed - For Legal Reasons")}
+	case gsmsg.RequestFailedUnknown:
+		return ResponseError{true, fmt.Errorf("Request Failed - Unknown Reason")}
+	default:
+		return ResponseError{}
 	}
 }
