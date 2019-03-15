@@ -22,13 +22,9 @@ var log = logging.Logger("graphsync_network")
 var sendMessageTimeout = time.Minute * 10
 
 // NewFromLibp2pHost returns a GraphSyncNetwork supported by underlying Libp2p host.
-func NewFromLibp2pHost(host host.Host,
-	decodeSelectorFunc gsmsg.DecodeSelectorFunc,
-	decodeSelectionResponseFunc gsmsg.DecodeSelectionResponseFunc) GraphSyncNetwork {
+func NewFromLibp2pHost(host host.Host) GraphSyncNetwork {
 	graphSyncNetwork := libp2pGraphSyncNetwork{
-		host:                        host,
-		decodeSelectorFunc:          decodeSelectorFunc,
-		decodeSelectionResponseFunc: decodeSelectionResponseFunc,
+		host: host,
 	}
 	host.SetStreamHandler(ProtocolGraphsync, graphSyncNetwork.handleNewStream)
 
@@ -38,9 +34,7 @@ func NewFromLibp2pHost(host host.Host,
 // libp2pGraphSyncNetwork transforms the libp2p host interface, which sends and receives
 // NetMessage objects, into the graphsync network interface.
 type libp2pGraphSyncNetwork struct {
-	host                        host.Host
-	decodeSelectionResponseFunc gsmsg.DecodeSelectionResponseFunc
-	decodeSelectorFunc          gsmsg.DecodeSelectorFunc
+	host host.Host
 	// inbound messages from the network are forwarded to the receiver
 	receiver Receiver
 }
@@ -146,9 +140,7 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s inet.Stream) {
 
 	reader := ggio.NewDelimitedReader(s, inet.MessageSizeMax)
 	for {
-		received, err := gsmsg.FromPBReader(reader,
-			gsnet.decodeSelectorFunc,
-			gsnet.decodeSelectionResponseFunc)
+		received, err := gsmsg.FromPBReader(reader)
 		if err != nil {
 			if err != io.EOF {
 				s.Reset()

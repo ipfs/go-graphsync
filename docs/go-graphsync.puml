@@ -1,40 +1,14 @@
 @startuml "GraphSync"
 
 
-package "go-ipld-format" {
-  interface Node
-}
 
-note top of "go-selector"
-  Is this the right name for this package?
-end note
+package "go-ipld-prime" {
+  interface Node {
 
-package "go-selector" {
-
+  }
   interface Selector {
   }
   
-  interface SelectionResponse {
-  }
-  
-  interface SelectionTraverser {
-    Next() SelectionResponse, err
-    Cancel()
-  }
-
-  interface "GetBlockFunc func(cid) block.Block" as GetBlockFunc
-
-  interface SelectorQuerier {
-    Select(Selector, root Cid) SelectionTraverser
-    Validate(Selector, root Cid, incomingResponses SelectionTraverser) SelectionTraverser
-  }
-
-  object "Package Public Functions" as goSelectorPF {
-    NewSelectorQuerier(getBlockFunc GetBlockFunc) SelectorQuerier
-  }
-
-  Node <|-- Selector
-  Node <|-- SelectionResponse
 }
 
 package "go-graphsync" {
@@ -43,14 +17,10 @@ package "go-graphsync" {
       network : GraphySyncNetwork
       requestManager : RequestManager
       responseManager: ResponseManager
-      selectorQuerier: SelectorQuerier
-
-      Request(p peer.ID, selector Selector, root Cid) SelectionTraverser
+      Request(p peer.ID, selector Selector, root Cid) chan Block
       ReceiveMessage(ctx context.Context, sender peer.ID, incoming GraphSyncMessage)
       ReceiveError(error)
     }
-  
-  GraphSync *-- SelectorQuerier
 
   package network {
     
@@ -80,9 +50,7 @@ package "go-graphsync" {
     GraphSyncNetwork <|-- libP2PGraphSyncNetwork
     
     object "Package Public Functions" as goGraphSyncNetworkPF {
-      NewLibP2PNetwork(host libp2pHost.Host,
-      decodeSelectionResponseFunc: DecodeSelectionResponseFunc,
-      decodeSelectorFunc: DecodeSelectorFunc) GraphSyncNetwork
+      NewLibP2PNetwork(host libp2pHost.Host) GraphSyncNetwork
     }
     goGraphSyncNetworkPF .. libP2PGraphSyncNetwork 
   }
@@ -90,55 +58,31 @@ package "go-graphsync" {
   package requestmanager {
   class RequestManager {
     network : GraphSyncNetwork
-    selectorQuerier: SelectorQuerier
 
-    SendRequest(p peer.ID, selector Selector, root Cid) SelectionTraverser
+    SendRequest(p peer.ID, selector Selector, root Cid) chan Block
     ProcessResponses(responses []GraphSyncResponse)
   }
-  SelectorQuerier --* RequestManager
   RequestManager *-- GraphSyncNetwork
   GraphSync *-- RequestManager
-  note as requestManager
-    The ResponseManager uses Validate from go-selector
-    to filter incoming Responses based on whether they are valid and produce
-    a traverser that only returns valid responses
-  end note
   }
 
   package responsemanager {
   class ResponseManager {
     network : GraphySyncNetwork
-    selectorQuerier: SelectorQuerier
     ProcessRequests(p peer.ID, requests []GraphSyncRequests)
   }
-  SelectorQuerier --* ResponseManager
   ResponseManager *-- GraphSyncNetwork
   GraphSync *-- ResponseManager
-  note as responseManagerNote
-    The ResponseManager uses Select from go-selector
-    to translate the raw bytes into a selector and then
-    traverse the graph to produce a list of blocks
-
-    Question: how to know if response is partial?
-  end note
   }
   package message {
-    interface "DecodeSelectionResponseFunc func([]byte) SelectionResponse" as DecodeSelectionResponseFunc
-  interface "DecodeSelectorFunc func([]byte) Selector" as DecodeSelectorFunc
-
     object "Package Public Functions" as goGraphSyncMessagePF {
-      func FromPBReader(pbr ggio.Reader,
-      decodeSelectionResponseFunc: DecodeSelectionResponseFunc,
-      decodeSelectorFunc: DecodeSelectorFunc) (GraphSyncMessage, error)
-      func FromNet(r io.Reader,
-      decodeSelectionResponseFunc: DecodeSelectionResponseFunc,
-      decodeSelectorFunc: DecodeSelectorFunc) (GraphSyncMessage, error)
+      func FromPBReader(pbr ggio.Reader) (GraphSyncMessage, error)
+      func FromNet(r io.Reader) (GraphSyncMessage, error)
     }
     goGraphSyncMessagePF .. libP2PGraphSyncNetwork
 
     interface GraphSyncRequest {
-      Selector() Selector
-      Root()     Cid
+      Selector() []bytes
       Priority() Priority
       ID()       int
       IsCancel() bool
@@ -147,11 +91,13 @@ package "go-graphsync" {
     interface GraphSyncResponse {
       RequestID() int
       Status() GraphSyncStatus
+      Extra() []bytes
     }
 
     interface GraphSyncMessage {
       Requests() : []GraphSyncRequest
       Responses() : []GraphSyncResponse
+      Blocks() : []Blocks
     }
 
     interface Exportable {
@@ -166,7 +112,7 @@ package "go-graphsync" {
   }
 
   object "PackagePublicFunctions" as goGraphsyncPf {
-    New(ctx context.Context, network GraphSyncNetwork, selectorQuerier SelectorQuerier) GraphSync
+    New(ctx context.Context, network GraphSyncNetwork) GraphSync
   }
 
 }
@@ -174,18 +120,13 @@ package "go-graphsync" {
 package "go-filecoin" {
   class "go-filecoin" {
     graphSync : GraphSync
-    selectorQuerier: SelectorQuerier
     host: libp2pHost.Host
-    decodeSelectionResponseFunc: DecodeSelectionResponseFunc
-    decodeSelectorFunc: DecodeSelectorFunc
   }
 
   "go-filecoin" *-- GraphSync
   "go-filecoin" .. goGraphsyncPf
   "go-filecoin" .. goGraphSyncNetworkPF
   "go-filecoin" .. Selector
-  "go-filecoin" *-- SelectorQuerier
-  "go-filecoin" .. goSelectorPF
 
 }
 

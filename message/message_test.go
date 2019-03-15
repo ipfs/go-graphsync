@@ -6,17 +6,19 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ipfs/go-graphsync/testselector"
+	blocks "github.com/ipfs/go-block-format"
+
+	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestAppendingRequests(t *testing.T) {
-	selector := testselector.GenerateSelector()
-	root := testselector.GenerateRootCid()
+	selector := testutil.RandomBytes(100)
 	id := GraphSyncRequestID(rand.Int31())
 	priority := GraphSyncPriority(rand.Int31())
 
 	gsm := New()
-	gsm.AddRequest(id, selector, root, priority)
+	gsm.AddRequest(id, selector, priority)
 	requests := gsm.Requests()
 	if len(requests) != 1 {
 		t.Fatal("Did not add request to message")
@@ -25,25 +27,20 @@ func TestAppendingRequests(t *testing.T) {
 	if request.ID() != id ||
 		request.IsCancel() != false ||
 		request.Priority() != priority ||
-		!reflect.DeepEqual(request.Root(), root) ||
 		!reflect.DeepEqual(request.Selector(), selector) {
 		t.Fatal("Did not properly add request to message")
 	}
 
 	pbMessage := gsm.ToProto()
-	pbRequest := pbMessage.Reqlist[0]
+	pbRequest := pbMessage.Requests[0]
 	if pbRequest.Id != int32(id) ||
 		pbRequest.Priority != int32(priority) ||
 		pbRequest.Cancel != false ||
-		!reflect.DeepEqual(pbRequest.Root, root.Bytes()) ||
-		!reflect.DeepEqual(pbRequest.Selector, selector.RawData()) {
+		!reflect.DeepEqual(pbRequest.Selector, selector) {
 		t.Fatal("Did not properly serialize message to protobuf")
 	}
 
-	deserialized, err := newMessageFromProto(*pbMessage,
-		testselector.MockDecodeSelectorFunc,
-		testselector.MockDecodeSelectionResponseFunc,
-	)
+	deserialized, err := newMessageFromProto(*pbMessage)
 	if err != nil {
 		t.Fatal("Error deserializing protobuf message")
 	}
@@ -55,19 +52,18 @@ func TestAppendingRequests(t *testing.T) {
 	if deserializedRequest.ID() != id ||
 		deserializedRequest.IsCancel() != false ||
 		deserializedRequest.Priority() != priority ||
-		!reflect.DeepEqual(deserializedRequest.Root(), root) ||
 		!reflect.DeepEqual(deserializedRequest.Selector(), selector) {
 		t.Fatal("Did not properly deserialize protobuf messages so requests are equal")
 	}
 }
 
 func TestAppendingResponses(t *testing.T) {
-	selectionResponse := testselector.GenerateSelectionResponse()
+	extra := testutil.RandomBytes(100)
 	requestID := GraphSyncRequestID(rand.Int31())
 	status := RequestAcknowledged
 
 	gsm := New()
-	gsm.AddResponse(requestID, status, selectionResponse)
+	gsm.AddResponse(requestID, status, extra)
 	responses := gsm.Responses()
 	if len(responses) != 1 {
 		t.Fatal("Did not add response to message")
@@ -75,22 +71,19 @@ func TestAppendingResponses(t *testing.T) {
 	response := responses[0]
 	if response.RequestID() != requestID ||
 		response.Status() != status ||
-		!reflect.DeepEqual(response.Response(), selectionResponse) {
+		!reflect.DeepEqual(response.Extra(), extra) {
 		t.Fatal("Did not properly add response to message")
 	}
 
 	pbMessage := gsm.ToProto()
-	pbResponse := pbMessage.Reslist[0]
+	pbResponse := pbMessage.Responses[0]
 	if pbResponse.Id != int32(requestID) ||
 		pbResponse.Status != int32(status) ||
-		!reflect.DeepEqual(pbResponse.Data, selectionResponse.RawData()) {
+		!reflect.DeepEqual(pbResponse.Extra, extra) {
 		t.Fatal("Did not properly serialize message to protobuf")
 	}
 
-	deserialized, err := newMessageFromProto(*pbMessage,
-		testselector.MockDecodeSelectorFunc,
-		testselector.MockDecodeSelectionResponseFunc,
-	)
+	deserialized, err := newMessageFromProto(*pbMessage)
 	if err != nil {
 		t.Fatal("Error deserializing protobuf message")
 	}
@@ -101,19 +94,48 @@ func TestAppendingResponses(t *testing.T) {
 	deserializedResponse := deserializedResponses[0]
 	if deserializedResponse.RequestID() != requestID ||
 		deserializedResponse.Status() != status ||
-		!reflect.DeepEqual(deserializedResponse.Response(), selectionResponse) {
+		!reflect.DeepEqual(deserializedResponse.Extra(), extra) {
 		t.Fatal("Did not properly deserialize protobuf messages so responses are equal")
 	}
 }
 
+func TestAppendBlock(t *testing.T) {
+
+	strs := make([]string, 2)
+	strs = append(strs, "Celeritas")
+	strs = append(strs, "Incendia")
+
+	m := New()
+	for _, str := range strs {
+		block := blocks.NewBlock([]byte(str))
+		m.AddBlock(block)
+	}
+
+	// assert strings are in proto message
+	for _, block := range m.ToProto().GetData() {
+		s := bytes.NewBuffer(block.GetData()).String()
+		if !contains(strs, s) {
+			t.Fail()
+		}
+	}
+}
+
+func contains(strs []string, x string) bool {
+	for _, s := range strs {
+		if s == x {
+			return true
+		}
+	}
+	return false
+}
+
 func TestRequestCancel(t *testing.T) {
-	selector := testselector.GenerateSelector()
-	root := testselector.GenerateRootCid()
+	selector := testutil.RandomBytes(100)
 	id := GraphSyncRequestID(rand.Int31())
 	priority := GraphSyncPriority(rand.Int31())
 
 	gsm := New()
-	gsm.AddRequest(id, selector, root, priority)
+	gsm.AddRequest(id, selector, priority)
 
 	gsm.Cancel(id)
 
@@ -129,26 +151,27 @@ func TestRequestCancel(t *testing.T) {
 }
 
 func TestToNetFromNetEquivalency(t *testing.T) {
-	selector := testselector.GenerateSelector()
-	root := testselector.GenerateRootCid()
-	selectionResponse := testselector.GenerateSelectionResponse()
+	selector := testutil.RandomBytes(100)
+	extra := testutil.RandomBytes(100)
 	id := GraphSyncRequestID(rand.Int31())
 	priority := GraphSyncPriority(rand.Int31())
 	status := RequestAcknowledged
 
 	gsm := New()
-	gsm.AddRequest(id, selector, root, priority)
-	gsm.AddResponse(id, status, selectionResponse)
+	gsm.AddRequest(id, selector, priority)
+	gsm.AddResponse(id, status, extra)
+
+	gsm.AddBlock(blocks.NewBlock([]byte("W")))
+	gsm.AddBlock(blocks.NewBlock([]byte("E")))
+	gsm.AddBlock(blocks.NewBlock([]byte("F")))
+	gsm.AddBlock(blocks.NewBlock([]byte("M")))
 
 	buf := new(bytes.Buffer)
 	err := gsm.ToNet(buf)
 	if err != nil {
 		t.Fatal("Unable to serialize GraphSyncMessage")
 	}
-	deserialized, err := FromNet(buf,
-		testselector.MockDecodeSelectorFunc,
-		testselector.MockDecodeSelectionResponseFunc,
-	)
+	deserialized, err := FromNet(buf)
 	if err != nil {
 		t.Fatal("Error deserializing protobuf message")
 	}
@@ -166,7 +189,6 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	if deserializedRequest.ID() != request.ID() ||
 		deserializedRequest.IsCancel() != request.IsCancel() ||
 		deserializedRequest.Priority() != request.Priority() ||
-		!reflect.DeepEqual(deserializedRequest.Root(), request.Root()) ||
 		!reflect.DeepEqual(deserializedRequest.Selector(), request.Selector()) {
 		t.Fatal("Did not keep requests when writing to stream and back")
 	}
@@ -183,7 +205,18 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	deserializedResponse := deserializedResponses[0]
 	if deserializedResponse.RequestID() != response.RequestID() ||
 		deserializedResponse.Status() != response.Status() ||
-		!reflect.DeepEqual(deserializedResponse.Response(), response.Response()) {
+		!reflect.DeepEqual(deserializedResponse.Extra(), response.Extra()) {
 		t.Fatal("Did not keep responses when writing to stream and back")
+	}
+
+	keys := make(map[cid.Cid]bool)
+	for _, b := range deserialized.Blocks() {
+		keys[b.Cid()] = true
+	}
+
+	for _, b := range gsm.Blocks() {
+		if _, ok := keys[b.Cid()]; !ok {
+			t.Fail()
+		}
 	}
 }
