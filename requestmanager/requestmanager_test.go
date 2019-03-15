@@ -48,6 +48,108 @@ func (fph *fakePeerHandler) CancelRequest(
 	}
 }
 
+func collectBlocks(ctx context.Context, t *testing.T, blocksChan <-chan ResponseProgress) []ResponseProgress {
+	var collectedBlocks []blocks.Block
+	for {
+		select {
+		case blk, ok := <-blocksChan:
+			if !ok {
+				return collectedBlocks
+			}
+			collectedBlocks = append(collectedBlocks, blk)
+		case <-ctx.Done():
+			t.Fatal("blocks channel never closed")
+		}
+	}
+}
+
+func readNBlocks(ctx context.Context, t *testing.T, blocksChan <-chan ResponseProgress, count int) []ResponseProgress {
+	var returnedBlocks []blocks.Block
+	for i := 0; i < 5; i++ {
+		select {
+		case blk := <-blocksChan:
+			returnedBlocks = append(returnedBlocks, blk)
+		case <-ctx.Done():
+			t.Fatal("First blocks channel never closed")
+		}
+	}
+	return returnedBlocks
+}
+
+func verifySingleTerminalError(ctx context.Context, t *testing.T, errChan <-chan ResponseError) {
+	select {
+	case err := <-errChan:
+		if err.Error == nil || err.IsTerminal != true {
+			t.Fatal("should have sent a erminal error but did not")
+		}
+	case <-ctx.Done():
+		t.Fatal("no errors sent")
+	}
+	select {
+	case _, ok := <-errChan:
+		if ok {
+			t.Fatal("shouldn't have sent second error but did")
+		}
+	case <-ctx.Done():
+		t.Fatal("errors not closed")
+	}
+}
+
+func verifyEmptyErrors(ctx context.Context, t *testing.T, errChan <-chan ResponseError) {
+	for {
+		select {
+		case _, ok := <-errChan:
+			if !ok {
+				return
+			}
+			t.Fatal("errors were sent but shouldn't have been")
+		case <-ctx.Done():
+			t.Fatal("errors channel never closed")
+		}
+	}
+}
+
+func verifyEmptyBlocks(ctx context.Context, t *testing.T, blockChan <-chan ResponseProgress) {
+	for {
+		select {
+		case _, ok := <-blockChan:
+			if !ok {
+				return
+			}
+			t.Fatal("blocks were sent but shouldn't have been")
+		case <-ctx.Done():
+			t.Fatal("blocks channel never closed")
+		}
+	}
+}
+
+func readNNetworkRequests(ctx context.Context,
+	t *testing.T,
+	requestRecordChan <-chan requestRecord,
+	count int) []requestRecord {
+	requestRecords := make([]requestRecord, 0, count)
+	for i := 0; i < count; i++ {
+		select {
+		case rr := <-requestRecordChan:
+			requestRecords = append(requestRecords, rr)
+		case <-ctx.Done():
+			t.Fatal("should have sent two requests to the network but did not")
+		}
+	}
+	return requestRecords
+}
+
+func verifyMatchedBlocks(t *testing.T, actualBlocks []blocks.Block, expectedBlocks []blocks.Block) {
+	if len(actualBlocks) != len(expectedBlocks) {
+		t.Fatal("wrong number of blocks sent")
+	}
+	for _, blk := range actualBlocks {
+		if !testutil.ContainsBlock(expectedBlocks, blk) {
+			t.Fatal("wrong block sent")
+		}
+	}
+}
+
 func TestNormalSimultaneousFetch(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
@@ -67,15 +169,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	returnedBlocksChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx, peers[0], s1)
 	returnedBlocksChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx, peers[1], s2)
 
-	requestRecords := make([]requestRecord, 0, 2)
-	for i := 0; i < 2; i++ {
-		select {
-		case rr := <-requestRecordChan:
-			requestRecords = append(requestRecords, rr)
-		case <-requestCtx.Done():
-			t.Fatal("should have sent two requests to the network but did not")
-		}
-	}
+	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
 
 	if requestRecords[0].p != peers[0] || requestRecords[1].p != peers[1] ||
 		requestRecords[0].isCancel != false || requestRecords[1].isCancel != false ||
@@ -115,79 +209,13 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 
 	requestManager.ProcessResponses(msg2)
 
-	var returnedBlocks1 []blocks.Block
-collectFirstBlocks:
-	for {
-		select {
-		case blk, ok := <-returnedBlocksChan1:
-			if !ok {
-				break collectFirstBlocks
-			}
-			returnedBlocks1 = append(returnedBlocks1, blk)
-		case <-requestCtx.Done():
-			t.Fatal("First blocks channel never closed")
-		}
-	}
-	if len(returnedBlocks1) != 5 {
-		t.Fatal("wrong number of blocks sent")
-	}
-	for _, blk := range returnedBlocks1 {
-		if !testutil.ContainsBlock(firstBlocks, blk) {
-			t.Fatal("wrong block sent")
-		}
-	}
-	var returnedBlocks2 []blocks.Block
-collectSecondBlocks:
-	for {
-		select {
-		case blk, ok := <-returnedBlocksChan2:
-			if !ok {
-				break collectSecondBlocks
-			}
-			returnedBlocks2 = append(returnedBlocks2, blk)
-		case <-requestCtx.Done():
-			t.Fatal("Second blocks channel never closed")
-		}
-
-	}
-	if len(returnedBlocks2) != 10 {
-		t.Fatal("wrong number of blocks sent")
-	}
-	for i, blk := range returnedBlocks2 {
-		if i < 5 {
-			if !testutil.ContainsBlock(firstBlocks, blk) {
-				t.Fatal("wrong block sent")
-			}
-		} else {
-			if !testutil.ContainsBlock(moreBlocks, blk) {
-				t.Fatal("wrong block sent")
-			}
-		}
-	}
-collectFirstErrors:
-	for {
-		select {
-		case _, ok := <-returnedErrorChan1:
-			if !ok {
-				break collectFirstErrors
-			}
-			t.Fatal("errors were sent but shouldn't have been")
-		case <-requestCtx.Done():
-			t.Fatal("errors channel never closed")
-		}
-	}
-collectSecondErrors:
-	for {
-		select {
-		case _, ok := <-returnedErrorChan2:
-			if !ok {
-				break collectSecondErrors
-			}
-			t.Fatal("errors were sent but shouldn't have been")
-		case <-requestCtx.Done():
-			t.Fatal("errors channel never closed")
-		}
-	}
+	returnedBlocks1 := collectBlocks(requestCtx, t, returnedBlocksChan1)
+	verifyMatchedBlocks(t, returnedBlocks1, firstBlocks)
+	returnedBlocks2 := collectBlocks(requestCtx, t, returnedBlocksChan2)
+	verifyMatchedBlocks(t, returnedBlocks2[:5], firstBlocks)
+	verifyMatchedBlocks(t, returnedBlocks2[5:], moreBlocks)
+	verifyEmptyErrors(requestCtx, t, returnedErrorChan1)
+	verifyEmptyErrors(requestCtx, t, returnedErrorChan2)
 }
 
 func TestCancelRequestInProgress(t *testing.T) {
@@ -212,15 +240,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 	returnedBlocksChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx1, peers[0], s1)
 	returnedBlocksChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx2, peers[1], s2)
 
-	requestRecords := make([]requestRecord, 0, 2)
-	for i := 0; i < 2; i++ {
-		select {
-		case rr := <-requestRecordChan:
-			requestRecords = append(requestRecords, rr)
-		case <-requestCtx.Done():
-			t.Fatal("should have sent two requests to the network but did not")
-		}
-	}
+	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
 
 	// for now, we are just going going to test that blocks get sent to all peers
 	// whose connection is still open
@@ -234,24 +254,12 @@ func TestCancelRequestInProgress(t *testing.T) {
 	}
 
 	requestManager.ProcessResponses(msg)
-	var returnedBlocks1 []blocks.Block
-	for i := 0; i < 5; i++ {
-		select {
-		case blk := <-returnedBlocksChan1:
-			returnedBlocks1 = append(returnedBlocks1, blk)
-		case <-requestCtx.Done():
-			t.Fatal("First blocks channel never closed")
-		}
-	}
+	returnedBlocks1 := readNBlocks(requestCtx, t, returnedBlocksChan1, 5)
 	cancel1()
 
-	select {
-	case rr := <-requestRecordChan:
-		if rr.isCancel != true || rr.requestID != requestRecords[0].requestID {
-			t.Fatal("did not send correct cancel message over network")
-		}
-	case <-requestCtx.Done():
-		t.Fatal("did not send cancel message over network")
+	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+	if rr.isCancel != true || rr.requestID != requestRecords[0].requestID {
+		t.Fatal("did not send correct cancel message over network")
 	}
 
 	moreBlocks := testutil.GenerateBlocksOfSize(5, 100)
@@ -263,78 +271,13 @@ func TestCancelRequestInProgress(t *testing.T) {
 	}
 
 	requestManager.ProcessResponses(msg2)
-collectFirstBlocks:
-	for {
-		select {
-		case blk, ok := <-returnedBlocksChan1:
-			if !ok {
-				break collectFirstBlocks
-			}
-			returnedBlocks1 = append(returnedBlocks1, blk)
-		case <-requestCtx.Done():
-			t.Fatal("First blocks channel never closed")
-		}
-	}
-	if len(returnedBlocks1) != 5 {
-		t.Fatal("wrong number of blocks sent")
-	}
-	for _, blk := range returnedBlocks1 {
-		if !testutil.ContainsBlock(firstBlocks, blk) {
-			t.Fatal("wrong block sent")
-		}
-	}
-	var returnedBlocks2 []blocks.Block
-collectSecondBlocks:
-	for {
-		select {
-		case blk, ok := <-returnedBlocksChan2:
-			if !ok {
-				break collectSecondBlocks
-			}
-			returnedBlocks2 = append(returnedBlocks2, blk)
-		case <-requestCtx.Done():
-			t.Fatal("Second blocks channel never closed")
-		}
-
-	}
-	if len(returnedBlocks2) != 10 {
-		t.Fatal("wrong number of blocks sent")
-	}
-	for i, blk := range returnedBlocks2 {
-		if i < 5 {
-			if !testutil.ContainsBlock(firstBlocks, blk) {
-				t.Fatal("wrong block sent")
-			}
-		} else {
-			if !testutil.ContainsBlock(moreBlocks, blk) {
-				t.Fatal("wrong block sent")
-			}
-		}
-	}
-collectFirstErrors:
-	for {
-		select {
-		case _, ok := <-returnedErrorChan1:
-			if !ok {
-				break collectFirstErrors
-			}
-			t.Fatal("errors were sent but shouldn't have been")
-		case <-requestCtx.Done():
-			t.Fatal("errors channel never closed")
-		}
-	}
-collectSecondErrors:
-	for {
-		select {
-		case _, ok := <-returnedErrorChan2:
-			if !ok {
-				break collectSecondErrors
-			}
-			t.Fatal("errors were sent but shouldn't have been")
-		case <-requestCtx.Done():
-			t.Fatal("errors channel never closed")
-		}
-	}
+	returnedBlocks1 = append(returnedBlocks1, collectBlocks(requestCtx, t, returnedBlocksChan1)...)
+	verifyMatchedBlocks(t, returnedBlocks1, firstBlocks)
+	returnedBlocks2 := collectBlocks(requestCtx, t, returnedBlocksChan2)
+	verifyMatchedBlocks(t, returnedBlocks2[:5], firstBlocks)
+	verifyMatchedBlocks(t, returnedBlocks2[5:], moreBlocks)
+	verifyEmptyErrors(requestCtx, t, returnedErrorChan1)
+	verifyEmptyErrors(requestCtx, t, returnedErrorChan2)
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {
@@ -354,12 +297,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	s := testbridge.NewMockSelectorSpec(testutil.GenerateCids(5))
 	returnedBlocksChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
 
-	var rr requestRecord
-	select {
-	case rr = <-requestRecordChan:
-	case <-requestCtx.Done():
-		t.Fatal("should have request to the network but did not")
-	}
+	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 
 	// for now, we are just going going to test that blocks get sent to all peers
 	// whose connection is still open
@@ -370,16 +308,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 		msg.AddBlock(blk)
 	}
 	requestManager.ProcessResponses(msg)
-	var returnedBlocks []blocks.Block
-	for i := 0; i < 5; i++ {
-		select {
-		case blk := <-returnedBlocksChan:
-			returnedBlocks = append(returnedBlocks, blk)
-		case <-requestCtx.Done():
-			t.Fatal("blocks channel never closed")
-		}
-	}
-
+	returnedBlocks := readNBlocks(requestCtx, t, returnedBlocksChan, 5)
 	managerCancel()
 
 	moreBlocks := testutil.GenerateBlocksOfSize(5, 100)
@@ -390,38 +319,9 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	}
 
 	requestManager.ProcessResponses(msg2)
-collectFirstBlocks:
-	for {
-		select {
-		case blk, ok := <-returnedBlocksChan:
-			if !ok {
-				break collectFirstBlocks
-			}
-			returnedBlocks = append(returnedBlocks, blk)
-		case <-requestCtx.Done():
-			t.Fatal("blocks channel never closed")
-		}
-	}
-	if len(returnedBlocks) != 5 {
-		t.Fatal("wrong number of blocks sent")
-	}
-	for _, blk := range returnedBlocks {
-		if !testutil.ContainsBlock(firstBlocks, blk) {
-			t.Fatal("wrong block sent")
-		}
-	}
-collectFirstErrors:
-	for {
-		select {
-		case _, ok := <-returnedErrorChan:
-			if !ok {
-				break collectFirstErrors
-			}
-			t.Fatal("errors were sent but shouldn't have been")
-		case <-requestCtx.Done():
-			t.Fatal("errors channel never closed")
-		}
-	}
+	returnedBlocks = append(returnedBlocks, collectBlocks(requestCtx, t, returnedBlocksChan)...)
+	verifyMatchedBlocks(t, returnedBlocks, firstBlocks)
+	verifyEmptyErrors(requestCtx, t, returnedErrorChan)
 }
 
 func TestInvalidSelector(t *testing.T) {
@@ -440,26 +340,8 @@ func TestInvalidSelector(t *testing.T) {
 	s := testbridge.NewInvalidSelectorSpec(testutil.GenerateCids(5))
 	returnedBlocksChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
 
-	select {
-	case err := <-returnedErrorChan:
-		if err.Error == nil || err.IsTerminal != true {
-			t.Fatal("should have sent a single terminal error but did not")
-		}
-	case <-requestCtx.Done():
-		t.Fatal("no errors sent")
-	}
-collectFirstBlocks:
-	for {
-		select {
-		case _, ok := <-returnedBlocksChan:
-			if !ok {
-				break collectFirstBlocks
-			}
-			t.Fatal("blocks were sent but shouldn't have been")
-		case <-requestCtx.Done():
-			t.Fatal("blocks channel never closed")
-		}
-	}
+	verifySingleTerminalError(requestCtx, t, returnedErrorChan)
+	verifyEmptyBlocks(requestCtx, t, returnedBlocksChan)
 }
 
 func TestUnencodableSelector(t *testing.T) {
@@ -478,24 +360,6 @@ func TestUnencodableSelector(t *testing.T) {
 	s := testbridge.NewUnencodableSelectorSpec(testutil.GenerateCids(5))
 	returnedBlocksChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
 
-	select {
-	case err := <-returnedErrorChan:
-		if err.Error == nil || err.IsTerminal != true {
-			t.Fatal("should have sent a single terminal error but did not")
-		}
-	case <-requestCtx.Done():
-		t.Fatal("no errors sent")
-	}
-collectFirstBlocks:
-	for {
-		select {
-		case _, ok := <-returnedBlocksChan:
-			if !ok {
-				break collectFirstBlocks
-			}
-			t.Fatal("blocks were sent but shouldn't have been")
-		case <-requestCtx.Done():
-			t.Fatal("blocks channel never closed")
-		}
-	}
+	verifySingleTerminalError(requestCtx, t, returnedErrorChan)
+	verifyEmptyBlocks(requestCtx, t, returnedBlocksChan)
 }
