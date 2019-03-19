@@ -168,7 +168,7 @@ rootedSelector := graphsync.SelectorSpecFromCidAndPath(lnk, pathSegments)
 ```golang
 
 type ResponseProgress struct {
-  Node ipld.Node // a node which matched the graphsync query
+  Node      ipld.Node // a node which matched the graphsync query
   Path      ipld.Path // the path of that node relative to the traversal start
 	LastBlock struct {  // LastBlock stores the Path and Link of the last block edge we had to load. 
 		ipld.Path
