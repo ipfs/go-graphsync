@@ -40,10 +40,11 @@ If your existing library (i.e. `go-ipfs` or `go-filecoin`) uses these other olde
 ```golang
 import (
   graphsync "github.com/ipfs/go-graphsync"
+  ipld "github.com/ipfs/go-ipld-prime"
 )
 
 var ctx context.Context
-var host libp2p.host
+var host libp2p.Host
 var loader ipld.Loader
 
 exchange := graphsync.New(ctx, host libp2p.Host, ipld.Loader)
@@ -53,19 +54,19 @@ Parameter Notes:
 
 1. `context` is just the parent context for all of GraphSync
 2. `host` is any libp2p host
-2. `loader` is used to load blocks from the local block store when RESPONDING to requests from other clients. See the IPLD loader interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
+2. `loader` is used to load blocks from content ids from the local block store. It's used when RESPONDING to requests from other clients. It should conform to the IPLD loader interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
 
 ### Write A Loader From The Stuff You Know
 
 Coming from a pre-`go-ipld-prime` world, you probably expect a link loading function signature to look like this:
 
-```
+```golang
 type Cid2BlockFn func (lnk cid.Cid) (blocks.Block, error)
 ```
 
 in `go-ipld-prime`, the signature for a link loader is as follows:
 
-```
+```golang
 type Loader func(lnk Link, lnkCtx LinkContext) (io.Reader, error)
 ```
 
@@ -119,7 +120,7 @@ Paramater Notes:
 
 ### Building a path selector
 
-A rooted selector is a `go-ipld-prime` node that follows the spec outlined here: https://github.com/ipld/specs/pull/95
+A rooted selector is a `go-ipld-prime` node that follows the spec outlined here: https://github.com/ipld/specs/blob/master/selectors/selectors.md
 
 `go-ipld-prime` provides a series of builder interfaces for building this kind of structured data into a node. If your library simply wants to make a selector from CID and a path, represented by an array of strings, you could construct the node as follows:
 
@@ -181,18 +182,18 @@ The above provides both immediate and relevant metadata for matching nodes in a 
 
 ## Compatibility: Block Requests
 
-While the above is extremely useful if your library already uses `go-ipld-prime`, if your library uses an older version of go ipld libraries, you won't be able to use this data.
+While the above is extremely useful if your library already uses `go-ipld-prime`, if your library uses an older version of go ipld libraries, working with these types of `go-ipld-prime` data may prove challenging.
 
 To support these clients, Graphsync provides a compatibility version of the above function that returns just blocks that were traversed:
 
-```
+```golang
 var blocksChan <-chan blocks.Block
 var errors <-chan error
 
 blocksChan, errors = exchange.GetBlocks(ctx context.Context, p peer.ID, rootedSelector Node)
 ```
 
-This is provided as a transitional layer and it's unclear how long go-graphsync will continue to support this format.
+This is provided as a transitional layer and `go-graphsync` may drop support for this format in the future.
 
 ## Contribute
 
