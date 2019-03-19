@@ -13,7 +13,6 @@
 - [Background](#background)
 - [Install](#install)
 - [Usage](#usage)
-- [Implementation](#implementation)
 - [Contribute](#contribute)
 - [License](#license)
 
