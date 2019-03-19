@@ -9,6 +9,7 @@ package "go-ipld-prime" {
   }
   interface Path {
   }
+  interface Link
   package traversal {
     package selector {
       interface Selector {
@@ -28,32 +29,27 @@ package "go-ipld-prime" {
     TraversalProgress *-- TraversalConfig
   }
 
-  package repose {
-    interface RawLoader {
-    }
-
-    interface MulticodecDecodeTable {
-    }
-
-    interface NodeBuilderChooser {
-    }
-
-    interface LinkLoader {
-    }
-
-    object "Package Public Functions" as goIPLDReposePf {
-      ComposeLinkLoader(RawLoader, NodeBuilderChooser, MulticodecDecodeTable)
-      EncoderDagCbor(Node, io.Writer)
-      DecodeDagCbor(NodeBuilder, io.Writer)
-    }  
-  }
+  interface Loader {}
 }
 
 package "go-graphsync" {
   
+    class ResponseProgress {
+      Node ipld.Node
+      Path ipld.Path
+      LastBlock struct {
+        ipld.Node
+        ipld.Link
+      }
+    }
+    
+    interface Cid2BlockFn {
+
+    }
     class GraphSync {
-      Request(ctx context.Context, p peer.ID, cidRootedSelector Node) (chan ResponseProgress, chan ResponseError)
-      ReceiveMessage(ctx context.Context, sender peer.ID, incoming GraphSyncMessage)
+      Request(ctx context.Context, p peer.ID, rootedSelector Node) (chan ResponseProgress, chan error)
+      GetBlocks(ctx context.Context, p peer.ID, rootedSelector Node) (chan blocks.Block, chan error)
+      ReceiveMessage(ctx context.Context, sender peer.ID, incoming GraphSyncMessage)     
       ReceiveError(error)
     }
 
@@ -186,12 +182,11 @@ package "go-graphsync" {
 
   package ipldbridge {
     interface IPLDBridge {
-      ComposeLinkLoader(actualLoader RawLoader) LinkLoader
-	    ValidateSelectorSpec(cidRootedSelector ipld.Node) []error
+	    ValidateSelectorSpec(rootedSelector ipld.Node) []error
 	    EncodeNode(ipld.Node) ([]byte, error)
 	    DecodeNode([]byte) (ipld.Node, error)
 	    DecodeSelectorSpec(cidRootedSelector ipld.Node) (ipld.Node, Selector, error)
-	    Traverse(ctx context.Context, loader LinkLoader, root ipld.Node, s Selector, fn AdvVisitFn) error
+	    Traverse(ctx context.Context, loader Loader, root ipld.Node, s Selector, fn AdvVisitFn) error
     }
 
     GraphSync *-- IPLDBridge
@@ -202,7 +197,7 @@ package "go-graphsync" {
     }
 
     object "PackagePublicFunctions" as goIPLDBridge {
-      NewIPLDBridge(nodeBuilderChooser NodeBuilderChooser, multicodecTable MulticodecDecodeTable) IPLDBridge
+      NewIPLDBridge() IPLDBridge
     }
 
     IPLDBridge <|-- ipldBridge
@@ -214,7 +209,9 @@ package "go-graphsync" {
     ipldBridge .. goIPLDReposePf
   }
   object "PackagePublicFunctions" as goGraphsyncPf {
-    New(ctx context.Context, network GraphSyncNetwork, rawLoader RawLoader, multicodecDecodeTable MulticodecDecodeTable, nodeBuilderChooser NodeBuilderChooser) GraphSync
+    New(ctx context.Context, network GraphSyncNetwork, loader Loader) GraphSync
+    LoaderFromCid2BlockFn(cid2BlockFn Cid2BlockFn) Loader
+    SelectorSpecFromCidAndPath(lnk cid.Cid, pathSegments []string) (ipld.Node, error) 
   }
 }
 

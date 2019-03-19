@@ -10,6 +10,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ipldbridge "github.com/ipfs/go-graphsync/ipldbridge"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/linking/cid"
 	multihash "github.com/multiformats/go-multihash"
 )
 
@@ -19,26 +20,6 @@ type mockIPLDBridge struct {
 // NewMockIPLDBridge returns an IPLD bridge that works with MockSelectors
 func NewMockIPLDBridge() ipldbridge.IPLDBridge {
 	return &mockIPLDBridge{}
-}
-
-func (mb *mockIPLDBridge) ComposeLinkLoader(actualLoader ipldbridge.RawLoader) ipldbridge.LinkLoader {
-	return func(ctx context.Context, lnk cid.Cid, lnkCtx ipldbridge.LinkContext) (ipld.Node, error) {
-		r, err := actualLoader(ctx, lnk, lnkCtx)
-		if err != nil {
-			return nil, err
-		}
-		var buffer bytes.Buffer
-		io.Copy(&buffer, r)
-		data := buffer.Bytes()
-		hash, err := multihash.Sum(data, lnk.Prefix().MhType, lnk.Prefix().MhLength)
-		if err != nil {
-			return nil, err
-		}
-		if hash.B58String() != lnk.Hash().B58String() {
-			return nil, fmt.Errorf("hash mismatch")
-		}
-		return NewMockBlockNode(data), nil
-	}
 }
 
 func (mb *mockIPLDBridge) ValidateSelectorSpec(cidRootedSelector ipld.Node) []error {
@@ -78,14 +59,15 @@ func (mb *mockIPLDBridge) DecodeSelectorSpec(cidRootedSelector ipld.Node) (ipld.
 	return nil, newMockSelector(spec), nil
 }
 
-func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.LinkLoader, root ipld.Node, s ipldbridge.Selector, fn ipldbridge.AdvVisitFn) error {
+func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.Loader, root ipld.Node, s ipldbridge.Selector, fn ipldbridge.AdvVisitFn) error {
 	ms, ok := s.(*mockSelector)
 	if !ok {
 		return fmt.Errorf("not supported")
 	}
 	var lastErr error
 	for _, lnk := range ms.cidsVisited {
-		node, err := loader(ctx, lnk, ipldbridge.LinkContext{})
+
+		node, err := loadNode(lnk, loader)
 		if err != nil {
 			lastErr = err
 		} else {
@@ -93,4 +75,22 @@ func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.LinkLo
 		}
 	}
 	return lastErr
+}
+
+func loadNode(lnk cid.Cid, loader ipldbridge.Loader) (ipld.Node, error) {
+	r, err := loader(cidlink.Link{Cid: lnk}, ipldbridge.LinkContext{})
+	if err != nil {
+		return nil, err
+	}
+	var buffer bytes.Buffer
+	io.Copy(&buffer, r)
+	data := buffer.Bytes()
+	hash, err := multihash.Sum(data, lnk.Prefix().MhType, lnk.Prefix().MhLength)
+	if err != nil {
+		return nil, err
+	}
+	if hash.B58String() != lnk.Hash().B58String() {
+		return nil, fmt.Errorf("hash mismatch")
+	}
+	return NewMockBlockNode(data), nil
 }
