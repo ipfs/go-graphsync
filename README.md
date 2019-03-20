@@ -128,7 +128,7 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 	free "github.com/ipld/go-ipld-prime/impl/free"
 	fluent "github.com/ipld/go-ipld-prime/fluent"
-  cidLink "github.com/ipld/go-ipld-prime/linking/cid"
+	cidLink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
 func SelectorSpecFromCidAndPath(lnk cid.Cid, pathSegments []string) (ipld.Node, error) {
