@@ -66,11 +66,11 @@ func (rc *responseCollector) collectResponses(
 				}
 			case outgoingResponses() <- nextResponse():
 				receivedResponses = receivedResponses[1:]
-			case error, ok := <-incomingErrors:
+			case err, ok := <-incomingErrors:
 				if !ok {
 					incomingErrors = nil
 				} else {
-					receivedErrors = append(receivedErrors, error)
+					receivedErrors = append(receivedErrors, err)
 				}
 			case outgoingErrors() <- nextError():
 				receivedErrors = receivedErrors[1:]
