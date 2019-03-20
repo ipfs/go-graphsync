@@ -39,6 +39,8 @@ If your existing library (i.e. `go-ipfs` or `go-filecoin`) uses these other olde
 ```golang
 import (
   graphsync "github.com/ipfs/go-graphsync"
+  gsnet "github.com/ipfs/go-graphsync/network"
+  gsbridge "github.com/ipfs/go-graphsync/ipldbridge"
   ipld "github.com/ipfs/go-ipld-prime"
 )
 
@@ -46,14 +48,18 @@ var ctx context.Context
 var host libp2p.Host
 var loader ipld.Loader
 
-exchange := graphsync.New(ctx, host libp2p.Host, ipld.Loader)
+network := gsnet.NewFromLibp2pHost(host)
+ipldBridge := gsbridge.NewIPLDBridge()
+exchange := graphsync.New(ctx, network, ipldBridge, loader)
 ```
 
 Parameter Notes:
 
 1. `context` is just the parent context for all of GraphSync
-2. `host` is any libp2p host
-2. `loader` is used to load blocks from content ids from the local block store. It's used when RESPONDING to requests from other clients. It should conform to the IPLD loader interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
+2. `network` is a network abstraction provided to Graphsync on top
+of libp2p. This allows graphsync to be tested without the actual network
+3. `ipldBridge` is an IPLD abstraction provided to Graphsync on top of  go-ipld-prime. This makes the graphsync library testable in isolation
+4. `loader` is used to load blocks from content ids from the local block store. It's used when RESPONDING to requests from other clients. It should conform to the IPLD loader interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
 
 ### Write A Loader From The Stuff You Know
 
