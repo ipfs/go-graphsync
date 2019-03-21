@@ -209,7 +209,7 @@ package "go-graphsync" {
     ipldBridge .. goIPLDReposePf
   }
   object "PackagePublicFunctions" as goGraphsyncPf {
-    New(ctx context.Context, network GraphSyncNetwork, loader Loader) GraphSync
+    New(ctx context.Context, network GraphSyncNetwork, ipldBridge IPLDBridge, loader Loader) GraphSync
     LoaderFromCid2BlockFn(cid2BlockFn Cid2BlockFn) Loader
     SelectorSpecFromCidAndPath(lnk cid.Cid, pathSegments []string) (ipld.Node, error) 
   }
