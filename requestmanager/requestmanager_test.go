@@ -79,7 +79,7 @@ func readNBlocks(ctx context.Context, t *testing.T, blocksChan <-chan ResponsePr
 func verifySingleTerminalError(ctx context.Context, t *testing.T, errChan <-chan ResponseError) {
 	select {
 	case err := <-errChan:
-		if err.Error == nil || err.IsTerminal != true {
+		if err == nil {
 			t.Fatal("should have sent a erminal error but did not")
 		}
 	case <-ctx.Done():

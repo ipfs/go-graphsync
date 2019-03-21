@@ -34,8 +34,8 @@ func TestBufferingResponseProgress(t *testing.T) {
 		}
 	}
 
-	interimError := ResponseError{false, fmt.Errorf("A block was missing")}
-	terminalError := ResponseError{true, fmt.Errorf("Something terrible happened")}
+	interimError := fmt.Errorf("A block was missing")
+	terminalError := fmt.Errorf("Something terrible happened")
 	select {
 	case <-ctx.Done():
 		t.Fatal("should have written error to channel but didn't")
