@@ -29,7 +29,9 @@ package "go-ipld-prime" {
     TraversalProgress *-- TraversalConfig
   }
 
-  interface Loader {}
+  interface Loader {
+
+  }
 }
 
 package "go-graphsync" {
@@ -39,8 +41,7 @@ package "go-graphsync" {
       Path ipld.Path
       LastBlock struct {
         ipld.Node
-        ipld.Link
-      }
+        ipld.Link }
     }
     
     interface Cid2BlockFn {
