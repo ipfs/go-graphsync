@@ -88,6 +88,52 @@ func TestStartupAndShutdown(t *testing.T) {
 	}
 }
 
+func TestProcessingNotification(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	peer := testutil.GeneratePeers(1)[0]
+	messagesSent := make(chan gsmsg.GraphSyncMessage)
+	resetChan := make(chan struct{}, 1)
+	fullClosedChan := make(chan struct{}, 1)
+	messageSender := &fakeMessageSender{nil, fullClosedChan, resetChan, messagesSent}
+	var waitGroup sync.WaitGroup
+	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
+
+	messageQueue := New(ctx, peer, messageNetwork)
+	waitGroup.Add(1)
+	blks := testutil.GenerateBlocksOfSize(3, 128)
+
+	blocksProcessing := messageQueue.AddBlocks(blks)
+	select {
+	case <-blocksProcessing:
+		t.Fatal("Blocks should not be processing but already received notification")
+	default:
+	}
+
+	// wait for send attempt
+	messageQueue.Startup()
+	waitGroup.Wait()
+	select {
+	case <-blocksProcessing:
+	case <-ctx.Done():
+		t.Fatal("blocks should have been processed but were not")
+	}
+
+	select {
+	case <-ctx.Done():
+		t.Fatal("no messages were sent")
+	case message := <-messagesSent:
+		receivedBlocks := message.Blocks()
+		for _, block := range receivedBlocks {
+			if !testutil.ContainsBlock(blks, block) {
+				t.Fatal("sent incorrect block")
+			}
+		}
+	}
+}
+
 func TestDedupingMessages(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
