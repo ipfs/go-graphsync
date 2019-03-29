@@ -31,17 +31,16 @@ func NewUnencodableSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
 	return &mockSelectorSpec{cidsVisited, false, true}
 }
 
-func (mss *mockSelectorSpec) Kind() ipld.ReprKind { return ipld.ReprKind_Null }
+func (mss *mockSelectorSpec) ReprKind() ipld.ReprKind { return ipld.ReprKind_Null }
 func (mss *mockSelectorSpec) TraverseField(key string) (ipld.Node, error) {
 	return nil, fmt.Errorf("404")
 }
 func (mss *mockSelectorSpec) TraverseIndex(idx int) (ipld.Node, error) {
 	return nil, fmt.Errorf("404")
 }
-func (mss *mockSelectorSpec) Keys() ipld.KeyIterator { return &mockKeyIterator{} }
-func (mss *mockSelectorSpec) KeysImmediate() ([]string, error) {
-	return nil, fmt.Errorf("404")
-}
+func (mss *mockSelectorSpec) ListIterator() ipld.ListIterator { return nil }
+func (mss *mockSelectorSpec) MapIterator() ipld.MapIterator   { return nil }
+
 func (mss *mockSelectorSpec) Length() int                   { return 0 }
 func (mss *mockSelectorSpec) IsNull() bool                  { return true }
 func (mss *mockSelectorSpec) AsBool() (bool, error)         { return false, fmt.Errorf("404") }
@@ -52,12 +51,6 @@ func (mss *mockSelectorSpec) AsBytes() ([]byte, error)      { return nil, fmt.Er
 func (mss *mockSelectorSpec) AsLink() (ipld.Link, error)    { return nil, fmt.Errorf("404") }
 func (mss *mockSelectorSpec) NodeBuilder() ipld.NodeBuilder { return &mockBuilder{} }
 
-type mockKeyIterator struct {
-}
-
-func (mki *mockKeyIterator) Next() (string, error) { return "", fmt.Errorf("404") }
-func (mki *mockKeyIterator) HasNext() bool         { return false }
-
 type mockBlockNode struct {
 	data []byte
 }
@@ -67,17 +60,17 @@ func NewMockBlockNode(data []byte) ipld.Node {
 	return &mockBlockNode{data}
 }
 
-func (mbn *mockBlockNode) Kind() ipld.ReprKind { return ipld.ReprKind_Bytes }
+func (mbn *mockBlockNode) ReprKind() ipld.ReprKind { return ipld.ReprKind_Bytes }
 func (mbn *mockBlockNode) TraverseField(key string) (ipld.Node, error) {
 	return nil, fmt.Errorf("404")
 }
 func (mbn *mockBlockNode) TraverseIndex(idx int) (ipld.Node, error) {
 	return nil, fmt.Errorf("404")
 }
-func (mbn *mockBlockNode) Keys() ipld.KeyIterator { return &mockKeyIterator{} }
-func (mbn *mockBlockNode) KeysImmediate() ([]string, error) {
-	return nil, fmt.Errorf("404")
-}
+
+func (mbn *mockBlockNode) ListIterator() ipld.ListIterator { return nil }
+func (mbn *mockBlockNode) MapIterator() ipld.MapIterator   { return nil }
+
 func (mbn *mockBlockNode) Length() int                   { return 0 }
 func (mbn *mockBlockNode) IsNull() bool                  { return false }
 func (mbn *mockBlockNode) AsBool() (bool, error)         { return false, fmt.Errorf("404") }

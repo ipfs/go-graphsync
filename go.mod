@@ -9,7 +9,7 @@ require (
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-pq v0.0.1
 	github.com/ipfs/go-log v0.0.1
-	github.com/ipld/go-ipld-prime v0.0.0-20190320000329-46ca29fe25db
+	github.com/ipld/go-ipld-prime v0.0.0-20190329013432-23c6f913c975
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-libp2p v0.0.2
 	github.com/libp2p/go-libp2p-host v0.0.1

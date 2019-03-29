@@ -10,6 +10,9 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ipldbridge "github.com/ipfs/go-graphsync/ipldbridge"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/encoding/dagjson"
+	"github.com/ipld/go-ipld-prime/fluent"
+	free "github.com/ipld/go-ipld-prime/impl/free"
 	"github.com/ipld/go-ipld-prime/linking/cid"
 	multihash "github.com/multiformats/go-multihash"
 )
@@ -20,6 +23,17 @@ type mockIPLDBridge struct {
 // NewMockIPLDBridge returns an IPLD bridge that works with MockSelectors
 func NewMockIPLDBridge() ipldbridge.IPLDBridge {
 	return &mockIPLDBridge{}
+}
+func (mb *mockIPLDBridge) BuildNode(buildFn func(ipldbridge.NodeBuilder) ipld.Node) (ipld.Node, error) {
+	var node ipld.Node
+	err := fluent.Recover(func() {
+		nb := fluent.WrapNodeBuilder(free.NodeBuilder())
+		node = buildFn(nb)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return node, nil
 }
 
 func (mb *mockIPLDBridge) ValidateSelectorSpec(cidRootedSelector ipld.Node) []error {
@@ -32,14 +46,22 @@ func (mb *mockIPLDBridge) ValidateSelectorSpec(cidRootedSelector ipld.Node) []er
 
 func (mb *mockIPLDBridge) EncodeNode(node ipld.Node) ([]byte, error) {
 	spec, ok := node.(*mockSelectorSpec)
-	if ok && !spec.failEncode {
-		data, err := json.Marshal(spec.cidsVisited)
-		if err != nil {
-			return nil, err
+	if ok {
+		if !spec.failEncode {
+			data, err := json.Marshal(spec.cidsVisited)
+			if err != nil {
+				return nil, err
+			}
+			return data, nil
 		}
-		return data, nil
+		return nil, fmt.Errorf("format not supported")
 	}
-	return nil, fmt.Errorf("format not supported")
+	var buffer bytes.Buffer
+	err := dagjson.Encoder(node, &buffer)
+	if err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
 }
 
 func (mb *mockIPLDBridge) DecodeNode(data []byte) (ipld.Node, error) {
@@ -48,7 +70,8 @@ func (mb *mockIPLDBridge) DecodeNode(data []byte) (ipld.Node, error) {
 	if err == nil {
 		return &mockSelectorSpec{cidsVisited, false, false}, nil
 	}
-	return nil, fmt.Errorf("format not supported")
+	reader := bytes.NewReader(data)
+	return dagjson.Decoder(free.NodeBuilder(), reader)
 }
 
 func (mb *mockIPLDBridge) DecodeSelectorSpec(cidRootedSelector ipld.Node) (ipld.Node, ipldbridge.Selector, error) {
