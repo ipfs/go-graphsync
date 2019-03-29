@@ -52,34 +52,24 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork) *MessageQueue {
 }
 
 // AddRequest adds an outgoing request to the message queue.
-func (mq *MessageQueue) AddRequest(
-	id gsmsg.GraphSyncRequestID,
-	selector []byte,
-	priority gsmsg.GraphSyncPriority) {
+func (mq *MessageQueue) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest) {
 
 	if mq.mutateNextMessage(func(nextMessage gsmsg.GraphSyncMessage) {
-		nextMessage.AddRequest(id, selector, priority)
+		nextMessage.AddRequest(graphSyncRequest)
 	}, nil) {
 		mq.signalWork()
 	}
 }
 
-// Cancel adds a cancel message for the give request id to the queue.
-func (mq *MessageQueue) Cancel(id gsmsg.GraphSyncRequestID) {
-
-	if mq.mutateNextMessage(func(nextMessage gsmsg.GraphSyncMessage) {
-		nextMessage.Cancel(id)
-	}, nil) {
-		mq.signalWork()
-	}
-}
-
-// AddBlocks adds the given blocks to the next message and returns a channel
-// that sends a notification when the blocks are read. If ignored by the consumer
+// AddResponses adds the given blocks and responses to the next message and
+// returns a channel that sends a notification when sending initiates. If ignored by the consumer
 // sending will not block.
-func (mq *MessageQueue) AddBlocks(blks []blocks.Block) <-chan struct{} {
+func (mq *MessageQueue) AddResponses(responses []gsmsg.GraphSyncResponse, blks []blocks.Block) <-chan struct{} {
 	notificationChannel := make(chan struct{}, 1)
 	if mq.mutateNextMessage(func(nextMessage gsmsg.GraphSyncMessage) {
+		for _, response := range responses {
+			nextMessage.AddResponse(response)
+		}
 		for _, block := range blks {
 			nextMessage.AddBlock(block)
 		}

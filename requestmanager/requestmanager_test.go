@@ -14,37 +14,18 @@ import (
 )
 
 type requestRecord struct {
-	isCancel  bool
-	requestID gsmsg.GraphSyncRequestID
-	priority  gsmsg.GraphSyncPriority
-	selector  []byte
-	p         peer.ID
+	gsr gsmsg.GraphSyncRequest
+	p   peer.ID
 }
 type fakePeerHandler struct {
 	requestRecordChan chan requestRecord
 }
 
-func (fph *fakePeerHandler) SendRequest(
-	p peer.ID,
-	id gsmsg.GraphSyncRequestID,
-	selector []byte,
-	priority gsmsg.GraphSyncPriority) {
+func (fph *fakePeerHandler) SendRequest(p peer.ID,
+	graphSyncRequest gsmsg.GraphSyncRequest) {
 	fph.requestRecordChan <- requestRecord{
-		isCancel:  false,
-		requestID: id,
-		selector:  selector,
-		priority:  priority,
-		p:         p,
-	}
-}
-
-func (fph *fakePeerHandler) CancelRequest(
-	p peer.ID,
-	id gsmsg.GraphSyncRequestID) {
-	fph.requestRecordChan <- requestRecord{
-		isCancel:  true,
-		requestID: id,
-		p:         p,
+		gsr: graphSyncRequest,
+		p:   p,
 	}
 }
 
@@ -172,17 +153,17 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
 
 	if requestRecords[0].p != peers[0] || requestRecords[1].p != peers[1] ||
-		requestRecords[0].isCancel != false || requestRecords[1].isCancel != false ||
-		requestRecords[0].priority != maxPriority ||
-		requestRecords[1].priority != maxPriority {
+		requestRecords[0].gsr.IsCancel() != false || requestRecords[1].gsr.IsCancel() != false ||
+		requestRecords[0].gsr.Priority() != maxPriority ||
+		requestRecords[1].gsr.Priority() != maxPriority {
 		t.Fatal("did not send correct requests")
 	}
 
-	returnedS1, err := fakeIPLDBridge.DecodeNode(requestRecords[0].selector)
+	returnedS1, err := fakeIPLDBridge.DecodeNode(requestRecords[0].gsr.Selector())
 	if err != nil || !reflect.DeepEqual(s1, returnedS1) {
 		t.Fatal("did not encode selector properly")
 	}
-	returnedS2, err := fakeIPLDBridge.DecodeNode(requestRecords[1].selector)
+	returnedS2, err := fakeIPLDBridge.DecodeNode(requestRecords[1].gsr.Selector())
 	if err != nil || !reflect.DeepEqual(s2, returnedS2) {
 		t.Fatal("did not encode selector properly")
 	}
@@ -191,23 +172,19 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	// whose connection is still open
 	firstBlocks := testutil.GenerateBlocksOfSize(5, 100)
 
-	msg := gsmsg.New()
-	msg.AddResponse(requestRecords[0].requestID, gsmsg.RequestCompletedFull, nil)
-	msg.AddResponse(requestRecords[1].requestID, gsmsg.PartialResponse, nil)
-	for _, blk := range firstBlocks {
-		msg.AddBlock(blk)
+	firstResponses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), gsmsg.RequestCompletedFull, nil),
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.PartialResponse, nil),
 	}
 
-	requestManager.ProcessResponses(msg)
+	requestManager.ProcessResponses(firstResponses, firstBlocks)
 
 	moreBlocks := testutil.GenerateBlocksOfSize(5, 100)
-	msg2 := gsmsg.New()
-	msg2.AddResponse(requestRecords[1].requestID, gsmsg.RequestCompletedFull, nil)
-	for _, blk := range moreBlocks {
-		msg2.AddBlock(blk)
+	moreResponses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.RequestCompletedFull, nil),
 	}
 
-	requestManager.ProcessResponses(msg2)
+	requestManager.ProcessResponses(moreResponses, moreBlocks)
 
 	returnedBlocks1 := collectBlocks(requestCtx, t, returnedBlocksChan1)
 	verifyMatchedBlocks(t, returnedBlocks1, firstBlocks)
@@ -245,32 +222,27 @@ func TestCancelRequestInProgress(t *testing.T) {
 	// for now, we are just going going to test that blocks get sent to all peers
 	// whose connection is still open
 	firstBlocks := testutil.GenerateBlocksOfSize(5, 100)
-
-	msg := gsmsg.New()
-	msg.AddResponse(requestRecords[0].requestID, gsmsg.PartialResponse, nil)
-	msg.AddResponse(requestRecords[1].requestID, gsmsg.PartialResponse, nil)
-	for _, blk := range firstBlocks {
-		msg.AddBlock(blk)
+	firstResponses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), gsmsg.PartialResponse, nil),
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.PartialResponse, nil),
 	}
 
-	requestManager.ProcessResponses(msg)
+	requestManager.ProcessResponses(firstResponses, firstBlocks)
 	returnedBlocks1 := readNBlocks(requestCtx, t, returnedBlocksChan1, 5)
 	cancel1()
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
-	if rr.isCancel != true || rr.requestID != requestRecords[0].requestID {
+	if rr.gsr.IsCancel() != true || rr.gsr.ID() != requestRecords[0].gsr.ID() {
 		t.Fatal("did not send correct cancel message over network")
 	}
 
 	moreBlocks := testutil.GenerateBlocksOfSize(5, 100)
-	msg2 := gsmsg.New()
-	msg2.AddResponse(requestRecords[0].requestID, gsmsg.RequestCompletedFull, nil)
-	msg2.AddResponse(requestRecords[1].requestID, gsmsg.RequestCompletedFull, nil)
-	for _, blk := range moreBlocks {
-		msg2.AddBlock(blk)
+	moreResponses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), gsmsg.RequestCompletedFull, nil),
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.RequestCompletedFull, nil),
 	}
 
-	requestManager.ProcessResponses(msg2)
+	requestManager.ProcessResponses(moreResponses, moreBlocks)
 	returnedBlocks1 = append(returnedBlocks1, collectBlocks(requestCtx, t, returnedBlocksChan1)...)
 	verifyMatchedBlocks(t, returnedBlocks1, firstBlocks)
 	returnedBlocks2 := collectBlocks(requestCtx, t, returnedBlocksChan2)
@@ -302,23 +274,20 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	// for now, we are just going going to test that blocks get sent to all peers
 	// whose connection is still open
 	firstBlocks := testutil.GenerateBlocksOfSize(5, 100)
-	msg := gsmsg.New()
-	msg.AddResponse(rr.requestID, gsmsg.PartialResponse, nil)
-	for _, blk := range firstBlocks {
-		msg.AddBlock(blk)
+	firstResponses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.PartialResponse, nil),
 	}
-	requestManager.ProcessResponses(msg)
+
+	requestManager.ProcessResponses(firstResponses, firstBlocks)
 	returnedBlocks := readNBlocks(requestCtx, t, returnedBlocksChan, 5)
 	managerCancel()
 
 	moreBlocks := testutil.GenerateBlocksOfSize(5, 100)
-	msg2 := gsmsg.New()
-	msg2.AddResponse(rr.requestID, gsmsg.RequestCompletedFull, nil)
-	for _, blk := range moreBlocks {
-		msg2.AddBlock(blk)
+	moreResponses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.RequestCompletedFull, nil),
 	}
 
-	requestManager.ProcessResponses(msg2)
+	requestManager.ProcessResponses(moreResponses, moreBlocks)
 	returnedBlocks = append(returnedBlocks, collectBlocks(requestCtx, t, returnedBlocksChan)...)
 	verifyMatchedBlocks(t, returnedBlocks, firstBlocks)
 	verifyEmptyErrors(requestCtx, t, returnedErrorChan)
@@ -381,9 +350,10 @@ func TestFailedRequest(t *testing.T) {
 	returnedBlocksChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
-	msg := gsmsg.New()
-	msg.AddResponse(rr.requestID, gsmsg.RequestFailedContentNotFound, nil)
-	requestManager.ProcessResponses(msg)
+	failedResponses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.RequestFailedContentNotFound, nil),
+	}
+	requestManager.ProcessResponses(failedResponses, nil)
 
 	verifySingleTerminalError(requestCtx, t, returnedErrorChan)
 	verifyEmptyBlocks(requestCtx, t, returnedBlocksChan)

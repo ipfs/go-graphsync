@@ -91,7 +91,7 @@ package "go-graphsync" {
 
   package messagequeue {
     class MessageQueue {
-      AddRequest(GraphSyncRequestID, selector []byte, GraphSyncPriority)
+      AddRequest(GraphSyncRequest)
       Cancel(GraphSyncRequestID)
       Startup()
       Shutdown()
@@ -109,8 +109,7 @@ package "go-graphsync" {
       Connected(p peer.ID)
       Disconnected(p peer.ID)
       ConnectedPeers() []peer.ID
-      SendRequest(peer.ID, GraphSyncRequestID, selector []byte, priority)
-      CancelRequest(peer.ID, GraphSyncRequestID)
+      SendRequest(peer.ID, GraphSyncRequest)
     }
 
     object "Package Public Functions" as goPeerManagerPF {

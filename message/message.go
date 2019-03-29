@@ -88,23 +88,6 @@ func IsTerminalResponseCode(status GraphSyncResponseStatusCode) bool {
 	return IsTerminalSuccessCode(status) || IsTerminalFailureCode(status)
 }
 
-// GraphSyncRequest is an interface for accessing data on request contained in a
-// GraphSyncMessage.
-type GraphSyncRequest interface {
-	Selector() []byte
-	Priority() GraphSyncPriority
-	ID() GraphSyncRequestID
-	IsCancel() bool
-}
-
-// GraphSyncResponse is an interface for accessing data on a response sent back
-// in a GraphSyncMessage.
-type GraphSyncResponse interface {
-	RequestID() GraphSyncRequestID
-	Status() GraphSyncResponseStatusCode
-	Extra() []byte
-}
-
 // GraphSyncMessage is interface that can be serialized and deserialized to send
 // over the GraphSync network
 type GraphSyncMessage interface {
@@ -114,16 +97,9 @@ type GraphSyncMessage interface {
 
 	Blocks() []blocks.Block
 
-	AddRequest(id GraphSyncRequestID,
-		selector []byte,
-		priority GraphSyncPriority)
+	AddRequest(graphSyncRequest GraphSyncRequest)
 
-	Cancel(id GraphSyncRequestID)
-
-	AddResponse(
-		requestID GraphSyncRequestID,
-		status GraphSyncResponseStatusCode,
-		extra []byte)
+	AddResponse(graphSyncResponse GraphSyncResponse)
 
 	AddBlock(blocks.Block)
 
@@ -140,22 +116,26 @@ type Exportable interface {
 	ToNet(w io.Writer) error
 }
 
-type graphSyncRequest struct {
+// GraphSyncRequest is a struct to capture data on a request contained in a
+// GraphSyncMessage.
+type GraphSyncRequest struct {
 	selector []byte
 	priority GraphSyncPriority
 	id       GraphSyncRequestID
 	isCancel bool
 }
 
-type graphSyncResponse struct {
+// GraphSyncResponse is an struct to capture data on a response sent back
+// in a GraphSyncMessage.
+type GraphSyncResponse struct {
 	requestID GraphSyncRequestID
 	status    GraphSyncResponseStatusCode
 	extra     []byte
 }
 
 type graphSyncMessage struct {
-	requests  map[GraphSyncRequestID]*graphSyncRequest
-	responses map[GraphSyncRequestID]*graphSyncResponse
+	requests  map[GraphSyncRequestID]GraphSyncRequest
+	responses map[GraphSyncRequestID]GraphSyncResponse
 	blocks    map[cid.Cid]blocks.Block
 }
 
@@ -166,20 +146,55 @@ func New() GraphSyncMessage {
 
 func newMsg() *graphSyncMessage {
 	return &graphSyncMessage{
-		requests:  make(map[GraphSyncRequestID]*graphSyncRequest),
-		responses: make(map[GraphSyncRequestID]*graphSyncResponse),
+		requests:  make(map[GraphSyncRequestID]GraphSyncRequest),
+		responses: make(map[GraphSyncRequestID]GraphSyncResponse),
 		blocks:    make(map[cid.Cid]blocks.Block),
+	}
+}
+
+// NewRequest builds a new Graphsync request
+func NewRequest(id GraphSyncRequestID,
+	selector []byte,
+	priority GraphSyncPriority) GraphSyncRequest {
+	return newRequest(id, selector, priority, false)
+}
+
+// CancelRequest request generates a request to cancel an in progress request
+func CancelRequest(id GraphSyncRequestID) GraphSyncRequest {
+	return newRequest(id, nil, 0, true)
+}
+
+func newRequest(id GraphSyncRequestID,
+	selector []byte,
+	priority GraphSyncPriority,
+	isCancel bool) GraphSyncRequest {
+	return GraphSyncRequest{
+		id:       id,
+		selector: selector,
+		priority: priority,
+		isCancel: isCancel,
+	}
+}
+
+// NewResponse builds a new Graphsync response
+func NewResponse(requestID GraphSyncRequestID,
+	status GraphSyncResponseStatusCode,
+	extra []byte) GraphSyncResponse {
+	return GraphSyncResponse{
+		requestID: requestID,
+		status:    status,
+		extra:     extra,
 	}
 }
 
 func newMessageFromProto(pbm pb.Message) (GraphSyncMessage, error) {
 	gsm := newMsg()
 	for _, req := range pbm.Requests {
-		gsm.addRequest(GraphSyncRequestID(req.Id), req.Selector, GraphSyncPriority(req.Priority), req.Cancel)
+		gsm.AddRequest(newRequest(GraphSyncRequestID(req.Id), req.Selector, GraphSyncPriority(req.Priority), req.Cancel))
 	}
 
 	for _, res := range pbm.Responses {
-		gsm.AddResponse(GraphSyncRequestID(res.Id), GraphSyncResponseStatusCode(res.Status), res.Extra)
+		gsm.AddResponse(NewResponse(GraphSyncRequestID(res.Id), GraphSyncResponseStatusCode(res.Status), res.Extra))
 	}
 
 	for _, b := range pbm.GetData() {
@@ -232,38 +247,12 @@ func (gsm *graphSyncMessage) Blocks() []blocks.Block {
 	return bs
 }
 
-func (gsm *graphSyncMessage) Cancel(id GraphSyncRequestID) {
-	delete(gsm.requests, id)
-	gsm.addRequest(id, nil, 0, true)
+func (gsm *graphSyncMessage) AddRequest(graphSyncRequest GraphSyncRequest) {
+	gsm.requests[graphSyncRequest.id] = graphSyncRequest
 }
 
-func (gsm *graphSyncMessage) AddRequest(id GraphSyncRequestID,
-	selector []byte,
-	priority GraphSyncPriority,
-) {
-	gsm.addRequest(id, selector, priority, false)
-}
-
-func (gsm *graphSyncMessage) addRequest(id GraphSyncRequestID,
-	selector []byte,
-	priority GraphSyncPriority,
-	isCancel bool) {
-	gsm.requests[id] = &graphSyncRequest{
-		id:       id,
-		selector: selector,
-		priority: priority,
-		isCancel: isCancel,
-	}
-}
-
-func (gsm *graphSyncMessage) AddResponse(requestID GraphSyncRequestID,
-	status GraphSyncResponseStatusCode,
-	extra []byte) {
-	gsm.responses[requestID] = &graphSyncResponse{
-		requestID: requestID,
-		status:    status,
-		extra:     extra,
-	}
+func (gsm *graphSyncMessage) AddResponse(graphSyncResponse GraphSyncResponse) {
+	gsm.responses[graphSyncResponse.requestID] = graphSyncResponse
 }
 
 func (gsm *graphSyncMessage) AddBlock(b blocks.Block) {
@@ -339,11 +328,23 @@ func (gsm *graphSyncMessage) Loggable() map[string]interface{} {
 	}
 }
 
-func (gsr *graphSyncRequest) ID() GraphSyncRequestID      { return gsr.id }
-func (gsr *graphSyncRequest) Selector() []byte            { return gsr.selector }
-func (gsr *graphSyncRequest) Priority() GraphSyncPriority { return gsr.priority }
-func (gsr *graphSyncRequest) IsCancel() bool              { return gsr.isCancel }
+// ID Returns the request ID for this Request
+func (gsr GraphSyncRequest) ID() GraphSyncRequestID { return gsr.id }
 
-func (gsr *graphSyncResponse) RequestID() GraphSyncRequestID       { return gsr.requestID }
-func (gsr *graphSyncResponse) Status() GraphSyncResponseStatusCode { return gsr.status }
-func (gsr *graphSyncResponse) Extra() []byte                       { return gsr.extra }
+// Selector returns the byte representation of the selector for this request
+func (gsr GraphSyncRequest) Selector() []byte { return gsr.selector }
+
+// Priority returns the priority of this request
+func (gsr GraphSyncRequest) Priority() GraphSyncPriority { return gsr.priority }
+
+// IsCancel returns true if this particular request is being cancelled
+func (gsr GraphSyncRequest) IsCancel() bool { return gsr.isCancel }
+
+// RequestID returns the request ID for this response
+func (gsr GraphSyncResponse) RequestID() GraphSyncRequestID { return gsr.requestID }
+
+// Status returns the status for a response
+func (gsr GraphSyncResponse) Status() GraphSyncResponseStatusCode { return gsr.status }
+
+// Extra returns any metadata on a response
+func (gsr GraphSyncResponse) Extra() []byte { return gsr.extra }

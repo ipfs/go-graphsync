@@ -69,7 +69,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	selector := testutil.RandomBytes(100)
 
 	waitGroup.Add(1)
-	messageQueue.AddRequest(id, selector, priority)
+	messageQueue.AddRequest(gsmsg.NewRequest(id, selector, priority))
 
 	select {
 	case <-ctx.Done():
@@ -105,10 +105,15 @@ func TestProcessingNotification(t *testing.T) {
 	waitGroup.Add(1)
 	blks := testutil.GenerateBlocksOfSize(3, 128)
 
-	blocksProcessing := messageQueue.AddBlocks(blks)
+	newMessage := gsmsg.New()
+	responseID := gsmsg.GraphSyncRequestID(rand.Int31())
+	extra := testutil.RandomBytes(100)
+	status := gsmsg.RequestCompletedFull
+	newMessage.AddResponse(gsmsg.NewResponse(responseID, status, extra))
+	processing := messageQueue.AddResponses(newMessage.Responses(), blks)
 	select {
-	case <-blocksProcessing:
-		t.Fatal("Blocks should not be processing but already received notification")
+	case <-processing:
+		t.Fatal("Message should not be processing but already received notification")
 	default:
 	}
 
@@ -116,9 +121,9 @@ func TestProcessingNotification(t *testing.T) {
 	messageQueue.Startup()
 	waitGroup.Wait()
 	select {
-	case <-blocksProcessing:
+	case <-processing:
 	case <-ctx.Done():
-		t.Fatal("blocks should have been processed but were not")
+		t.Fatal("Message should have been processed but were not")
 	}
 
 	select {
@@ -130,6 +135,12 @@ func TestProcessingNotification(t *testing.T) {
 			if !testutil.ContainsBlock(blks, block) {
 				t.Fatal("sent incorrect block")
 			}
+		}
+		firstResponse := message.Responses()[0]
+		if responseID != firstResponse.RequestID() ||
+			status != firstResponse.Status() ||
+			!reflect.DeepEqual(firstResponse.Extra(), extra) {
+			t.Fatal("Send incorrect response")
 		}
 	}
 }
@@ -154,7 +165,7 @@ func TestDedupingMessages(t *testing.T) {
 	priority := gsmsg.GraphSyncPriority(rand.Int31())
 	selector := testutil.RandomBytes(100)
 
-	messageQueue.AddRequest(id, selector, priority)
+	messageQueue.AddRequest(gsmsg.NewRequest(id, selector, priority))
 	// wait for send attempt
 	waitGroup.Wait()
 	id2 := gsmsg.GraphSyncRequestID(rand.Int31())
@@ -163,8 +174,8 @@ func TestDedupingMessages(t *testing.T) {
 	id3 := gsmsg.GraphSyncRequestID(rand.Int31())
 	priority3 := gsmsg.GraphSyncPriority(rand.Int31())
 	selector3 := testutil.RandomBytes(100)
-	messageQueue.AddRequest(id2, selector2, priority2)
-	messageQueue.AddRequest(id3, selector3, priority3)
+	messageQueue.AddRequest(gsmsg.NewRequest(id2, selector2, priority2))
+	messageQueue.AddRequest(gsmsg.NewRequest(id3, selector3, priority3))
 
 	select {
 	case <-ctx.Done():

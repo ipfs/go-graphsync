@@ -23,10 +23,7 @@ var (
 
 // PeerQueue provides a queer of messages to be sent for a single peer.
 type PeerQueue interface {
-	AddRequest(id gsmsg.GraphSyncRequestID,
-		selector []byte,
-		priority gsmsg.GraphSyncPriority)
-	Cancel(id gsmsg.GraphSyncRequestID)
+	AddRequest(graphSyncRequest gsmsg.GraphSyncRequest)
 	Startup()
 	Shutdown()
 }
@@ -101,23 +98,11 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 // SendRequest sends the given request to the given peer.
 func (pm *PeerManager) SendRequest(
 	p peer.ID,
-	id gsmsg.GraphSyncRequestID,
-	selector []byte,
-	priority gsmsg.GraphSyncPriority) {
+	graphSyncRequest gsmsg.GraphSyncRequest) {
 	pm.peerQueuesLk.Lock()
 	pqi := pm.getOrCreate(p)
 	pm.peerQueuesLk.Unlock()
-	pqi.pq.AddRequest(id, selector, priority)
-}
-
-// CancelRequest cancels the given request id on the given peer.
-func (pm *PeerManager) CancelRequest(
-	p peer.ID,
-	id gsmsg.GraphSyncRequestID) {
-	pm.peerQueuesLk.Lock()
-	pqi := pm.getOrCreate(p)
-	pm.peerQueuesLk.Unlock()
-	pqi.pq.Cancel(id)
+	pqi.pq.AddRequest(graphSyncRequest)
 }
 
 func (pm *PeerManager) getOrCreate(p peer.ID) *peerQueueInstance {

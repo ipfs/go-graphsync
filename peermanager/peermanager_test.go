@@ -25,17 +25,9 @@ type fakePeer struct {
 func (fp *fakePeer) Startup()  {}
 func (fp *fakePeer) Shutdown() {}
 
-func (fp *fakePeer) AddRequest(id gsmsg.GraphSyncRequestID,
-	selector []byte,
-	priority gsmsg.GraphSyncPriority) {
+func (fp *fakePeer) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest) {
 	message := gsmsg.New()
-	message.AddRequest(id, selector, priority)
-	fp.messagesSent <- messageSent{fp.p, message}
-}
-
-func (fp *fakePeer) Cancel(id gsmsg.GraphSyncRequestID) {
-	message := gsmsg.New()
-	message.Cancel(id)
+	message.AddRequest(graphSyncRequest)
 	fp.messagesSent <- messageSent{fp.p, message}
 }
 
@@ -106,9 +98,11 @@ func TestSendingMessagesToPeers(t *testing.T) {
 
 	peerManager := New(ctx, peerQueueFactory)
 
-	peerManager.SendRequest(tp[0], id, selector, priority)
-	peerManager.SendRequest(tp[1], id, selector, priority)
-	peerManager.CancelRequest(tp[0], id)
+	request := gsmsg.NewRequest(id, selector, priority)
+	peerManager.SendRequest(tp[0], request)
+	peerManager.SendRequest(tp[1], request)
+	cancelRequest := gsmsg.CancelRequest(id)
+	peerManager.SendRequest(tp[0], cancelRequest)
 
 	select {
 	case <-ctx.Done():
