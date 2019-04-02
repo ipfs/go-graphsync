@@ -51,7 +51,7 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 		sent: sent,
 	}
 	ipldBridge := testbridge.NewMockIPLDBridge()
-	peerResponseManager := New(ctx, p, fph, ipldBridge)
+	peerResponseManager := NewResponseSender(ctx, p, fph, ipldBridge)
 	peerResponseManager.Startup()
 
 	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())

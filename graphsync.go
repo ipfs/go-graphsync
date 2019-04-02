@@ -27,7 +27,7 @@ type GraphSync struct {
 	network        gsnet.GraphSyncNetwork
 	loader         ipldbridge.Loader
 	requestManager *requestmanager.RequestManager
-	peerManager    *peermanager.PeerManager
+	peerManager    *peermanager.PeerMessageManager
 	ctx            context.Context
 	cancel         context.CancelFunc
 }
@@ -41,7 +41,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	createMessageQueue := func(ctx context.Context, p peer.ID) peermanager.PeerQueue {
 		return messagequeue.New(ctx, p, network)
 	}
-	peerManager := peermanager.New(ctx, createMessageQueue)
+	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
 	requestManager := requestmanager.New(ctx, ipldBridge)
 	graphSync := &GraphSync{
 		ipldBridge:     ipldBridge,
