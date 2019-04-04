@@ -1,10 +1,7 @@
 package responsemanager
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"io"
 	"math"
 	"math/rand"
 	"reflect"
@@ -12,10 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-block-format"
-
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/peertaskqueue/peertask"
@@ -116,23 +110,12 @@ func (fprs *fakePeerResponseSender) FinishWithError(requestID gsmsg.GraphSyncReq
 	fprs.lastCompletedRequest <- requestID
 }
 
-func makeLoader(blks []blocks.Block) ipldbridge.Loader {
-	return func(ipldLink ipld.Link, lnkCtx ipldbridge.LinkContext) (io.Reader, error) {
-		lnk := ipldLink.(cidlink.Link).Cid
-		for _, block := range blks {
-			if block.Cid() == lnk {
-				return bytes.NewReader(block.RawData()), nil
-			}
-		}
-		return nil, fmt.Errorf("unable to load block")
-	}
-}
 func TestIncomingQuery(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
 	defer cancel()
 	blks := testutil.GenerateBlocksOfSize(5, 20)
-	loader := makeLoader(blks)
+	loader := testbridge.NewMockLoader(blks)
 	ipldBridge := testbridge.NewMockIPLDBridge()
 	requestIDChan := make(chan gsmsg.GraphSyncRequestID, 1)
 	sentResponses := make(chan sentResponse, len(blks))
@@ -156,7 +139,7 @@ func TestIncomingQuery(t *testing.T) {
 		gsmsg.NewRequest(requestID, selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
-	responseManager.ProcessRequests(p, requests)
+	responseManager.ProcessRequests(ctx, p, requests)
 	select {
 	case <-ctx.Done():
 		t.Fatal("Should have completed request but didn't")
@@ -187,7 +170,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
 	defer cancel()
 	blks := testutil.GenerateBlocksOfSize(5, 20)
-	loader := makeLoader(blks)
+	loader := testbridge.NewMockLoader(blks)
 	ipldBridge := testbridge.NewMockIPLDBridge()
 	requestIDChan := make(chan gsmsg.GraphSyncRequestID)
 	sentResponses := make(chan sentResponse)
@@ -211,7 +194,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 		gsmsg.NewRequest(requestID, selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
-	responseManager.ProcessRequests(p, requests)
+	responseManager.ProcessRequests(ctx, p, requests)
 
 	// read one block
 	select {
@@ -235,7 +218,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	requests = []gsmsg.GraphSyncRequest{
 		gsmsg.CancelRequest(requestID),
 	}
-	responseManager.ProcessRequests(p, requests)
+	responseManager.ProcessRequests(ctx, p, requests)
 
 	responseManager.synchronize()
 
@@ -272,7 +255,7 @@ func TestEarlyCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
 	defer cancel()
 	blks := testutil.GenerateBlocksOfSize(5, 20)
-	loader := makeLoader(blks)
+	loader := testbridge.NewMockLoader(blks)
 	ipldBridge := testbridge.NewMockIPLDBridge()
 	requestIDChan := make(chan gsmsg.GraphSyncRequestID)
 	sentResponses := make(chan sentResponse)
@@ -297,13 +280,13 @@ func TestEarlyCancellation(t *testing.T) {
 		gsmsg.NewRequest(requestID, selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
-	responseManager.ProcessRequests(p, requests)
+	responseManager.ProcessRequests(ctx, p, requests)
 
 	// send a cancellation
 	requests = []gsmsg.GraphSyncRequest{
 		gsmsg.CancelRequest(requestID),
 	}
-	responseManager.ProcessRequests(p, requests)
+	responseManager.ProcessRequests(ctx, p, requests)
 
 	responseManager.synchronize()
 

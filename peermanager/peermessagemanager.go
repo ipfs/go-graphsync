@@ -3,6 +3,8 @@ package peermanager
 import (
 	"context"
 
+	"github.com/ipfs/go-block-format"
+
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
@@ -11,6 +13,7 @@ import (
 type PeerQueue interface {
 	PeerProcess
 	AddRequest(graphSyncRequest gsmsg.GraphSyncRequest)
+	AddResponses(responses []gsmsg.GraphSyncResponse, blks []blocks.Block) <-chan struct{}
 }
 
 // PeerQueueFactory provides a function that will create a PeerQueue.
@@ -34,4 +37,11 @@ func NewMessageManager(ctx context.Context, createPeerQueue PeerQueueFactory) *P
 func (pmm *PeerMessageManager) SendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
 	pq := pmm.GetProcess(p).(PeerQueue)
 	pq.AddRequest(request)
+}
+
+// SendResponse sends the given GraphSyncResponses and blocks to the given peer.
+func (pmm *PeerMessageManager) SendResponse(p peer.ID,
+	responses []gsmsg.GraphSyncResponse, blks []blocks.Block) <-chan struct{} {
+	pq := pmm.GetProcess(p).(PeerQueue)
+	return pq.AddResponses(responses, blks)
 }

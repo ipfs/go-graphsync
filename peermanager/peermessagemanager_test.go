@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-block-format"
+
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/libp2p/go-libp2p-peer"
@@ -29,6 +31,10 @@ func (fp *fakePeer) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest) {
 	message := gsmsg.New()
 	message.AddRequest(graphSyncRequest)
 	fp.messagesSent <- messageSent{fp.p, message}
+}
+
+func (fp *fakePeer) AddResponses([]gsmsg.GraphSyncResponse, []blocks.Block) <-chan struct{} {
+	return nil
 }
 
 func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {

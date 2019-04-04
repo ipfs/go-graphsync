@@ -87,22 +87,19 @@ func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.Loader
 	if !ok {
 		return fmt.Errorf("not supported")
 	}
-	var lastErr error
 	for _, lnk := range ms.cidsVisited {
 
 		node, err := loadNode(lnk, loader)
-		if err != nil {
-			lastErr = err
-		} else {
+		if err == nil {
 			fn(ipldbridge.TraversalProgress{}, node, 0)
 		}
 		select {
 		case <-ctx.Done():
-			return lastErr
+			return nil
 		default:
 		}
 	}
-	return lastErr
+	return nil
 }
 
 func loadNode(lnk cid.Cid, loader ipldbridge.Loader) (ipld.Node, error) {

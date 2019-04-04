@@ -97,10 +97,11 @@ type processRequestMessage struct {
 }
 
 // ProcessRequests processes incoming requests for the given peer
-func (rm *ResponseManager) ProcessRequests(p peer.ID, requests []gsmsg.GraphSyncRequest) {
+func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, requests []gsmsg.GraphSyncRequest) {
 	select {
 	case rm.messages <- &processRequestMessage{p, requests}:
 	case <-rm.ctx.Done():
+	case <-ctx.Done():
 	}
 }
 
