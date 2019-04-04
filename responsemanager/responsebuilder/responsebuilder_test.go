@@ -31,17 +31,17 @@ func TestMessageBuilding(t *testing.T) {
 	rb.AddLink(requestID1, links[1], false)
 	rb.AddLink(requestID1, links[2], true)
 
-	rb.AddCompletedRequest(requestID1, false)
+	rb.AddCompletedRequest(requestID1, gsmsg.RequestCompletedPartial)
 
 	rb.AddLink(requestID2, links[1], true)
 	rb.AddLink(requestID2, links[2], true)
 
-	rb.AddCompletedRequest(requestID2, true)
+	rb.AddCompletedRequest(requestID2, gsmsg.RequestCompletedFull)
 
 	rb.AddLink(requestID3, links[0], true)
 	rb.AddLink(requestID3, links[1], true)
 
-	rb.AddCompletedRequest(requestID4, true)
+	rb.AddCompletedRequest(requestID4, gsmsg.RequestCompletedFull)
 
 	for _, block := range blocks {
 		rb.AddBlock(block)

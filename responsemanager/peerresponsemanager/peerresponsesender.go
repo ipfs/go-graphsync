@@ -52,6 +52,7 @@ type PeerResponseSender interface {
 		data []byte,
 	)
 	FinishRequest(requestID gsmsg.GraphSyncRequestID)
+	FinishWithError(requestID gsmsg.GraphSyncRequestID, status gsmsg.GraphSyncResponseStatusCode)
 }
 
 // NewResponseSender generates a new PeerResponseSender for the given context, peer ID,
@@ -113,14 +114,31 @@ func (prm *peerResponseSender) FinishRequest(requestID gsmsg.GraphSyncRequestID)
 	prm.linkTrackerLk.Lock()
 	isComplete := prm.linkTracker.FinishRequest(requestID)
 	prm.linkTrackerLk.Unlock()
+	var status gsmsg.GraphSyncResponseStatusCode
+	if isComplete {
+		status = gsmsg.RequestCompletedFull
+	} else {
+		status = gsmsg.RequestCompletedPartial
+	}
+	prm.finish(requestID, status)
+}
 
+// FinishWithError marks the given requestID as having terminated with an error
+func (prm *peerResponseSender) FinishWithError(requestID gsmsg.GraphSyncRequestID, status gsmsg.GraphSyncResponseStatusCode) {
+	prm.linkTrackerLk.Lock()
+	prm.linkTracker.FinishRequest(requestID)
+	prm.linkTrackerLk.Unlock()
+
+	prm.finish(requestID, status)
+}
+
+func (prm *peerResponseSender) finish(requestID gsmsg.GraphSyncRequestID, status gsmsg.GraphSyncResponseStatusCode) {
 	if prm.buildResponse(func(responseBuilder *responsebuilder.ResponseBuilder) {
-		responseBuilder.AddCompletedRequest(requestID, isComplete)
+		responseBuilder.AddCompletedRequest(requestID, status)
 	}) {
 		prm.signalWork()
 	}
 }
-
 func (prm *peerResponseSender) buildResponse(buildResponseFn func(*responsebuilder.ResponseBuilder)) bool {
 	prm.responseBuilderLk.Lock()
 	defer prm.responseBuilderLk.Unlock()

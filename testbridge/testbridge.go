@@ -96,6 +96,11 @@ func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.Loader
 		} else {
 			fn(ipldbridge.TraversalProgress{}, node, 0)
 		}
+		select {
+		case <-ctx.Done():
+			return lastErr
+		default:
+		}
 	}
 	return lastErr
 }

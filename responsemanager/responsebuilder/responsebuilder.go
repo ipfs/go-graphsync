@@ -12,14 +12,14 @@ import (
 // GraphSync message components once responses are ready to send.
 type ResponseBuilder struct {
 	outgoingBlocks     []blocks.Block
-	completedResponses map[gsmsg.GraphSyncRequestID]bool
+	completedResponses map[gsmsg.GraphSyncRequestID]gsmsg.GraphSyncResponseStatusCode
 	outgoingResponses  map[gsmsg.GraphSyncRequestID]map[ipld.Link]bool
 }
 
 // New generates a new ResponseBuilder.
 func New() *ResponseBuilder {
 	return &ResponseBuilder{
-		completedResponses: make(map[gsmsg.GraphSyncRequestID]bool),
+		completedResponses: make(map[gsmsg.GraphSyncRequestID]gsmsg.GraphSyncResponseStatusCode),
 		outgoingResponses:  make(map[gsmsg.GraphSyncRequestID]map[ipld.Link]bool),
 	}
 }
@@ -43,8 +43,8 @@ func (rb *ResponseBuilder) AddLink(requestID gsmsg.GraphSyncRequestID, link ipld
 // AddCompletedRequest marks the given request as completed in the response,
 // as well as whether the graphsync request responded with complete or partial
 // data.
-func (rb *ResponseBuilder) AddCompletedRequest(requestID gsmsg.GraphSyncRequestID, isComplete bool) {
-	rb.completedResponses[requestID] = isComplete
+func (rb *ResponseBuilder) AddCompletedRequest(requestID gsmsg.GraphSyncRequestID, status gsmsg.GraphSyncResponseStatusCode) {
+	rb.completedResponses[requestID] = status
 	// make sure this completion goes out in next response even if no links are sent
 	_, ok := rb.outgoingResponses[requestID]
 	if !ok {
@@ -65,8 +65,8 @@ func (rb *ResponseBuilder) Build(ipldBridge ipldbridge.IPLDBridge) ([]gsmsg.Grap
 		if err != nil {
 			return nil, nil, err
 		}
-		isFull, isComplete := rb.completedResponses[requestID]
-		responses = append(responses, gsmsg.NewResponse(requestID, responseCode(isFull, isComplete), extra))
+		status, isComplete := rb.completedResponses[requestID]
+		responses = append(responses, gsmsg.NewResponse(requestID, responseCode(status, isComplete), extra))
 	}
 	return responses, rb.outgoingBlocks, nil
 }
@@ -90,12 +90,9 @@ func makeEncodedData(entries map[ipld.Link]bool, ipldBridge ipldbridge.IPLDBridg
 	return ipldBridge.EncodeNode(node)
 }
 
-func responseCode(isFull bool, isComplete bool) gsmsg.GraphSyncResponseStatusCode {
+func responseCode(status gsmsg.GraphSyncResponseStatusCode, isComplete bool) gsmsg.GraphSyncResponseStatusCode {
 	if !isComplete {
 		return gsmsg.PartialResponse
 	}
-	if isFull {
-		return gsmsg.RequestCompletedFull
-	}
-	return gsmsg.RequestCompletedPartial
+	return status
 }
