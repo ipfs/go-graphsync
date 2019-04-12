@@ -4,6 +4,7 @@ import (
 	"github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipld/go-ipld-prime"
 )
 
@@ -13,14 +14,14 @@ import (
 type ResponseBuilder struct {
 	outgoingBlocks     []blocks.Block
 	completedResponses map[gsmsg.GraphSyncRequestID]gsmsg.GraphSyncResponseStatusCode
-	outgoingResponses  map[gsmsg.GraphSyncRequestID]map[ipld.Link]bool
+	outgoingResponses  map[gsmsg.GraphSyncRequestID]metadata.Metadata
 }
 
 // New generates a new ResponseBuilder.
 func New() *ResponseBuilder {
 	return &ResponseBuilder{
 		completedResponses: make(map[gsmsg.GraphSyncRequestID]gsmsg.GraphSyncResponseStatusCode),
-		outgoingResponses:  make(map[gsmsg.GraphSyncRequestID]map[ipld.Link]bool),
+		outgoingResponses:  make(map[gsmsg.GraphSyncRequestID]metadata.Metadata),
 	}
 }
 
@@ -61,7 +62,7 @@ func (rb *ResponseBuilder) Empty() bool {
 func (rb *ResponseBuilder) Build(ipldBridge ipldbridge.IPLDBridge) ([]gsmsg.GraphSyncResponse, []blocks.Block, error) {
 	responses := make([]gsmsg.GraphSyncResponse, 0, len(rb.outgoingResponses))
 	for requestID, linkMap := range rb.outgoingResponses {
-		extra, err := makeEncodedData(linkMap, ipldBridge)
+		extra, err := metadata.EncodeMetadata(linkMap, ipldBridge)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -69,25 +70,6 @@ func (rb *ResponseBuilder) Build(ipldBridge ipldbridge.IPLDBridge) ([]gsmsg.Grap
 		responses = append(responses, gsmsg.NewResponse(requestID, responseCode(status, isComplete), extra))
 	}
 	return responses, rb.outgoingBlocks, nil
-}
-
-func makeEncodedData(entries map[ipld.Link]bool, ipldBridge ipldbridge.IPLDBridge) ([]byte, error) {
-	node, err := ipldBridge.BuildNode(func(nb ipldbridge.NodeBuilder) ipld.Node {
-		return nb.CreateList(func(lb ipldbridge.ListBuilder, nb ipldbridge.NodeBuilder) {
-			for link, blockPresent := range entries {
-				lb.Append(
-					nb.CreateMap(func(mb ipldbridge.MapBuilder, knb ipldbridge.NodeBuilder, vnb ipldbridge.NodeBuilder) {
-						mb.Insert(knb.CreateString("link"), vnb.CreateLink(link))
-						mb.Insert(knb.CreateString("blockPresent"), vnb.CreateBool(blockPresent))
-					}),
-				)
-			}
-		})
-	})
-	if err != nil {
-		return nil, err
-	}
-	return ipldBridge.EncodeNode(node)
 }
 
 func responseCode(status gsmsg.GraphSyncResponseStatusCode, isComplete bool) gsmsg.GraphSyncResponseStatusCode {

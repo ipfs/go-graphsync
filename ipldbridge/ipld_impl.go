@@ -30,6 +30,18 @@ func NewIPLDBridge() IPLDBridge {
 	return &ipldBridge{}
 }
 
+func (rb *ipldBridge) ExtractData(node ipld.Node, buildFn func(SimpleNode) interface{}) (interface{}, error) {
+	var value interface{}
+	err := fluent.Recover(func() {
+		simpleNode := fluent.WrapNode(node)
+		value = buildFn(simpleNode)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
 func (rb *ipldBridge) BuildNode(buildFn func(NodeBuilder) ipld.Node) (ipld.Node, error) {
 	var node ipld.Node
 	err := fluent.Recover(func() {

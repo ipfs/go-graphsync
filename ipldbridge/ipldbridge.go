@@ -37,9 +37,20 @@ type ListBuilder = fluent.ListBuilder
 // MapBuilder is an alias from ipld fluent, in case it's moved
 type MapBuilder = fluent.MapBuilder
 
+// SimpleNode is an alias from ipld fluent, to refer to its non error based
+// node struct
+type SimpleNode = fluent.Node
+
 // IPLDBridge is an interface for making calls to IPLD, which can be
 // replaced with alternative implementations
 type IPLDBridge interface {
+
+	// ExtractData provides an efficient mechanism for assembling nodes w/ fluent
+	// interface
+	ExtractData(ipld.Node, func(SimpleNode) interface{}) (interface{}, error)
+
+	// BuildNode provides an efficient mechanism for assembling nodes w/ fluent
+	// interface
 	BuildNode(func(NodeBuilder) ipld.Node) (ipld.Node, error)
 
 	// ValidateSelectorSpec verifies if a node matches the selector spec.
