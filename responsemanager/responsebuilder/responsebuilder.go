@@ -33,12 +33,7 @@ func (rb *ResponseBuilder) AddBlock(block blocks.Block) {
 // AddLink adds the given link and whether its block is present
 // to the response for the given request ID.
 func (rb *ResponseBuilder) AddLink(requestID gsmsg.GraphSyncRequestID, link ipld.Link, blockPresent bool) {
-	linksForRequest, ok := rb.outgoingResponses[requestID]
-	if !ok {
-		linksForRequest = make(map[ipld.Link]bool)
-		rb.outgoingResponses[requestID] = linksForRequest
-	}
-	linksForRequest[link] = blockPresent
+	rb.outgoingResponses[requestID] = append(rb.outgoingResponses[requestID], metadata.Item{Link: link, BlockPresent: blockPresent})
 }
 
 // AddCompletedRequest marks the given request as completed in the response,
@@ -49,7 +44,7 @@ func (rb *ResponseBuilder) AddCompletedRequest(requestID gsmsg.GraphSyncRequestI
 	// make sure this completion goes out in next response even if no links are sent
 	_, ok := rb.outgoingResponses[requestID]
 	if !ok {
-		rb.outgoingResponses[requestID] = make(map[ipld.Link]bool)
+		rb.outgoingResponses[requestID] = nil
 	}
 }
 

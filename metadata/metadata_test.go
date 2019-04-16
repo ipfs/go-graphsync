@@ -14,11 +14,11 @@ import (
 
 func TestDecodeEncodeMetadata(t *testing.T) {
 	cids := testutil.GenerateCids(10)
-	initialMetadata := make(Metadata)
+	initialMetadata := make(Metadata, 0, 10)
 	for _, k := range cids {
 		link := cidlink.Link{Cid: k}
 		blockPresent := rand.Int31()%2 == 0
-		initialMetadata[link] = blockPresent
+		initialMetadata = append(initialMetadata, Item{link, blockPresent})
 	}
 	bridge := testbridge.NewMockIPLDBridge()
 	encoded, err := EncodeMetadata(initialMetadata, bridge)

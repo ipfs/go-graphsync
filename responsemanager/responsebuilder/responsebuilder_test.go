@@ -35,6 +35,7 @@ func TestMessageBuilding(t *testing.T) {
 
 	rb.AddLink(requestID2, links[1], true)
 	rb.AddLink(requestID2, links[2], true)
+	rb.AddLink(requestID2, links[1], true)
 
 	rb.AddCompletedRequest(requestID2, gsmsg.RequestCompletedFull)
 
@@ -64,9 +65,9 @@ func TestMessageBuilding(t *testing.T) {
 
 	response1Metadata, err := metadata.DecodeMetadata(response1.Extra(), ipldBridge)
 	if err != nil || !reflect.DeepEqual(response1Metadata, metadata.Metadata{
-		links[0]: true,
-		links[1]: false,
-		links[2]: true,
+		metadata.Item{Link: links[0], BlockPresent: true},
+		metadata.Item{Link: links[1], BlockPresent: false},
+		metadata.Item{Link: links[2], BlockPresent: true},
 	}) {
 		t.Fatal("Metadata did not match expected")
 	}
@@ -77,8 +78,9 @@ func TestMessageBuilding(t *testing.T) {
 	}
 	response2Metadata, err := metadata.DecodeMetadata(response2.Extra(), ipldBridge)
 	if err != nil || !reflect.DeepEqual(response2Metadata, metadata.Metadata{
-		links[1]: true,
-		links[2]: true,
+		metadata.Item{Link: links[1], BlockPresent: true},
+		metadata.Item{Link: links[2], BlockPresent: true},
+		metadata.Item{Link: links[1], BlockPresent: true},
 	}) {
 		t.Fatal("Metadata did not match expected")
 	}
@@ -89,8 +91,8 @@ func TestMessageBuilding(t *testing.T) {
 	}
 	response3Metadata, err := metadata.DecodeMetadata(response3.Extra(), ipldBridge)
 	if err != nil || !reflect.DeepEqual(response3Metadata, metadata.Metadata{
-		links[0]: true,
-		links[1]: true,
+		metadata.Item{Link: links[0], BlockPresent: true},
+		metadata.Item{Link: links[1], BlockPresent: true},
 	}) {
 		t.Fatal("Metadata did not match expected")
 	}
