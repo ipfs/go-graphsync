@@ -179,12 +179,6 @@ func (abl *AsyncLoader) messageQueueWorker() {
 }
 
 func (lr *loadRequest) handle(abl *AsyncLoader) {
-	_, ok := abl.activeRequests[lr.requestID]
-	if !ok {
-		abl.terminateWithError("No active request", lr.resultChan)
-		returnLoadRequest(lr)
-		return
-	}
 	response, err := abl.loadAttempter(lr.requestID, lr.link)
 	if err != nil {
 		lr.resultChan <- AsyncLoadResult{nil, err}
@@ -195,6 +189,12 @@ func (lr *loadRequest) handle(abl *AsyncLoader) {
 	if response != nil {
 		lr.resultChan <- AsyncLoadResult{response, nil}
 		close(lr.resultChan)
+		returnLoadRequest(lr)
+		return
+	}
+	_, ok := abl.activeRequests[lr.requestID]
+	if !ok {
+		abl.terminateWithError("No active request", lr.resultChan)
 		returnLoadRequest(lr)
 		return
 	}

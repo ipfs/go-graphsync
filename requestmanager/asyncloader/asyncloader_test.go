@@ -13,7 +13,7 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
-func TestAsyncLoadWhenRequestNotInProgress(t *testing.T) {
+func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
@@ -27,41 +27,6 @@ func TestAsyncLoadWhenRequestNotInProgress(t *testing.T) {
 
 	link := testbridge.NewMockLink()
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
-	resultChan := asyncLoader.AsyncLoad(requestID, link)
-
-	select {
-	case result := <-resultChan:
-		if result.Data != nil {
-			t.Fatal("should not have sent responses")
-		}
-		if result.Err == nil {
-			t.Fatal("should have sent an error")
-
-		}
-	case <-ctx.Done():
-		t.Fatal("should have produced result")
-	}
-
-	if callCount > 0 {
-		t.Fatal("should not have attempted to load link but did")
-	}
-}
-
-func TestAsyncLoadWhenInitialLoadSucceeds(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
-	defer cancel()
-	callCount := 0
-	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
-		callCount++
-		return testutil.RandomBytes(100), nil
-	}
-	asyncLoader := New(ctx, loadAttempter)
-	asyncLoader.Startup()
-
-	link := testbridge.NewMockLink()
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
-	asyncLoader.StartRequest(requestID)
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
 	select {
@@ -95,7 +60,6 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 
 	link := testbridge.NewMockLink()
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
-	asyncLoader.StartRequest(requestID)
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
 	select {
@@ -112,6 +76,44 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 
 	if callCount == 0 {
 		t.Fatal("should have attempted to load link but did not")
+	}
+
+}
+func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	defer cancel()
+	callCount := 0
+	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
+		var result []byte
+		if callCount > 0 {
+			result = testutil.RandomBytes(100)
+		}
+		callCount++
+		return result, nil
+	}
+	asyncLoader := New(ctx, loadAttempter)
+	asyncLoader.Startup()
+
+	link := testbridge.NewMockLink()
+	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	resultChan := asyncLoader.AsyncLoad(requestID, link)
+
+	select {
+	case result := <-resultChan:
+		if result.Data != nil {
+			t.Fatal("should not have sent responses")
+		}
+		if result.Err == nil {
+			t.Fatal("should have sent an error")
+
+		}
+	case <-ctx.Done():
+		t.Fatal("should have produced result")
+	}
+
+	if callCount > 1 {
+		t.Fatal("should have failed after load with indeterminate result")
 	}
 }
 
