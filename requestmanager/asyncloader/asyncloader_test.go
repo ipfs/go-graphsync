@@ -27,24 +27,19 @@ func TestAsyncLoadWhenRequestNotInProgress(t *testing.T) {
 
 	link := testbridge.NewMockLink()
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
-	responseChan, errChan := asyncLoader.AsyncLoad(requestID, link)
+	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
 	select {
-	case _, ok := <-responseChan:
-		if ok {
+	case result := <-resultChan:
+		if result.Data != nil {
 			t.Fatal("should not have sent responses")
 		}
-	case <-ctx.Done():
-		t.Fatal("should have closed response channel")
-	}
-
-	select {
-	case _, ok := <-errChan:
-		if !ok {
+		if result.Err == nil {
 			t.Fatal("should have sent an error")
+
 		}
 	case <-ctx.Done():
-		t.Fatal("should have closed error channel")
+		t.Fatal("should have produced result")
 	}
 
 	if callCount > 0 {
@@ -67,24 +62,18 @@ func TestAsyncLoadWhenInitialLoadSucceeds(t *testing.T) {
 	link := testbridge.NewMockLink()
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
 	asyncLoader.StartRequest(requestID)
-	responseChan, errChan := asyncLoader.AsyncLoad(requestID, link)
+	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
 	select {
-	case _, ok := <-responseChan:
-		if !ok {
+	case result := <-resultChan:
+		if result.Data == nil {
 			t.Fatal("should have sent a response")
 		}
-	case <-ctx.Done():
-		t.Fatal("should have closed response channel")
-	}
-
-	select {
-	case _, ok := <-errChan:
-		if ok {
+		if result.Err != nil {
 			t.Fatal("should not have sent an error")
 		}
 	case <-ctx.Done():
-		t.Fatal("should have closed error channel")
+		t.Fatal("should have closed response channel")
 	}
 
 	if callCount == 0 {
@@ -107,24 +96,18 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	link := testbridge.NewMockLink()
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
 	asyncLoader.StartRequest(requestID)
-	responseChan, errChan := asyncLoader.AsyncLoad(requestID, link)
+	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
 	select {
-	case _, ok := <-responseChan:
-		if ok {
+	case result := <-resultChan:
+		if result.Data != nil {
 			t.Fatal("should not have sent responses")
 		}
-	case <-ctx.Done():
-		t.Fatal("should have closed response channel")
-	}
-
-	select {
-	case _, ok := <-errChan:
-		if !ok {
+		if result.Err == nil {
 			t.Fatal("should have sent an error")
 		}
 	case <-ctx.Done():
-		t.Fatal("should have closed error channel")
+		t.Fatal("should have closed response channel")
 	}
 
 	if callCount == 0 {
@@ -153,34 +136,26 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 	link := testbridge.NewMockLink()
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
 	asyncLoader.StartRequest(requestID)
-	responseChan, errChan := asyncLoader.AsyncLoad(requestID, link)
+	resultChan := asyncLoader.AsyncLoad(requestID, link)
 	select {
 	case <-called:
-	case <-responseChan:
+	case <-resultChan:
 		t.Fatal("Should not have sent message on response chan")
-	case <-errChan:
-		t.Fatal("Should not have sent messages on error chan")
 	case <-ctx.Done():
 		t.Fatal("should have attempted load once")
 	}
 	asyncLoader.NewResponsesAvailable()
 
 	select {
-	case _, ok := <-responseChan:
-		if !ok {
+	case result := <-resultChan:
+		if result.Data == nil {
 			t.Fatal("should have sent a response")
 		}
-	case <-ctx.Done():
-		t.Fatal("should have closed response channel")
-	}
-
-	select {
-	case _, ok := <-errChan:
-		if ok {
+		if result.Err != nil {
 			t.Fatal("should not have sent an error")
 		}
 	case <-ctx.Done():
-		t.Fatal("should have closed error channel")
+		t.Fatal("should have closed response channel")
 	}
 
 	if callCount < 2 {
@@ -209,13 +184,11 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	link := testbridge.NewMockLink()
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
 	asyncLoader.StartRequest(requestID)
-	responseChan, errChan := asyncLoader.AsyncLoad(requestID, link)
+	resultChan := asyncLoader.AsyncLoad(requestID, link)
 	select {
 	case <-called:
-	case <-responseChan:
+	case <-resultChan:
 		t.Fatal("Should not have sent message on response chan")
-	case <-errChan:
-		t.Fatal("Should not have sent messages on error chan")
 	case <-ctx.Done():
 		t.Fatal("should have attempted load once")
 	}
@@ -223,22 +196,17 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	asyncLoader.NewResponsesAvailable()
 
 	select {
-	case _, ok := <-responseChan:
-		if ok {
+	case result := <-resultChan:
+		if result.Data != nil {
 			t.Fatal("should not have sent responses")
+		}
+		if result.Err == nil {
+			t.Fatal("should have sent an error")
 		}
 	case <-ctx.Done():
 		t.Fatal("should have closed response channel")
 	}
 
-	select {
-	case _, ok := <-errChan:
-		if !ok {
-			t.Fatal("should have sent an error")
-		}
-	case <-ctx.Done():
-		t.Fatal("should have closed error channel")
-	}
 	if callCount > 1 {
 		t.Fatal("should only have attempted one call but attempted multiple")
 	}

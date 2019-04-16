@@ -10,10 +10,9 @@ import (
 )
 
 type loadRequest struct {
-	requestID    gsmsg.GraphSyncRequestID
-	link         ipld.Link
-	responseChan chan []byte
-	errChan      chan error
+	requestID  gsmsg.GraphSyncRequestID
+	link       ipld.Link
+	resultChan chan AsyncLoadResult
 }
 
 var loadRequestPool = sync.Pool{
@@ -24,13 +23,11 @@ var loadRequestPool = sync.Pool{
 
 func newLoadRequest(requestID gsmsg.GraphSyncRequestID,
 	link ipld.Link,
-	responseChan chan []byte,
-	errChan chan error) *loadRequest {
+	resultChan chan AsyncLoadResult) *loadRequest {
 	lr := loadRequestPool.Get().(*loadRequest)
 	lr.requestID = requestID
 	lr.link = link
-	lr.responseChan = responseChan
-	lr.errChan = errChan
+	lr.resultChan = resultChan
 	return lr
 }
 
@@ -59,6 +56,12 @@ type finishRequestMessage struct {
 // bytes nil, error present = error
 // bytes nil, error nil = did not load, but try again later
 type LoadAttempter func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error)
+
+// AsyncLoadResult is sent once over the channel returned by an async load.
+type AsyncLoadResult struct {
+	Data []byte
+	Err  error
+}
 
 // AsyncLoader is used to make multiple attempts to load a blocks over the
 // course of a request - as long as a request is in progress, it will make multiple
@@ -89,16 +92,15 @@ func New(ctx context.Context, loadAttempter LoadAttempter) *AsyncLoader {
 
 // AsyncLoad asynchronously loads the given link for the given request ID. It returns a channel for data and a channel
 // for errors -- only one message will be sent over either.
-func (abl *AsyncLoader) AsyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) (<-chan []byte, <-chan error) {
-	responseChan := make(chan []byte, 1)
-	errChan := make(chan error, 1)
-	lr := newLoadRequest(requestID, link, responseChan, errChan)
+func (abl *AsyncLoader) AsyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) <-chan AsyncLoadResult {
+	resultChan := make(chan AsyncLoadResult, 1)
+	lr := newLoadRequest(requestID, link, resultChan)
 	select {
 	case <-abl.ctx.Done():
-		abl.terminateWithError("Context Closed", responseChan, errChan)
+		abl.terminateWithError("Context Closed", resultChan)
 	case abl.incomingMessages <- lr:
 	}
-	return responseChan, errChan
+	return resultChan
 }
 
 // NewResponsesAvailable indicates that the async loader should make another attempt to load
@@ -179,22 +181,20 @@ func (abl *AsyncLoader) messageQueueWorker() {
 func (lr *loadRequest) handle(abl *AsyncLoader) {
 	_, ok := abl.activeRequests[lr.requestID]
 	if !ok {
-		abl.terminateWithError("No active request", lr.responseChan, lr.errChan)
+		abl.terminateWithError("No active request", lr.resultChan)
 		returnLoadRequest(lr)
 		return
 	}
 	response, err := abl.loadAttempter(lr.requestID, lr.link)
 	if err != nil {
-		lr.errChan <- err
-		close(lr.errChan)
-		close(lr.responseChan)
+		lr.resultChan <- AsyncLoadResult{nil, err}
+		close(lr.resultChan)
 		returnLoadRequest(lr)
 		return
 	}
 	if response != nil {
-		lr.responseChan <- response
-		close(lr.errChan)
-		close(lr.responseChan)
+		lr.resultChan <- AsyncLoadResult{response, nil}
+		close(lr.resultChan)
 		returnLoadRequest(lr)
 		return
 	}
@@ -211,7 +211,7 @@ func (frm *finishRequestMessage) handle(abl *AsyncLoader) {
 	abl.pausedRequests = nil
 	for _, lr := range pausedRequests {
 		if lr.requestID == frm.requestID {
-			abl.terminateWithError("No active request", lr.responseChan, lr.errChan)
+			abl.terminateWithError("No active request", lr.resultChan)
 			returnLoadRequest(lr)
 		} else {
 			abl.pausedRequests = append(abl.pausedRequests, lr)
@@ -232,8 +232,7 @@ func (nram *newResponsesAvailableMessage) handle(abl *AsyncLoader) {
 	}
 }
 
-func (abl *AsyncLoader) terminateWithError(errMsg string, responseChan chan<- []byte, errChan chan<- error) {
-	errChan <- errors.New(errMsg)
-	close(errChan)
-	close(responseChan)
+func (abl *AsyncLoader) terminateWithError(errMsg string, resultChan chan<- AsyncLoadResult) {
+	resultChan <- AsyncLoadResult{nil, errors.New(errMsg)}
+	close(resultChan)
 }
