@@ -13,6 +13,12 @@ import (
 // Loader is an alias from ipld, in case it's renamed/moved.
 type Loader = ipld.Loader
 
+// Storer is an alias from ipld, in case it's renamed/moved.
+type Storer = ipld.Storer
+
+// StoreCommitter is an alias from ipld, in case it's renamed/moved.
+type StoreCommitter = ipld.StoreCommitter
+
 // AdvVisitFn is an alias from ipld, in case it's renamed/moved.
 type AdvVisitFn = ipldtraversal.AdvVisitFn
 
