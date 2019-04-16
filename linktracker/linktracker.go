@@ -11,7 +11,7 @@ import (
 // Second, keep track of whether links are missing blocks so you can determine
 // at the end if a complete response has been transmitted.
 type LinkTracker struct {
-	isMissingBlocks                   map[gsmsg.GraphSyncRequestID]struct{}
+	missingBlocks                     map[gsmsg.GraphSyncRequestID]map[ipld.Link]struct{}
 	linksWithBlocksTraversedByRequest map[gsmsg.GraphSyncRequestID][]ipld.Link
 	traversalsWithBlocksInProgress    map[ipld.Link]int
 }
@@ -19,17 +19,26 @@ type LinkTracker struct {
 // New makes a new link tracker
 func New() *LinkTracker {
 	return &LinkTracker{
-		isMissingBlocks:                   make(map[gsmsg.GraphSyncRequestID]struct{}),
+		missingBlocks:                     make(map[gsmsg.GraphSyncRequestID]map[ipld.Link]struct{}),
 		linksWithBlocksTraversedByRequest: make(map[gsmsg.GraphSyncRequestID][]ipld.Link),
 		traversalsWithBlocksInProgress:    make(map[ipld.Link]int),
 	}
 }
 
-// ShouldSendBlockFor says whether we should send a block for a given link, based
-// on whether we have traversed it already in one of the in progress requests and
-// sent a block already.
-func (lt *LinkTracker) ShouldSendBlockFor(link ipld.Link) bool {
-	return lt.traversalsWithBlocksInProgress[link] == 0
+// BlockRefCount returns the number of times a present block has been traversed
+// by in progress requests
+func (lt *LinkTracker) BlockRefCount(link ipld.Link) int {
+	return lt.traversalsWithBlocksInProgress[link]
+}
+
+// IsKnownMissingLink returns whether the given request recorded the given link as missing
+func (lt *LinkTracker) IsKnownMissingLink(requestID gsmsg.GraphSyncRequestID, link ipld.Link) bool {
+	missingBlocks, ok := lt.missingBlocks[requestID]
+	if !ok {
+		return false
+	}
+	_, ok = missingBlocks[link]
+	return ok
 }
 
 // RecordLinkTraversal records that we traversed a link during a request, and
@@ -39,15 +48,21 @@ func (lt *LinkTracker) RecordLinkTraversal(requestID gsmsg.GraphSyncRequestID, l
 		lt.linksWithBlocksTraversedByRequest[requestID] = append(lt.linksWithBlocksTraversedByRequest[requestID], link)
 		lt.traversalsWithBlocksInProgress[link]++
 	} else {
-		lt.isMissingBlocks[requestID] = struct{}{}
+		missingBlocks, ok := lt.missingBlocks[requestID]
+		if !ok {
+			missingBlocks = make(map[ipld.Link]struct{})
+			lt.missingBlocks[requestID] = missingBlocks
+		}
+		missingBlocks[link] = struct{}{}
 	}
 }
 
 // FinishRequest records that we have completed the given request, and returns
 // true if all links traversed had blocks present.
 func (lt *LinkTracker) FinishRequest(requestID gsmsg.GraphSyncRequestID) (hasAllBlocks bool) {
-	_, ok := lt.isMissingBlocks[requestID]
+	_, ok := lt.missingBlocks[requestID]
 	hasAllBlocks = !ok
+	delete(lt.missingBlocks, requestID)
 	links, ok := lt.linksWithBlocksTraversedByRequest[requestID]
 	if !ok {
 		return

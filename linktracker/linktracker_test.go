@@ -8,12 +8,12 @@ import (
 	"github.com/ipfs/go-graphsync/testbridge"
 )
 
-func TestShouldSendBlocks(t *testing.T) {
+func TestBlockRefCount(t *testing.T) {
 	linkTracker := New()
 	link1 := testbridge.NewMockLink()
 	link2 := testbridge.NewMockLink()
-	if !linkTracker.ShouldSendBlockFor(link1) || !linkTracker.ShouldSendBlockFor(link2) {
-		t.Fatal("Links not traversed should send blocks")
+	if linkTracker.BlockRefCount(link1) != 0 || linkTracker.BlockRefCount(link2) != 0 {
+		t.Fatal("Links not traversed should have refcount 0")
 	}
 	requestID1 := gsmsg.GraphSyncRequestID(rand.Int31())
 	requestID2 := gsmsg.GraphSyncRequestID(rand.Int31())
@@ -22,13 +22,13 @@ func TestShouldSendBlocks(t *testing.T) {
 	linkTracker.RecordLinkTraversal(requestID1, link2, true)
 	linkTracker.RecordLinkTraversal(requestID2, link1, true)
 
-	if linkTracker.ShouldSendBlockFor(link1) || linkTracker.ShouldSendBlockFor(link2) {
-		t.Fatal("Links already traversed with blocks should not send blocks again")
+	if linkTracker.BlockRefCount(link1) == 0 || linkTracker.BlockRefCount(link2) == 0 {
+		t.Fatal("Links already traversed with blocks should not have ref count 0")
 	}
 
 	linkTracker.FinishRequest(requestID1)
-	if linkTracker.ShouldSendBlockFor(link1) || !linkTracker.ShouldSendBlockFor(link2) {
-		t.Fatal("Finishing request should resend blocks only if there are no in progress requests for that block remain")
+	if linkTracker.BlockRefCount(link1) == 0 || linkTracker.BlockRefCount(link2) != 0 {
+		t.Fatal("Finishing request decrement refcount for block traversed by request")
 	}
 }
 
@@ -53,7 +53,7 @@ func TestHasAllBlocks(t *testing.T) {
 func TestBlockBecomesAvailable(t *testing.T) {
 	linkTracker := New()
 	link1 := testbridge.NewMockLink()
-	if !linkTracker.ShouldSendBlockFor(link1) {
+	if linkTracker.BlockRefCount(link1) != 0 {
 		t.Fatal("Links not traversed should send blocks")
 	}
 	requestID1 := gsmsg.GraphSyncRequestID(rand.Int31())
@@ -62,13 +62,12 @@ func TestBlockBecomesAvailable(t *testing.T) {
 	linkTracker.RecordLinkTraversal(requestID1, link1, false)
 	linkTracker.RecordLinkTraversal(requestID2, link1, false)
 
-	if !linkTracker.ShouldSendBlockFor(link1) {
+	if linkTracker.BlockRefCount(link1) != 0 {
 		t.Fatal("Links traversed without blocks should still send them if they become availabe")
 	}
 
 	linkTracker.RecordLinkTraversal(requestID1, link1, true)
-
-	if linkTracker.ShouldSendBlockFor(link1) {
+	if linkTracker.BlockRefCount(link1) == 0 {
 		t.Fatal("Links traversed with blocks should no longer send")
 	}
 
@@ -77,7 +76,26 @@ func TestBlockBecomesAvailable(t *testing.T) {
 		t.Fatal("Even if block becomes available, traversal may be incomplete, request still should not be considered to have all blocks")
 	}
 
-	if !linkTracker.ShouldSendBlockFor(link1) {
+	if linkTracker.BlockRefCount(link1) != 0 {
 		t.Fatal("Block traversals should resend for requests that never traversed while block was present")
+	}
+}
+
+func TestMissingLink(t *testing.T) {
+	linkTracker := New()
+	link1 := testbridge.NewMockLink()
+	link2 := testbridge.NewMockLink()
+	requestID1 := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID2 := gsmsg.GraphSyncRequestID(rand.Int31())
+
+	linkTracker.RecordLinkTraversal(requestID1, link1, true)
+	linkTracker.RecordLinkTraversal(requestID1, link2, false)
+	linkTracker.RecordLinkTraversal(requestID2, link1, true)
+
+	if linkTracker.IsKnownMissingLink(requestID1, link1) ||
+		!linkTracker.IsKnownMissingLink(requestID1, link2) ||
+		linkTracker.IsKnownMissingLink(requestID2, link1) ||
+		linkTracker.IsKnownMissingLink(requestID2, link2) {
+		t.Fatal("Did not record which links are known missing correctly")
 	}
 }
