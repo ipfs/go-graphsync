@@ -2,6 +2,7 @@ package ipldbridge
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ipld/go-ipld-prime/fluent"
 
@@ -9,6 +10,13 @@ import (
 	ipldtraversal "github.com/ipld/go-ipld-prime/traversal"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 )
+
+var errDoNotFollow = errors.New("Dont Follow Me")
+
+// ErrDoNotFollow is just a wrapper for whatever IPLD's ErrDoNotFollow ends up looking like
+func ErrDoNotFollow() error {
+	return errDoNotFollow
+}
 
 // Loader is an alias from ipld, in case it's renamed/moved.
 type Loader = ipld.Loader
