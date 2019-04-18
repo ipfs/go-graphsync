@@ -8,13 +8,13 @@ import (
 
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
 // AsyncLoadFn is a function which given a request id and an ipld.Link, returns
 // a channel which will eventually return data for the link or an err
-type AsyncLoadFn func(gsmsg.GraphSyncRequestID, ipld.Link) <-chan asyncloader.AsyncLoadResult
+type AsyncLoadFn func(gsmsg.GraphSyncRequestID, ipld.Link) <-chan types.AsyncLoadResult
 
 // WrapAsyncLoader creates a regular ipld link laoder from an asynchronous load
 // function, with the given cancellation context, for the given requests, and will

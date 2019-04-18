@@ -3,44 +3,138 @@ package asyncloader
 import (
 	"context"
 	"errors"
-	"sync"
+	"io/ioutil"
 
+	"github.com/ipfs/go-block-format"
+
+	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/loadattemptqueue"
+	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/responsecache"
+	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/unverifiedblockstore"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipld/go-ipld-prime"
 )
 
-type loadRequest struct {
-	requestID  gsmsg.GraphSyncRequestID
-	link       ipld.Link
-	resultChan chan AsyncLoadResult
-}
-
-var loadRequestPool = sync.Pool{
-	New: func() interface{} {
-		return new(loadRequest)
-	},
-}
-
-func newLoadRequest(requestID gsmsg.GraphSyncRequestID,
-	link ipld.Link,
-	resultChan chan AsyncLoadResult) *loadRequest {
-	lr := loadRequestPool.Get().(*loadRequest)
-	lr.requestID = requestID
-	lr.link = link
-	lr.resultChan = resultChan
-	return lr
-}
-
-func returnLoadRequest(lr *loadRequest) {
-	*lr = loadRequest{}
-	loadRequestPool.Put(lr)
-}
-
 type loaderMessage interface {
-	handle(abl *AsyncLoader)
+	handle(al *AsyncLoader)
 }
 
-type newResponsesAvailableMessage struct{}
+// AsyncLoader manages loading links asynchronously in as new responses
+// come in from the network
+type AsyncLoader struct {
+	ctx              context.Context
+	cancel           context.CancelFunc
+	incomingMessages chan loaderMessage
+	outgoingMessages chan loaderMessage
+
+	activeRequests   map[gsmsg.GraphSyncRequestID]bool
+	loadAttemptQueue *loadattemptqueue.LoadAttemptQueue
+	responseCache    *responsecache.ResponseCache
+}
+
+// New initializes a new link loading manager for asynchronous loads from the given context
+// and local store loading and storing function
+func New(ctx context.Context, loader ipld.Loader, storer ipld.Storer) *AsyncLoader {
+	unverifiedBlockStore := unverifiedblockstore.New(storer)
+	responseCache := responsecache.New(unverifiedBlockStore)
+	loadAttemptQueue := loadattemptqueue.New(func(requestID gsmsg.GraphSyncRequestID, link ipld.Link) ([]byte, error) {
+		// load from response cache
+		data, err := responseCache.AttemptLoad(requestID, link)
+		if data == nil && err == nil {
+			// fall back to local store
+			stream, loadErr := loader(link, ipldbridge.LinkContext{})
+			if stream != nil && loadErr == nil {
+				localData, loadErr := ioutil.ReadAll(stream)
+				if loadErr == nil && localData != nil {
+					return localData, nil
+				}
+			}
+		}
+		return data, err
+	})
+	ctx, cancel := context.WithCancel(ctx)
+	return &AsyncLoader{
+		ctx:              ctx,
+		cancel:           cancel,
+		incomingMessages: make(chan loaderMessage),
+		outgoingMessages: make(chan loaderMessage),
+		activeRequests:   make(map[gsmsg.GraphSyncRequestID]bool),
+		responseCache:    responseCache,
+		loadAttemptQueue: loadAttemptQueue,
+	}
+}
+
+// Startup starts processing of messages
+func (al *AsyncLoader) Startup() {
+	go al.messageQueueWorker()
+	go al.run()
+}
+
+// Shutdown finishes processing of messages
+func (al *AsyncLoader) Shutdown() {
+	al.cancel()
+}
+
+// StartRequest indicates the given request has started and the manager should
+// continually attempt to load links for this request as new responses come in
+func (al *AsyncLoader) StartRequest(requestID gsmsg.GraphSyncRequestID) {
+	select {
+	case <-al.ctx.Done():
+	case al.incomingMessages <- &startRequestMessage{requestID}:
+	}
+}
+
+// ProcessResponse injests new responses and completes asynchronous loads as
+// neccesary
+func (al *AsyncLoader) ProcessResponse(responses map[gsmsg.GraphSyncRequestID]metadata.Metadata,
+	blks []blocks.Block) {
+	al.responseCache.ProcessResponse(responses, blks)
+	select {
+	case <-al.ctx.Done():
+	case al.incomingMessages <- &newResponsesAvailableMessage{}:
+	}
+}
+
+// AsyncLoad asynchronously loads the given link for the given request ID. It returns a channel for data and a channel
+// for errors -- only one message will be sent over either.
+func (al *AsyncLoader) AsyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) <-chan types.AsyncLoadResult {
+	resultChan := make(chan types.AsyncLoadResult, 1)
+	lr := loadattemptqueue.NewLoadRequest(requestID, link, resultChan)
+	select {
+	case <-al.ctx.Done():
+		resultChan <- types.AsyncLoadResult{Data: nil, Err: errors.New("Context closed")}
+		close(resultChan)
+	case al.incomingMessages <- &loadRequestMessage{requestID, lr}:
+	}
+	return resultChan
+}
+
+// CompleteResponsesFor indicates no further responses will come in for the given
+// requestID, so if no responses are in the cache or local store, a link load
+// should not retry
+func (al *AsyncLoader) CompleteResponsesFor(requestID gsmsg.GraphSyncRequestID) {
+	select {
+	case <-al.ctx.Done():
+	case al.incomingMessages <- &finishRequestMessage{requestID}:
+	}
+}
+
+// CleanupRequest indicates the given request is complete on the client side,
+// and no further attempts will be made to load links for this request,
+// so any cached response data is invalid can be cleaned
+func (al *AsyncLoader) CleanupRequest(requestID gsmsg.GraphSyncRequestID) {
+	al.responseCache.FinishRequest(requestID)
+}
+
+type loadRequestMessage struct {
+	requestID   gsmsg.GraphSyncRequestID
+	loadRequest loadattemptqueue.LoadRequest
+}
+
+type newResponsesAvailableMessage struct {
+}
 
 type startRequestMessage struct {
 	requestID gsmsg.GraphSyncRequestID
@@ -50,109 +144,18 @@ type finishRequestMessage struct {
 	requestID gsmsg.GraphSyncRequestID
 }
 
-// LoadAttempter attempts to load a link to an array of bytes
-// it has three results:
-// bytes present, error nil = success
-// bytes nil, error present = error
-// bytes nil, error nil = did not load, but try again later
-type LoadAttempter func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error)
-
-// AsyncLoadResult is sent once over the channel returned by an async load.
-type AsyncLoadResult struct {
-	Data []byte
-	Err  error
-}
-
-// AsyncLoader is used to make multiple attempts to load a blocks over the
-// course of a request - as long as a request is in progress, it will make multiple
-// attempts to load a block until it gets a definitive result of whether the block
-// is present or missing in the response
-type AsyncLoader struct {
-	ctx              context.Context
-	cancel           context.CancelFunc
-	loadAttempter    LoadAttempter
-	incomingMessages chan loaderMessage
-	outgoingMessages chan loaderMessage
-	activeRequests   map[gsmsg.GraphSyncRequestID]struct{}
-	pausedRequests   []*loadRequest
-}
-
-// New initializes a new AsyncLoader from the given context and loadAttempter function
-func New(ctx context.Context, loadAttempter LoadAttempter) *AsyncLoader {
-	ctx, cancel := context.WithCancel(ctx)
-	return &AsyncLoader{
-		ctx:              ctx,
-		cancel:           cancel,
-		loadAttempter:    loadAttempter,
-		incomingMessages: make(chan loaderMessage),
-		outgoingMessages: make(chan loaderMessage),
-		activeRequests:   make(map[gsmsg.GraphSyncRequestID]struct{}),
-	}
-}
-
-// AsyncLoad asynchronously loads the given link for the given request ID. It returns a channel for data and a channel
-// for errors -- only one message will be sent over either.
-func (abl *AsyncLoader) AsyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) <-chan AsyncLoadResult {
-	resultChan := make(chan AsyncLoadResult, 1)
-	lr := newLoadRequest(requestID, link, resultChan)
-	select {
-	case <-abl.ctx.Done():
-		abl.terminateWithError("Context Closed", resultChan)
-	case abl.incomingMessages <- lr:
-	}
-	return resultChan
-}
-
-// NewResponsesAvailable indicates that the async loader should make another attempt to load
-// the links that are currently pending.
-func (abl *AsyncLoader) NewResponsesAvailable() {
-	select {
-	case <-abl.ctx.Done():
-	case abl.incomingMessages <- &newResponsesAvailableMessage{}:
-	}
-}
-
-// StartRequest indicates the given request has started and the loader should
-// accepting link load requests for this requestID.
-func (abl *AsyncLoader) StartRequest(requestID gsmsg.GraphSyncRequestID) {
-	select {
-	case <-abl.ctx.Done():
-	case abl.incomingMessages <- &startRequestMessage{requestID}:
-	}
-}
-
-// FinishRequest indicates the given request is completed or cancelled, and all in
-// progress link load requests for this request ID should error
-func (abl *AsyncLoader) FinishRequest(requestID gsmsg.GraphSyncRequestID) {
-	select {
-	case <-abl.ctx.Done():
-	case abl.incomingMessages <- &finishRequestMessage{requestID}:
-	}
-}
-
-// Startup starts processing of messages
-func (abl *AsyncLoader) Startup() {
-	go abl.messageQueueWorker()
-	go abl.run()
-}
-
-// Shutdown stops processing of messages
-func (abl *AsyncLoader) Shutdown() {
-	abl.cancel()
-}
-
-func (abl *AsyncLoader) run() {
+func (al *AsyncLoader) run() {
 	for {
 		select {
-		case <-abl.ctx.Done():
+		case <-al.ctx.Done():
 			return
-		case message := <-abl.outgoingMessages:
-			message.handle(abl)
+		case message := <-al.outgoingMessages:
+			message.handle(al)
 		}
 	}
 }
 
-func (abl *AsyncLoader) messageQueueWorker() {
+func (al *AsyncLoader) messageQueueWorker() {
 	var messageBuffer []loaderMessage
 	nextMessage := func() loaderMessage {
 		if len(messageBuffer) == 0 {
@@ -164,75 +167,34 @@ func (abl *AsyncLoader) messageQueueWorker() {
 		if len(messageBuffer) == 0 {
 			return nil
 		}
-		return abl.outgoingMessages
+		return al.outgoingMessages
 	}
 	for {
 		select {
-		case incomingMessage := <-abl.incomingMessages:
+		case incomingMessage := <-al.incomingMessages:
 			messageBuffer = append(messageBuffer, incomingMessage)
 		case outgoingMessages() <- nextMessage():
 			messageBuffer = messageBuffer[1:]
-		case <-abl.ctx.Done():
+		case <-al.ctx.Done():
 			return
 		}
 	}
 }
 
-func (lr *loadRequest) handle(abl *AsyncLoader) {
-	response, err := abl.loadAttempter(lr.requestID, lr.link)
-	if err != nil {
-		lr.resultChan <- AsyncLoadResult{nil, err}
-		close(lr.resultChan)
-		returnLoadRequest(lr)
-		return
-	}
-	if response != nil {
-		lr.resultChan <- AsyncLoadResult{response, nil}
-		close(lr.resultChan)
-		returnLoadRequest(lr)
-		return
-	}
-	_, ok := abl.activeRequests[lr.requestID]
-	if !ok {
-		abl.terminateWithError("No active request", lr.resultChan)
-		returnLoadRequest(lr)
-		return
-	}
-	abl.pausedRequests = append(abl.pausedRequests, lr)
+func (lrm *loadRequestMessage) handle(al *AsyncLoader) {
+	retry := al.activeRequests[lrm.requestID]
+	al.loadAttemptQueue.AttemptLoad(lrm.loadRequest, retry)
 }
 
-func (srm *startRequestMessage) handle(abl *AsyncLoader) {
-	abl.activeRequests[srm.requestID] = struct{}{}
+func (srm *startRequestMessage) handle(al *AsyncLoader) {
+	al.activeRequests[srm.requestID] = true
 }
 
-func (frm *finishRequestMessage) handle(abl *AsyncLoader) {
-	delete(abl.activeRequests, frm.requestID)
-	pausedRequests := abl.pausedRequests
-	abl.pausedRequests = nil
-	for _, lr := range pausedRequests {
-		if lr.requestID == frm.requestID {
-			abl.terminateWithError("No active request", lr.resultChan)
-			returnLoadRequest(lr)
-		} else {
-			abl.pausedRequests = append(abl.pausedRequests, lr)
-		}
-	}
+func (frm *finishRequestMessage) handle(al *AsyncLoader) {
+	delete(al.activeRequests, frm.requestID)
+	al.loadAttemptQueue.ClearRequest(frm.requestID)
 }
 
-func (nram *newResponsesAvailableMessage) handle(abl *AsyncLoader) {
-	// drain buffered
-	pausedRequests := abl.pausedRequests
-	abl.pausedRequests = nil
-	for _, lr := range pausedRequests {
-		select {
-		case <-abl.ctx.Done():
-			return
-		case abl.incomingMessages <- lr:
-		}
-	}
-}
-
-func (abl *AsyncLoader) terminateWithError(errMsg string, resultChan chan<- AsyncLoadResult) {
-	resultChan <- AsyncLoadResult{nil, errors.New(errMsg)}
-	close(resultChan)
+func (nram *newResponsesAvailableMessage) handle(al *AsyncLoader) {
+	al.loadAttemptQueue.RetryLoads()
 }

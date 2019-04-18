@@ -2,10 +2,15 @@ package asyncloader
 
 import (
 	"context"
-	"fmt"
+	"io"
 	"math/rand"
+	"reflect"
 	"testing"
 	"time"
+
+	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipld/go-ipld-prime/linking/cid"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testbridge"
@@ -13,19 +18,33 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
-func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
+func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
 	callCount := 0
-	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
-		callCount++
-		return testutil.RandomBytes(100), nil
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	block := testutil.GenerateBlocksOfSize(1, 100)[0]
+	writer, commit, err := storer(ipldbridge.LinkContext{})
+	_, err = writer.Write(block.RawData())
+	if err != nil {
+		t.Fatal("could not seed block store")
 	}
-	asyncLoader := New(ctx, loadAttempter)
+	link := cidlink.Link{Cid: block.Cid()}
+	err = commit(link)
+	if err != nil {
+		t.Fatal("could not seed block store")
+	}
+
+	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+		callCount++
+		return loader(link, linkContext)
+	}
+
+	asyncLoader := New(ctx, wrappedLoader, storer)
 	asyncLoader.Startup()
 
-	link := testbridge.NewMockLink()
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
@@ -42,7 +61,60 @@ func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
 	}
 
 	if callCount == 0 {
-		t.Fatal("should have attempted to load link but did not")
+		t.Fatal("should have attempted to load link from local store but did not")
+	}
+}
+
+func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	defer cancel()
+	callCount := 0
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blocks := testutil.GenerateBlocksOfSize(1, 100)
+	block := blocks[0]
+
+	link := cidlink.Link{Cid: block.Cid()}
+
+	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+		callCount++
+		return loader(link, linkContext)
+	}
+
+	asyncLoader := New(ctx, wrappedLoader, storer)
+	asyncLoader.Startup()
+
+	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	responses := map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+		requestID: metadata.Metadata{
+			metadata.Item{
+				Link:         link,
+				BlockPresent: true,
+			},
+		},
+	}
+	asyncLoader.ProcessResponse(responses, blocks)
+	resultChan := asyncLoader.AsyncLoad(requestID, link)
+
+	select {
+	case result := <-resultChan:
+		if result.Data == nil {
+			t.Fatal("should have sent a response")
+		}
+		if result.Err != nil {
+			t.Fatal("should not have sent an error")
+		}
+	case <-ctx.Done():
+		t.Fatal("should have closed response channel")
+	}
+
+	if callCount > 0 {
+		t.Fatal("should not have attempted to load link from local store")
+	}
+
+	if !reflect.DeepEqual(blockStore[link], block.RawData()) {
+		t.Fatal("should have stored block but didn't")
 	}
 }
 
@@ -51,11 +123,63 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
 	callCount := 0
-	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+
+	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
 		callCount++
-		return nil, fmt.Errorf("something went wrong")
+		return loader(link, linkContext)
 	}
-	asyncLoader := New(ctx, loadAttempter)
+
+	asyncLoader := New(ctx, wrappedLoader, storer)
+	asyncLoader.Startup()
+
+	link := testbridge.NewMockLink()
+	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+
+	responses := map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+		requestID: metadata.Metadata{
+			metadata.Item{
+				Link:         link,
+				BlockPresent: false,
+			},
+		},
+	}
+	asyncLoader.ProcessResponse(responses, nil)
+
+	resultChan := asyncLoader.AsyncLoad(requestID, link)
+
+	select {
+	case result := <-resultChan:
+		if result.Data != nil {
+			t.Fatal("should not have sent responses")
+		}
+		if result.Err == nil {
+			t.Fatal("should have sent an error")
+		}
+	case <-ctx.Done():
+		t.Fatal("should have closed response channel")
+	}
+
+	if callCount > 0 {
+		t.Fatal("should not have attempted to load link from local store")
+	}
+}
+
+func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	defer cancel()
+	callCount := 0
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+
+	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+		callCount++
+		return loader(link, linkContext)
+	}
+
+	asyncLoader := New(ctx, wrappedLoader, storer)
 	asyncLoader.Startup()
 
 	link := testbridge.NewMockLink()
@@ -75,45 +199,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	}
 
 	if callCount == 0 {
-		t.Fatal("should have attempted to load link but did not")
-	}
-
-}
-func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
-	defer cancel()
-	callCount := 0
-	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
-		var result []byte
-		if callCount > 0 {
-			result = testutil.RandomBytes(100)
-		}
-		callCount++
-		return result, nil
-	}
-	asyncLoader := New(ctx, loadAttempter)
-	asyncLoader.Startup()
-
-	link := testbridge.NewMockLink()
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
-	resultChan := asyncLoader.AsyncLoad(requestID, link)
-
-	select {
-	case result := <-resultChan:
-		if result.Data != nil {
-			t.Fatal("should not have sent responses")
-		}
-		if result.Err == nil {
-			t.Fatal("should have sent an error")
-
-		}
-	case <-ctx.Done():
-		t.Fatal("should have produced result")
-	}
-
-	if callCount > 1 {
-		t.Fatal("should have failed after load with indeterminate result")
+		t.Fatal("should have attempted to load link from local store but did not")
 	}
 }
 
@@ -122,23 +208,26 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
 	callCount := 0
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blocks := testutil.GenerateBlocksOfSize(1, 100)
+	block := blocks[0]
+
+	link := cidlink.Link{Cid: block.Cid()}
 	called := make(chan struct{}, 2)
-	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
-		var result []byte
+	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
 		called <- struct{}{}
-		if callCount > 0 {
-			result = testutil.RandomBytes(100)
-		}
 		callCount++
-		return result, nil
+		return loader(link, linkContext)
 	}
-	asyncLoader := New(ctx, loadAttempter)
+
+	asyncLoader := New(ctx, wrappedLoader, storer)
 	asyncLoader.Startup()
 
-	link := testbridge.NewMockLink()
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
 	asyncLoader.StartRequest(requestID)
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
+
 	select {
 	case <-called:
 	case <-resultChan:
@@ -146,7 +235,16 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("should have attempted load once")
 	}
-	asyncLoader.NewResponsesAvailable()
+
+	responses := map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+		requestID: metadata.Metadata{
+			metadata.Item{
+				Link:         link,
+				BlockPresent: true,
+			},
+		},
+	}
+	asyncLoader.ProcessResponse(responses, blocks)
 
 	select {
 	case result := <-resultChan:
@@ -160,33 +258,38 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 		t.Fatal("should have closed response channel")
 	}
 
-	if callCount < 2 {
-		t.Fatal("should have attempted to load multiple times till success but did not")
+	if callCount != 1 {
+		t.Fatal("should have attempted to load from local store exactly once")
+	}
+
+	if !reflect.DeepEqual(blockStore[link], block.RawData()) {
+		t.Fatal("should have stored block but didn't")
 	}
 }
 
-func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
+func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
 	callCount := 0
-	called := make(chan struct{}, 2)
-	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
-		var result []byte
-		called <- struct{}{}
-		if callCount > 0 {
-			result = testutil.RandomBytes(100)
-		}
-		callCount++
-		return result, nil
-	}
-	asyncLoader := New(ctx, loadAttempter)
-	asyncLoader.Startup()
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
 
 	link := testbridge.NewMockLink()
+	called := make(chan struct{}, 2)
+	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+		called <- struct{}{}
+		callCount++
+		return loader(link, linkContext)
+	}
+
+	asyncLoader := New(ctx, wrappedLoader, storer)
+	asyncLoader.Startup()
+
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
 	asyncLoader.StartRequest(requestID)
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
+
 	select {
 	case <-called:
 	case <-resultChan:
@@ -194,8 +297,15 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("should have attempted load once")
 	}
-	asyncLoader.FinishRequest(requestID)
-	asyncLoader.NewResponsesAvailable()
+	responses := map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+		requestID: metadata.Metadata{
+			metadata.Item{
+				Link:         link,
+				BlockPresent: false,
+			},
+		},
+	}
+	asyncLoader.ProcessResponse(responses, nil)
 
 	select {
 	case result := <-resultChan:
@@ -209,7 +319,131 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 		t.Fatal("should have closed response channel")
 	}
 
-	if callCount > 1 {
-		t.Fatal("should only have attempted one call but attempted multiple")
+	if callCount != 1 {
+		t.Fatal("should have attempted to load from local store exactly once")
+	}
+}
+
+func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	defer cancel()
+	callCount := 0
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+
+	link := testbridge.NewMockLink()
+	called := make(chan struct{}, 2)
+	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+		called <- struct{}{}
+		callCount++
+		return loader(link, linkContext)
+	}
+
+	asyncLoader := New(ctx, wrappedLoader, storer)
+	asyncLoader.Startup()
+
+	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	asyncLoader.StartRequest(requestID)
+	resultChan := asyncLoader.AsyncLoad(requestID, link)
+
+	select {
+	case <-called:
+	case <-resultChan:
+		t.Fatal("Should not have sent message on response chan")
+	case <-ctx.Done():
+		t.Fatal("should have attempted load once")
+	}
+	asyncLoader.CompleteResponsesFor(requestID)
+
+	select {
+	case result := <-resultChan:
+		if result.Data != nil {
+			t.Fatal("should not have sent responses")
+		}
+		if result.Err == nil {
+			t.Fatal("should have sent an error")
+		}
+	case <-ctx.Done():
+		t.Fatal("should have closed response channel")
+	}
+
+	if callCount != 1 {
+		t.Fatal("should have attempted to load from local store exactly once")
+	}
+}
+
+func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	defer cancel()
+	callCount := 0
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blocks := testutil.GenerateBlocksOfSize(1, 100)
+	block := blocks[0]
+
+	link := cidlink.Link{Cid: block.Cid()}
+
+	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+		callCount++
+		return loader(link, linkContext)
+	}
+
+	asyncLoader := New(ctx, wrappedLoader, storer)
+	asyncLoader.Startup()
+
+	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	responses := map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+		requestID: metadata.Metadata{
+			metadata.Item{
+				Link:         link,
+				BlockPresent: true,
+			},
+		},
+	}
+	asyncLoader.ProcessResponse(responses, blocks)
+	resultChan := asyncLoader.AsyncLoad(requestID, link)
+
+	select {
+	case result := <-resultChan:
+		if result.Data == nil {
+			t.Fatal("should have sent a response")
+		}
+		if result.Err != nil {
+			t.Fatal("should not have sent an error")
+		}
+	case <-ctx.Done():
+		t.Fatal("should have closed response channel")
+	}
+
+	if callCount > 0 {
+		t.Fatal("should not have attempted to load link from local store")
+	}
+
+	if !reflect.DeepEqual(blockStore[link], block.RawData()) {
+		t.Fatal("should have stored block but didn't")
+	}
+
+	resultChan = asyncLoader.AsyncLoad(requestID, link)
+
+	select {
+	case result := <-resultChan:
+		if result.Data == nil {
+			t.Fatal("should have sent a response")
+		}
+		if result.Err != nil {
+			t.Fatal("should not have sent an error")
+		}
+	case <-ctx.Done():
+		t.Fatal("should have closed response channel")
+	}
+
+	if callCount == 0 {
+		t.Fatal("should have attempted to load link from local store but did not")
+	}
+
+	if !reflect.DeepEqual(blockStore[link], block.RawData()) {
+		t.Fatal("should have stored block but didn't")
 	}
 }

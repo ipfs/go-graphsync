@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 
-	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
@@ -25,8 +25,8 @@ type callParams struct {
 	link      ipld.Link
 }
 
-func makeAsyncLoadFn(responseChan chan asyncloader.AsyncLoadResult, calls chan callParams) AsyncLoadFn {
-	return func(requestID gsmsg.GraphSyncRequestID, link ipld.Link) <-chan asyncloader.AsyncLoadResult {
+func makeAsyncLoadFn(responseChan chan types.AsyncLoadResult, calls chan callParams) AsyncLoadFn {
+	return func(requestID gsmsg.GraphSyncRequestID, link ipld.Link) <-chan types.AsyncLoadResult {
 		calls <- callParams{requestID, link}
 		return responseChan
 	}
@@ -36,7 +36,7 @@ func TestWrappedAsyncLoaderReturnsValues(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
-	responseChan := make(chan asyncloader.AsyncLoadResult, 1)
+	responseChan := make(chan types.AsyncLoadResult, 1)
 	calls := make(chan callParams, 1)
 	asyncLoadFn := makeAsyncLoadFn(responseChan, calls)
 	errChan := make(chan error)
@@ -45,7 +45,7 @@ func TestWrappedAsyncLoaderReturnsValues(t *testing.T) {
 
 	link := testbridge.NewMockLink()
 	data := testutil.RandomBytes(100)
-	responseChan <- asyncloader.AsyncLoadResult{Data: data, Err: nil}
+	responseChan <- types.AsyncLoadResult{Data: data, Err: nil}
 	stream, err := loader(link, ipldbridge.LinkContext{})
 	if err != nil {
 		t.Fatal("Should not have errored on load")
@@ -63,7 +63,7 @@ func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
-	responseChan := make(chan asyncloader.AsyncLoadResult, 1)
+	responseChan := make(chan types.AsyncLoadResult, 1)
 	calls := make(chan callParams, 1)
 	asyncLoadFn := makeAsyncLoadFn(responseChan, calls)
 	errChan := make(chan error, 1)
@@ -72,7 +72,7 @@ func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
 
 	link := testbridge.NewMockLink()
 	err := errors.New("something went wrong")
-	responseChan <- asyncloader.AsyncLoadResult{Data: nil, Err: err}
+	responseChan <- types.AsyncLoadResult{Data: nil, Err: err}
 	stream, loadErr := loader(link, ipldbridge.LinkContext{})
 	if stream != nil || loadErr != ipldbridge.ErrDoNotFollow() {
 		t.Fatal("Should have errored on load")
@@ -92,7 +92,7 @@ func TestWrappedAsyncLoaderContextCancels(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
 	subCtx, subCancel := context.WithCancel(ctx)
-	responseChan := make(chan asyncloader.AsyncLoadResult, 1)
+	responseChan := make(chan types.AsyncLoadResult, 1)
 	calls := make(chan callParams, 1)
 	asyncLoadFn := makeAsyncLoadFn(responseChan, calls)
 	errChan := make(chan error, 1)
