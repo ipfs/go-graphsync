@@ -658,10 +658,10 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	for _, block := range blocks {
 		fal.responseOn(rr.gsr.ID(), cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: nil, Err: fmt.Errorf("Terrible Thing")})
 	}
+	verifyEmptyResponse(ctx, t, returnedResponseChan)
 	errs := collectErrors(ctx, t, returnedErrorChan)
 	if len(errs) != len(blocks) {
 		t.Fatal("did not send all errors")
 	}
-	verifyEmptyResponse(ctx, t, returnedResponseChan)
 
 }
