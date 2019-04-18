@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
@@ -23,7 +24,7 @@ var log = logging.Logger("graphsync")
 
 // ResponseProgress is the fundamental unit of responses making progress in
 // Graphsync.
-type ResponseProgress = requestmanager.ResponseProgress
+type ResponseProgress = types.ResponseProgress
 
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.

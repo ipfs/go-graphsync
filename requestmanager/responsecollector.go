@@ -2,6 +2,8 @@ package requestmanager
 
 import (
 	"context"
+
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 )
 
 type responseCollector struct {
@@ -14,25 +16,25 @@ func newResponseCollector(ctx context.Context) *responseCollector {
 
 func (rc *responseCollector) collectResponses(
 	requestCtx context.Context,
-	incomingResponses <-chan ResponseProgress,
+	incomingResponses <-chan types.ResponseProgress,
 	incomingErrors <-chan error,
-	cancelRequest func()) (<-chan ResponseProgress, <-chan error) {
+	cancelRequest func()) (<-chan types.ResponseProgress, <-chan error) {
 
-	returnedResponses := make(chan ResponseProgress)
+	returnedResponses := make(chan types.ResponseProgress)
 	returnedErrors := make(chan error)
 
 	go func() {
-		var receivedResponses []ResponseProgress
+		var receivedResponses []types.ResponseProgress
 		defer close(returnedResponses)
-		outgoingResponses := func() chan<- ResponseProgress {
+		outgoingResponses := func() chan<- types.ResponseProgress {
 			if len(receivedResponses) == 0 {
 				return nil
 			}
 			return returnedResponses
 		}
-		nextResponse := func() ResponseProgress {
+		nextResponse := func() types.ResponseProgress {
 			if len(receivedResponses) == 0 {
-				return ResponseProgress{}
+				return types.ResponseProgress{}
 			}
 			return receivedResponses[0]
 		}

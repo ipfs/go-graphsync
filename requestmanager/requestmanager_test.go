@@ -146,96 +146,6 @@ func (fal *fakeAsyncLoader) successResponseOn(requestID gsmsg.GraphSyncRequestID
 	}
 }
 
-func collectResponses(ctx context.Context, t *testing.T, responseChan <-chan ResponseProgress) []ResponseProgress {
-	var collectedBlocks []ResponseProgress
-	for {
-		select {
-		case blk, ok := <-responseChan:
-			if !ok {
-				return collectedBlocks
-			}
-			collectedBlocks = append(collectedBlocks, blk)
-		case <-ctx.Done():
-			t.Fatal("response channel never closed")
-		}
-	}
-}
-
-func collectErrors(ctx context.Context, t *testing.T, errChan <-chan error) []error {
-	var collectedErrors []error
-	for {
-		select {
-		case err, ok := <-errChan:
-			if !ok {
-				return collectedErrors
-			}
-			collectedErrors = append(collectedErrors, err)
-		case <-ctx.Done():
-			t.Fatal("error channel never closed")
-		}
-	}
-}
-
-func readNResponses(ctx context.Context, t *testing.T, responseChan <-chan ResponseProgress, count int) []ResponseProgress {
-	var returnedBlocks []ResponseProgress
-	for i := 0; i < count; i++ {
-		select {
-		case blk := <-responseChan:
-			returnedBlocks = append(returnedBlocks, blk)
-		case <-ctx.Done():
-			t.Fatal("Unable to read enough responses")
-		}
-	}
-	return returnedBlocks
-}
-
-func verifySingleTerminalError(ctx context.Context, t *testing.T, errChan <-chan error) {
-	select {
-	case err := <-errChan:
-		if err == nil {
-			t.Fatal("should have sent a erminal error but did not")
-		}
-	case <-ctx.Done():
-		t.Fatal("no errors sent")
-	}
-	select {
-	case _, ok := <-errChan:
-		if ok {
-			t.Fatal("shouldn't have sent second error but did")
-		}
-	case <-ctx.Done():
-		t.Fatal("errors not closed")
-	}
-}
-
-func verifyEmptyErrors(ctx context.Context, t *testing.T, errChan <-chan error) {
-	for {
-		select {
-		case _, ok := <-errChan:
-			if !ok {
-				return
-			}
-			t.Fatal("errors were sent but shouldn't have been")
-		case <-ctx.Done():
-			t.Fatal("errors channel never closed")
-		}
-	}
-}
-
-func verifyEmptyResponse(ctx context.Context, t *testing.T, responseChan <-chan ResponseProgress) {
-	for {
-		select {
-		case _, ok := <-responseChan:
-			if !ok {
-				return
-			}
-			t.Fatal("response was sent but shouldn't have been")
-		case <-ctx.Done():
-			t.Fatal("response channel never closed")
-		}
-	}
-}
-
 func readNNetworkRequests(ctx context.Context,
 	t *testing.T,
 	requestRecordChan <-chan requestRecord,
@@ -252,7 +162,7 @@ func readNNetworkRequests(ctx context.Context,
 	return requestRecords
 }
 
-func verifyMatchedResponses(t *testing.T, actualResponse []ResponseProgress, expectedBlocks []blocks.Block) {
+func verifyMatchedResponses(t *testing.T, actualResponse []types.ResponseProgress, expectedBlocks []blocks.Block) {
 	if len(actualResponse) != len(expectedBlocks) {
 		t.Fatal("wrong number of responses sent")
 	}
@@ -356,9 +266,9 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	fal.successResponseOn(requestRecords[0].gsr.ID(), blocks1)
 	fal.successResponseOn(requestRecords[1].gsr.ID(), blocks2[:3])
 
-	responses1 := collectResponses(requestCtx, t, returnedResponseChan1)
+	responses1 := testutil.CollectResponses(requestCtx, t, returnedResponseChan1)
 	verifyMatchedResponses(t, responses1, blocks1)
-	responses2 := readNResponses(requestCtx, t, returnedResponseChan2, 3)
+	responses2 := testutil.ReadNResponses(requestCtx, t, returnedResponseChan2, 3)
 	verifyMatchedResponses(t, responses2, blocks2[:3])
 
 	moreBlocks := blocks2[3:]
@@ -379,10 +289,10 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 
 	fal.successResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
 
-	responses2 = collectResponses(requestCtx, t, returnedResponseChan2)
+	responses2 = testutil.CollectResponses(requestCtx, t, returnedResponseChan2)
 	verifyMatchedResponses(t, responses2, moreBlocks)
-	verifyEmptyErrors(requestCtx, t, returnedErrorChan1)
-	verifyEmptyErrors(requestCtx, t, returnedErrorChan2)
+	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
+	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan2)
 }
 
 func TestCancelRequestInProgress(t *testing.T) {
@@ -420,7 +330,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 
 	fal.successResponseOn(requestRecords[0].gsr.ID(), blocks1[:3])
 	fal.successResponseOn(requestRecords[1].gsr.ID(), blocks1[:3])
-	responses1 := readNResponses(requestCtx, t, returnedResponseChan1, 3)
+	responses1 := testutil.ReadNResponses(requestCtx, t, returnedResponseChan1, 3)
 
 	cancel1()
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
@@ -438,12 +348,12 @@ func TestCancelRequestInProgress(t *testing.T) {
 	fal.successResponseOn(requestRecords[0].gsr.ID(), blocks1[3:])
 	fal.successResponseOn(requestRecords[1].gsr.ID(), blocks1[3:])
 
-	responses1 = append(responses1, collectResponses(requestCtx, t, returnedResponseChan1)...)
+	responses1 = append(responses1, testutil.CollectResponses(requestCtx, t, returnedResponseChan1)...)
 	verifyMatchedResponses(t, responses1, blocks1[:3])
-	responses2 := collectResponses(requestCtx, t, returnedResponseChan2)
+	responses2 := testutil.CollectResponses(requestCtx, t, returnedResponseChan2)
 	verifyMatchedResponses(t, responses2, blocks1)
-	verifyEmptyErrors(requestCtx, t, returnedErrorChan1)
-	verifyEmptyErrors(requestCtx, t, returnedErrorChan2)
+	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
+	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan2)
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {
@@ -473,7 +383,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	}
 	requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
 	fal.successResponseOn(rr.gsr.ID(), firstBlocks)
-	responses := readNResponses(requestCtx, t, returnedResponseChan, 3)
+	responses := testutil.ReadNResponses(requestCtx, t, returnedResponseChan, 3)
 	managerCancel()
 
 	moreBlocks := blocks[3:]
@@ -483,9 +393,9 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	}
 	requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
 	fal.successResponseOn(rr.gsr.ID(), moreBlocks)
-	responses = append(responses, collectResponses(requestCtx, t, returnedResponseChan)...)
+	responses = append(responses, testutil.CollectResponses(requestCtx, t, returnedResponseChan)...)
 	verifyMatchedResponses(t, responses, firstBlocks)
-	verifyEmptyErrors(requestCtx, t, returnedErrorChan)
+	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan)
 }
 
 func TestInvalidSelector(t *testing.T) {
@@ -505,8 +415,8 @@ func TestInvalidSelector(t *testing.T) {
 	s := testbridge.NewInvalidSelectorSpec(testutil.GenerateCids(5))
 	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
 
-	verifySingleTerminalError(requestCtx, t, returnedErrorChan)
-	verifyEmptyResponse(requestCtx, t, returnedResponseChan)
+	testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
+	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 }
 
 func TestUnencodableSelector(t *testing.T) {
@@ -526,8 +436,8 @@ func TestUnencodableSelector(t *testing.T) {
 	s := testbridge.NewUnencodableSelectorSpec(testutil.GenerateCids(5))
 	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
 
-	verifySingleTerminalError(requestCtx, t, returnedErrorChan)
-	verifyEmptyResponse(requestCtx, t, returnedResponseChan)
+	testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
+	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 }
 
 func TestFailedRequest(t *testing.T) {
@@ -554,8 +464,8 @@ func TestFailedRequest(t *testing.T) {
 	}
 	requestManager.ProcessResponses(peers[0], failedResponses, nil)
 
-	verifySingleTerminalError(requestCtx, t, returnedErrorChan)
-	verifyEmptyResponse(requestCtx, t, returnedResponseChan)
+	testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
+	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 }
 
 func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
@@ -581,7 +491,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 	// async loaded response responds immediately
 	fal.successResponseOn(rr.gsr.ID(), blocks)
 
-	responses := collectResponses(requestCtx, t, returnedResponseChan)
+	responses := testutil.CollectResponses(requestCtx, t, returnedResponseChan)
 	verifyMatchedResponses(t, responses, blocks)
 
 	// failure comes in later over network
@@ -590,7 +500,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 	}
 
 	requestManager.ProcessResponses(peers[0], failedResponses, nil)
-	verifyEmptyErrors(ctx, t, returnedErrorChan)
+	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 
 }
 
@@ -617,7 +527,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	// async loaded response responds immediately
 	fal.successResponseOn(rr.gsr.ID(), blocks)
 
-	responses := collectResponses(requestCtx, t, returnedResponseChan)
+	responses := testutil.CollectResponses(requestCtx, t, returnedResponseChan)
 	verifyMatchedResponses(t, responses, blocks)
 
 	md := encodedMetadataForBlocks(t, fakeIPLDBridge, blocks, true)
@@ -627,7 +537,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	requestManager.ProcessResponses(peers[0], firstResponses, blocks)
 
 	fal.verifyNoRemainingData(t, rr.gsr.ID())
-	verifyEmptyErrors(ctx, t, returnedErrorChan)
+	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 }
 
 func TestRequestReturnsMissingBlocks(t *testing.T) {
@@ -658,8 +568,8 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	for _, block := range blocks {
 		fal.responseOn(rr.gsr.ID(), cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: nil, Err: fmt.Errorf("Terrible Thing")})
 	}
-	verifyEmptyResponse(ctx, t, returnedResponseChan)
-	errs := collectErrors(ctx, t, returnedErrorChan)
+	testutil.VerifyEmptyResponse(ctx, t, returnedResponseChan)
+	errs := testutil.CollectErrors(ctx, t, returnedErrorChan)
 	if len(errs) != len(blocks) {
 		t.Fatal("did not send all errors")
 	}

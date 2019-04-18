@@ -18,17 +18,6 @@ import (
 
 var log = logging.Logger("graphsync")
 
-// ResponseProgress is the fundamental unit of responses making progress in
-// the RequestManager.
-type ResponseProgress struct {
-	Node      ipld.Node // a node which matched the graphsync query
-	Path      ipld.Path // the path of that node relative to the traversal start
-	LastBlock struct {  // LastBlock stores the Path and Link of the last block edge we had to load.
-		ipld.Path
-		ipld.Link
-	}
-}
-
 const (
 	// maxPriority is the max priority as defined by the bitswap protocol
 	maxPriority = gsmsg.GraphSyncPriority(math.MaxInt32)
@@ -97,7 +86,7 @@ func (rm *RequestManager) SetDelegate(peerHandler PeerHandler) {
 
 type inProgressRequest struct {
 	requestID     gsmsg.GraphSyncRequestID
-	incoming      chan ResponseProgress
+	incoming      chan types.ResponseProgress
 	incomingError chan error
 }
 
@@ -110,7 +99,7 @@ type newRequestMessage struct {
 // SendRequest initiates a new GraphSync request to the given peer.
 func (rm *RequestManager) SendRequest(ctx context.Context,
 	p peer.ID,
-	cidRootedSelector ipld.Node) (<-chan ResponseProgress, <-chan error) {
+	cidRootedSelector ipld.Node) (<-chan types.ResponseProgress, <-chan error) {
 	if len(rm.ipldBridge.ValidateSelectorSpec(cidRootedSelector)) != 0 {
 		return rm.singleErrorResponse(fmt.Errorf("Invalid Selector Spec"))
 	}
@@ -141,16 +130,16 @@ func (rm *RequestManager) SendRequest(ctx context.Context,
 		})
 }
 
-func (rm *RequestManager) emptyResponse() (chan ResponseProgress, chan error) {
-	ch := make(chan ResponseProgress)
+func (rm *RequestManager) emptyResponse() (chan types.ResponseProgress, chan error) {
+	ch := make(chan types.ResponseProgress)
 	close(ch)
 	errCh := make(chan error)
 	close(errCh)
 	return ch, errCh
 }
 
-func (rm *RequestManager) singleErrorResponse(err error) (chan ResponseProgress, chan error) {
-	ch := make(chan ResponseProgress)
+func (rm *RequestManager) singleErrorResponse(err error) (chan types.ResponseProgress, chan error) {
+	ch := make(chan types.ResponseProgress)
 	close(ch)
 	errCh := make(chan error, 1)
 	errCh <- err
@@ -163,7 +152,7 @@ type cancelRequestMessage struct {
 }
 
 func (rm *RequestManager) cancelRequest(requestID gsmsg.GraphSyncRequestID,
-	incomingResponses chan ResponseProgress,
+	incomingResponses chan types.ResponseProgress,
 	incomingErrors chan error) {
 	cancelMessageChannel := rm.messages
 	for cancelMessageChannel != nil || incomingResponses != nil || incomingErrors != nil {
@@ -321,7 +310,7 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status gsmsg.GraphSync
 	}
 }
 
-func (rm *RequestManager) setupRequest(requestID gsmsg.GraphSyncRequestID, p peer.ID, selectorSpec ipld.Node) (chan ResponseProgress, chan error) {
+func (rm *RequestManager) setupRequest(requestID gsmsg.GraphSyncRequestID, p peer.ID, selectorSpec ipld.Node) (chan types.ResponseProgress, chan error) {
 	selectorBytes, err := rm.ipldBridge.EncodeNode(selectorSpec)
 	if err != nil {
 		return rm.singleErrorResponse(err)
@@ -346,8 +335,8 @@ func (rm *RequestManager) executeTraversal(
 	root ipld.Node,
 	selector ipldbridge.Selector,
 	networkErrorChan chan error,
-) (chan ResponseProgress, chan error) {
-	inProgressChan := make(chan ResponseProgress)
+) (chan types.ResponseProgress, chan error) {
+	inProgressChan := make(chan types.ResponseProgress)
 	inProgressErr := make(chan error)
 	loaderFn := loader.WrapAsyncLoader(ctx, rm.asyncLoader.AsyncLoad, requestID, inProgressErr)
 	visitor := visitToChannel(ctx, inProgressChan)

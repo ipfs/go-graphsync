@@ -6,14 +6,15 @@ import (
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
-func visitToChannel(ctx context.Context, inProgressChan chan ResponseProgress) ipldbridge.AdvVisitFn {
+func visitToChannel(ctx context.Context, inProgressChan chan types.ResponseProgress) ipldbridge.AdvVisitFn {
 	return func(tp ipldbridge.TraversalProgress, node ipld.Node, tr ipldbridge.TraversalReason) error {
 		select {
 		case <-ctx.Done():
-		case inProgressChan <- ResponseProgress{
+		case inProgressChan <- types.ResponseProgress{
 			Node:      node,
 			Path:      tp.Path,
 			LastBlock: tp.LastBlock,
