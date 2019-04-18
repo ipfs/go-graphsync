@@ -6,21 +6,28 @@ import (
 	"math"
 
 	"github.com/ipfs/go-block-format"
-
-	"github.com/ipld/go-ipld-prime"
-
 	ipldbridge "github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/requestmanager/loader"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
+	logging "github.com/ipfs/go-log"
+	"github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
-// ResponseProgress is the fundamental unit of responses making progress in
-// the RequestManager. Still not sure about this one? Nodes? Blocks? Struct w/ error? more info?
-// for now, it's just a block.
-type ResponseProgress = blocks.Block
+var log = logging.Logger("graphsync")
 
-// ResponseError is an error that occurred during a traversal.
-type ResponseError error
+// ResponseProgress is the fundamental unit of responses making progress in
+// the RequestManager.
+type ResponseProgress struct {
+	Node      ipld.Node // a node which matched the graphsync query
+	Path      ipld.Path // the path of that node relative to the traversal start
+	LastBlock struct {  // LastBlock stores the Path and Link of the last block edge we had to load.
+		ipld.Path
+		ipld.Link
+	}
+}
 
 const (
 	// maxPriority is the max priority as defined by the bitswap protocol
@@ -28,22 +35,26 @@ const (
 )
 
 type inProgressRequestStatus struct {
-	ctx             context.Context
-	cancelFn        func()
-	p               peer.ID
-	responseChannel chan ResponseProgress
-	errorChannel    chan ResponseError
-}
-
-func (ipr *inProgressRequestStatus) shutdown() {
-	close(ipr.responseChannel)
-	close(ipr.errorChannel)
-	ipr.cancelFn()
+	ctx          context.Context
+	cancelFn     func()
+	p            peer.ID
+	networkError chan error
 }
 
 // PeerHandler is an interface that can send requests to peers
 type PeerHandler interface {
 	SendRequest(p peer.ID, graphSyncRequest gsmsg.GraphSyncRequest)
+}
+
+// AsyncLoader is an interface for loading links asynchronously, returning
+// results as new responses are processed
+type AsyncLoader interface {
+	StartRequest(requestID gsmsg.GraphSyncRequestID)
+	ProcessResponse(responses map[gsmsg.GraphSyncRequestID]metadata.Metadata,
+		blks []blocks.Block)
+	AsyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) <-chan types.AsyncLoadResult
+	CompleteResponsesFor(requestID gsmsg.GraphSyncRequestID)
+	CleanupRequest(requestID gsmsg.GraphSyncRequestID)
 }
 
 // RequestManager tracks outgoing requests and processes incoming reponses
@@ -55,7 +66,7 @@ type RequestManager struct {
 	ipldBridge  ipldbridge.IPLDBridge
 	peerHandler PeerHandler
 	rc          *responseCollector
-
+	asyncLoader AsyncLoader
 	// dont touch out side of run loop
 	nextRequestID             gsmsg.GraphSyncRequestID
 	inProgressRequestStatuses map[gsmsg.GraphSyncRequestID]*inProgressRequestStatus
@@ -66,12 +77,13 @@ type requestManagerMessage interface {
 }
 
 // New generates a new request manager from a context, network, and selectorQuerier
-func New(ctx context.Context, ipldBridge ipldbridge.IPLDBridge) *RequestManager {
+func New(ctx context.Context, asyncLoader AsyncLoader, ipldBridge ipldbridge.IPLDBridge) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
 		ctx:                       ctx,
 		cancel:                    cancel,
 		ipldBridge:                ipldBridge,
+		asyncLoader:               asyncLoader,
 		rc:                        newResponseCollector(ctx),
 		messages:                  make(chan requestManagerMessage, 16),
 		inProgressRequestStatuses: make(map[gsmsg.GraphSyncRequestID]*inProgressRequestStatus),
@@ -86,7 +98,7 @@ func (rm *RequestManager) SetDelegate(peerHandler PeerHandler) {
 type inProgressRequest struct {
 	requestID     gsmsg.GraphSyncRequestID
 	incoming      chan ResponseProgress
-	incomingError chan ResponseError
+	incomingError chan error
 }
 
 type newRequestMessage struct {
@@ -98,7 +110,7 @@ type newRequestMessage struct {
 // SendRequest initiates a new GraphSync request to the given peer.
 func (rm *RequestManager) SendRequest(ctx context.Context,
 	p peer.ID,
-	cidRootedSelector ipld.Node) (<-chan ResponseProgress, <-chan ResponseError) {
+	cidRootedSelector ipld.Node) (<-chan ResponseProgress, <-chan error) {
 	if len(rm.ipldBridge.ValidateSelectorSpec(cidRootedSelector)) != 0 {
 		return rm.singleErrorResponse(fmt.Errorf("Invalid Selector Spec"))
 	}
@@ -129,18 +141,18 @@ func (rm *RequestManager) SendRequest(ctx context.Context,
 		})
 }
 
-func (rm *RequestManager) emptyResponse() (chan ResponseProgress, chan ResponseError) {
+func (rm *RequestManager) emptyResponse() (chan ResponseProgress, chan error) {
 	ch := make(chan ResponseProgress)
 	close(ch)
-	errCh := make(chan ResponseError)
+	errCh := make(chan error)
 	close(errCh)
 	return ch, errCh
 }
 
-func (rm *RequestManager) singleErrorResponse(err error) (chan ResponseProgress, chan ResponseError) {
+func (rm *RequestManager) singleErrorResponse(err error) (chan ResponseProgress, chan error) {
 	ch := make(chan ResponseProgress)
 	close(ch)
-	errCh := make(chan ResponseError, 1)
+	errCh := make(chan error, 1)
 	errCh <- err
 	close(errCh)
 	return ch, errCh
@@ -152,7 +164,7 @@ type cancelRequestMessage struct {
 
 func (rm *RequestManager) cancelRequest(requestID gsmsg.GraphSyncRequestID,
 	incomingResponses chan ResponseProgress,
-	incomingErrors chan ResponseError) {
+	incomingErrors chan error) {
 	cancelMessageChannel := rm.messages
 	for cancelMessageChannel != nil || incomingResponses != nil || incomingErrors != nil {
 		select {
@@ -175,16 +187,17 @@ func (rm *RequestManager) cancelRequest(requestID gsmsg.GraphSyncRequestID,
 }
 
 type processResponseMessage struct {
+	p         peer.ID
 	responses []gsmsg.GraphSyncResponse
 	blks      []blocks.Block
 }
 
 // ProcessResponses ingests the given responses from the network and
 // and updates the in progress requests based on those responses.
-func (rm *RequestManager) ProcessResponses(responses []gsmsg.GraphSyncResponse,
+func (rm *RequestManager) ProcessResponses(p peer.ID, responses []gsmsg.GraphSyncResponse,
 	blks []blocks.Block) {
 	select {
-	case rm.messages <- &processResponseMessage{responses, blks}:
+	case rm.messages <- &processResponseMessage{p, responses, blks}:
 	case <-rm.ctx.Done():
 	}
 }
@@ -216,31 +229,19 @@ func (rm *RequestManager) run() {
 
 func (rm *RequestManager) cleanupInProcessRequests() {
 	for _, requestStatus := range rm.inProgressRequestStatuses {
-		requestStatus.shutdown()
+		requestStatus.cancelFn()
 	}
 }
 
-func (nrm *newRequestMessage) handle(rm *RequestManager) {
-	var inProgressChan chan ResponseProgress
-	var inProgressErr chan ResponseError
+type terminateRequestMessage struct {
+	requestID gsmsg.GraphSyncRequestID
+}
 
+func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	requestID := rm.nextRequestID
 	rm.nextRequestID++
 
-	selectorBytes, err := rm.ipldBridge.EncodeNode(nrm.selector)
-	if err != nil {
-		inProgressChan, inProgressErr = rm.singleErrorResponse(err)
-	} else {
-		inProgressChan = make(chan ResponseProgress)
-		inProgressErr = make(chan ResponseError)
-		ctx, cancel := context.WithCancel(rm.ctx)
-
-		rm.inProgressRequestStatuses[requestID] = &inProgressRequestStatus{
-			ctx, cancel, nrm.p, inProgressChan, inProgressErr,
-		}
-		rm.peerHandler.SendRequest(nrm.p, gsmsg.NewRequest(requestID, selectorBytes, maxPriority))
-		// not starting a traversal atm
-	}
+	inProgressChan, inProgressErr := rm.setupRequest(requestID, nrm.p, nrm.selector)
 
 	select {
 	case nrm.inProgressRequestChan <- inProgressRequest{
@@ -252,6 +253,11 @@ func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	}
 }
 
+func (trm *terminateRequestMessage) handle(rm *RequestManager) {
+	delete(rm.inProgressRequestStatuses, trm.requestID)
+	rm.asyncLoader.CleanupRequest(trm.requestID)
+}
+
 func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[crm.requestID]
 	if !ok {
@@ -260,49 +266,47 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 
 	rm.peerHandler.SendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(crm.requestID))
 	delete(rm.inProgressRequestStatuses, crm.requestID)
-	inProgressRequestStatus.shutdown()
+	inProgressRequestStatus.cancelFn()
 }
 
 func (prm *processResponseMessage) handle(rm *RequestManager) {
-	for _, block := range prm.blks {
-		// dispatch every received block to every in flight request
-		// this is completely a temporary implementation
-		// meant to demonstrate we can produce a round trip of blocks
-		// the future implementation will actual have a temporary block store
-		// and will only dispatch to those requests whose selection transversal
-		// actually requires them
-		for _, requestStatus := range rm.inProgressRequestStatuses {
-			select {
-			case requestStatus.responseChannel <- block:
-			case <-rm.ctx.Done():
-			case <-requestStatus.ctx.Done():
-			}
+	filteredResponses := rm.filterResponsesForPeer(prm.responses, prm.p)
+	responseMetadata := metadataForResponses(filteredResponses, rm.ipldBridge)
+	rm.asyncLoader.ProcessResponse(responseMetadata, prm.blks)
+	rm.processTerminations(filteredResponses)
+}
+
+func (rm *RequestManager) filterResponsesForPeer(responses []gsmsg.GraphSyncResponse, p peer.ID) []gsmsg.GraphSyncResponse {
+	responsesForPeer := make([]gsmsg.GraphSyncResponse, 0, len(responses))
+	for _, response := range responses {
+		requestStatus, ok := rm.inProgressRequestStatuses[response.RequestID()]
+		if !ok || requestStatus.p != p {
+			continue
 		}
+		responsesForPeer = append(responsesForPeer, response)
 	}
+	return responsesForPeer
+}
 
-	for _, response := range prm.responses {
-		// we're keeping it super light for now -- basically just ignoring
-		// reason for termination and closing the channel
+func (rm *RequestManager) processTerminations(responses []gsmsg.GraphSyncResponse) {
+	for _, response := range responses {
 		if gsmsg.IsTerminalResponseCode(response.Status()) {
-			requestStatus, ok := rm.inProgressRequestStatuses[response.RequestID()]
-
-			if ok {
-				if gsmsg.IsTerminalFailureCode(response.Status()) {
-					responseError := rm.generateResponseErrorFromStatus(response.Status())
-					select {
-					case requestStatus.errorChannel <- responseError:
-					case <-rm.ctx.Done():
-					case <-requestStatus.ctx.Done():
-					}
+			if gsmsg.IsTerminalFailureCode(response.Status()) {
+				requestStatus := rm.inProgressRequestStatuses[response.RequestID()]
+				responseError := rm.generateResponseErrorFromStatus(response.Status())
+				select {
+				case requestStatus.networkError <- responseError:
+				case <-requestStatus.ctx.Done():
 				}
-				delete(rm.inProgressRequestStatuses, response.RequestID())
-				requestStatus.shutdown()
+				requestStatus.cancelFn()
 			}
+			rm.asyncLoader.CompleteResponsesFor(response.RequestID())
+			delete(rm.inProgressRequestStatuses, response.RequestID())
 		}
 	}
 }
 
-func (rm *RequestManager) generateResponseErrorFromStatus(status gsmsg.GraphSyncResponseStatusCode) ResponseError {
+func (rm *RequestManager) generateResponseErrorFromStatus(status gsmsg.GraphSyncResponseStatusCode) error {
 	switch status {
 	case gsmsg.RequestFailedBusy:
 		return fmt.Errorf("Request Failed - Peer Is Busy")
@@ -315,4 +319,54 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status gsmsg.GraphSync
 	default:
 		return fmt.Errorf("Unknown")
 	}
+}
+
+func (rm *RequestManager) setupRequest(requestID gsmsg.GraphSyncRequestID, p peer.ID, selectorSpec ipld.Node) (chan ResponseProgress, chan error) {
+	selectorBytes, err := rm.ipldBridge.EncodeNode(selectorSpec)
+	if err != nil {
+		return rm.singleErrorResponse(err)
+	}
+	root, selector, err := rm.ipldBridge.DecodeSelectorSpec(selectorSpec)
+	if err != nil {
+		return rm.singleErrorResponse(err)
+	}
+	networkErrorChan := make(chan error, 1)
+	ctx, cancel := context.WithCancel(rm.ctx)
+	rm.inProgressRequestStatuses[requestID] = &inProgressRequestStatus{
+		ctx, cancel, p, networkErrorChan,
+	}
+	rm.asyncLoader.StartRequest(requestID)
+	rm.peerHandler.SendRequest(p, gsmsg.NewRequest(requestID, selectorBytes, maxPriority))
+	return rm.executeTraversal(ctx, requestID, root, selector, networkErrorChan)
+}
+
+func (rm *RequestManager) executeTraversal(
+	ctx context.Context,
+	requestID gsmsg.GraphSyncRequestID,
+	root ipld.Node,
+	selector ipldbridge.Selector,
+	networkErrorChan chan error,
+) (chan ResponseProgress, chan error) {
+	inProgressChan := make(chan ResponseProgress)
+	inProgressErr := make(chan error)
+	loaderFn := loader.WrapAsyncLoader(ctx, rm.asyncLoader.AsyncLoad, requestID, inProgressErr)
+	visitor := visitToChannel(ctx, inProgressChan)
+	go func() {
+		rm.ipldBridge.Traverse(ctx, loaderFn, root, selector, visitor)
+		select {
+		case networkError := <-networkErrorChan:
+			select {
+			case <-rm.ctx.Done():
+			case inProgressErr <- networkError:
+			}
+		default:
+		}
+		select {
+		case <-ctx.Done():
+		case rm.messages <- &terminateRequestMessage{requestID}:
+		}
+		close(inProgressChan)
+		close(inProgressErr)
+	}()
+	return inProgressChan, inProgressErr
 }

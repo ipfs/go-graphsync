@@ -106,7 +106,10 @@ func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.Loader
 
 		node, err := loadNode(lnk, loader)
 		if err == nil {
-			fn(ipldbridge.TraversalProgress{}, node, 0)
+			fn(ipldbridge.TraversalProgress{LastBlock: struct {
+				ipld.Path
+				ipld.Link
+			}{ipld.Path{}, cidlink.Link{Cid: lnk}}}, node, 0)
 		}
 		select {
 		case <-ctx.Done():

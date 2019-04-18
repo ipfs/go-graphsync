@@ -1,6 +1,8 @@
 package requestmanager
 
-import "context"
+import (
+	"context"
+)
 
 type responseCollector struct {
 	ctx context.Context
@@ -13,15 +15,15 @@ func newResponseCollector(ctx context.Context) *responseCollector {
 func (rc *responseCollector) collectResponses(
 	requestCtx context.Context,
 	incomingResponses <-chan ResponseProgress,
-	incomingErrors <-chan ResponseError,
-	cancelRequest func()) (<-chan ResponseProgress, <-chan ResponseError) {
+	incomingErrors <-chan error,
+	cancelRequest func()) (<-chan ResponseProgress, <-chan error) {
 
 	returnedResponses := make(chan ResponseProgress)
-	returnedErrors := make(chan ResponseError)
+	returnedErrors := make(chan error)
 
 	go func() {
 		var receivedResponses []ResponseProgress
-		var receivedErrors []ResponseError
+		var receivedErrors []error
 		defer close(returnedResponses)
 		defer close(returnedErrors)
 		outgoingResponses := func() chan<- ResponseProgress {
@@ -32,17 +34,17 @@ func (rc *responseCollector) collectResponses(
 		}
 		nextResponse := func() ResponseProgress {
 			if len(receivedResponses) == 0 {
-				return nil
+				return ResponseProgress{}
 			}
 			return receivedResponses[0]
 		}
-		outgoingErrors := func() chan<- ResponseError {
+		outgoingErrors := func() chan<- error {
 			if len(receivedErrors) == 0 {
 				return nil
 			}
 			return returnedErrors
 		}
-		nextError := func() ResponseError {
+		nextError := func() error {
 			if len(receivedErrors) == 0 {
 				return nil
 			}

@@ -2,18 +2,17 @@ package graphsync
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"math"
 	"math/rand"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/ipld/go-ipld-prime/linking/cid"
+
 	"github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/testbridge"
@@ -77,11 +76,10 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	}
 	gsnet2.SetDelegate(r)
 
-	loader := func(ipldLink ipld.Link, lnkCtx ipldbridge.LinkContext) (io.Reader, error) {
-		return nil, fmt.Errorf("unable to load block")
-	}
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
 	bridge := testbridge.NewMockIPLDBridge()
-	graphSync := New(ctx, gsnet1, bridge, loader)
+	graphSync := New(ctx, gsnet1, bridge, loader, storer)
 
 	cids := testutil.GenerateCids(5)
 	spec := testbridge.NewMockSelectorSpec(cids)
@@ -148,11 +146,15 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 
-	loader := testbridge.NewMockLoader(blks)
+	blockStore := make(map[ipld.Link][]byte)
+	for _, block := range blks {
+		blockStore[cidlink.Link{Cid: block.Cid()}] = block.RawData()
+	}
+	loader, storer := testbridge.NewMockStore(blockStore)
 	bridge := testbridge.NewMockIPLDBridge()
 
 	// initialize graphsync on second node to response to requests
-	New(ctx, gsnet2, bridge, loader)
+	New(ctx, gsnet2, bridge, loader, storer)
 
 	cids := make([]cid.Cid, 0, 7)
 	for _, block := range blks {
