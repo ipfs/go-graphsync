@@ -20,14 +20,7 @@ import (
 type ResponseProgress = blocks.Block
 
 // ResponseError is an error that occurred during a traversal.
-// It can be either a "non-terminal" error -- meaning progress will
-// continue to happen in the future.
-// or it can be a terminal error, meaning no further progress or errors
-// will emit.
-type ResponseError struct {
-	IsTerminal bool
-	Error      error
-}
+type ResponseError error
 
 const (
 	// maxPriority is the max priority as defined by the bitswap protocol
@@ -155,7 +148,7 @@ func (rm *RequestManager) singleErrorResponse(err error) (chan ResponseProgress,
 	ch := make(chan ResponseProgress)
 	close(ch)
 	errCh := make(chan ResponseError, 1)
-	errCh <- ResponseError{true, err}
+	errCh <- err
 	close(errCh)
 	return ch, errCh
 }
@@ -317,14 +310,14 @@ func (prm *processResponseMessage) handle(rm *RequestManager) {
 func (rm *RequestManager) generateResponseErrorFromStatus(status gsmsg.GraphSyncResponseStatusCode) ResponseError {
 	switch status {
 	case gsmsg.RequestFailedBusy:
-		return ResponseError{true, fmt.Errorf("Request Failed - Peer Is Busy")}
+		return fmt.Errorf("Request Failed - Peer Is Busy")
 	case gsmsg.RequestFailedContentNotFound:
-		return ResponseError{true, fmt.Errorf("Request Failed - Content Not Found")}
+		return fmt.Errorf("Request Failed - Content Not Found")
 	case gsmsg.RequestFailedLegal:
-		return ResponseError{true, fmt.Errorf("Request Failed - For Legal Reasons")}
+		return fmt.Errorf("Request Failed - For Legal Reasons")
 	case gsmsg.RequestFailedUnknown:
-		return ResponseError{true, fmt.Errorf("Request Failed - Unknown Reason")}
+		return fmt.Errorf("Request Failed - Unknown Reason")
 	default:
-		return ResponseError{}
+		return fmt.Errorf("Unknown")
 	}
 }

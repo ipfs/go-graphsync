@@ -44,7 +44,7 @@ func (rc *responseCollector) collectResponses(
 		}
 		nextError := func() ResponseError {
 			if len(receivedErrors) == 0 {
-				return ResponseError{}
+				return nil
 			}
 			return receivedErrors[0]
 		}

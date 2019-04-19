@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/ipld/go-ipld-prime/fluent"
+
 	ipld "github.com/ipld/go-ipld-prime"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
-	ipldrepose "github.com/ipld/go-ipld-prime/repose"
+	"github.com/ipld/go-ipld-prime/encoding/dagcbor"
+	free "github.com/ipld/go-ipld-prime/impl/free"
 	ipldtraversal "github.com/ipld/go-ipld-prime/traversal"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 	ipldtypesystem "github.com/ipld/go-ipld-prime/typed/system"
@@ -21,22 +23,14 @@ var universe ipldtypesystem.Universe
 type TraversalConfig = ipldtraversal.TraversalConfig
 
 type ipldBridge struct {
-	nodeBuilderChooser NodeBuilderChooser
-	multicodecTable    MulticodecDecodeTable
 }
 
 // NewIPLDBridge returns an IPLD Bridge.
-func NewIPLDBridge(nodeBuilderChooser NodeBuilderChooser,
-	multicodecTable MulticodecDecodeTable) IPLDBridge {
-	return &ipldBridge{nodeBuilderChooser, multicodecTable}
+func NewIPLDBridge() IPLDBridge {
+	return &ipldBridge{}
 }
 
-func (rb *ipldBridge) ComposeLinkLoader(
-	actualLoader RawLoader) LinkLoader {
-	return ipldrepose.ComposeLinkLoader(actualLoader, rb.nodeBuilderChooser, rb.multicodecTable)
-}
-
-func (rb *ipldBridge) Traverse(ctx context.Context, loader LinkLoader, root ipld.Node, s Selector, fn AdvVisitFn) error {
+func (rb *ipldBridge) Traverse(ctx context.Context, loader Loader, root ipld.Node, s Selector, fn AdvVisitFn) error {
 	config := &TraversalConfig{Ctx: ctx, LinkLoader: loader}
 	return TraversalProgress{TraversalConfig: config}.TraverseInformatively(root, s, fn)
 }
@@ -47,7 +41,7 @@ func (rb *ipldBridge) ValidateSelectorSpec(cidRootedSelector ipld.Node) []error 
 
 func (rb *ipldBridge) EncodeNode(node ipld.Node) ([]byte, error) {
 	var buffer bytes.Buffer
-	err := ipldrepose.EncoderDagCbor(node, &buffer)
+	err := dagcbor.Encoder(node, &buffer)
 	if err != nil {
 		return nil, err
 	}
@@ -56,31 +50,26 @@ func (rb *ipldBridge) EncodeNode(node ipld.Node) ([]byte, error) {
 
 func (rb *ipldBridge) DecodeNode(encoded []byte) (ipld.Node, error) {
 	reader := bytes.NewReader(encoded)
-	return ipldrepose.DecoderDagCbor(ipldfree.NodeBuilder(), reader)
+	return dagcbor.Decoder(free.NodeBuilder(), reader)
 }
 
-func (rb *ipldBridge) DecodeSelectorSpec(cidRootedSelector ipld.Node) (ipld.Node, Selector, error) {
+func (rb *ipldBridge) DecodeSelectorSpec(rootedSelector ipld.Node) (ipld.Node, Selector, error) {
 
-	errs := rb.ValidateSelectorSpec(cidRootedSelector)
+	errs := rb.ValidateSelectorSpec(rootedSelector)
 	if len(errs) != 0 {
 		return nil, nil, errors.New("Node does not validate as selector spec")
 	}
 
-	root, err := cidRootedSelector.TraverseField("root")
-	if err != nil {
-		return nil, nil, err
-	}
-	rootCid, err := root.AsLink()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	node, err := ipldfree.NodeBuilder().CreateLink(rootCid)
+	var node ipld.Node
+	err := fluent.Recover(func() {
+		link := fluent.WrapNode(rootedSelector).TraverseField("root").AsLink()
+		node = fluent.WrapNodeBuilder(free.NodeBuilder()).CreateLink(link)
+	})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	selector, err := ipldselector.ReifySelector(cidRootedSelector)
+	selector, err := ipldselector.ReifySelector(rootedSelector)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ipld/go-ipld-prime/linking/cid"
+
 	blocks "github.com/ipfs/go-block-format"
 
 	"github.com/ipld/go-ipld-prime"
@@ -24,7 +26,8 @@ func TestSelectorTraversal(t *testing.T) {
 		cids = append(cids, block.Cid())
 	}
 	var uniqueBlocksVisited []blocks.Block
-	loader := func(ctx context.Context, lnk cid.Cid, lnkCtx ipldbridge.LinkContext) (io.Reader, error) {
+	loader := func(ipldLink ipld.Link, lnkCtx ipldbridge.LinkContext) (io.Reader, error) {
+		lnk := ipldLink.(cidlink.Link).Cid
 		for _, block := range blks {
 			if block.Cid() == lnk {
 				if testutil.ContainsBlock(uniqueBlocksVisited, block) {
@@ -37,7 +40,6 @@ func TestSelectorTraversal(t *testing.T) {
 		return nil, fmt.Errorf("unable to load block")
 	}
 	bridge := NewMockIPLDBridge()
-	linkloader := bridge.ComposeLinkLoader(loader)
 	mockSelectorSpec := NewMockSelectorSpec(cids)
 	node, selector, err := bridge.DecodeSelectorSpec(mockSelectorSpec)
 	if err != nil {
@@ -48,7 +50,7 @@ func TestSelectorTraversal(t *testing.T) {
 		return nil
 	}
 	ctx := context.Background()
-	err = bridge.Traverse(ctx, linkloader, node, selector, traversalFn)
+	err = bridge.Traverse(ctx, loader, node, selector, traversalFn)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
