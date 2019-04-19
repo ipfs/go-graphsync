@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/ipfs/go-graphsync/metadata"
+	logging "github.com/ipfs/go-log"
 
 	"github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync/linktracker"
@@ -12,6 +13,8 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/linking/cid"
 )
+
+var log = logging.Logger("graphsync")
 
 type responseCacheMessage interface {
 	handle(rc *ResponseCache)
@@ -72,11 +75,13 @@ func (rc *ResponseCache) ProcessResponse(responses map[gsmsg.GraphSyncRequestID]
 	rc.responseCacheLk.Lock()
 
 	for _, block := range blks {
+		log.Debugf("Received block from network: %s", block.Cid().String())
 		rc.unverifiedBlockStore.AddUnverifiedBlock(cidlink.Link{Cid: block.Cid()}, block.RawData())
 	}
 
 	for requestID, md := range responses {
 		for _, item := range md {
+			log.Debugf("Traverse link %s on request ID %d", item.Link.String(), requestID)
 			rc.linkTracker.RecordLinkTraversal(requestID, item.Link, item.BlockPresent)
 		}
 	}

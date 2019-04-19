@@ -97,6 +97,7 @@ func (gs *GraphSync) ReceiveMessage(
 	sender peer.ID,
 	incoming gsmsg.GraphSyncMessage) {
 	gs.responseManager.ProcessRequests(ctx, sender, incoming.Requests())
+	gs.requestManager.ProcessResponses(sender, incoming.Responses(), incoming.Blocks())
 }
 
 // ReceiveError is part of the network's Receiver interface and handles incoming
