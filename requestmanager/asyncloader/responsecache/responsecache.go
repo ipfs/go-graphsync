@@ -17,12 +17,16 @@ type responseCacheMessage interface {
 	handle(rc *ResponseCache)
 }
 
+// UnverifiedBlockStore is an interface for storing blocks
+// as they come in and removing them as they are verified
 type UnverifiedBlockStore interface {
 	PruneBlocks(func(ipld.Link) bool)
 	VerifyBlock(ipld.Link) ([]byte, error)
 	AddUnverifiedBlock(ipld.Link, []byte)
 }
 
+// ResponseCache maintains a store of unverified blocks and response
+// data about links for loading, and prunes blocks as needed.
 type ResponseCache struct {
 	responseCacheLk sync.RWMutex
 
@@ -30,6 +34,7 @@ type ResponseCache struct {
 	unverifiedBlockStore UnverifiedBlockStore
 }
 
+// New initializes a new ResponseCache using the given unverified block store.
 func New(unverifiedBlockStore UnverifiedBlockStore) *ResponseCache {
 	return &ResponseCache{
 		linkTracker:          linktracker.New(),
@@ -37,6 +42,8 @@ func New(unverifiedBlockStore UnverifiedBlockStore) *ResponseCache {
 	}
 }
 
+// FinishRequest indicate there is no more need to track blocks tied to this
+// response
 func (rc *ResponseCache) FinishRequest(requestID gsmsg.GraphSyncRequestID) {
 	rc.responseCacheLk.Lock()
 	rc.linkTracker.FinishRequest(requestID)
@@ -47,16 +54,19 @@ func (rc *ResponseCache) FinishRequest(requestID gsmsg.GraphSyncRequestID) {
 	rc.responseCacheLk.Unlock()
 }
 
+// AttemptLoad attempts to laod the given block from the cache
 func (rc *ResponseCache) AttemptLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) ([]byte, error) {
 	rc.responseCacheLk.Lock()
 	defer rc.responseCacheLk.Unlock()
 	if rc.linkTracker.IsKnownMissingLink(requestID, link) {
-		return nil, fmt.Errorf("Remote Peer Is Missing Block")
+		return nil, fmt.Errorf("Remote Peer Is Missing Block: %s", link.String())
 	}
 	data, _ := rc.unverifiedBlockStore.VerifyBlock(link)
 	return data, nil
 }
 
+// ProcessResponse processes incoming response data, adding unverified blocks,
+// and tracking link metadata from a remote peer
 func (rc *ResponseCache) ProcessResponse(responses map[gsmsg.GraphSyncRequestID]metadata.Metadata,
 	blks []blocks.Block) {
 	rc.responseCacheLk.Lock()
