@@ -80,3 +80,27 @@ func TestEncodeDecodeSelectorSpec(t *testing.T) {
 		t.Fatal("did not decode correct cids")
 	}
 }
+
+func TestFailValidationSelectorSpec(t *testing.T) {
+	cids := testutil.GenerateCids(5)
+	spec := NewInvalidSelectorSpec(cids)
+	bridge := NewMockIPLDBridge()
+	errs := bridge.ValidateSelectorSpec(spec)
+	if len(errs) == 0 {
+		t.Fatal("Spec should not pass validation")
+	}
+	_, _, err := bridge.DecodeSelectorSpec(spec)
+	if err == nil {
+		t.Fatal("Spec should not decompose to node and selector")
+	}
+}
+
+func TestFailEncodingSelectorSpec(t *testing.T) {
+	cids := testutil.GenerateCids(5)
+	spec := NewUnencodableSelectorSpec(cids)
+	bridge := NewMockIPLDBridge()
+	_, err := bridge.EncodeNode(spec)
+	if err == nil {
+		t.Fatal("Spec should not be encodable")
+	}
+}

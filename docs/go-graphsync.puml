@@ -20,8 +20,6 @@ package "go-ipld-prime" {
     interface AdvVisitFn {
     }
     class TraversalConfig {
-      ctx context.Context
-      linkLoader LinkLoader
     }
     class TraversalProgress {
       TraverseInformatively(Node, Selector, AdvVisitFn)
@@ -54,13 +52,7 @@ package "go-ipld-prime" {
 package "go-graphsync" {
   
     class GraphSync {
-      network : GraphySyncNetwork
-      requestManager : RequestManager
-      responseManager: ResponseManager
-      ipldBridge: IPLDBridge
-      rawLoader: RawLoader
-      
-      Request(ctx context.Context, p peer.ID, cidRootedSelector Node) chan Block
+      Request(ctx context.Context, p peer.ID, cidRootedSelector Node) (chan ResponseProgress, chan ResponseError)
       ReceiveMessage(ctx context.Context, sender peer.ID, incoming GraphSyncMessage)
       ReceiveError(error)
     }
@@ -100,24 +92,55 @@ package "go-graphsync" {
     goGraphSyncNetworkPF .. libP2PGraphSyncNetwork 
   }
 
-  package requestmanager {
-  class RequestManager {
-    network : GraphSyncNetwork
-    ipldBridge: GraphSyncNetwork
+  package messagequeue {
+    class MessageQueue {
+      AddRequest(GraphSyncRequestID, selector []byte, GraphSyncPriority)
+      Cancel(GraphSyncRequestID)
+      Startup()
+      Shutdown()
+    }
 
-    SendRequest(ctx context.Context, p peer.ID, cidRootedSelector Node) chan Block
-    ProcessResponses(responses []GraphSyncResponse)
+    object "PackagePublicFunctions" as goMessageQueuePF {
+      New(context.Context, peer.ID, GraphSyncNetwork) *MessageQueue
+    }
+    GraphSync .. goMessageQueuePF
+    MessageQueue *-- GraphSyncNetwork
   }
-  RequestManager *-- GraphSyncNetwork
+
+  package peerhandler {
+    class PeerManager {
+      Connected(p peer.ID)
+      Disconnected(p peer.ID)
+      ConnectedPeers() []peer.ID
+      SendRequest(peer.ID, GraphSyncRequestID, selector []byte, priority)
+      CancelRequest(peer.ID, GraphSyncRequestID)
+    }
+
+    object "Package Public Functions" as goPeerManagerPF {
+      New(ctx context.Context, createPeerQueue func(context, peer.ID) MessageQueue)
+    }
+    GraphSync .. goPeerManagerPF
+    PeerManager *-- MessageQueue
+  }
+
+  package requestmanager {
+    interface ResponseProgress {
+
+    }
+    interface ResponseError {
+
+    }
+  class RequestManager {
+    SetDelegate(peerHandler PeerManager)
+    SendRequest(ctx context.Context, p peer.ID, cidRootedSelector Node) chan Block
+    ProcessResponses(message GraphSyncMessage)
+  }
+  RequestManager *-- PeerManager
   GraphSync *-- RequestManager
   }
 
   package responsemanager {
   class ResponseManager {
-    network : GraphySyncNetwork
-    ipldBridge: IPLDBridge
-    rawLoader: RawLoader
-
     ProcessRequests(p peer.ID, requests []GraphSyncRequests)
   }
   ResponseManager *-- GraphSyncNetwork
@@ -176,8 +199,6 @@ package "go-graphsync" {
     ResponseManager *-- IPLDBridge
   
     class ipldBridge {
-      nodeBuilderChooser: NodeBuilderChooser
-      multicodecTable: MulticodecDecodeTable
     }
 
     object "PackagePublicFunctions" as goIPLDBridge {
@@ -195,16 +216,10 @@ package "go-graphsync" {
   object "PackagePublicFunctions" as goGraphsyncPf {
     New(ctx context.Context, network GraphSyncNetwork, rawLoader RawLoader, multicodecDecodeTable MulticodecDecodeTable, nodeBuilderChooser NodeBuilderChooser) GraphSync
   }
-
 }
 
 package "go-filecoin" {
   class "go-filecoin" {
-    graphSync : GraphSync
-    host: libp2pHost.Host
-    nodeBuilderChooser: NodeBuilderChooser
-    multicodecTable: MulticodecDecodeTable
-    rawLoader: RawLoader
   }
 
   "go-filecoin" *-- GraphSync
