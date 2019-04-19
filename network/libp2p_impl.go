@@ -1,7 +1,6 @@
 package network
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -64,21 +63,14 @@ func msgToStream(ctx context.Context, s inet.Stream, msg gsmsg.GraphSyncMessage)
 		log.Warningf("error setting deadline: %s", err)
 	}
 
-	w := bufio.NewWriter(s)
-
 	switch s.Protocol() {
 	case ProtocolGraphsync:
-		if err := msg.ToNet(w); err != nil {
+		if err := msg.ToNet(s); err != nil {
 			log.Debugf("error: %s", err)
 			return err
 		}
 	default:
 		return fmt.Errorf("unrecognized protocol on remote: %s", s.Protocol())
-	}
-
-	if err := w.Flush(); err != nil {
-		log.Debugf("error: %s", err)
-		return err
 	}
 
 	if err := s.SetWriteDeadline(time.Time{}); err != nil {
