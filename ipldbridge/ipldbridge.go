@@ -3,6 +3,8 @@ package ipldbridge
 import (
 	"context"
 
+	"github.com/ipld/go-ipld-prime/fluent"
+
 	ipld "github.com/ipld/go-ipld-prime"
 	ipldtraversal "github.com/ipld/go-ipld-prime/traversal"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
@@ -26,9 +28,19 @@ type TraversalProgress = ipldtraversal.TraversalProgress
 // TraversalReason is an alias from ipld, in case it's renamed/moved.
 type TraversalReason = ipldtraversal.TraversalReason
 
+// NodeBuilder is an alias from the ipld fluent nodebuilder, in case it's moved
+type NodeBuilder = fluent.NodeBuilder
+
+// ListBuilder is an alias from ipld fluent, in case it's moved
+type ListBuilder = fluent.ListBuilder
+
+// MapBuilder is an alias from ipld fluent, in case it's moved
+type MapBuilder = fluent.MapBuilder
+
 // IPLDBridge is an interface for making calls to IPLD, which can be
 // replaced with alternative implementations
 type IPLDBridge interface {
+	BuildNode(func(NodeBuilder) ipld.Node) (ipld.Node, error)
 
 	// ValidateSelectorSpec verifies if a node matches the selector spec.
 	ValidateSelectorSpec(rootedSelector ipld.Node) []error

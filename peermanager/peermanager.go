@@ -3,66 +3,48 @@ package peermanager
 import (
 	"context"
 	"sync"
-	"time"
-
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	logging "github.com/ipfs/go-log"
 
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
-const (
-	defaultCleanupInterval = time.Minute
-)
-
-var log = logging.Logger("graphsync")
-
-var (
-	metricsBuckets = []float64{1 << 6, 1 << 10, 1 << 14, 1 << 18, 1<<18 + 15, 1 << 22}
-)
-
-// PeerQueue provides a queer of messages to be sent for a single peer.
-type PeerQueue interface {
-	AddRequest(id gsmsg.GraphSyncRequestID,
-		selector []byte,
-		priority gsmsg.GraphSyncPriority)
-	Cancel(id gsmsg.GraphSyncRequestID)
+// PeerProcess is any process that provides services for a peer
+type PeerProcess interface {
 	Startup()
 	Shutdown()
 }
 
-// PeerQueueFactory provides a function that will create a PeerQueue.
-type PeerQueueFactory func(ctx context.Context, p peer.ID) PeerQueue
+// PeerProcessFactory provides a function that will create a PeerQueue.
+type PeerProcessFactory func(ctx context.Context, p peer.ID) PeerProcess
 
-type peerQueueInstance struct {
-	refcnt int
-	pq     PeerQueue
+type peerProcessInstance struct {
+	refcnt  int
+	process PeerProcess
 }
 
 // PeerManager manages a pool of peers and sends messages to peers in the pool.
 type PeerManager struct {
-	peerQueues   map[peer.ID]*peerQueueInstance
-	peerQueuesLk sync.RWMutex
+	peerProcesses   map[peer.ID]*peerProcessInstance
+	peerProcessesLk sync.RWMutex
 
-	createPeerQueue PeerQueueFactory
-	ctx             context.Context
+	createPeerProcess PeerProcessFactory
+	ctx               context.Context
 }
 
 // New creates a new PeerManager, given a context and a peerQueueFactory.
-func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
+func New(ctx context.Context, createPeerQueue PeerProcessFactory) *PeerManager {
 	return &PeerManager{
-		peerQueues:      make(map[peer.ID]*peerQueueInstance),
-		createPeerQueue: createPeerQueue,
-		ctx:             ctx,
+		peerProcesses:     make(map[peer.ID]*peerProcessInstance),
+		createPeerProcess: createPeerQueue,
+		ctx:               ctx,
 	}
 }
 
 // ConnectedPeers returns a list of peers this PeerManager is managing.
 func (pm *PeerManager) ConnectedPeers() []peer.ID {
-	pm.peerQueuesLk.RLock()
-	defer pm.peerQueuesLk.RUnlock()
-	peers := make([]peer.ID, 0, len(pm.peerQueues))
-	for p := range pm.peerQueues {
+	pm.peerProcessesLk.RLock()
+	defer pm.peerProcessesLk.RUnlock()
+	peers := make([]peer.ID, 0, len(pm.peerProcesses))
+	for p := range pm.peerProcesses {
 		peers = append(peers, p)
 	}
 	return peers
@@ -70,63 +52,50 @@ func (pm *PeerManager) ConnectedPeers() []peer.ID {
 
 // Connected is called to add a new peer to the pool
 func (pm *PeerManager) Connected(p peer.ID) {
-	pm.peerQueuesLk.Lock()
+	pm.peerProcessesLk.Lock()
 	pq := pm.getOrCreate(p)
 	pq.refcnt++
-	pm.peerQueuesLk.Unlock()
+	pm.peerProcessesLk.Unlock()
 }
 
 // Disconnected is called to remove a peer from the pool.
 func (pm *PeerManager) Disconnected(p peer.ID) {
-	pm.peerQueuesLk.Lock()
-	pq, ok := pm.peerQueues[p]
+	pm.peerProcessesLk.Lock()
+	pq, ok := pm.peerProcesses[p]
 	if !ok {
-		pm.peerQueuesLk.Unlock()
+		pm.peerProcessesLk.Unlock()
 		return
 	}
 
 	pq.refcnt--
 	if pq.refcnt > 0 {
-		pm.peerQueuesLk.Unlock()
+		pm.peerProcessesLk.Unlock()
 		return
 	}
 
-	delete(pm.peerQueues, p)
-	pm.peerQueuesLk.Unlock()
+	delete(pm.peerProcesses, p)
+	pm.peerProcessesLk.Unlock()
 
-	pq.pq.Shutdown()
+	pq.process.Shutdown()
 
 }
 
-// SendRequest sends the given request to the given peer.
-func (pm *PeerManager) SendRequest(
-	p peer.ID,
-	id gsmsg.GraphSyncRequestID,
-	selector []byte,
-	priority gsmsg.GraphSyncPriority) {
-	pm.peerQueuesLk.Lock()
+// GetProcess returns the process for the given peer
+func (pm *PeerManager) GetProcess(
+	p peer.ID) PeerProcess {
+	pm.peerProcessesLk.Lock()
 	pqi := pm.getOrCreate(p)
-	pm.peerQueuesLk.Unlock()
-	pqi.pq.AddRequest(id, selector, priority)
+	pm.peerProcessesLk.Unlock()
+	return pqi.process
 }
 
-// CancelRequest cancels the given request id on the given peer.
-func (pm *PeerManager) CancelRequest(
-	p peer.ID,
-	id gsmsg.GraphSyncRequestID) {
-	pm.peerQueuesLk.Lock()
-	pqi := pm.getOrCreate(p)
-	pm.peerQueuesLk.Unlock()
-	pqi.pq.Cancel(id)
-}
-
-func (pm *PeerManager) getOrCreate(p peer.ID) *peerQueueInstance {
-	pqi, ok := pm.peerQueues[p]
+func (pm *PeerManager) getOrCreate(p peer.ID) *peerProcessInstance {
+	pqi, ok := pm.peerProcesses[p]
 	if !ok {
-		pq := pm.createPeerQueue(pm.ctx, p)
+		pq := pm.createPeerProcess(pm.ctx, p)
 		pq.Startup()
-		pqi = &peerQueueInstance{0, pq}
-		pm.peerQueues[p] = pqi
+		pqi = &peerProcessInstance{0, pq}
+		pm.peerProcesses[p] = pqi
 	}
 	return pqi
 }

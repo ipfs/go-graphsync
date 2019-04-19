@@ -43,14 +43,7 @@ func (ipr *inProgressRequestStatus) shutdown() {
 
 // PeerHandler is an interface that can send requests to peers
 type PeerHandler interface {
-	SendRequest(
-		p peer.ID,
-		id gsmsg.GraphSyncRequestID,
-		selector []byte,
-		priority gsmsg.GraphSyncPriority)
-	CancelRequest(
-		p peer.ID,
-		id gsmsg.GraphSyncRequestID)
+	SendRequest(p peer.ID, graphSyncRequest gsmsg.GraphSyncRequest)
 }
 
 // RequestManager tracks outgoing requests and processes incoming reponses
@@ -182,14 +175,16 @@ func (rm *RequestManager) cancelRequest(requestID gsmsg.GraphSyncRequestID,
 }
 
 type processResponseMessage struct {
-	message gsmsg.GraphSyncMessage
+	responses []gsmsg.GraphSyncResponse
+	blks      []blocks.Block
 }
 
 // ProcessResponses ingests the given responses from the network and
 // and updates the in progress requests based on those responses.
-func (rm *RequestManager) ProcessResponses(message gsmsg.GraphSyncMessage) {
+func (rm *RequestManager) ProcessResponses(responses []gsmsg.GraphSyncResponse,
+	blks []blocks.Block) {
 	select {
-	case rm.messages <- &processResponseMessage{message}:
+	case rm.messages <- &processResponseMessage{responses, blks}:
 	case <-rm.ctx.Done():
 	}
 }
@@ -243,7 +238,7 @@ func (nrm *newRequestMessage) handle(rm *RequestManager) {
 		rm.inProgressRequestStatuses[requestID] = &inProgressRequestStatus{
 			ctx, cancel, nrm.p, inProgressChan, inProgressErr,
 		}
-		rm.peerHandler.SendRequest(nrm.p, requestID, selectorBytes, maxPriority)
+		rm.peerHandler.SendRequest(nrm.p, gsmsg.NewRequest(requestID, selectorBytes, maxPriority))
 		// not starting a traversal atm
 	}
 
@@ -263,13 +258,13 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 		return
 	}
 
-	rm.peerHandler.CancelRequest(inProgressRequestStatus.p, crm.requestID)
+	rm.peerHandler.SendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(crm.requestID))
 	delete(rm.inProgressRequestStatuses, crm.requestID)
 	inProgressRequestStatus.shutdown()
 }
 
 func (prm *processResponseMessage) handle(rm *RequestManager) {
-	for _, block := range prm.message.Blocks() {
+	for _, block := range prm.blks {
 		// dispatch every received block to every in flight request
 		// this is completely a temporary implementation
 		// meant to demonstrate we can produce a round trip of blocks
@@ -285,7 +280,7 @@ func (prm *processResponseMessage) handle(rm *RequestManager) {
 		}
 	}
 
-	for _, response := range prm.message.Responses() {
+	for _, response := range prm.responses {
 		// we're keeping it super light for now -- basically just ignoring
 		// reason for termination and closing the channel
 		if gsmsg.IsTerminalResponseCode(response.Status()) {

@@ -48,6 +48,8 @@ github.com/ipfs/go-ds-leveldb v0.0.1/go.mod h1:feO8V3kubwsEF22n0YRQCffeb79OOYIyk
 github.com/ipfs/go-ipfs-blocksutil v0.0.1 h1:Eh/H4pc1hsvhzsQoMEP3Bke/aW5P5rVM1IWFJMcGIPQ=
 github.com/ipfs/go-ipfs-blocksutil v0.0.1/go.mod h1:Yq4M86uIOmxmGPUHv/uI7uKqZNtLb449gwKqXjIsnRk=
 github.com/ipfs/go-ipfs-delay v0.0.0-20181109222059-70721b86a9a8/go.mod h1:8SP1YXK1M1kXuc4KJZINY3TQQ03J2rwBG9QfXmbRPrw=
+github.com/ipfs/go-ipfs-pq v0.0.1 h1:zgUotX8dcAB/w/HidJh1zzc1yFq6Vm8J7T2F4itj/RU=
+github.com/ipfs/go-ipfs-pq v0.0.1/go.mod h1:LWIqQpqfRG3fNc5XsnIhz/wQ2XXGyugQwls7BgUmUfY=
 github.com/ipfs/go-ipfs-util v0.0.1 h1:Wz9bL2wB2YBJqggkA4dD7oSmqB4cAnpNbGrlHJulv50=
 github.com/ipfs/go-ipfs-util v0.0.1/go.mod h1:spsl5z8KUnrve+73pOhSVZND1SIxPW5RyBCNzQxlJBc=
 github.com/ipfs/go-log v0.0.1 h1:9XTUN/rW64BCG1YhPK9Hoy3q8nr4gOmHHBpgFdfw6Lc=
@@ -60,6 +62,8 @@ github.com/ipld/go-ipld-prime v0.0.0-20190316215235-adc089c2d3fb h1:pBiRTPGX6V8H
 github.com/ipld/go-ipld-prime v0.0.0-20190316215235-adc089c2d3fb/go.mod h1:hSGXgXt4BSdqvjA3Kkxhzcg4Rsk9yvIeEuEVCPCi7/A=
 github.com/ipld/go-ipld-prime v0.0.0-20190320000329-46ca29fe25db h1:/6+Pat3+xFjSaBHudbUm+KFyf/11JLuMHGM2dGVNkHc=
 github.com/ipld/go-ipld-prime v0.0.0-20190320000329-46ca29fe25db/go.mod h1:hSGXgXt4BSdqvjA3Kkxhzcg4Rsk9yvIeEuEVCPCi7/A=
+github.com/ipld/go-ipld-prime v0.0.0-20190329013432-23c6f913c975 h1:rwQVBxB/muR+Og3iu8ypYp6Rerkcp5pi2j0qfAtqQeI=
+github.com/ipld/go-ipld-prime v0.0.0-20190329013432-23c6f913c975/go.mod h1:hSGXgXt4BSdqvjA3Kkxhzcg4Rsk9yvIeEuEVCPCi7/A=
 github.com/jackpal/gateway v1.0.4 h1:LS5EHkLuQ6jzaHwULi0vL+JO0mU/n4yUtK8oUjHHOlM=
 github.com/jackpal/gateway v1.0.4/go.mod h1:lTpwd4ACLXmpyiCTRtfiNyVnUmqT9RivzCDQetPfnjA=
 github.com/jackpal/go-nat-pmp v1.0.1 h1:i0LektDkO1QlrTm/cSuP+PyBCDnYvjPLGl4LdWEMiaA=

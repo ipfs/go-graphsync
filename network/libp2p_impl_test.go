@@ -69,8 +69,8 @@ func TestMessageSendAndReceive(t *testing.T) {
 	status := gsmsg.RequestAcknowledged
 
 	sent := gsmsg.New()
-	sent.AddRequest(id, selector, priority)
-	sent.AddResponse(id, status, extra)
+	sent.AddRequest(gsmsg.NewRequest(id, selector, priority))
+	sent.AddResponse(gsmsg.NewResponse(id, status, extra))
 
 	err = gsnet1.ConnectTo(ctx, host2.ID())
 	if err != nil {

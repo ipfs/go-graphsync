@@ -30,6 +30,18 @@ func NewIPLDBridge() IPLDBridge {
 	return &ipldBridge{}
 }
 
+func (rb *ipldBridge) BuildNode(buildFn func(NodeBuilder) ipld.Node) (ipld.Node, error) {
+	var node ipld.Node
+	err := fluent.Recover(func() {
+		nb := fluent.WrapNodeBuilder(free.NodeBuilder())
+		node = buildFn(nb)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
 func (rb *ipldBridge) Traverse(ctx context.Context, loader Loader, root ipld.Node, s Selector, fn AdvVisitFn) error {
 	config := &TraversalConfig{Ctx: ctx, LinkLoader: loader}
 	return TraversalProgress{TraversalConfig: config}.TraverseInformatively(root, s, fn)

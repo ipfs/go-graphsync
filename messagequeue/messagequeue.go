@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ipfs/go-block-format"
+
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	logging "github.com/ipfs/go-log"
@@ -32,9 +34,10 @@ type MessageQueue struct {
 	done         chan struct{}
 
 	// internal do not touch outside go routines
-	nextMessage   gsmsg.GraphSyncMessage
-	nextMessageLk sync.RWMutex
-	sender        gsnet.MessageSender
+	nextMessage        gsmsg.GraphSyncMessage
+	nextMessageLk      sync.RWMutex
+	processedNotifiers []chan struct{}
+	sender             gsnet.MessageSender
 }
 
 // New creats a new MessageQueue.
@@ -49,26 +52,31 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork) *MessageQueue {
 }
 
 // AddRequest adds an outgoing request to the message queue.
-func (mq *MessageQueue) AddRequest(
-	id gsmsg.GraphSyncRequestID,
-	selector []byte,
-	priority gsmsg.GraphSyncPriority) {
+func (mq *MessageQueue) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest) {
 
 	if mq.mutateNextMessage(func(nextMessage gsmsg.GraphSyncMessage) {
-		nextMessage.AddRequest(id, selector, priority)
-	}) {
+		nextMessage.AddRequest(graphSyncRequest)
+	}, nil) {
 		mq.signalWork()
 	}
 }
 
-// Cancel adds a cancel message for the give request id to the queue.
-func (mq *MessageQueue) Cancel(id gsmsg.GraphSyncRequestID) {
-
+// AddResponses adds the given blocks and responses to the next message and
+// returns a channel that sends a notification when sending initiates. If ignored by the consumer
+// sending will not block.
+func (mq *MessageQueue) AddResponses(responses []gsmsg.GraphSyncResponse, blks []blocks.Block) <-chan struct{} {
+	notificationChannel := make(chan struct{}, 1)
 	if mq.mutateNextMessage(func(nextMessage gsmsg.GraphSyncMessage) {
-		nextMessage.Cancel(id)
-	}) {
+		for _, response := range responses {
+			nextMessage.AddResponse(response)
+		}
+		for _, block := range blks {
+			nextMessage.AddBlock(block)
+		}
+	}, notificationChannel) {
 		mq.signalWork()
 	}
+	return notificationChannel
 }
 
 // Startup starts the processing of messages, and creates an initial message
@@ -101,13 +109,16 @@ func (mq *MessageQueue) runQueue() {
 	}
 }
 
-func (mq *MessageQueue) mutateNextMessage(mutator func(gsmsg.GraphSyncMessage)) bool {
+func (mq *MessageQueue) mutateNextMessage(mutator func(gsmsg.GraphSyncMessage), processedNotifier chan struct{}) bool {
 	mq.nextMessageLk.Lock()
 	defer mq.nextMessageLk.Unlock()
 	if mq.nextMessage == nil {
 		mq.nextMessage = gsmsg.New()
 	}
 	mutator(mq.nextMessage)
+	if processedNotifier != nil {
+		mq.processedNotifiers = append(mq.processedNotifiers, processedNotifier)
+	}
 	return !mq.nextMessage.Empty()
 }
 
@@ -123,6 +134,14 @@ func (mq *MessageQueue) extractOutgoingMessage() gsmsg.GraphSyncMessage {
 	mq.nextMessageLk.Lock()
 	message := mq.nextMessage
 	mq.nextMessage = nil
+	for _, processedNotifier := range mq.processedNotifiers {
+		select {
+		case processedNotifier <- struct{}{}:
+		default:
+		}
+		close(processedNotifier)
+	}
+	mq.processedNotifiers = nil
 	mq.nextMessageLk.Unlock()
 	return message
 }

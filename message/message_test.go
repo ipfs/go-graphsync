@@ -18,7 +18,7 @@ func TestAppendingRequests(t *testing.T) {
 	priority := GraphSyncPriority(rand.Int31())
 
 	gsm := New()
-	gsm.AddRequest(id, selector, priority)
+	gsm.AddRequest(NewRequest(id, selector, priority))
 	requests := gsm.Requests()
 	if len(requests) != 1 {
 		t.Fatal("Did not add request to message")
@@ -63,7 +63,7 @@ func TestAppendingResponses(t *testing.T) {
 	status := RequestAcknowledged
 
 	gsm := New()
-	gsm.AddResponse(requestID, status, extra)
+	gsm.AddResponse(NewResponse(requestID, status, extra))
 	responses := gsm.Responses()
 	if len(responses) != 1 {
 		t.Fatal("Did not add response to message")
@@ -135,9 +135,9 @@ func TestRequestCancel(t *testing.T) {
 	priority := GraphSyncPriority(rand.Int31())
 
 	gsm := New()
-	gsm.AddRequest(id, selector, priority)
+	gsm.AddRequest(NewRequest(id, selector, priority))
 
-	gsm.Cancel(id)
+	gsm.AddRequest(CancelRequest(id))
 
 	requests := gsm.Requests()
 	if len(requests) != 1 {
@@ -158,8 +158,8 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	status := RequestAcknowledged
 
 	gsm := New()
-	gsm.AddRequest(id, selector, priority)
-	gsm.AddResponse(id, status, extra)
+	gsm.AddRequest(NewRequest(id, selector, priority))
+	gsm.AddResponse(NewResponse(id, status, extra))
 
 	gsm.AddBlock(blocks.NewBlock([]byte("W")))
 	gsm.AddBlock(blocks.NewBlock([]byte("E")))

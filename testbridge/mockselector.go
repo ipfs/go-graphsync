@@ -14,7 +14,8 @@ func newMockSelector(mss *mockSelectorSpec) ipldbridge.Selector {
 	return &mockSelector{mss.cidsVisited}
 }
 
-func (ms *mockSelector) Explore(ipld.Node) (ipld.KeyIterator, ipldbridge.Selector) {
-	return nil, ms
+func (ms *mockSelector) Explore(ipld.Node) (ipld.MapIterator, ipld.ListIterator, ipldbridge.Selector) {
+	return nil, nil, ms
 }
+
 func (ms *mockSelector) Decide(ipld.Node) bool { return false }

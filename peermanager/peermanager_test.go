@@ -2,59 +2,27 @@ package peermanager
 
 import (
 	"context"
-	"math/rand"
-	"reflect"
 	"testing"
-	"time"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/libp2p/go-libp2p-peer"
 )
 
-type messageSent struct {
-	p       peer.ID
-	message gsmsg.GraphSyncMessage
+type fakePeerProcess struct {
 }
 
-type fakePeer struct {
-	p            peer.ID
-	messagesSent chan messageSent
-}
-
-func (fp *fakePeer) Startup()  {}
-func (fp *fakePeer) Shutdown() {}
-
-func (fp *fakePeer) AddRequest(id gsmsg.GraphSyncRequestID,
-	selector []byte,
-	priority gsmsg.GraphSyncPriority) {
-	message := gsmsg.New()
-	message.AddRequest(id, selector, priority)
-	fp.messagesSent <- messageSent{fp.p, message}
-}
-
-func (fp *fakePeer) Cancel(id gsmsg.GraphSyncRequestID) {
-	message := gsmsg.New()
-	message.Cancel(id)
-	fp.messagesSent <- messageSent{fp.p, message}
-}
-
-func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {
-	return func(ctx context.Context, p peer.ID) PeerQueue {
-		return &fakePeer{
-			p:            p,
-			messagesSent: messagesSent,
-		}
-	}
-}
+func (fp *fakePeerProcess) Startup()  {}
+func (fp *fakePeerProcess) Shutdown() {}
 
 func TestAddingAndRemovingPeers(t *testing.T) {
 	ctx := context.Background()
-	peerQueueFactory := makePeerQueueFactory(nil)
+	peerProcessFatory := func(ctx context.Context, p peer.ID) PeerProcess {
+		return &fakePeerProcess{}
+	}
 
 	tp := testutil.GeneratePeers(5)
 	peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4]
-	peerManager := New(ctx, peerQueueFactory)
+	peerManager := New(ctx, peerProcessFatory)
 
 	peerManager.Connected(peer1)
 	peerManager.Connected(peer2)
@@ -88,75 +56,5 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 
 	if !testutil.ContainsPeer(connectedPeers, peer2) {
 		t.Fatal("Peer was disconnected but should not have been")
-	}
-}
-
-func TestSendingMessagesToPeers(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
-	defer cancel()
-	messagesSent := make(chan messageSent, 5)
-	peerQueueFactory := makePeerQueueFactory(messagesSent)
-
-	tp := testutil.GeneratePeers(5)
-
-	id := gsmsg.GraphSyncRequestID(rand.Int31())
-	priority := gsmsg.GraphSyncPriority(rand.Int31())
-	selector := testutil.RandomBytes(100)
-
-	peerManager := New(ctx, peerQueueFactory)
-
-	peerManager.SendRequest(tp[0], id, selector, priority)
-	peerManager.SendRequest(tp[1], id, selector, priority)
-	peerManager.CancelRequest(tp[0], id)
-
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not send first message")
-	case firstMessage := <-messagesSent:
-		if firstMessage.p != tp[0] {
-			t.Fatal("First message sent to wrong peer")
-		}
-		request := firstMessage.message.Requests()[0]
-		if request.ID() != id ||
-			request.IsCancel() != false ||
-			request.Priority() != priority ||
-			!reflect.DeepEqual(request.Selector(), selector) {
-			t.Fatal("did not send correct first message")
-		}
-	}
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not send second message")
-	case secondMessage := <-messagesSent:
-		if secondMessage.p != tp[1] {
-			t.Fatal("Second message sent to wrong peer")
-		}
-		request := secondMessage.message.Requests()[0]
-		if request.ID() != id ||
-			request.IsCancel() != false ||
-			request.Priority() != priority ||
-			!reflect.DeepEqual(request.Selector(), selector) {
-			t.Fatal("did not send correct second message")
-		}
-	}
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not send third message")
-	case thirdMessage := <-messagesSent:
-		if thirdMessage.p != tp[0] {
-			t.Fatal("Third message sent to wrong peer")
-		}
-		request := thirdMessage.message.Requests()[0]
-		if request.ID() != id ||
-			request.IsCancel() != true {
-			t.Fatal("third message was not a cancel")
-		}
-	}
-	connectedPeers := peerManager.ConnectedPeers()
-	if len(connectedPeers) != 2 ||
-		!testutil.ContainsPeer(connectedPeers, tp[0]) ||
-		!testutil.ContainsPeer(connectedPeers, tp[1]) {
-		t.Fatal("did not connect all peers that were sent messages")
 	}
 }

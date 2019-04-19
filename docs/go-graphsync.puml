@@ -54,7 +54,7 @@ package "go-graphsync" {
       ReceiveError(error)
     }
 
-    GraphSync *-- RawLoader
+    GraphSync *-- Loader
 
   package network {
     
@@ -91,8 +91,8 @@ package "go-graphsync" {
 
   package messagequeue {
     class MessageQueue {
-      AddRequest(GraphSyncRequestID, selector []byte, GraphSyncPriority)
-      Cancel(GraphSyncRequestID)
+      AddRequest(GraphSyncRequest)
+      AddResponses([]GraphSyncResponse, []Block) <-chan struct{}
       Startup()
       Shutdown()
     }
@@ -104,20 +104,26 @@ package "go-graphsync" {
     MessageQueue *-- GraphSyncNetwork
   }
 
-  package peerhandler {
+  package peermanager {
     class PeerManager {
       Connected(p peer.ID)
       Disconnected(p peer.ID)
       ConnectedPeers() []peer.ID
-      SendRequest(peer.ID, GraphSyncRequestID, selector []byte, priority)
-      CancelRequest(peer.ID, GraphSyncRequestID)
+      GetProcess(peer.ID) PeerProcess
+    }
+
+    class PeerMessageManager {
+      SendRequest(peer.ID, GraphSyncRequest)
+      SendResponses(peer.ID, []GraphSyncResponse, []Block)
     }
 
     object "Package Public Functions" as goPeerManagerPF {
-      New(ctx context.Context, createPeerQueue func(context, peer.ID) MessageQueue)
+      New(ctx context.Context, createPeerProcess func(context, peer.ID) PeerProcess)
+      NewMessageManager(ctx context.Context, createPeerQueue func(context, peer.ID) MessageQueue)
     }
     GraphSync .. goPeerManagerPF
-    PeerManager *-- MessageQueue
+    PeerManager <|-- PeerMessageManager
+    PeerMessageManager *-- MessageQueue
   }
 
   package requestmanager {
@@ -127,38 +133,167 @@ package "go-graphsync" {
     interface ResponseError {
 
     }
-  class RequestManager {
-    SetDelegate(peerHandler PeerManager)
-    SendRequest(ctx context.Context, p peer.ID, cidRootedSelector Node) chan Block
-    ProcessResponses(message GraphSyncMessage)
-  }
-  RequestManager *-- PeerManager
-  GraphSync *-- RequestManager
+    class RequestManager {
+      SetDelegate(peerHandler PeerMessageManager)
+      SendRequest(ctx context.Context, p peer.ID, cidRootedSelector Node) chan Block
+      ProcessResponses(message GraphSyncMessage)
+    }
+    RequestManager *-- PeerMessageManager
+    GraphSync *-- RequestManager
   }
 
+  
   package responsemanager {
-  class ResponseManager {
-    ProcessRequests(p peer.ID, requests []GraphSyncRequests)
+    package peertaskqueue {
+      package peertask {
+        class Task {
+        }
+        class TaskBlock {
+          MarkPrunable(Identifier)
+          PruneTasks()
+          Index()
+          SetIndex(int)
+        }
+
+        interface Identifier {
+        }
+        object "Package Public Functions" as goPeerTaskPF {
+          FIFOCompare(a, b *TaskBlock) bool
+          PriorityCompare(a, b *TaskBlock) bool
+          WrapCompare(func(a, b *TaskBlock) bool) func(a, b pq.Elem) bool
+          NewTaskBlock([]Task, int, peer.ID, func([]Task)) *TaskBlock
+        }
+      }
+
+      package peertracker {
+        class PeerTracker {
+          StartTask(Identifier)
+          TaskDone(Identifier)
+          Index()
+          SetIndex(int)
+          PushBlock(peer.ID, []Task, func([]Task))
+          PopBlock() *TaskBlock
+          Remove(Identifier)
+          Freeze()
+          Thaw() bool
+          FullThaw()
+          IsFrozen() bool
+        }
+        object "Package Public Functions" as goPeerTrackerPF {
+          New() *PeerTracker
+          PeerCompare(a, b pq.Elem) bool
+        }
+        PeerTracker *-- TaskBlock
+        PeerTracker .. goPeerTaskPF
+      }
+
+      class PeerTaskQueue {
+        PushBlock(to peer.ID, tasks ...Task)
+	      PopBlock() *TaskBlock
+	      Remove(identifier Identifier, p peer.ID)
+	      ThawRound()
+        FullThaw()
+      }
+      PeerTaskQueue *-- PeerTracker
+      PeerTaskQueue .. goPeerTrackerPF
+
+      object "Package Public Functions" as goPeerTaskQueuePF {
+        New() *PeerTaskQueue
+      }
+      GraphSync .. goPeerTaskQueuePF     
+    }
+
+    package loader {
+      object "Package Public Functions" as goResponseLoaderPF {
+        WrapLoader(Loader,GraphSyncRequestID, PeerResponseSender) Loader
+      }
+    }
+    package linktracker {
+      class LinkTracker {
+        ShouldSendBlockFor(Link) bool
+        RecordLinkTraversal(GraphSyncRequestID, Link, bool)
+        FinishRequest(GraphSyncRequestID) bool
+      }
+      object "Package Public Functions" as goLinkTrackerPF {
+        New() *LinkTracker
+      }
+    }
+
+    package responsebuilder {
+      class ResponseBuilder {
+        AddBlock(Block)
+        AddLink(GraphSyncRequestID, Link, bool)
+        AddCompletedRequest(GraphSyncRequestID, GraphSyncResponseStatusCode)
+        Empty() bool
+        Build(IPLDBridge) ([]GraphSyncResponse, []Block, error)    
+      }
+      object "Package Public Functions" as goResponseBuilderPF {
+        New() *ResponseBuilder
+      }
+    }
+    
+    package peerresponsemanager {
+      class PeerResponseManager {
+        SenderForPeer(p peer.ID) PeerResponseSender
+      }
+      class PeerResponseSender {
+        Startup()
+        Shutdown()
+        SendResponse(GraphSyncRequestID,Link,[]byte)
+	      FinishRequest(GraphSyncRequestID)
+	      FinishWithError(GraphSyncRequestID, GraphSyncResponseStatusCode)
+      }
+
+      object "Package Public Functions" as goPeerResponseManagerPF {
+        New(Context, func(Context, peer.ID) PeerResponseSender) *PeerResponseManager
+        NewResponseSender(Context, peer.ID, PeerMessageManager, IPLDBridge) PeerResponseSender  
+      }
+
+      PeerResponseManager *-- PeerResponseSender
+      PeerResponseSender *-- LinkTracker
+      PeerResponseSender *-- ResponseBuilder
+      PeerResponseSender *-- PeerMessageManager
+      PeerResponseSender *-- IPLDBridge
+      PeerResponseSender .. goLinkTrackerPF
+      PeerResponseSender .. goResponseBuilderPF
+      GraphSync .. goPeerResponseManagerPF     
+    }
+
+    class ResponseManager {
+      ProcessRequests(context, peer.ID, []GraphSyncRequests)
+    }
+
+    object "Package Public Functions" as goResponseManagerPF {
+      New(Context, Loader, IPLDBridge, PeerResponseManager, PeerTaskQueue) *ResponseManager
+    }
+    GraphSync *-- ResponseManager
+    ResponseManager *-- Loader
+    ResponseManager *-- IPLDBridge
+    ResponseManager *-- PeerResponseManager
+    ResponseManager *-- PeerTaskQueue
+    ResponseManager .. goResponseLoaderPF
+    GraphSync .. goResponseManagerPF
   }
-  ResponseManager *-- GraphSyncNetwork
-  GraphSync *-- ResponseManager
-  ResponseManager *-- RawLoader
-  }
+
   package message {
     object "Package Public Functions" as goGraphSyncMessagePF {
       func FromPBReader(pbr ggio.Reader) (GraphSyncMessage, error)
       func FromNet(r io.Reader) (GraphSyncMessage, error)
+      func New() GraphSyncMessage
+      func NewRequest(GraphSyncRequestID, []byte, GraphSyncPriority) GraphSyncRequest
+      func CancelRequest(GraphSyncRequestID) GraphSyncRequest
+      func NewResponse(GraphSyncRequestID, GraphSyncResponseStatusCode, []byte) GraphSyncResponse
     }
     goGraphSyncMessagePF .. libP2PGraphSyncNetwork
 
-    interface GraphSyncRequest {
+    class GraphSyncRequest {
       Selector() []bytes
       Priority() Priority
       ID()       int
       IsCancel() bool
     }
 
-    interface GraphSyncResponse {
+    class GraphSyncResponse {
       RequestID() int
       Status() GraphSyncStatus
       Extra() []bytes
@@ -168,6 +303,9 @@ package "go-graphsync" {
       Requests() : []GraphSyncRequest
       Responses() : []GraphSyncResponse
       Blocks() : []Blocks
+      AddRequest(GraphSyncRequest)
+      AddResponse(GraphSyncResponse)
+      AddBlock(Block)
     }
 
     interface Exportable {
@@ -183,6 +321,7 @@ package "go-graphsync" {
 
   package ipldbridge {
     interface IPLDBridge {
+      BuildNode(func(NodeBuilder) ipld.Node) (ipld.Node, error)
 	    ValidateSelectorSpec(rootedSelector ipld.Node) []error
 	    EncodeNode(ipld.Node) ([]byte, error)
 	    DecodeNode([]byte) (ipld.Node, error)
