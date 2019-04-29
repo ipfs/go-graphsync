@@ -1,0 +1,79 @@
+@startuml Overview
+start
+if ()
+:Graphsync Client Makes Request;
+else
+:Incoming Network Traffic;
+:Message Decoding;
+endif
+partition "Top Level Interface" {
+:GraphSync;
+}
+if (operation type) then (outgoing request or incoming response)
+partition "Graphsync Requestor Implementation" {
+:RequestManager;
+if (operation type) then (incoming response)
+:AsyncLoader;
+partition "Verifying Queries" {
+fork
+:ipld.Traverse;
+fork again
+:ipld.Traverse;
+fork again
+:ipld.Traverse;
+end fork
+}
+partition "Collecting Responses" {
+fork
+:Response Collector;
+fork again
+:Response Collector;
+fork again
+:Response Collector;
+end fork
+}
+:Responses returned to client;
+stop
+else (outgoing request)
+:Send Request To Network;
+endif
+}
+else (incoming request)
+partition "Graphsync Responder Implementation" {
+:ResponseManager;
+partition "Performing Queries" {
+:PeerTaskQueue;
+fork
+:ipld.Traverse;
+fork again
+:ipld.Traverse;
+fork again
+:ipld.Traverse;
+end fork
+}
+partition "Aggregating Responses" {
+:PeerResponseManager;
+fork
+:PeerResponseSender;
+fork again
+:PeerResponseSender;
+fork again
+:PeerResponseSender;
+end fork
+}
+}
+endif
+partition "Message Sending Layer" {
+:PeerManager;
+fork
+:MessageQueue;
+fork again
+:MessageQueue;
+fork again
+:MessageQueue;
+end fork
+:Message Encoding;
+}
+:Outgoing Network Traffic;
+stop
+@enduml
