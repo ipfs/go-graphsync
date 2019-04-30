@@ -35,6 +35,9 @@ func WrapLoader(loader ipldbridge.Loader,
 			}
 		}
 		responseSender.SendResponse(requestID, lnk, data)
+		if data == nil {
+			err = ipldbridge.ErrDoNotFollow()
+		}
 		return result, err
 	}
 }

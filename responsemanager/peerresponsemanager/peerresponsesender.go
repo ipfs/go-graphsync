@@ -14,8 +14,8 @@ import (
 	"github.com/ipld/go-ipld-prime"
 
 	"github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync/linktracker"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/responsemanager/linktracker"
 	"github.com/ipfs/go-graphsync/responsemanager/responsebuilder"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
@@ -90,7 +90,7 @@ func (prm *peerResponseSender) SendResponse(
 ) {
 	hasBlock := data != nil
 	prm.linkTrackerLk.Lock()
-	sendBlock := hasBlock && prm.linkTracker.ShouldSendBlockFor(link)
+	sendBlock := hasBlock && prm.linkTracker.BlockRefCount(link) == 0
 	prm.linkTracker.RecordLinkTraversal(requestID, link, hasBlock)
 	prm.linkTrackerLk.Unlock()
 

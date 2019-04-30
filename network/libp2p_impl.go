@@ -55,6 +55,9 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg gsmsg.GraphSyncMe
 }
 
 func msgToStream(ctx context.Context, s inet.Stream, msg gsmsg.GraphSyncMessage) error {
+	log.Debugf("Outgoing message with %d requests, %d responses, and %d blocks",
+		len(msg.Requests()), len(msg.Responses()), len(msg.Blocks()))
+
 	deadline := time.Now().Add(sendMessageTimeout)
 	if dl, ok := ctx.Deadline(); ok {
 		deadline = dl

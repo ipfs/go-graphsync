@@ -2,6 +2,7 @@ package ipldbridge
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ipld/go-ipld-prime/fluent"
 
@@ -10,8 +11,21 @@ import (
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 )
 
+var errDoNotFollow = errors.New("Dont Follow Me")
+
+// ErrDoNotFollow is just a wrapper for whatever IPLD's ErrDoNotFollow ends up looking like
+func ErrDoNotFollow() error {
+	return errDoNotFollow
+}
+
 // Loader is an alias from ipld, in case it's renamed/moved.
 type Loader = ipld.Loader
+
+// Storer is an alias from ipld, in case it's renamed/moved.
+type Storer = ipld.Storer
+
+// StoreCommitter is an alias from ipld, in case it's renamed/moved.
+type StoreCommitter = ipld.StoreCommitter
 
 // AdvVisitFn is an alias from ipld, in case it's renamed/moved.
 type AdvVisitFn = ipldtraversal.AdvVisitFn
@@ -37,9 +51,20 @@ type ListBuilder = fluent.ListBuilder
 // MapBuilder is an alias from ipld fluent, in case it's moved
 type MapBuilder = fluent.MapBuilder
 
+// SimpleNode is an alias from ipld fluent, to refer to its non error based
+// node struct
+type SimpleNode = fluent.Node
+
 // IPLDBridge is an interface for making calls to IPLD, which can be
 // replaced with alternative implementations
 type IPLDBridge interface {
+
+	// ExtractData provides an efficient mechanism for assembling nodes w/ fluent
+	// interface
+	ExtractData(ipld.Node, func(SimpleNode) interface{}) (interface{}, error)
+
+	// BuildNode provides an efficient mechanism for assembling nodes w/ fluent
+	// interface
 	BuildNode(func(NodeBuilder) ipld.Node) (ipld.Node, error)
 
 	// ValidateSelectorSpec verifies if a node matches the selector spec.

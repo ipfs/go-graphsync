@@ -1,6 +1,10 @@
 package requestmanager
 
-import "context"
+import (
+	"context"
+
+	"github.com/ipfs/go-graphsync/requestmanager/types"
+)
 
 type responseCollector struct {
 	ctx context.Context
@@ -12,44 +16,29 @@ func newResponseCollector(ctx context.Context) *responseCollector {
 
 func (rc *responseCollector) collectResponses(
 	requestCtx context.Context,
-	incomingResponses <-chan ResponseProgress,
-	incomingErrors <-chan ResponseError,
-	cancelRequest func()) (<-chan ResponseProgress, <-chan ResponseError) {
+	incomingResponses <-chan types.ResponseProgress,
+	incomingErrors <-chan error,
+	cancelRequest func()) (<-chan types.ResponseProgress, <-chan error) {
 
-	returnedResponses := make(chan ResponseProgress)
-	returnedErrors := make(chan ResponseError)
+	returnedResponses := make(chan types.ResponseProgress)
+	returnedErrors := make(chan error)
 
 	go func() {
-		var receivedResponses []ResponseProgress
-		var receivedErrors []ResponseError
+		var receivedResponses []types.ResponseProgress
 		defer close(returnedResponses)
-		defer close(returnedErrors)
-		outgoingResponses := func() chan<- ResponseProgress {
+		outgoingResponses := func() chan<- types.ResponseProgress {
 			if len(receivedResponses) == 0 {
 				return nil
 			}
 			return returnedResponses
 		}
-		nextResponse := func() ResponseProgress {
+		nextResponse := func() types.ResponseProgress {
 			if len(receivedResponses) == 0 {
-				return nil
+				return types.ResponseProgress{}
 			}
 			return receivedResponses[0]
 		}
-		outgoingErrors := func() chan<- ResponseError {
-			if len(receivedErrors) == 0 {
-				return nil
-			}
-			return returnedErrors
-		}
-		nextError := func() ResponseError {
-			if len(receivedErrors) == 0 {
-				return nil
-			}
-			return receivedErrors[0]
-		}
-
-		for len(receivedResponses) > 0 || len(receivedErrors) > 0 || incomingResponses != nil || incomingErrors != nil {
+		for len(receivedResponses) > 0 || incomingResponses != nil {
 			select {
 			case <-rc.ctx.Done():
 				return
@@ -66,6 +55,32 @@ func (rc *responseCollector) collectResponses(
 				}
 			case outgoingResponses() <- nextResponse():
 				receivedResponses = receivedResponses[1:]
+			}
+		}
+	}()
+	go func() {
+		var receivedErrors []error
+		defer close(returnedErrors)
+
+		outgoingErrors := func() chan<- error {
+			if len(receivedErrors) == 0 {
+				return nil
+			}
+			return returnedErrors
+		}
+		nextError := func() error {
+			if len(receivedErrors) == 0 {
+				return nil
+			}
+			return receivedErrors[0]
+		}
+
+		for len(receivedErrors) > 0 || incomingErrors != nil {
+			select {
+			case <-rc.ctx.Done():
+				return
+			case <-requestCtx.Done():
+				return
 			case err, ok := <-incomingErrors:
 				if !ok {
 					incomingErrors = nil

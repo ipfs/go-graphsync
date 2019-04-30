@@ -24,6 +24,21 @@ type mockIPLDBridge struct {
 func NewMockIPLDBridge() ipldbridge.IPLDBridge {
 	return &mockIPLDBridge{}
 }
+
+func (mb *mockIPLDBridge) ExtractData(
+	node ipld.Node,
+	buildFn func(ipldbridge.SimpleNode) interface{}) (interface{}, error) {
+	var value interface{}
+	err := fluent.Recover(func() {
+		simpleNode := fluent.WrapNode(node)
+		value = buildFn(simpleNode)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
 func (mb *mockIPLDBridge) BuildNode(buildFn func(ipldbridge.NodeBuilder) ipld.Node) (ipld.Node, error) {
 	var node ipld.Node
 	err := fluent.Recover(func() {
@@ -91,7 +106,10 @@ func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.Loader
 
 		node, err := loadNode(lnk, loader)
 		if err == nil {
-			fn(ipldbridge.TraversalProgress{}, node, 0)
+			fn(ipldbridge.TraversalProgress{LastBlock: struct {
+				ipld.Path
+				ipld.Link
+			}{ipld.Path{}, cidlink.Link{Cid: lnk}}}, node, 0)
 		}
 		select {
 		case <-ctx.Done():

@@ -3,11 +3,11 @@ package responsebuilder
 import (
 	"fmt"
 	"math/rand"
+	"reflect"
 	"testing"
 
-	"github.com/ipld/go-ipld-prime/fluent"
-
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
@@ -35,6 +35,7 @@ func TestMessageBuilding(t *testing.T) {
 
 	rb.AddLink(requestID2, links[1], true)
 	rb.AddLink(requestID2, links[2], true)
+	rb.AddLink(requestID2, links[1], true)
 
 	rb.AddCompletedRequest(requestID2, gsmsg.RequestCompletedFull)
 
@@ -62,40 +63,39 @@ func TestMessageBuilding(t *testing.T) {
 		t.Fatal("did not generate completed partial response")
 	}
 
-	response1Metadata, err := ipldBridge.DecodeNode(response1.Extra())
-	if err != nil {
-		t.Fatal("unable to read metadata from response")
+	response1Metadata, err := metadata.DecodeMetadata(response1.Extra(), ipldBridge)
+	if err != nil || !reflect.DeepEqual(response1Metadata, metadata.Metadata{
+		metadata.Item{Link: links[0], BlockPresent: true},
+		metadata.Item{Link: links[1], BlockPresent: false},
+		metadata.Item{Link: links[2], BlockPresent: true},
+	}) {
+		t.Fatal("Metadata did not match expected")
 	}
-	analyzeMetadata(t, response1Metadata, map[ipld.Link]bool{
-		links[0]: true,
-		links[1]: false,
-		links[2]: true,
-	})
+
 	response2, err := findResponseForRequestID(responses, requestID2)
 	if err != nil || response2.Status() != gsmsg.RequestCompletedFull {
 		t.Fatal("did not generate completed partial response")
 	}
-	response2Metadata, err := ipldBridge.DecodeNode(response2.Extra())
-	if err != nil {
-		t.Fatal("unable to read metadata from response")
+	response2Metadata, err := metadata.DecodeMetadata(response2.Extra(), ipldBridge)
+	if err != nil || !reflect.DeepEqual(response2Metadata, metadata.Metadata{
+		metadata.Item{Link: links[1], BlockPresent: true},
+		metadata.Item{Link: links[2], BlockPresent: true},
+		metadata.Item{Link: links[1], BlockPresent: true},
+	}) {
+		t.Fatal("Metadata did not match expected")
 	}
-	analyzeMetadata(t, response2Metadata, map[ipld.Link]bool{
-		links[1]: true,
-		links[2]: true,
-	})
 
 	response3, err := findResponseForRequestID(responses, requestID3)
 	if err != nil || response3.Status() != gsmsg.PartialResponse {
 		t.Fatal("did not generate completed partial response")
 	}
-	response3Metadata, err := ipldBridge.DecodeNode(response3.Extra())
-	if err != nil {
-		t.Fatal("unable to read metadata from response")
+	response3Metadata, err := metadata.DecodeMetadata(response3.Extra(), ipldBridge)
+	if err != nil || !reflect.DeepEqual(response3Metadata, metadata.Metadata{
+		metadata.Item{Link: links[0], BlockPresent: true},
+		metadata.Item{Link: links[1], BlockPresent: true},
+	}) {
+		t.Fatal("Metadata did not match expected")
 	}
-	analyzeMetadata(t, response3Metadata, map[ipld.Link]bool{
-		links[0]: true,
-		links[1]: true,
-	})
 
 	response4, err := findResponseForRequestID(responses, requestID4)
 	if err != nil || response4.Status() != gsmsg.RequestCompletedFull {
@@ -120,25 +120,4 @@ func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID gsm
 		}
 	}
 	return gsmsg.GraphSyncResponse{}, fmt.Errorf("Response Not Found")
-}
-
-func analyzeMetadata(t *testing.T, metadata ipld.Node, expectedMetadata map[ipld.Link]bool) {
-	if metadata.Length() != len(expectedMetadata) {
-		t.Fatal("Wrong amount of metadata on first response")
-	}
-	err := fluent.Recover(func() {
-		safeMetadata := fluent.WrapNode(metadata)
-		for i := 0; i < len(expectedMetadata); i++ {
-			metadatum := safeMetadata.TraverseIndex(i)
-			link := metadatum.TraverseField("link").AsLink()
-			blockPresent := metadatum.TraverseField("blockPresent").AsBool()
-			expectedBlockPresent, ok := expectedMetadata[link]
-			if !ok || expectedBlockPresent != blockPresent {
-				t.Fatal("Metadata did not match expected")
-			}
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 }

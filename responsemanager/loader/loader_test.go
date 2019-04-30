@@ -33,7 +33,7 @@ func (frs *fakeResponseSender) SendResponse(
 	frs.lastData = data
 }
 
-func TestWrappedLoaderSendsRequests(t *testing.T) {
+func TestWrappedLoaderSendsResponses(t *testing.T) {
 	frs := &fakeResponseSender{}
 	link1 := testbridge.NewMockLink()
 	link2 := testbridge.NewMockLink()
@@ -64,10 +64,13 @@ func TestWrappedLoaderSendsRequests(t *testing.T) {
 	}
 
 	reader, err = wrappedLoader(link2, ipldbridge.LinkContext{})
-	fmt.Println(reader)
-	fmt.Println(err)
+
 	if reader != nil || err == nil {
 		t.Fatal("Should return an error and empty reader if underlying loader does")
+	}
+
+	if err != ipldbridge.ErrDoNotFollow() {
+		t.Fatal("Should convert error to a do not follow error")
 	}
 
 	if frs.lastRequestID != requestID ||
