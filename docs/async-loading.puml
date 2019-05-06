@@ -1,0 +1,75 @@
+@startuml async loading
+participant IPLD
+participant "Intercepted Loader" as ILoader
+participant RequestManager
+participant AsyncLoader
+participant LoadAttemptQueue
+participant ResponseCache
+participant Loader
+participant Storer
+IPLD -> ILoader: Load Link
+activate ILoader
+ILoader -> AsyncLoader: Load Link Asynchronously
+activate AsyncLoader
+ILoader <-- AsyncLoader: Channel For future response
+... transfer to internal process ...
+AsyncLoader -> LoadAttemptQueue: Try Loading This Link
+deactivate AsyncLoader
+
+LoadAttemptQueue -> ResponseCache: Try Loading This Link
+alt response cache has block
+ResponseCache -> Storer: Store the block for later
+ResponseCache -> ResponseCache: Remove the block from cache
+LoadAttemptQueue <-- ResponseCache: "Here's the block"
+note over LoadAttemptQueue: Response = Block
+else response cache told block is missing by remote peer
+LoadAttemptQueue <-- ResponseCache: "We're missing this link"
+note over LoadAttemptQueue: Response = Error Missing Link
+else local store has block
+LoadAttemptQueue <-- ResponseCache: "I Don't Have it!"
+LoadAttemptQueue -> Loader: Try Loading This Link From Local Cache
+LoadAttemptQueue <-- Loader: "Here's the block"
+note over LoadAttemptQueue: Response = Block
+else no block or known missing link yet
+LoadAttemptQueue <-- ResponseCache: "I Don't Have it!"
+LoadAttemptQueue -> Loader: Try Loading This Link From Local Cache
+LoadAttemptQueue <-- Loader: "I Don't Have it!"
+LoadAttemptQueue -> LoadAttemptQueue: Store load request to try later
+end
+loop 0 or more times till I have a response for the link
+...
+opt new responses comes in
+RequestManager -> AsyncLoader: New Responses Present
+activate AsyncLoader
+AsyncLoader -> ResponseCache: New Responses Present
+... transfer to internal process ...
+AsyncLoader -> LoadAttemptQueue: Try Loading Again
+deactivate AsyncLoader
+LoadAttemptQueue -> ResponseCache: Try Loading Stored Links
+alt response cache now has block
+ResponseCache -> Storer: Store the block for later
+ResponseCache -> ResponseCache: Remove the block from cache
+LoadAttemptQueue <-- ResponseCache: "Here's the block"
+note over LoadAttemptQueue: Response = Block
+else response cache now knows link is missing by remote peer
+LoadAttemptQueue <-- ResponseCache: "We're missing this link"
+note over LoadAttemptQueue: Response = Error Missing Link
+else still no response
+LoadAttemptQueue <-- ResponseCache: "I don't have it"
+LoadAttemptQueue -> LoadAttemptQueue: Store load request to try later
+end
+end
+opt no more responses
+RequestManager -> AsyncLoader: No more responses
+activate AsyncLoader
+... transfer to internal process ...
+AsyncLoader -> LoadAttemptQueue: Cancel attempts to load
+note over LoadAttemptQueue: Response = Error Request Finished
+deactivate AsyncLoader
+end
+end
+ILoader <-- LoadAttemptQueue: Response Sent Over Channel
+IPLD <-- ILoader : "Here's the stream of block\n data or an error"
+deactivate ILoader
+
+@enduml

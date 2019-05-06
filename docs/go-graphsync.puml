@@ -29,20 +29,15 @@ package "go-ipld-prime" {
     TraversalProgress *-- TraversalConfig
   }
 
+  interface Storer {
+
+  }
   interface Loader {
 
   }
 }
 
 package "go-graphsync" {
-  
-    class ResponseProgress {
-      Node ipld.Node
-      Path ipld.Path
-      LastBlock struct {
-        ipld.Node
-        ipld.Link }
-    }
     
     interface Cid2BlockFn {
 
@@ -55,6 +50,7 @@ package "go-graphsync" {
     }
 
     GraphSync *-- Loader
+
 
   package network {
     
@@ -126,20 +122,110 @@ package "go-graphsync" {
     PeerMessageManager *-- MessageQueue
   }
 
+    package linktracker {
+      class LinkTracker {
+        ShouldSendBlockFor(Link) bool
+        RecordLinkTraversal(GraphSyncRequestID, Link, bool)
+        FinishRequest(GraphSyncRequestID) bool
+      }
+      object "Package Public Functions" as goLinkTrackerPF {
+        New() *LinkTracker
+      }
+    }
+
   package requestmanager {
-    interface ResponseProgress {
-
+    package types {
+      interface ResponseProgress {
+      }
+      interface AsyncLoadResult {
+      }
     }
-    interface ResponseError {
 
+    package "loader" as reqLoader {
+      interface AsyncLoadFn {
+      }
+      object "Package Public Functions" as goRequestLoaderPF {
+        WrapAsyncLoader(context.Context, AsyncLoadFn, GraphSyncRequestID, chan error)
+      }
     }
+
+    package asyncloader {
+      package loadattempqueue {
+        interface LoadRequest {
+
+        }
+        interface LoadAttempter {
+          func(GraphSyncRequestID, ipld.Link) ([]byte, error)
+        }
+
+        class LoadAttemptQueue {
+          AttemptLoad(LoadRequest, bool)
+          ClearRequest(GraphSyncRequestID)
+          RetryLoads()
+        }
+        object "Package Public Functions" as goLoadAttemptQueuePF {
+          NewLoadRequest(GraphSyncRequestID, ipld.Link, chan AsyncLoadResult) LoadRequest
+          New(LoadAttempter) *LoadAttemptQueue
+        }
+      }
+      package unverifiedblockstore {
+        class UnverifiedBlockStore {
+          AddUnverifiedBlock(ipld.Link, []byte)
+          PruneBlocks(func(ipld.Link) bool)
+          VerifyBlock(ipld.Link) ([]byte, error)
+        }
+        object "Package Public Functions" as goUnverifiedBlockStore {
+          New(Storer) *UnverifiedBlockStore
+        }
+      }
+      package responsecache {
+        class ResponseCache {
+          FinishRequest(GraphSyncRequestID)
+          AttemptLoad(GraphSyncRequestID, ipld.Link) ([]byte, error)
+          ProcessResponse(map[GraphSyncRequestID]Metadata, []blocks.Block)       
+        }
+        object "Package Public Functions" as goResponseCachePF {
+          New(UnverifiedBlockStore) *ResponseCache
+        }
+        ResponseCache *-- LinkTracker
+        ResponseCache *-- UnverifiedBlockStore
+        ResponseCache .. goLinkTrackerPF
+      }
+
+      class AsyncLoader {
+        StartRequest(GraphSyncRequestID)
+        ProcessResponse(map[gsmsg.GraphSyncRequestID]metadata.Metadata, []blocks.Block)
+        AsyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) AsyncLoadResult
+        CompleteResponsesFor(GraphSyncRequestID)
+        CleanupRequest(GraphSyncRequestID)
+      }
+      
+      object "Package Public Functions" as goAsyncLoaderPF {
+        New(context.Context, ipld.Loader, ipld.Storer) *AsyncLoader
+      }
+      AsyncLoader *-- LoadAttemptQueue
+      AsyncLoader *-- ResponseCache
+      AsyncLoader *-- Loader
+      AsyncLoader *-- Storer
+      AsyncLoader .. goUnverifiedBlockStore
+      AsyncLoader .. goResponseCachePF
+      AsyncLoader .. goLoadAttemptQueuePF
+    }
+
+    
     class RequestManager {
       SetDelegate(peerHandler PeerMessageManager)
-      SendRequest(ctx context.Context, p peer.ID, cidRootedSelector Node) chan Block
-      ProcessResponses(message GraphSyncMessage)
+      SendRequest(ctx context.Context, p peer.ID, cidRootedSelector Node) chan ResponseProgress, chan error
+      ProcessResponses(peer.ID, []GraphSyncResponse, []blocks.Block)
     }
-    RequestManager *-- PeerMessageManager
+    object "Package Public Functions" as goRequestManagerPF {
+      New(ctx context.Context, asyncLoader AsyncLoader, ipldBridge ipldbridge.IPLDBridge) *RequestManager
+    }
+    RequestManager *-- AsyncLoader
+    RequestManager *-- PeerManager
+    RequestManager .. goRequestLoaderPF
     GraphSync *-- RequestManager
+    GraphSync .. goRequestManagerPF
   }
 
   
@@ -203,19 +289,9 @@ package "go-graphsync" {
       GraphSync .. goPeerTaskQueuePF     
     }
 
-    package loader {
+    package "loader" as resLoader {
       object "Package Public Functions" as goResponseLoaderPF {
         WrapLoader(Loader,GraphSyncRequestID, PeerResponseSender) Loader
-      }
-    }
-    package linktracker {
-      class LinkTracker {
-        ShouldSendBlockFor(Link) bool
-        RecordLinkTraversal(GraphSyncRequestID, Link, bool)
-        FinishRequest(GraphSyncRequestID) bool
-      }
-      object "Package Public Functions" as goLinkTrackerPF {
-        New() *LinkTracker
       }
     }
 
@@ -253,7 +329,6 @@ package "go-graphsync" {
       PeerResponseSender *-- LinkTracker
       PeerResponseSender *-- ResponseBuilder
       PeerResponseSender *-- PeerMessageManager
-      PeerResponseSender *-- IPLDBridge
       PeerResponseSender .. goLinkTrackerPF
       PeerResponseSender .. goResponseBuilderPF
       GraphSync .. goPeerResponseManagerPF     
@@ -268,7 +343,6 @@ package "go-graphsync" {
     }
     GraphSync *-- ResponseManager
     ResponseManager *-- Loader
-    ResponseManager *-- IPLDBridge
     ResponseManager *-- PeerResponseManager
     ResponseManager *-- PeerTaskQueue
     ResponseManager .. goResponseLoaderPF
@@ -332,7 +406,8 @@ package "go-graphsync" {
     GraphSync *-- IPLDBridge
     RequestManager *-- IPLDBridge
     ResponseManager *-- IPLDBridge
-  
+    PeerResponseSender *-- IPLDBridge
+
     class ipldBridge {
     }
 

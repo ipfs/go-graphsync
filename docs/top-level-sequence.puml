@@ -1,0 +1,58 @@
+@startuml Top Level Sequence
+participant Client
+participant "GraphSync\nTop Level\nInterface" as TLI
+participant "Requestor\nImplementation" as Requestor
+participant "Responder\nImplementation" as Responder
+participant IPLDBridge
+participant "Intercepted Loader" as ILoader
+participant Loader
+participant Storer
+participant "Message Sending\nLayer" as Message
+participant Network
+
+== Initialization ==
+
+Client -> TLI ** : Create With\nNetwork, Bridge,\nLoader/Storer
+TLI -> Requestor ** : Setup
+TLI -> Responder ** : Setup
+TLI -> Message ** : Setup
+
+== Performing a Request ==
+Client -> TLI : Make a request with\na selector and\na target peer
+TLI -> Requestor : Call with requested\nselector/target peer
+Requestor -> Message : Send Request To Sent Over Network
+Message -> Network : Encode and Send\nRequest
+
+== Message Crosses Network, Now On Target Peer ==
+
+Network -> TLI : Network receives message calls top level interface to process
+TLI -> Responder : Send new request for processing
+Responder -> IPLDBridge : Start a traversal\nof the selector
+IPLDBridge -> ILoader : Request to load blocks\nto perform traversal
+ILoader -> Loader : Load blocks\nfrom local storage
+Loader -> ILoader : Blocks From\nlocal storage
+par
+ILoader -> IPLDBridge : Blocks to\ncontinue traversal
+IPLDBridge -> Responder : Traversal completes to\nnotify response is done
+else
+ILoader -> Responder : Blocks+Responses To Send Back
+end
+Responder -> Message : Send Responses+Blocks To Send Over Network
+Message -> Network : Encode and Send\nResponses+Blocks
+== Message Crosses Network, Back On Original Peer ==
+
+Network -> TLI : Network receives message calls top level interface to process
+TLI -> Requestor : Send Responses+Blocks\nfor Processing
+par
+Requestor -> IPLDBridge : Kick of selector traversal to verify response
+IPLDBridge -> ILoader : Request to load blocks\nto perform traversal
+else
+Requestor -> ILoader : Blocks To Feed Back To Selector Verfication
+end
+ILoader -> Storer : Save blocks as they are verified
+Storer -> ILoader : Blocks Were Stored
+ILoader -> IPLDBridge : Blocks To Continue\n Ongoing Verification
+IPLDBridge -> Requestor : New IPLD Nodes Visited
+Requestor -> TLI : Stream Of\nNew IPLD Nodes
+TLI -> Client: Stream Of\nNew IPLD Nodes
+@enduml
