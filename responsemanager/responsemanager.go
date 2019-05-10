@@ -10,7 +10,7 @@ import (
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
-	"github.com/ipfs/go-graphsync/responsemanager/peertaskqueue/peertask"
+	"github.com/ipfs/go-peertaskqueue/peertask"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 

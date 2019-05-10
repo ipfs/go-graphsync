@@ -12,7 +12,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
-	"github.com/ipfs/go-graphsync/responsemanager/peertaskqueue/peertask"
+	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
