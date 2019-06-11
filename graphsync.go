@@ -14,8 +14,8 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager"
 	"github.com/ipfs/go-graphsync/responsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
-	"github.com/ipfs/go-peertaskqueue"
 	logging "github.com/ipfs/go-log"
+	"github.com/ipfs/go-peertaskqueue"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-peer"
 )

@@ -12,9 +12,9 @@ import (
 	cid "github.com/ipfs/go-cid"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
-	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	peer "github.com/libp2p/go-libp2p-peer"
@@ -222,31 +222,33 @@ func TestCancellationQueryInProgress(t *testing.T) {
 
 	responseManager.synchronize()
 
-	// read one block -- to unblock processing
-	select {
-	case sentResponse := <-sentResponses:
-		k := sentResponse.link.(cidlink.Link)
-		blockIndex := testutil.IndexOf(blks, k.Cid)
-		if blockIndex == -1 {
-			t.Fatal("sent incorrect link")
+	// at this point we should receive at most one more block, then traversal
+	// should complete
+	additionalMessageCount := 0
+drainqueue:
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("Should have completed request but didn't")
+		case sentResponse := <-sentResponses:
+			if additionalMessageCount > 0 {
+				t.Fatal("should not send any more responses")
+			}
+			k := sentResponse.link.(cidlink.Link)
+			blockIndex := testutil.IndexOf(blks, k.Cid)
+			if blockIndex == -1 {
+				t.Fatal("sent incorrect link")
+			}
+			if !reflect.DeepEqual(sentResponse.data, blks[blockIndex].RawData()) {
+				t.Fatal("sent incorrect data")
+			}
+			if sentResponse.requestID != requestID {
+				t.Fatal("incorrect response id")
+			}
+			additionalMessageCount++
+		case <-requestIDChan:
+			break drainqueue
 		}
-		if !reflect.DeepEqual(sentResponse.data, blks[blockIndex].RawData()) {
-			t.Fatal("sent incorrect data")
-		}
-		if sentResponse.requestID != requestID {
-			t.Fatal("incorrect response id")
-		}
-	case <-ctx.Done():
-		t.Fatal("did not send responses")
-	}
-
-	// at this point traversal should abort and we should receive a completion
-	select {
-	case <-ctx.Done():
-		t.Fatal("Should have completed request but didn't")
-	case <-sentResponses:
-		t.Fatal("should not send any more responses")
-	case <-requestIDChan:
 	}
 }
 
