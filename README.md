@@ -6,7 +6,7 @@
 [![Coverage Status](https://codecov.io/gh/ipfs/go-bitswap/branch/master/graph/badge.svg)](https://codecov.io/gh/ipfs/go-graphsync/branch/master)
 [![Travis CI](https://travis-ci.org/ipfs/go-bitswap.svg?branch=master)](https://travis-ci.org/ipfs/go-graphsync)
 
-> An implementation of the [graphsync protocol](https://github.com/ipld/specs/blob/master/graphsync/graphsync.md) in go!
+> An implementation of the [graphsync protocol](https://github.com/ipld/specs/blob/master/block-layer/graphsync/graphsync.md) in go!
 
 ## Table of Contents
 
@@ -18,7 +18,7 @@
 
 ## Background
 
-[GraphSync](https://github.com/ipld/specs/blob/master/graphsync/graphsync.md) is a protocol for synchronizing IPLD graphs among peers. It allows a host to make a single request to a remote peer for all of the results of traversing an [IPLD selector](https://github.com/ipld/specs/blob/master/selectors/selectors.md) on the remote peer's local IPLD graph. 
+[GraphSync](https://github.com/ipld/specs/blob/master/block-layer/graphsync/graphsync.md) is a protocol for synchronizing IPLD graphs among peers. It allows a host to make a single request to a remote peer for all of the results of traversing an [IPLD selector](https://github.com/ipld/specs/blob/master/block-layer/selectors/selectors.md) on the remote peer's local IPLD graph. 
 
 `go-graphsync` provides an implementation of the Graphsync protocol in go.
 
@@ -125,7 +125,7 @@ Paramater Notes:
 
 ### Building a path selector
 
-A rooted selector is a `go-ipld-prime` node that follows the spec outlined here: https://github.com/ipld/specs/blob/master/selectors/selectors.md
+A rooted selector is a `go-ipld-prime` node that follows the spec outlined here: https://github.com/ipld/specs/blob/master/block-layer/selectors/selectors.md
 
 `go-ipld-prime` provides a series of builder interfaces for building this kind of structured data into a node. If your library simply wants to make a selector from CID and a path, represented by an array of strings, you could construct the node as follows:
 
