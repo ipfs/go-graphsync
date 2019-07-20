@@ -4,13 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/ipfs/go-graphsync/responsemanager/loader"
-	ipld "github.com/ipld/go-ipld-prime"
-
+	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/responsemanager/loader"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	ipld "github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
@@ -22,6 +23,7 @@ const (
 type inProgressResponseStatus struct {
 	ctx      context.Context
 	cancelFn func()
+	root     cid.Cid
 	selector []byte
 }
 
@@ -32,6 +34,7 @@ type responseKey struct {
 
 type responseTaskData struct {
 	ctx      context.Context
+	root     cid.Cid
 	selector []byte
 }
 
@@ -159,7 +162,7 @@ func (rm *ResponseManager) processQueriesWorker() {
 			case <-rm.ctx.Done():
 				return
 			}
-			rm.executeQuery(taskData.ctx, key.p, key.requestID, taskData.selector)
+			rm.executeQuery(taskData.ctx, key.p, key.requestID, taskData.root, taskData.selector)
 			select {
 			case rm.messages <- &finishResponseRequest{key}:
 			case <-rm.ctx.Done():
@@ -171,27 +174,29 @@ func (rm *ResponseManager) processQueriesWorker() {
 
 }
 
-func noopVisitor(ipldbridge.TraversalProgress, ipld.Node, ipldbridge.TraversalReason) error {
+func noopVisitor(tp ipldbridge.TraversalProgress, n ipld.Node, tr ipldbridge.TraversalReason) error {
 	return nil
 }
 
 func (rm *ResponseManager) executeQuery(ctx context.Context,
 	p peer.ID,
 	requestID gsmsg.GraphSyncRequestID,
-	selector []byte) {
+	root cid.Cid,
+	selectorBytes []byte) {
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
-	selectorSpec, err := rm.ipldBridge.DecodeNode(selector)
+	selectorSpec, err := rm.ipldBridge.DecodeNode(selectorBytes)
 	if err != nil {
 		peerResponseSender.FinishWithError(requestID, gsmsg.RequestFailedUnknown)
 		return
 	}
-	root, reifiedSelector, err := rm.ipldBridge.DecodeSelectorSpec(selectorSpec)
+	rootLink := cidlink.Link{Cid: root}
+	selector, err := rm.ipldBridge.ParseSelector(selectorSpec)
 	if err != nil {
 		peerResponseSender.FinishWithError(requestID, gsmsg.RequestFailedUnknown)
 		return
 	}
 	wrappedLoader := loader.WrapLoader(rm.loader, requestID, peerResponseSender)
-	err = rm.ipldBridge.Traverse(ctx, wrappedLoader, root, reifiedSelector, noopVisitor)
+	err = rm.ipldBridge.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
 	if err != nil {
 		peerResponseSender.FinishWithError(requestID, gsmsg.RequestFailedUnknown)
 		return
@@ -240,6 +245,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 				inProgressResponseStatus{
 					ctx:      ctx,
 					cancelFn: cancelFn,
+					root:     request.Root(),
 					selector: request.Selector(),
 				}
 			rm.queryQueue.PushBlock(prm.p, peertask.Task{Identifier: key, Priority: int(request.Priority())})
@@ -261,7 +267,7 @@ func (rdr *responseDataRequest) handle(rm *ResponseManager) {
 	response, ok := rm.inProgressResponses[rdr.key]
 	var taskData *responseTaskData
 	if ok {
-		taskData = &responseTaskData{response.ctx, response.selector}
+		taskData = &responseTaskData{response.ctx, response.root, response.selector}
 	} else {
 		taskData = nil
 	}

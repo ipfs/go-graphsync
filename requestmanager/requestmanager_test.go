@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync/ipldbridge"
+	peer "github.com/libp2p/go-libp2p-peer"
 
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 
 	"github.com/ipfs/go-graphsync/metadata"
 
-	"github.com/ipld/go-ipld-prime/linking/cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	"github.com/ipld/go-ipld-prime"
 
@@ -23,7 +24,6 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
-	"github.com/libp2p/go-libp2p-peer"
 )
 
 type requestRecord struct {
@@ -217,11 +217,13 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 
 	blocks1 := testutil.GenerateBlocksOfSize(5, 100)
 	blocks2 := testutil.GenerateBlocksOfSize(5, 100)
+	r1 := cidlink.Link{Cid: blocks1[0].Cid()}
+	r2 := cidlink.Link{Cid: blocks2[0].Cid()}
 	s1 := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks1))
 	s2 := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks2))
 
-	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx, peers[0], s1)
-	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx, peers[0], s2)
+	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx, peers[0], r1, s1)
+	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx, peers[0], r2, s2)
 
 	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
 
@@ -313,9 +315,10 @@ func TestCancelRequestInProgress(t *testing.T) {
 
 	blocks1 := testutil.GenerateBlocksOfSize(5, 100)
 	s1 := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks1))
+	r1 := cidlink.Link{Cid: blocks1[0].Cid()}
 
-	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx1, peers[0], s1)
-	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx2, peers[0], s1)
+	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx1, peers[0], r1, s1)
+	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx2, peers[0], r1, s1)
 
 	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
 
@@ -372,7 +375,9 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 
 	blocks := testutil.GenerateBlocksOfSize(5, 100)
 	s := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks))
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
+	r := cidlink.Link{Cid: blocks[0].Cid()}
+
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 
@@ -412,8 +417,10 @@ func TestInvalidSelector(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	s := testbridge.NewInvalidSelectorSpec(testutil.GenerateCids(5))
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
+	cids := testutil.GenerateCids(5)
+	s := testbridge.NewUnencodableSelectorSpec(cids)
+	r := cidlink.Link{Cid: cids[0]}
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
 
 	testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
@@ -433,8 +440,10 @@ func TestUnencodableSelector(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	s := testbridge.NewUnencodableSelectorSpec(testutil.GenerateCids(5))
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
+	cids := testutil.GenerateCids(5)
+	s := testbridge.NewUnencodableSelectorSpec(cids)
+	r := cidlink.Link{Cid: cids[0]}
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
 
 	testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
@@ -456,7 +465,8 @@ func TestFailedRequest(t *testing.T) {
 
 	blocks := testutil.GenerateBlocksOfSize(5, 100)
 	s := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks))
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
+	r := cidlink.Link{Cid: blocks[0].Cid()}
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 	failedResponses := []gsmsg.GraphSyncResponse{
@@ -484,7 +494,8 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 
 	blocks := testutil.GenerateBlocksOfSize(5, 100)
 	s := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks))
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
+	r := cidlink.Link{Cid: blocks[0].Cid()}
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 
@@ -520,7 +531,8 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 
 	blocks := testutil.GenerateBlocksOfSize(5, 100)
 	s := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks))
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
+	r := cidlink.Link{Cid: blocks[0].Cid()}
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 
@@ -556,7 +568,8 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 
 	blocks := testutil.GenerateBlocksOfSize(5, 100)
 	s := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks))
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], s)
+	r := cidlink.Link{Cid: blocks[0].Cid()}
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 

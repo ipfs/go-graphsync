@@ -67,9 +67,10 @@ func TestStartupAndShutdown(t *testing.T) {
 	id := gsmsg.GraphSyncRequestID(rand.Int31())
 	priority := gsmsg.GraphSyncPriority(rand.Int31())
 	selector := testutil.RandomBytes(100)
+	root := testutil.GenerateCids(1)[0]
 
 	waitGroup.Add(1)
-	messageQueue.AddRequest(gsmsg.NewRequest(id, selector, priority))
+	messageQueue.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 
 	select {
 	case <-ctx.Done():
@@ -164,18 +165,22 @@ func TestDedupingMessages(t *testing.T) {
 	id := gsmsg.GraphSyncRequestID(rand.Int31())
 	priority := gsmsg.GraphSyncPriority(rand.Int31())
 	selector := testutil.RandomBytes(100)
+	root := testutil.GenerateCids(1)[0]
 
-	messageQueue.AddRequest(gsmsg.NewRequest(id, selector, priority))
+	messageQueue.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 	// wait for send attempt
 	waitGroup.Wait()
 	id2 := gsmsg.GraphSyncRequestID(rand.Int31())
 	priority2 := gsmsg.GraphSyncPriority(rand.Int31())
 	selector2 := testutil.RandomBytes(100)
+	root2 := testutil.GenerateCids(1)[0]
 	id3 := gsmsg.GraphSyncRequestID(rand.Int31())
 	priority3 := gsmsg.GraphSyncPriority(rand.Int31())
 	selector3 := testutil.RandomBytes(100)
-	messageQueue.AddRequest(gsmsg.NewRequest(id2, selector2, priority2))
-	messageQueue.AddRequest(gsmsg.NewRequest(id3, selector3, priority3))
+	root3 := testutil.GenerateCids(1)[0]
+
+	messageQueue.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))
+	messageQueue.AddRequest(gsmsg.NewRequest(id3, root3, selector3, priority3))
 
 	select {
 	case <-ctx.Done():

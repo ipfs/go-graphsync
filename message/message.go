@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 
 	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
@@ -119,6 +119,7 @@ type Exportable interface {
 // GraphSyncRequest is a struct to capture data on a request contained in a
 // GraphSyncMessage.
 type GraphSyncRequest struct {
+	root     cid.Cid
 	selector []byte
 	priority GraphSyncPriority
 	id       GraphSyncRequestID
@@ -154,22 +155,25 @@ func newMsg() *graphSyncMessage {
 
 // NewRequest builds a new Graphsync request
 func NewRequest(id GraphSyncRequestID,
+	root cid.Cid,
 	selector []byte,
 	priority GraphSyncPriority) GraphSyncRequest {
-	return newRequest(id, selector, priority, false)
+	return newRequest(id, root, selector, priority, false)
 }
 
 // CancelRequest request generates a request to cancel an in progress request
 func CancelRequest(id GraphSyncRequestID) GraphSyncRequest {
-	return newRequest(id, nil, 0, true)
+	return newRequest(id, cid.Cid{}, nil, 0, true)
 }
 
 func newRequest(id GraphSyncRequestID,
+	root cid.Cid,
 	selector []byte,
 	priority GraphSyncPriority,
 	isCancel bool) GraphSyncRequest {
 	return GraphSyncRequest{
 		id:       id,
+		root:     root,
 		selector: selector,
 		priority: priority,
 		isCancel: isCancel,
@@ -190,7 +194,11 @@ func NewResponse(requestID GraphSyncRequestID,
 func newMessageFromProto(pbm pb.Message) (GraphSyncMessage, error) {
 	gsm := newMsg()
 	for _, req := range pbm.Requests {
-		gsm.AddRequest(newRequest(GraphSyncRequestID(req.Id), req.Selector, GraphSyncPriority(req.Priority), req.Cancel))
+		root, err := cid.Cast(req.Root)
+		if err != nil {
+			return nil, err
+		}
+		gsm.AddRequest(newRequest(GraphSyncRequestID(req.Id), root, req.Selector, GraphSyncPriority(req.Priority), req.Cancel))
 	}
 
 	for _, res := range pbm.Responses {
@@ -281,6 +289,7 @@ func (gsm *graphSyncMessage) ToProto() *pb.Message {
 	for _, request := range gsm.requests {
 		pbm.Requests = append(pbm.Requests, pb.Message_Request{
 			Id:       int32(request.id),
+			Root:     request.root.Bytes(),
 			Selector: request.selector,
 			Priority: int32(request.priority),
 			Cancel:   request.isCancel,
@@ -330,6 +339,9 @@ func (gsm *graphSyncMessage) Loggable() map[string]interface{} {
 
 // ID Returns the request ID for this Request
 func (gsr GraphSyncRequest) ID() GraphSyncRequestID { return gsr.id }
+
+// Root returns the CID to the root block of this request
+func (gsr GraphSyncRequest) Root() cid.Cid { return gsr.root }
 
 // Selector returns the byte representation of the selector for this request
 func (gsr GraphSyncRequest) Selector() []byte { return gsr.selector }

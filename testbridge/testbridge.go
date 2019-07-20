@@ -13,7 +13,8 @@ import (
 	"github.com/ipld/go-ipld-prime/encoding/dagjson"
 	"github.com/ipld/go-ipld-prime/fluent"
 	free "github.com/ipld/go-ipld-prime/impl/free"
-	"github.com/ipld/go-ipld-prime/linking/cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 	multihash "github.com/multiformats/go-multihash"
 )
 
@@ -51,12 +52,16 @@ func (mb *mockIPLDBridge) BuildNode(buildFn func(ipldbridge.NodeBuilder) ipld.No
 	return node, nil
 }
 
-func (mb *mockIPLDBridge) ValidateSelectorSpec(cidRootedSelector ipld.Node) []error {
-	spec, ok := cidRootedSelector.(*mockSelectorSpec)
-	if !ok || spec.failValidation {
-		return []error{fmt.Errorf("not a selector")}
+func (mb *mockIPLDBridge) BuildSelector(buildFn func(ipldbridge.SelectorSpecBuilder) ipldbridge.SelectorSpec) (ipld.Node, error) {
+	var node ipld.Node
+	err := fluent.Recover(func() {
+		ssb := ipldselector.NewSelectorSpecBuilder(free.NodeBuilder())
+		node = buildFn(ssb).Node()
+	})
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	return node, nil
 }
 
 func (mb *mockIPLDBridge) EncodeNode(node ipld.Node) ([]byte, error) {
@@ -89,15 +94,15 @@ func (mb *mockIPLDBridge) DecodeNode(data []byte) (ipld.Node, error) {
 	return dagjson.Decoder(free.NodeBuilder(), reader)
 }
 
-func (mb *mockIPLDBridge) DecodeSelectorSpec(cidRootedSelector ipld.Node) (ipld.Node, ipldbridge.Selector, error) {
-	spec, ok := cidRootedSelector.(*mockSelectorSpec)
+func (mb *mockIPLDBridge) ParseSelector(selectorSpec ipld.Node) (ipldbridge.Selector, error) {
+	spec, ok := selectorSpec.(*mockSelectorSpec)
 	if !ok || spec.failValidation {
-		return nil, nil, fmt.Errorf("not a selector")
+		return nil, fmt.Errorf("not a selector")
 	}
-	return nil, newMockSelector(spec), nil
+	return newMockSelector(spec), nil
 }
 
-func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.Loader, root ipld.Node, s ipldbridge.Selector, fn ipldbridge.AdvVisitFn) error {
+func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.Loader, root ipld.Link, s ipldbridge.Selector, fn ipldbridge.AdvVisitFn) error {
 	ms, ok := s.(*mockSelector)
 	if !ok {
 		return fmt.Errorf("not supported")
@@ -107,8 +112,8 @@ func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.Loader
 		node, err := loadNode(lnk, loader)
 		if err == nil {
 			fn(ipldbridge.TraversalProgress{LastBlock: struct {
-				ipld.Path
-				ipld.Link
+				Path ipld.Path
+				Link ipld.Link
 			}{ipld.Path{}, cidlink.Link{Cid: lnk}}}, node, 0)
 		}
 		select {

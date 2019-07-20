@@ -10,7 +10,7 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testbridge"
 	ipld "github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/linking/cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -38,8 +38,8 @@ func TestBufferingResponseProgress(t *testing.T) {
 		case incomingResponses <- types.ResponseProgress{
 			Node: testbridge.NewMockBlockNode(block.RawData()),
 			LastBlock: struct {
-				ipld.Path
-				ipld.Link
+				Path ipld.Path
+				Link ipld.Link
 			}{ipld.Path{}, cidlink.Link{Cid: block.Cid()}},
 		}:
 		}

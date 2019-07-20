@@ -17,7 +17,7 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue"
 	ipld "github.com/ipld/go-ipld-prime"
-	"github.com/libp2p/go-libp2p-peer"
+	peer "github.com/libp2p/go-libp2p-peer"
 )
 
 var log = logging.Logger("graphsync")
@@ -86,8 +86,8 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 }
 
 // Request initiates a new GraphSync request to the given peer using the given selector spec.
-func (gs *GraphSync) Request(ctx context.Context, p peer.ID, rootedSelector ipld.Node) (<-chan ResponseProgress, <-chan error) {
-	return gs.requestManager.SendRequest(ctx, p, rootedSelector)
+func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node) (<-chan ResponseProgress, <-chan error) {
+	return gs.requestManager.SendRequest(ctx, p, root, selector)
 }
 
 // ReceiveMessage is part of the networks Receiver interface and receives

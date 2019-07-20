@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ipld/go-ipld-prime/linking/cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	blocks "github.com/ipfs/go-block-format"
 
@@ -40,8 +40,9 @@ func TestSelectorTraversal(t *testing.T) {
 		return nil, fmt.Errorf("unable to load block")
 	}
 	bridge := NewMockIPLDBridge()
+	root := cidlink.Link{Cid: cids[0]}
 	mockSelectorSpec := NewMockSelectorSpec(cids)
-	node, selector, err := bridge.DecodeSelectorSpec(mockSelectorSpec)
+	selector, err := bridge.ParseSelector(mockSelectorSpec)
 	if err != nil {
 		t.Fatal("unable to decode selector")
 	}
@@ -50,7 +51,7 @@ func TestSelectorTraversal(t *testing.T) {
 		return nil
 	}
 	ctx := context.Background()
-	err = bridge.Traverse(ctx, loader, node, selector, traversalFn)
+	err = bridge.Traverse(ctx, loader, root, selector, traversalFn)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -59,7 +60,7 @@ func TestSelectorTraversal(t *testing.T) {
 	}
 }
 
-func TestEncodeDecodeSelectorSpec(t *testing.T) {
+func TestEncodeParseSelector(t *testing.T) {
 	cids := testutil.GenerateCids(5)
 	spec := NewMockSelectorSpec(cids)
 	bridge := NewMockIPLDBridge()
@@ -87,11 +88,7 @@ func TestFailValidationSelectorSpec(t *testing.T) {
 	cids := testutil.GenerateCids(5)
 	spec := NewInvalidSelectorSpec(cids)
 	bridge := NewMockIPLDBridge()
-	errs := bridge.ValidateSelectorSpec(spec)
-	if len(errs) == 0 {
-		t.Fatal("Spec should not pass validation")
-	}
-	_, _, err := bridge.DecodeSelectorSpec(spec)
+	_, err := bridge.ParseSelector(spec)
 	if err == nil {
 		t.Fatal("Spec should not decompose to node and selector")
 	}

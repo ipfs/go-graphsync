@@ -2,25 +2,26 @@ package graphsync
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"math/rand"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/ipld/go-ipld-prime/linking/cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 
+	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
-	"github.com/libp2p/go-libp2p-peer"
+	peer "github.com/libp2p/go-libp2p-peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	mh "github.com/multiformats/go-multihash"
 )
 
 type receivedMessage struct {
@@ -45,6 +46,77 @@ func (r *receiver) ReceiveMessage(
 }
 
 func (r *receiver) ReceiveError(err error) {
+}
+
+type blockChain struct {
+	genisisNode ipld.Node
+	genisisLink ipld.Link
+	middleNodes []ipld.Node
+	middleLinks []ipld.Link
+	tipNode     ipld.Node
+	tipLink     ipld.Link
+}
+
+const blockChainLength = 100
+
+func createBlock(nb ipldbridge.NodeBuilder, parents []ipld.Link) ipld.Node {
+	return nb.CreateMap(func(mb ipldbridge.MapBuilder, knb ipldbridge.NodeBuilder, vnb ipldbridge.NodeBuilder) {
+		mb.Insert(knb.CreateString("Parents"), vnb.CreateList(func(lb ipldbridge.ListBuilder, vnb ipldbridge.NodeBuilder) {
+			for _, parent := range parents {
+				lb.Append(vnb.CreateLink(parent))
+			}
+		}))
+		mb.Insert(knb.CreateString("Messages"), vnb.CreateList(func(lb ipldbridge.ListBuilder, vnb ipldbridge.NodeBuilder) {
+			lb.Append(vnb.CreateString("A message"))
+		}))
+	})
+}
+
+func setupBlockChain(
+	ctx context.Context,
+	t *testing.T,
+	storer ipldbridge.Storer,
+	bridge ipldbridge.IPLDBridge) *blockChain {
+	linkBuilder := cidlink.LinkBuilder{Prefix: cid.NewPrefixV1(cid.DagCBOR, mh.SHA2_256)}
+	genisisNode, err := bridge.BuildNode(func(nb ipldbridge.NodeBuilder) ipld.Node {
+		return createBlock(nb, []ipld.Link{})
+	})
+	if err != nil {
+		t.Fatal("Error creating genesis block")
+	}
+	genesisLink, err := linkBuilder.Build(ctx, ipldbridge.LinkContext{}, genisisNode, storer)
+	if err != nil {
+		t.Fatal("Error creating link to genesis block")
+	}
+	parent := genesisLink
+	middleNodes := make([]ipld.Node, 0, blockChainLength-2)
+	middleLinks := make([]ipld.Link, 0, blockChainLength-2)
+	for i := 0; i < blockChainLength-2; i++ {
+		node, err := bridge.BuildNode(func(nb ipldbridge.NodeBuilder) ipld.Node {
+			return createBlock(nb, []ipld.Link{parent})
+		})
+		if err != nil {
+			t.Fatal("Error creating middle block")
+		}
+		middleNodes = append(middleNodes, node)
+		link, err := linkBuilder.Build(ctx, ipldbridge.LinkContext{}, node, storer)
+		if err != nil {
+			t.Fatal("Error creating link to middle block")
+		}
+		middleLinks = append(middleLinks, link)
+		parent = link
+	}
+	tipNode, err := bridge.BuildNode(func(nb ipldbridge.NodeBuilder) ipld.Node {
+		return createBlock(nb, []ipld.Link{parent})
+	})
+	if err != nil {
+		t.Fatal("Error creating tip block")
+	}
+	tipLink, err := linkBuilder.Build(ctx, ipldbridge.LinkContext{}, tipNode, storer)
+	if err != nil {
+		t.Fatal("Error creating link to tip block")
+	}
+	return &blockChain{genisisNode, genesisLink, middleNodes, middleLinks, tipNode, tipLink}
 }
 
 func TestMakeRequestToNetwork(t *testing.T) {
@@ -79,14 +151,23 @@ func TestMakeRequestToNetwork(t *testing.T) {
 
 	blockStore := make(map[ipld.Link][]byte)
 	loader, storer := testbridge.NewMockStore(blockStore)
-	bridge := testbridge.NewMockIPLDBridge()
+	bridge := ipldbridge.NewIPLDBridge()
 	graphSync := New(ctx, gsnet1, bridge, loader, storer)
 
-	cids := testutil.GenerateCids(5)
-	spec := testbridge.NewMockSelectorSpec(cids)
+	blockChain := setupBlockChain(ctx, t, storer, bridge)
+	spec, err := bridge.BuildSelector(func(ssb ipldbridge.SelectorSpecBuilder) ipldbridge.SelectorSpec {
+		return ssb.ExploreRecursive(100,
+			ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
+				efsb.Insert("Parents", ssb.ExploreAll(
+					ssb.ExploreRecursiveEdge()))
+			}))
+	})
+	if err != nil {
+		t.Fatal("Failed creating selector")
+	}
 	requestCtx, requestCancel := context.WithCancel(ctx)
 	defer requestCancel()
-	graphSync.Request(requestCtx, host2.ID(), spec)
+	graphSync.Request(requestCtx, host2.ID(), blockChain.tipLink, spec)
 
 	var message receivedMessage
 	select {
@@ -112,6 +193,10 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	}
 	if !reflect.DeepEqual(spec, receivedSpec) {
 		t.Fatal("did not transmit selector spec correctly")
+	}
+	_, err = bridge.ParseSelector(receivedSpec)
+	if err != nil {
+		t.Fatal("did not receive parsible selector on other side")
 	}
 }
 
@@ -145,29 +230,25 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	// setup receiving peer to just record message coming in
 	gsnet2 := gsnet.NewFromLibp2pHost(host2)
 
-	blks := testutil.GenerateBlocksOfSize(5, 100)
-
 	blockStore := make(map[ipld.Link][]byte)
-	for _, block := range blks {
-		blockStore[cidlink.Link{Cid: block.Cid()}] = block.RawData()
-	}
 	loader, storer := testbridge.NewMockStore(blockStore)
-	bridge := testbridge.NewMockIPLDBridge()
+	bridge := ipldbridge.NewIPLDBridge()
 
 	// initialize graphsync on second node to response to requests
 	New(ctx, gsnet2, bridge, loader, storer)
 
-	cids := make([]cid.Cid, 0, 7)
-	for _, block := range blks {
-		cids = append(cids, block.Cid())
+	blockChain := setupBlockChain(ctx, t, storer, bridge)
+	spec, err := bridge.BuildSelector(func(ssb ipldbridge.SelectorSpecBuilder) ipldbridge.SelectorSpec {
+		return ssb.ExploreRecursive(100,
+			ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
+				efsb.Insert("Parents", ssb.ExploreAll(
+					ssb.ExploreRecursiveEdge()))
+			}))
+	})
+	if err != nil {
+		t.Fatal("Failed creating selector")
 	}
-	// append block that should be deduped
-	cids = append(cids, blks[0].Cid())
 
-	unknownCid := testutil.GenerateCids(1)[0]
-	cids = append(cids, unknownCid)
-
-	spec := testbridge.NewMockSelectorSpec(cids)
 	selectorData, err := bridge.EncodeNode(spec)
 	if err != nil {
 		t.Fatal("could not encode selector spec")
@@ -175,7 +256,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
 
 	message := gsmsg.New()
-	message.AddRequest(gsmsg.NewRequest(requestID, selectorData, gsmsg.GraphSyncPriority(math.MaxInt32)))
+	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.tipLink.(cidlink.Link).Cid, selectorData, gsmsg.GraphSyncPriority(math.MaxInt32)))
 	// send request across network
 	gsnet1.SendMessage(ctx, host2.ID(), message)
 	// read the values sent back to requestor
@@ -207,13 +288,8 @@ readAllMessages:
 		}
 	}
 
-	if len(receivedBlocks) != len(blks) {
+	if len(receivedBlocks) != blockChainLength {
 		t.Fatal("Send incorrect number of blocks or there were duplicate blocks")
-	}
-
-	// there should have been a missing CID
-	if received.Responses()[0].Status() != gsmsg.RequestCompletedPartial {
-		t.Fatal("transmitted full response when only partial was transmitted")
 	}
 }
 
@@ -242,7 +318,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 
 	blockStore1 := make(map[ipld.Link][]byte)
 	loader1, storer1 := testbridge.NewMockStore(blockStore1)
-	bridge1 := testbridge.NewMockIPLDBridge()
+	bridge1 := ipldbridge.NewIPLDBridge()
 
 	// initialize graphsync on second node to response to requests
 	requestor := New(ctx, gsnet1, bridge1, loader1, storer1)
@@ -250,64 +326,54 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	// setup receiving peer to just record message coming in
 	gsnet2 := gsnet.NewFromLibp2pHost(host2)
 
-	blks := testutil.GenerateBlocksOfSize(5, 100)
-
 	blockStore2 := make(map[ipld.Link][]byte)
-	for _, block := range blks {
-		blockStore2[cidlink.Link{Cid: block.Cid()}] = block.RawData()
-	}
 	loader2, storer2 := testbridge.NewMockStore(blockStore2)
-	bridge2 := testbridge.NewMockIPLDBridge()
+	bridge2 := ipldbridge.NewIPLDBridge()
+
+	blockChain := setupBlockChain(ctx, t, storer2, bridge2)
 
 	// initialize graphsync on second node to response to requests
 	New(ctx, gsnet2, bridge2, loader2, storer2)
 
-	cids := make([]cid.Cid, 0, 7)
-	for _, block := range blks {
-		cids = append(cids, block.Cid())
+	spec, err := bridge1.BuildSelector(func(ssb ipldbridge.SelectorSpecBuilder) ipldbridge.SelectorSpec {
+		return ssb.ExploreRecursive(100,
+			ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
+				efsb.Insert("Parents", ssb.ExploreAll(
+					ssb.ExploreRecursiveEdge()))
+			}))
+	})
+	if err != nil {
+		t.Fatal("Failed creating selector")
 	}
-	// append block that should be deduped
-	cids = append(cids, blks[0].Cid())
 
-	unknownCid := testutil.GenerateCids(1)[0]
-	cids = append(cids, unknownCid)
-
-	spec := testbridge.NewMockSelectorSpec(cids)
-
-	progressChan, errChan := requestor.Request(ctx, host2.ID(), spec)
+	progressChan, errChan := requestor.Request(ctx, host2.ID(), blockChain.tipLink, spec)
 
 	responses := testutil.CollectResponses(ctx, t, progressChan)
 	errs := testutil.CollectErrors(ctx, t, errChan)
 
-	expectedErr := fmt.Sprintf("Remote Peer Is Missing Block: %s", unknownCid.String())
-	if len(errs) != 1 || errs[0].Error() != expectedErr {
-		t.Fatal("did not transmit error for missing CID")
-	}
-
-	if len(responses) != 6 {
+	if len(responses) != blockChainLength*2 {
 		t.Fatal("did not traverse all nodes")
 	}
-	for i, response := range responses {
-		k := response.LastBlock.Link.(cidlink.Link).Cid
-		var expectedCid cid.Cid
-		if i == 5 {
-			expectedCid = blks[0].Cid()
-		} else {
-			expectedCid = blks[i].Cid()
-		}
-		if k != expectedCid {
-			t.Fatal("did not send the correct cids in order")
-		}
+	if len(errs) != 0 {
+		t.Fatal("errors during traverse")
 	}
-
-	// verify data was stored in blockstore
-	if len(blockStore1) != 5 {
+	if len(blockStore1) != blockChainLength {
 		t.Fatal("did not store all blocks")
 	}
-	for link, data := range blockStore1 {
-		block, err := blocks.NewBlockWithCid(data, link.(cidlink.Link).Cid)
-		if err != nil || !testutil.ContainsBlock(blks, block) {
-			t.Fatal("Stored wrong block")
+
+	expectedPath := ""
+	for i, response := range responses {
+		if response.Path.String() != expectedPath {
+			t.Fatal("incorrect path")
+		}
+		if i%2 == 0 {
+			if expectedPath == "" {
+				expectedPath = "Parents"
+			} else {
+				expectedPath = expectedPath + "/Parents"
+			}
+		} else {
+			expectedPath = expectedPath + "/0"
 		}
 	}
 }
