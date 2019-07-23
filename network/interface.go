@@ -5,8 +5,8 @@ import (
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
 
-	peer "github.com/libp2p/go-libp2p-peer"
-	protocol "github.com/libp2p/go-libp2p-protocol"
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/protocol"
 )
 
 var (
@@ -48,4 +48,7 @@ type Receiver interface {
 		incoming gsmsg.GraphSyncMessage)
 
 	ReceiveError(error)
+
+	Connected(p peer.ID)
+	Disconnected(p peer.ID)
 }

@@ -19,7 +19,7 @@ import (
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
-	peer "github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	mh "github.com/multiformats/go-multihash"
 )
@@ -46,6 +46,12 @@ func (r *receiver) ReceiveMessage(
 }
 
 func (r *receiver) ReceiveError(err error) {
+}
+
+func (r *receiver) Connected(p peer.ID) {
+}
+
+func (r *receiver) Disconnected(p peer.ID) {
 }
 
 type blockChain struct {

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-graphsync/testutil"
-	"github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 type fakePeerProcess struct {

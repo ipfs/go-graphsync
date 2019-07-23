@@ -9,7 +9,7 @@ import (
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
-	peer "github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 )
 
@@ -18,6 +18,7 @@ type receiver struct {
 	messageReceived chan struct{}
 	lastMessage     gsmsg.GraphSyncMessage
 	lastSender      peer.ID
+	connectedPeers  chan peer.ID
 }
 
 func (r *receiver) ReceiveMessage(
@@ -33,6 +34,13 @@ func (r *receiver) ReceiveMessage(
 }
 
 func (r *receiver) ReceiveError(err error) {
+}
+
+func (r *receiver) Connected(p peer.ID) {
+	r.connectedPeers <- p
+}
+
+func (r *receiver) Disconnected(p peer.ID) {
 }
 
 func TestMessageSendAndReceive(t *testing.T) {
@@ -58,6 +66,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	gsnet2 := NewFromLibp2pHost(host2)
 	r := &receiver{
 		messageReceived: make(chan struct{}),
+		connectedPeers:  make(chan peer.ID, 2),
 	}
 	gsnet1.SetDelegate(r)
 	gsnet2.SetDelegate(r)
@@ -125,4 +134,13 @@ func TestMessageSendAndReceive(t *testing.T) {
 		!reflect.DeepEqual(receivedResponse.Extra(), sentResponse.Extra()) {
 		t.Fatal("Sent message responses did not match received message responses")
 	}
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-ctx.Done():
+			t.Fatal("did notify of all peer connections")
+		case <-r.connectedPeers:
+		}
+	}
+
 }

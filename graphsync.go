@@ -17,7 +17,7 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue"
 	ipld "github.com/ipld/go-ipld-prime"
-	peer "github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 var log = logging.Logger("graphsync")
@@ -81,7 +81,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	requestManager.SetDelegate(peerManager)
 	requestManager.Startup()
 	responseManager.Startup()
-	network.SetDelegate(graphSync)
+	network.SetDelegate((*graphSyncReceiver)(graphSync))
 	return graphSync
 }
 
@@ -90,18 +90,38 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 	return gs.requestManager.SendRequest(ctx, p, root, selector)
 }
 
+type graphSyncReceiver GraphSync
+
+func (gsr *graphSyncReceiver) graphSync() *GraphSync {
+	return (*GraphSync)(gsr)
+}
+
 // ReceiveMessage is part of the networks Receiver interface and receives
 // incoming messages from the network
-func (gs *GraphSync) ReceiveMessage(
+func (gsr *graphSyncReceiver) ReceiveMessage(
 	ctx context.Context,
 	sender peer.ID,
 	incoming gsmsg.GraphSyncMessage) {
-	gs.responseManager.ProcessRequests(ctx, sender, incoming.Requests())
-	gs.requestManager.ProcessResponses(sender, incoming.Responses(), incoming.Blocks())
+	gsr.graphSync().responseManager.ProcessRequests(ctx, sender, incoming.Requests())
+	gsr.graphSync().requestManager.ProcessResponses(sender, incoming.Responses(), incoming.Blocks())
 }
 
 // ReceiveError is part of the network's Receiver interface and handles incoming
 // errors from the network.
-func (gs *GraphSync) ReceiveError(err error) {
+func (gsr *graphSyncReceiver) ReceiveError(err error) {
 	log.Errorf("Error: %s", err.Error())
+}
+
+// Connected is part of the networks 's Receiver interface and handles peers connecting
+// on the network
+func (gsr *graphSyncReceiver) Connected(p peer.ID) {
+	gsr.graphSync().peerManager.Connected(p)
+	gsr.graphSync().peerResponseManager.Connected(p)
+}
+
+// Connected is part of the networks 's Receiver interface and handles peers connecting
+// on the network
+func (gsr *graphSyncReceiver) Disconnected(p peer.ID) {
+	gsr.graphSync().peerManager.Disconnected(p)
+	gsr.graphSync().peerResponseManager.Disconnected(p)
 }

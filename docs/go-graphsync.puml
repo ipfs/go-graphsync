@@ -396,10 +396,9 @@ package "go-graphsync" {
   package ipldbridge {
     interface IPLDBridge {
       BuildNode(func(NodeBuilder) ipld.Node) (ipld.Node, error)
-	    ValidateSelectorSpec(rootedSelector ipld.Node) []error
 	    EncodeNode(ipld.Node) ([]byte, error)
 	    DecodeNode([]byte) (ipld.Node, error)
-	    DecodeSelectorSpec(cidRootedSelector ipld.Node) (ipld.Node, Selector, error)
+	    ParseSelector(selector ipld.Node) (Selector, error)
 	    Traverse(ctx context.Context, loader Loader, root ipld.Node, s Selector, fn AdvVisitFn) error
     }
 
