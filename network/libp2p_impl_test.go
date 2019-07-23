@@ -9,7 +9,7 @@ import (
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
-	"github.com/libp2p/go-libp2p-peer"
+	peer "github.com/libp2p/go-libp2p-peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 )
 
@@ -62,6 +62,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	gsnet1.SetDelegate(r)
 	gsnet2.SetDelegate(r)
 
+	root := testutil.GenerateCids(1)[0]
 	selector := testutil.RandomBytes(100)
 	extra := testutil.RandomBytes(100)
 	id := gsmsg.GraphSyncRequestID(rand.Int31())
@@ -69,7 +70,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	status := gsmsg.RequestAcknowledged
 
 	sent := gsmsg.New()
-	sent.AddRequest(gsmsg.NewRequest(id, selector, priority))
+	sent.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 	sent.AddResponse(gsmsg.NewResponse(id, status, extra))
 
 	err = gsnet1.ConnectTo(ctx, host2.ID())
@@ -105,6 +106,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	if receivedRequest.ID() != sentRequest.ID() ||
 		receivedRequest.IsCancel() != sentRequest.IsCancel() ||
 		receivedRequest.Priority() != sentRequest.Priority() ||
+		receivedRequest.Root().String() != sentRequest.Root().String() ||
 		!reflect.DeepEqual(receivedRequest.Selector(), sentRequest.Selector()) {
 		t.Fatal("Sent message requests did not match received message requests")
 	}

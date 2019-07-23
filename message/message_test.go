@@ -13,12 +13,13 @@ import (
 )
 
 func TestAppendingRequests(t *testing.T) {
+	root := testutil.GenerateCids(1)[0]
 	selector := testutil.RandomBytes(100)
 	id := GraphSyncRequestID(rand.Int31())
 	priority := GraphSyncPriority(rand.Int31())
 
 	gsm := New()
-	gsm.AddRequest(NewRequest(id, selector, priority))
+	gsm.AddRequest(NewRequest(id, root, selector, priority))
 	requests := gsm.Requests()
 	if len(requests) != 1 {
 		t.Fatal("Did not add request to message")
@@ -27,6 +28,7 @@ func TestAppendingRequests(t *testing.T) {
 	if request.ID() != id ||
 		request.IsCancel() != false ||
 		request.Priority() != priority ||
+		request.Root().String() != root.String() ||
 		!reflect.DeepEqual(request.Selector(), selector) {
 		t.Fatal("Did not properly add request to message")
 	}
@@ -36,6 +38,7 @@ func TestAppendingRequests(t *testing.T) {
 	if pbRequest.Id != int32(id) ||
 		pbRequest.Priority != int32(priority) ||
 		pbRequest.Cancel != false ||
+		!reflect.DeepEqual(pbRequest.Root, root.Bytes()) ||
 		!reflect.DeepEqual(pbRequest.Selector, selector) {
 		t.Fatal("Did not properly serialize message to protobuf")
 	}
@@ -52,6 +55,7 @@ func TestAppendingRequests(t *testing.T) {
 	if deserializedRequest.ID() != id ||
 		deserializedRequest.IsCancel() != false ||
 		deserializedRequest.Priority() != priority ||
+		deserializedRequest.Root().String() != root.String() ||
 		!reflect.DeepEqual(deserializedRequest.Selector(), selector) {
 		t.Fatal("Did not properly deserialize protobuf messages so requests are equal")
 	}
@@ -133,9 +137,10 @@ func TestRequestCancel(t *testing.T) {
 	selector := testutil.RandomBytes(100)
 	id := GraphSyncRequestID(rand.Int31())
 	priority := GraphSyncPriority(rand.Int31())
+	root := testutil.GenerateCids(1)[0]
 
 	gsm := New()
-	gsm.AddRequest(NewRequest(id, selector, priority))
+	gsm.AddRequest(NewRequest(id, root, selector, priority))
 
 	gsm.AddRequest(CancelRequest(id))
 
@@ -151,6 +156,7 @@ func TestRequestCancel(t *testing.T) {
 }
 
 func TestToNetFromNetEquivalency(t *testing.T) {
+	root := testutil.GenerateCids(1)[0]
 	selector := testutil.RandomBytes(100)
 	extra := testutil.RandomBytes(100)
 	id := GraphSyncRequestID(rand.Int31())
@@ -158,7 +164,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	status := RequestAcknowledged
 
 	gsm := New()
-	gsm.AddRequest(NewRequest(id, selector, priority))
+	gsm.AddRequest(NewRequest(id, root, selector, priority))
 	gsm.AddResponse(NewResponse(id, status, extra))
 
 	gsm.AddBlock(blocks.NewBlock([]byte("W")))
@@ -189,6 +195,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	if deserializedRequest.ID() != request.ID() ||
 		deserializedRequest.IsCancel() != request.IsCancel() ||
 		deserializedRequest.Priority() != request.Priority() ||
+		deserializedRequest.Root().String() != request.Root().String() ||
 		!reflect.DeepEqual(deserializedRequest.Selector(), request.Selector()) {
 		t.Fatal("Did not keep requests when writing to stream and back")
 	}

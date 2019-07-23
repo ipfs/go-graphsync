@@ -33,6 +33,15 @@ type AdvVisitFn = ipldtraversal.AdvVisitFn
 // Selector is an alias from ipld, in case it's renamed/moved.
 type Selector = ipldselector.Selector
 
+// SelectorSpec is alias from ipld, in case it's renamed/moved.
+type SelectorSpec = ipldselector.SelectorSpec
+
+// SelectorSpecBuilder is alias from ipld, in case it's renamed/moved.
+type SelectorSpecBuilder = ipldselector.SelectorSpecBuilder
+
+// ExploreFieldsSpecBuilder is alias from ipld, in case it's renamed/moved.
+type ExploreFieldsSpecBuilder = ipldselector.ExploreFieldsSpecBuilder
+
 // LinkContext is an alias from ipld, in case it's renamed/moved.
 type LinkContext = ipld.LinkContext
 
@@ -59,7 +68,7 @@ type SimpleNode = fluent.Node
 // replaced with alternative implementations
 type IPLDBridge interface {
 
-	// ExtractData provides an efficient mechanism for assembling nodes w/ fluent
+	// ExtractData provides an efficient mechanism for reading nodes w/ fluent
 	// interface
 	ExtractData(ipld.Node, func(SimpleNode) interface{}) (interface{}, error)
 
@@ -67,8 +76,9 @@ type IPLDBridge interface {
 	// interface
 	BuildNode(func(NodeBuilder) ipld.Node) (ipld.Node, error)
 
-	// ValidateSelectorSpec verifies if a node matches the selector spec.
-	ValidateSelectorSpec(rootedSelector ipld.Node) []error
+	// BuildSelector provides a mechanism to build selector nodes quickly with
+	// ipld's SelectorSpecBuilder
+	BuildSelector(func(SelectorSpecBuilder) SelectorSpec) (ipld.Node, error)
 
 	// EncodeNode encodes an IPLD Node to bytes for network transfer.
 	EncodeNode(ipld.Node) ([]byte, error)
@@ -76,12 +86,12 @@ type IPLDBridge interface {
 	// DecodeNode decodes bytes crossing a network to an IPLD Node.
 	DecodeNode([]byte) (ipld.Node, error)
 
-	// DecodeSelectorSpec checks if a generic IPLD node is a selector spec,
-	// and if so, converts it to a root node and a go-ipld-prime Selector.
-	DecodeSelectorSpec(rootedSelector ipld.Node) (ipld.Node, Selector, error)
+	// ParseSelector checks if a generic IPLD node is a selector spec,
+	// and if so, a go-ipld-prime Selector.
+	ParseSelector(selector ipld.Node) (Selector, error)
 
 	// Traverse performs a selector traversal, starting at a given root, using the given selector,
 	// and the given link loader. The given visit function will be called for each node
 	// visited.
-	Traverse(ctx context.Context, loader Loader, root ipld.Node, s Selector, fn AdvVisitFn) error
+	Traverse(ctx context.Context, loader Loader, root ipld.Link, s Selector, fn AdvVisitFn) error
 }

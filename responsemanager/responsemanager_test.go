@@ -136,7 +136,7 @@ func TestIncomingQuery(t *testing.T) {
 	}
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, cids[0], selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)
@@ -191,7 +191,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	}
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, cids[0], selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)
@@ -279,7 +279,7 @@ func TestEarlyCancellation(t *testing.T) {
 	}
 	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, cids[0], selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)

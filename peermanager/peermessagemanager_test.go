@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
-	"github.com/libp2p/go-libp2p-peer"
+	peer "github.com/libp2p/go-libp2p-peer"
 )
 
 type messageSent struct {
@@ -57,11 +57,12 @@ func TestSendingMessagesToPeers(t *testing.T) {
 
 	id := gsmsg.GraphSyncRequestID(rand.Int31())
 	priority := gsmsg.GraphSyncPriority(rand.Int31())
+	root := testutil.GenerateCids(1)[0]
 	selector := testutil.RandomBytes(100)
 
 	peerManager := NewMessageManager(ctx, peerQueueFactory)
 
-	request := gsmsg.NewRequest(id, selector, priority)
+	request := gsmsg.NewRequest(id, root, selector, priority)
 	peerManager.SendRequest(tp[0], request)
 	peerManager.SendRequest(tp[1], request)
 	cancelRequest := gsmsg.CancelRequest(id)

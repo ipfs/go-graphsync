@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 	ipldbridge "github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
@@ -92,6 +93,7 @@ type inProgressRequest struct {
 
 type newRequestMessage struct {
 	p                     peer.ID
+	root                  ipld.Link
 	selector              ipld.Node
 	inProgressRequestChan chan<- inProgressRequest
 }
@@ -99,15 +101,16 @@ type newRequestMessage struct {
 // SendRequest initiates a new GraphSync request to the given peer.
 func (rm *RequestManager) SendRequest(ctx context.Context,
 	p peer.ID,
-	cidRootedSelector ipld.Node) (<-chan types.ResponseProgress, <-chan error) {
-	if len(rm.ipldBridge.ValidateSelectorSpec(cidRootedSelector)) != 0 {
+	root ipld.Link,
+	selector ipld.Node) (<-chan types.ResponseProgress, <-chan error) {
+	if _, err := rm.ipldBridge.ParseSelector(selector); err != nil {
 		return rm.singleErrorResponse(fmt.Errorf("Invalid Selector Spec"))
 	}
 
 	inProgressRequestChan := make(chan inProgressRequest)
 
 	select {
-	case rm.messages <- &newRequestMessage{p, cidRootedSelector, inProgressRequestChan}:
+	case rm.messages <- &newRequestMessage{p, root, selector, inProgressRequestChan}:
 	case <-rm.ctx.Done():
 		return rm.emptyResponse()
 	case <-ctx.Done():
@@ -230,7 +233,7 @@ func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	requestID := rm.nextRequestID
 	rm.nextRequestID++
 
-	inProgressChan, inProgressErr := rm.setupRequest(requestID, nrm.p, nrm.selector)
+	inProgressChan, inProgressErr := rm.setupRequest(requestID, nrm.p, nrm.root, nrm.selector)
 
 	select {
 	case nrm.inProgressRequestChan <- inProgressRequest{
@@ -310,14 +313,18 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status gsmsg.GraphSync
 	}
 }
 
-func (rm *RequestManager) setupRequest(requestID gsmsg.GraphSyncRequestID, p peer.ID, selectorSpec ipld.Node) (chan types.ResponseProgress, chan error) {
+func (rm *RequestManager) setupRequest(requestID gsmsg.GraphSyncRequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node) (chan types.ResponseProgress, chan error) {
 	selectorBytes, err := rm.ipldBridge.EncodeNode(selectorSpec)
 	if err != nil {
 		return rm.singleErrorResponse(err)
 	}
-	root, selector, err := rm.ipldBridge.DecodeSelectorSpec(selectorSpec)
+	selector, err := rm.ipldBridge.ParseSelector(selectorSpec)
 	if err != nil {
 		return rm.singleErrorResponse(err)
+	}
+	asCidLink, ok := root.(cidlink.Link)
+	if !ok {
+		return rm.singleErrorResponse(fmt.Errorf("request failed: link has no cid"))
 	}
 	networkErrorChan := make(chan error, 1)
 	ctx, cancel := context.WithCancel(rm.ctx)
@@ -325,14 +332,14 @@ func (rm *RequestManager) setupRequest(requestID gsmsg.GraphSyncRequestID, p pee
 		ctx, cancel, p, networkErrorChan,
 	}
 	rm.asyncLoader.StartRequest(requestID)
-	rm.peerHandler.SendRequest(p, gsmsg.NewRequest(requestID, selectorBytes, maxPriority))
+	rm.peerHandler.SendRequest(p, gsmsg.NewRequest(requestID, asCidLink.Cid, selectorBytes, maxPriority))
 	return rm.executeTraversal(ctx, requestID, root, selector, networkErrorChan)
 }
 
 func (rm *RequestManager) executeTraversal(
 	ctx context.Context,
 	requestID gsmsg.GraphSyncRequestID,
-	root ipld.Node,
+	root ipld.Link,
 	selector ipldbridge.Selector,
 	networkErrorChan chan error,
 ) (chan types.ResponseProgress, chan error) {

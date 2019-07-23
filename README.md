@@ -27,7 +27,7 @@
 
 `go-graphsync` relies on `go-ipld-prime` to traverse IPLD Selectors in an IPLD graph. `go-ipld-prime` implements the [IPLD specification](https://github.com/ipld/specs) in go and is an alternative to older implementations such as `go-ipld-format` and `go-ipld-cbor`. In order to use `go-graphsync`, some understanding and use of `go-ipld-prime` concepts is necessary. 
 
-If your existing library (i.e. `go-ipfs` or `go-filecoin`) uses these other older libraries, `go-graphsync` provide translation layers so you can largely use it without switching to `go-ipld-prime` across your codebase.
+If your existing library (i.e. `go-ipfs` or `go-filecoin`) uses these other older libraries, you can largely use go-graphsync without switching to `go-ipld-prime` across your codebase, but it will require some translations
 
 ## Install
 
