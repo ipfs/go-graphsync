@@ -46,7 +46,7 @@ PeerTracker -> PeerTaskQueue : Next Request\nTo Process
 PeerTaskQueue -> QW : Next Request\nTo Process
 QW -> IPLDBridge : DecodeNode
 IPLDBridge -> QW : Selector Spec Node
-QW -> IPLDBridge : DecodeSelectorSpec
+QW -> IPLDBridge : ParseSelector
 IPLDBridge -> QW : Root Node, IPLD Selector
 QW -> PeerResponseManager : SenderForPeer
 PeerResponseManager -> PeerResponseSender ** : Create for peer\nas neccesary

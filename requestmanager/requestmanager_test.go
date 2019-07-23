@@ -9,9 +9,8 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync/ipldbridge"
-	peer "github.com/libp2p/go-libp2p-peer"
-
 	"github.com/ipfs/go-graphsync/requestmanager/types"
+	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync/metadata"
 

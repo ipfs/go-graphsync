@@ -6,14 +6,14 @@ import (
 	"io"
 	"time"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
-
 	ggio "github.com/gogo/protobuf/io"
+	gsmsg "github.com/ipfs/go-graphsync/message"
 	logging "github.com/ipfs/go-log"
-	host "github.com/libp2p/go-libp2p-host"
-	inet "github.com/libp2p/go-libp2p-net"
-	peer "github.com/libp2p/go-libp2p-peer"
-	pstore "github.com/libp2p/go-libp2p-peerstore"
+	"github.com/libp2p/go-libp2p-core/helpers"
+	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 var log = logging.Logger("graphsync_network")
@@ -25,7 +25,6 @@ func NewFromLibp2pHost(host host.Host) GraphSyncNetwork {
 	graphSyncNetwork := libp2pGraphSyncNetwork{
 		host: host,
 	}
-	host.SetStreamHandler(ProtocolGraphsync, graphSyncNetwork.handleNewStream)
 
 	return &graphSyncNetwork
 }
@@ -39,11 +38,11 @@ type libp2pGraphSyncNetwork struct {
 }
 
 type streamMessageSender struct {
-	s inet.Stream
+	s network.Stream
 }
 
 func (s *streamMessageSender) Close() error {
-	return inet.FullClose(s.s)
+	return helpers.FullClose(s.s)
 }
 
 func (s *streamMessageSender) Reset() error {
@@ -54,7 +53,7 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg gsmsg.GraphSyncMe
 	return msgToStream(ctx, s.s, msg)
 }
 
-func msgToStream(ctx context.Context, s inet.Stream, msg gsmsg.GraphSyncMessage) error {
+func msgToStream(ctx context.Context, s network.Stream, msg gsmsg.GraphSyncMessage) error {
 	log.Debugf("Outgoing message with %d requests, %d responses, and %d blocks",
 		len(msg.Requests()), len(msg.Responses()), len(msg.Blocks()))
 
@@ -91,7 +90,7 @@ func (gsnet *libp2pGraphSyncNetwork) NewMessageSender(ctx context.Context, p pee
 	return &streamMessageSender{s: s}, nil
 }
 
-func (gsnet *libp2pGraphSyncNetwork) newStreamToPeer(ctx context.Context, p peer.ID) (inet.Stream, error) {
+func (gsnet *libp2pGraphSyncNetwork) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stream, error) {
 	return gsnet.host.NewStream(ctx, p, ProtocolGraphsync)
 }
 
@@ -111,21 +110,23 @@ func (gsnet *libp2pGraphSyncNetwork) SendMessage(
 	}
 
 	// TODO(https://github.com/libp2p/go-libp2p-net/issues/28): Avoid this goroutine.
-	go inet.AwaitEOF(s)
+	go helpers.AwaitEOF(s)
 	return s.Close()
 
 }
 
 func (gsnet *libp2pGraphSyncNetwork) SetDelegate(r Receiver) {
 	gsnet.receiver = r
+	gsnet.host.SetStreamHandler(ProtocolGraphsync, gsnet.handleNewStream)
+	gsnet.host.Network().Notify((*libp2pGraphSyncNotifee)(gsnet))
 }
 
 func (gsnet *libp2pGraphSyncNetwork) ConnectTo(ctx context.Context, p peer.ID) error {
-	return gsnet.host.Connect(ctx, pstore.PeerInfo{ID: p})
+	return gsnet.host.Connect(ctx, peer.AddrInfo{ID: p})
 }
 
 // handleNewStream receives a new stream from the network.
-func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s inet.Stream) {
+func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 	defer s.Close()
 
 	if gsnet.receiver == nil {
@@ -133,7 +134,7 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s inet.Stream) {
 		return
 	}
 
-	reader := ggio.NewDelimitedReader(s, inet.MessageSizeMax)
+	reader := ggio.NewDelimitedReader(s, network.MessageSizeMax)
 	for {
 		received, err := gsmsg.FromPBReader(reader)
 		if err != nil {
@@ -151,3 +152,22 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s inet.Stream) {
 		gsnet.receiver.ReceiveMessage(ctx, p, received)
 	}
 }
+
+type libp2pGraphSyncNotifee libp2pGraphSyncNetwork
+
+func (nn *libp2pGraphSyncNotifee) libp2pGraphSyncNetwork() *libp2pGraphSyncNetwork {
+	return (*libp2pGraphSyncNetwork)(nn)
+}
+
+func (nn *libp2pGraphSyncNotifee) Connected(n network.Network, v network.Conn) {
+	nn.libp2pGraphSyncNetwork().receiver.Connected(v.RemotePeer())
+}
+
+func (nn *libp2pGraphSyncNotifee) Disconnected(n network.Network, v network.Conn) {
+	nn.libp2pGraphSyncNetwork().receiver.Disconnected(v.RemotePeer())
+}
+
+func (nn *libp2pGraphSyncNotifee) OpenedStream(n network.Network, v network.Stream) {}
+func (nn *libp2pGraphSyncNotifee) ClosedStream(n network.Network, v network.Stream) {}
+func (nn *libp2pGraphSyncNotifee) Listen(n network.Network, a ma.Multiaddr)         {}
+func (nn *libp2pGraphSyncNotifee) ListenClose(n network.Network, a ma.Multiaddr)    {}

@@ -10,7 +10,7 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	random "github.com/jbenet/go-random"
-	peer "github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 var blockGenerator = blocksutil.NewBlockGenerator()

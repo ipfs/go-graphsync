@@ -6,7 +6,7 @@ import (
 	"github.com/ipfs/go-block-format"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	peer "github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 // PeerQueue is a process that sends messages to a peer

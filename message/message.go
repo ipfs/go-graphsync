@@ -9,7 +9,7 @@ import (
 	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
 	pb "github.com/ipfs/go-graphsync/message/pb"
-	inet "github.com/libp2p/go-libp2p-net"
+	"github.com/libp2p/go-libp2p-core/network"
 )
 
 // GraphSyncRequestID is a unique identifier for a GraphSync request.
@@ -269,7 +269,7 @@ func (gsm *graphSyncMessage) AddBlock(b blocks.Block) {
 
 // FromNet can read a network stream to deserialized a GraphSyncMessage
 func FromNet(r io.Reader) (GraphSyncMessage, error) {
-	pbr := ggio.NewDelimitedReader(r, inet.MessageSizeMax)
+	pbr := ggio.NewDelimitedReader(r, network.MessageSizeMax)
 	return FromPBReader(pbr)
 }
 
