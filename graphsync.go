@@ -109,7 +109,9 @@ func (gsr *graphSyncReceiver) ReceiveMessage(
 // ReceiveError is part of the network's Receiver interface and handles incoming
 // errors from the network.
 func (gsr *graphSyncReceiver) ReceiveError(err error) {
-	log.Errorf("Error: %s", err.Error())
+	log.Infof("Graphsync ReceiveError: %s", err)
+	// TODO log the network error
+	// TODO bubble the network error up to the parent context/error logger
 }
 
 // Connected is part of the networks 's Receiver interface and handles peers connecting
