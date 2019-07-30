@@ -11,11 +11,12 @@ require (
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-log v0.0.1
 	github.com/ipfs/go-peertaskqueue v0.0.1
-	github.com/ipld/go-ipld-prime v0.0.0-20190727004028-8623c7a03978
+	github.com/ipld/go-ipld-prime v0.0.0-20190730002952-369bb56ad071
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-eventbus v0.0.3 // indirect
 	github.com/libp2p/go-libp2p v0.2.1
 	github.com/libp2p/go-libp2p-core v0.0.9
+	github.com/libp2p/go-libp2p-net v0.1.0 // indirect
 	github.com/libp2p/go-libp2p-secio v0.1.1 // indirect
 	github.com/libp2p/go-msgio v0.0.4 // indirect
 	github.com/mattn/go-colorable v0.1.2 // indirect
