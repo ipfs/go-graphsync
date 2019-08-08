@@ -14,7 +14,7 @@ import (
 	"github.com/ipld/go-ipld-prime/fluent"
 	free "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
+	selectorbuilder "github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	multihash "github.com/multiformats/go-multihash"
 )
 
@@ -55,7 +55,7 @@ func (mb *mockIPLDBridge) BuildNode(buildFn func(ipldbridge.NodeBuilder) ipld.No
 func (mb *mockIPLDBridge) BuildSelector(buildFn func(ipldbridge.SelectorSpecBuilder) ipldbridge.SelectorSpec) (ipld.Node, error) {
 	var node ipld.Node
 	err := fluent.Recover(func() {
-		ssb := ipldselector.NewSelectorSpecBuilder(free.NodeBuilder())
+		ssb := selectorbuilder.NewSelectorSpecBuilder(free.NodeBuilder())
 		node = buildFn(ssb).Node()
 	})
 	if err != nil {

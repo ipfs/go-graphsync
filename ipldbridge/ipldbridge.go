@@ -9,6 +9,7 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 	ipldtraversal "github.com/ipld/go-ipld-prime/traversal"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
+	selectorbuilder "github.com/ipld/go-ipld-prime/traversal/selector/builder"
 )
 
 var errDoNotFollow = errors.New("Dont Follow Me")
@@ -34,13 +35,13 @@ type AdvVisitFn = ipldtraversal.AdvVisitFn
 type Selector = ipldselector.Selector
 
 // SelectorSpec is alias from ipld, in case it's renamed/moved.
-type SelectorSpec = ipldselector.SelectorSpec
+type SelectorSpec = selectorbuilder.SelectorSpec
 
 // SelectorSpecBuilder is alias from ipld, in case it's renamed/moved.
-type SelectorSpecBuilder = ipldselector.SelectorSpecBuilder
+type SelectorSpecBuilder = selectorbuilder.SelectorSpecBuilder
 
 // ExploreFieldsSpecBuilder is alias from ipld, in case it's renamed/moved.
-type ExploreFieldsSpecBuilder = ipldselector.ExploreFieldsSpecBuilder
+type ExploreFieldsSpecBuilder = selectorbuilder.ExploreFieldsSpecBuilder
 
 // LinkContext is an alias from ipld, in case it's renamed/moved.
 type LinkContext = ipld.LinkContext

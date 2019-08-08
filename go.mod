@@ -13,7 +13,7 @@ require (
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-log v0.0.1
 	github.com/ipfs/go-peertaskqueue v0.0.4
-	github.com/ipld/go-ipld-prime v0.0.0-20190730002952-369bb56ad071
+	github.com/ipld/go-ipld-prime v0.0.1-filecoin
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-eventbus v0.0.3 // indirect
 	github.com/libp2p/go-libp2p v0.2.1

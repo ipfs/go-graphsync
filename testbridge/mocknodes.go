@@ -42,6 +42,7 @@ func (mss *mockSelectorSpec) ListIterator() ipld.ListIterator { return nil }
 func (mss *mockSelectorSpec) MapIterator() ipld.MapIterator   { return nil }
 
 func (mss *mockSelectorSpec) Length() int                   { return 0 }
+func (mss *mockSelectorSpec) IsUndefined() bool             { return true }
 func (mss *mockSelectorSpec) IsNull() bool                  { return true }
 func (mss *mockSelectorSpec) AsBool() (bool, error)         { return false, fmt.Errorf("404") }
 func (mss *mockSelectorSpec) AsInt() (int, error)           { return 0, fmt.Errorf("404") }
@@ -72,6 +73,7 @@ func (mbn *mockBlockNode) ListIterator() ipld.ListIterator { return nil }
 func (mbn *mockBlockNode) MapIterator() ipld.MapIterator   { return nil }
 
 func (mbn *mockBlockNode) Length() int                   { return 0 }
+func (mbn *mockBlockNode) IsUndefined() bool             { return false }
 func (mbn *mockBlockNode) IsNull() bool                  { return false }
 func (mbn *mockBlockNode) AsBool() (bool, error)         { return false, fmt.Errorf("404") }
 func (mbn *mockBlockNode) AsInt() (int, error)           { return 0, fmt.Errorf("404") }

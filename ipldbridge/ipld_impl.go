@@ -11,6 +11,7 @@ import (
 	free "github.com/ipld/go-ipld-prime/impl/free"
 	ipldtraversal "github.com/ipld/go-ipld-prime/traversal"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
+	selectorbuilder "github.com/ipld/go-ipld-prime/traversal/selector/builder"
 )
 
 // TraversalConfig is an alias from ipld, in case it's renamed/moved.
@@ -51,7 +52,7 @@ func (rb *ipldBridge) BuildNode(buildFn func(NodeBuilder) ipld.Node) (ipld.Node,
 func (rb *ipldBridge) BuildSelector(buildFn func(SelectorSpecBuilder) SelectorSpec) (ipld.Node, error) {
 	var node ipld.Node
 	err := fluent.Recover(func() {
-		ssb := ipldselector.NewSelectorSpecBuilder(free.NodeBuilder())
+		ssb := selectorbuilder.NewSelectorSpecBuilder(free.NodeBuilder())
 		node = buildFn(ssb).Node()
 	})
 	if err != nil {
