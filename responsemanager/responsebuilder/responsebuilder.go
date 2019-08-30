@@ -1,7 +1,7 @@
 package responsebuilder
 
 import (
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
@@ -13,6 +13,7 @@ import (
 // GraphSync message components once responses are ready to send.
 type ResponseBuilder struct {
 	outgoingBlocks     []blocks.Block
+	blkSize            int
 	completedResponses map[gsmsg.GraphSyncRequestID]gsmsg.GraphSyncResponseStatusCode
 	outgoingResponses  map[gsmsg.GraphSyncRequestID]metadata.Metadata
 }
@@ -27,7 +28,13 @@ func New() *ResponseBuilder {
 
 // AddBlock adds the given block to the response.
 func (rb *ResponseBuilder) AddBlock(block blocks.Block) {
+	rb.blkSize += len(block.RawData())
 	rb.outgoingBlocks = append(rb.outgoingBlocks, block)
+}
+
+// BlockSize returns the total size of all blocks in this response
+func (rb *ResponseBuilder) BlockSize() int {
+	return rb.blkSize
 }
 
 // AddLink adds the given link and whether its block is present

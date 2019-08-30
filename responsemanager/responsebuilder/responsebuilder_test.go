@@ -11,7 +11,7 @@ import (
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/linking/cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
 func TestMessageBuilding(t *testing.T) {
@@ -48,6 +48,9 @@ func TestMessageBuilding(t *testing.T) {
 		rb.AddBlock(block)
 	}
 
+	if rb.BlockSize() != 300 {
+		t.Fatal("did not calculate block size correctly")
+	}
 	responses, sentBlocks, err := rb.Build(ipldBridge)
 
 	if err != nil {
