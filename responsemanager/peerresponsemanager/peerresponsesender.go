@@ -6,18 +6,23 @@ import (
 
 	"github.com/ipfs/go-graphsync/peermanager"
 
-	"github.com/ipld/go-ipld-prime/linking/cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	"github.com/ipfs/go-graphsync/ipldbridge"
 
 	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync/linktracker"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/responsebuilder"
 	"github.com/libp2p/go-libp2p-core/peer"
+)
+
+const (
+	// max block size is the maximum size for batching blocks in a single payload
+	maxBlockSize = 512 * 1024
 )
 
 var log = logging.Logger("graphsync")
@@ -36,10 +41,10 @@ type peerResponseSender struct {
 	ipldBridge   ipldbridge.IPLDBridge
 	outgoingWork chan struct{}
 
-	linkTrackerLk     sync.RWMutex
-	linkTracker       *linktracker.LinkTracker
-	responseBuilderLk sync.RWMutex
-	responseBuilder   *responsebuilder.ResponseBuilder
+	linkTrackerLk      sync.RWMutex
+	linkTracker        *linktracker.LinkTracker
+	responseBuildersLk sync.RWMutex
+	responseBuilders   []*responsebuilder.ResponseBuilder
 }
 
 // PeerResponseSender handles batching, deduping, and sending responses for
@@ -91,10 +96,14 @@ func (prm *peerResponseSender) SendResponse(
 	hasBlock := data != nil
 	prm.linkTrackerLk.Lock()
 	sendBlock := hasBlock && prm.linkTracker.BlockRefCount(link) == 0
+	blkSize := len(data)
+	if !sendBlock {
+		blkSize = 0
+	}
 	prm.linkTracker.RecordLinkTraversal(requestID, link, hasBlock)
 	prm.linkTrackerLk.Unlock()
 
-	if prm.buildResponse(func(responseBuilder *responsebuilder.ResponseBuilder) {
+	if prm.buildResponse(blkSize, func(responseBuilder *responsebuilder.ResponseBuilder) {
 		if sendBlock {
 			cidLink := link.(cidlink.Link)
 			block, err := blocks.NewBlockWithCid(data, cidLink.Cid)
@@ -133,20 +142,31 @@ func (prm *peerResponseSender) FinishWithError(requestID gsmsg.GraphSyncRequestI
 }
 
 func (prm *peerResponseSender) finish(requestID gsmsg.GraphSyncRequestID, status gsmsg.GraphSyncResponseStatusCode) {
-	if prm.buildResponse(func(responseBuilder *responsebuilder.ResponseBuilder) {
+	if prm.buildResponse(0, func(responseBuilder *responsebuilder.ResponseBuilder) {
 		responseBuilder.AddCompletedRequest(requestID, status)
 	}) {
 		prm.signalWork()
 	}
 }
-func (prm *peerResponseSender) buildResponse(buildResponseFn func(*responsebuilder.ResponseBuilder)) bool {
-	prm.responseBuilderLk.Lock()
-	defer prm.responseBuilderLk.Unlock()
-	if prm.responseBuilder == nil {
-		prm.responseBuilder = responsebuilder.New()
+func (prm *peerResponseSender) buildResponse(blkSize int, buildResponseFn func(*responsebuilder.ResponseBuilder)) bool {
+	prm.responseBuildersLk.Lock()
+	defer prm.responseBuildersLk.Unlock()
+	if shouldBeginNewResponse(prm.responseBuilders, blkSize) {
+		prm.responseBuilders = append(prm.responseBuilders, responsebuilder.New())
 	}
-	buildResponseFn(prm.responseBuilder)
-	return !prm.responseBuilder.Empty()
+	responseBuilder := prm.responseBuilders[len(prm.responseBuilders)-1]
+	buildResponseFn(responseBuilder)
+	return !responseBuilder.Empty()
+}
+
+func shouldBeginNewResponse(responseBuilders []*responsebuilder.ResponseBuilder, blkSize int) bool {
+	if len(responseBuilders) == 0 {
+		return true
+	}
+	if blkSize == 0 {
+		return false
+	}
+	return responseBuilders[len(responseBuilders)-1].BlockSize()+blkSize > maxBlockSize
 }
 
 func (prm *peerResponseSender) signalWork() {
@@ -162,30 +182,33 @@ func (prm *peerResponseSender) run() {
 		case <-prm.ctx.Done():
 			return
 		case <-prm.outgoingWork:
-			prm.sendResponseMessage()
+			prm.sendResponseMessages()
 		}
 	}
 }
 
-func (prm *peerResponseSender) sendResponseMessage() {
-	prm.responseBuilderLk.Lock()
-	builder := prm.responseBuilder
-	prm.responseBuilder = nil
-	prm.responseBuilderLk.Unlock()
+func (prm *peerResponseSender) sendResponseMessages() {
+	prm.responseBuildersLk.Lock()
+	builders := prm.responseBuilders
+	prm.responseBuilders = nil
+	prm.responseBuildersLk.Unlock()
 
-	if builder == nil || builder.Empty() {
-		return
-	}
-	responses, blks, err := builder.Build(prm.ipldBridge)
-	if err != nil {
-		log.Errorf("Unable to assemble GraphSync response: %s", err.Error())
+	for _, builder := range builders {
+		if builder.Empty() {
+			continue
+		}
+		responses, blks, err := builder.Build(prm.ipldBridge)
+		if err != nil {
+			log.Errorf("Unable to assemble GraphSync response: %s", err.Error())
+		}
+
+		done := prm.peerHandler.SendResponse(prm.p, responses, blks)
+
+		// wait for message to be processed
+		select {
+		case <-done:
+		case <-prm.ctx.Done():
+		}
 	}
 
-	done := prm.peerHandler.SendResponse(prm.p, responses, blks)
-
-	// wait for message to be processed
-	select {
-	case <-done:
-	case <-prm.ctx.Done():
-	}
 }
