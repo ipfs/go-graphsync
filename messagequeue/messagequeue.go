@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
@@ -189,6 +189,8 @@ func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage) b
 	mq.sender = nil
 
 	select {
+	case <-mq.done:
+		return true
 	case <-mq.ctx.Done():
 		return true
 	case <-time.After(time.Millisecond * 100):
