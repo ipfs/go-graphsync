@@ -14,7 +14,7 @@ This document explains the basic architecture for the go implementation of the G
 
 ## Overview
 
-go-graphsync can be roughly divided into for major components.
+go-graphsync can be roughly divided into four major components.
 
 1. The top Level interface implemented in the root module is called by a GraphSync client to initiate a request or as incoming GraphSync related messages are received from the network.
 
@@ -22,7 +22,7 @@ go-graphsync can be roughly divided into for major components.
 
 3. The Graphsync responder implementation handles incoming GraphSync requests from the network and generates responses. 
 
-4. The message sending layer manages sending messages to peers. It is shared by both the requestor implementation and the responder implementation
+4. The message sending layer manages to send messages to peers. It is shared by both the requestor implementation and the responder implementation
 
 go-graphsync also depends on the following external dependencies:
 
@@ -47,13 +47,13 @@ based on it
 
 This order of these requirements corresponds roughly with the sequence they're executed in time.
 
-However, if you reverse the order of these requirements, it becomes clear that a GraphSync request is really an IPLD Selector Query performed locally that happens to be be backed by another remote peer performing the same query on its machine and feeding the results to the requestor.
+However, if you reverse the order of these requirements, it becomes clear that a GraphSync request is really an IPLD Selector Query performed locally that happens to be backed by another remote peer performing the same query on its machine and feeding the results to the requestor.
 
 Selector queries, as implemented in the `go-ipld-prime` library, rely on a loader function to load data any time a link boundary is crossed during a query. The loader can be configured each time a selector query is performed. We use this to support network communication on both sides of a GraphSync query.
 
 On the requestor side, instead of supplying the local storage loader, we supply it with a different loader that waits for responses from the network -- and also simultaneously stores them in local storage as they are loaded. Blocks that come back on the network that are never loaded as part of the local Selector traversal are simply dropped. Moreover, we can take advantage of the fact that blocks get stored locally as they are traversed to limit network traffic -- there's no need to send back a block twice because we can safely assume in a single query, once a block is traversed once, it's in the requestors local storage.
 
-On the responder side, we employ a similar method -- while an IPLD Selector query operate at the finer grain of traversing IPLD Nodes, what we really care about is when they it crosses a link boundary. At this point IPLD asks the Loader to load the link, and here, we provide IPLD with a loader that wraps the local storage loader but also transmits every block loaded across the network.
+On the responder side, we employ a similar method -- while an IPLD Selector query operates at the finer grain of traversing IPLD Nodes, what we really care about is when it crosses a link boundary. At this point, IPLD asks the Loader to load the link, and here, we provide IPLD with a loader that wraps the local storage loader but also transmits every block loaded across the network.
 
 So, effectively what we are doing is using intercepted loaders on both sides to handle the transmitting and receiving of data across the network.
 
@@ -77,12 +77,12 @@ To do this, GraphSync maintains several independent threads of execution (i.e. g
 4. Each outgoing request has an independent thread collecting and buffering final responses before they are returned to the caller. Graphsync returns responses to the caller through a channel. If the caller fails to immediately read the response channel, this should not block other requests from being processed.
 - On the responder side:
 1. We maintain an independent thread to receive incoming requests and track outgoing responses. As each incoming request is received, it's put into a prioritized queue.
-2. We maintain fixed number of threads that continuosly pull the highest priority request from the queue and perform the selector query for that request
-3. Each peer we respond to has an independent thread marshalling and deduplicating outgoing responses and blocks before they are sent back. This minimizes data sent on the wire and allows queries to proceed without getting blocked by the network.
+2. We maintain fixed number of threads that continuously pull the highest priority request from the queue and perform the selector query for that request
+3. Each peer we respond to has an independent thread marshaling and deduplicating outgoing responses and blocks before they are sent back. This minimizes data sent on the wire and allows queries to proceed without getting blocked by the network.
 - At the messaging layer:
 1. Each peer we send messages to has an independent thread collecting and buffering message data while waiting for the last message to finish sending. This allows higher level operations to execute without getting blocked by a slow network
 
-The following diagram illustrates concurrent threads operating as a client makes calls to GraphSync and messages arive from the network:
+The following diagram illustrates concurrent threads operating as a client makes calls to GraphSync and messages arrive from the network:
 ![GraphSync Process Diagram](./processes.png)
 
 The remaining sections of this document outline internal workings of major graphsync components in more detail. 
@@ -91,7 +91,7 @@ The remaining sections of this document outline internal workings of major graph
 
 ### Network Implementation
 
-The network implementation needs to provide basic lower level utilties for sending and receiving messages. A default implementation using `libp2p` is included in the package, and a mock version is provided for testing. 
+The network implementation needs to provide basic lower level utilities for sending and receiving messages. A default implementation using `libp2p` is included in the package, and a mock version is provided for testing. 
 
 ### Bridge To IPLD
 
@@ -122,7 +122,7 @@ The following process outlines the basic process for loading links asynchronousl
 
 The main components that make up the AsyncLoader are:
 
-* The UnverifiedBlockStore -- basically just a temporary cache to hold blocks, and write them to permaneant storage as they are verified
+* The UnverifiedBlockStore -- basically just a temporary cache to hold blocks, and write them to permanent storage as they are verified
 * The ResponseCache -- essentially just the UnverifiedBlockStore + some link tracking, so that the BlockStore is properly pruned as requests expire
 * The LoadAttemptQueue -- Basically a queue to track attempts to load links. A link load can have one of three results --
   - It can load successfully,
@@ -147,11 +147,11 @@ In addition, an optimized responder implementation accounts for the following co
 
 * *"Don't get DDOS'd"* - a denial of service attack should not be trivially easy. Selector traversal carries a non-trivial CPU and memory cost, so the responder needs to take care not to simply execute every graphsync query it receives immediately.
 
-* *Preserve Bandwith* - Be efficient with network usage, dedepulicate data, and buffer response output so that each new network message contains all response data we have at the time the pipe becomes free.
+* *Preserve Bandwith* - Be efficient with network usage, deduplicate data, and buffer response output so that each new network message contains all response data we have at the time the pipe becomes free.
 
 The responder implementation is managed by the Response Manager. The ResponseManager delegates to PeerTaskQueue to rate limit the number of in progress selector traversals and ensure no one peer is given more priority than others. As data is generated from selector traversals, the ResponseManager uses the PeerResponseManager to aggregate response data for each peer and send compact messages over the network.
 
-The follow diagram outlines in greater detail go-graphsync's responder implementation, covering how it's initialized and how it responds to requests:
+The following diagram outlines in greater detail go-graphsync's responder implementation, covering how it's initialized and how it responds to requests:
 ![Responding To A Request](responder-sequence.png)
 
 Here are some key components in this implementation:
@@ -160,17 +160,17 @@ Here are some key components in this implementation:
 
 Rather than responding to incoming requests immediately, the ResponseManager places each incoming request in a prioritized queue. 
 
-The queue here is a generalized implementation of the PeerRequestQueue in Bitswap (called the PeerTaskQueue). The PeerTaskQueue first balances peers so that those with the most current in progress requests are prioritized after those with fewer in progress requests, and then within a peer prioritizes the requests with highest priority or earliest received.
+The queue here is a generalized implementation of the PeerRequestQueue in Bitswap (called the PeerTaskQueue). The PeerTaskQueue first balances peers so that those with the most current in progress requests are prioritized after those with fewer in progress requests, and then within a peer prioritizes the requests with the highest priority or earliest received.
 
-Meanwhile, the ResponseManager starts a fixed number of workers (currently 6), each of which continually pull the highest priority job off the queue, process the traversal and send the response. So at any given time, only a fixed number of selector queries are executing on the node.
+Meanwhile, the ResponseManager starts a fixed number of workers (currently 6), each of which continually pulls the highest priority job off the queue, processes the traversal and sends the response. So at any given time, only a fixed number of selector queries are executing on the node.
 
 The net here is that no peer can have more than a fixed number of requests in progress at once, and even if a peer sends infinite requests, other peers will still jump ahead of it and get a chance to process their requests.
 
 ### Peer Response Sender -- Deduping blocks and data
 
-Once a request is dequeued, we generate an intercepted loader and provide it to go-ipld-prime to execute a traversal. Each call to the loader will generate a block that we either have or don't. We need to transmit that information across the network. However, that information needs to be encoded in the GraphSync message format, and combined with any other responses we may be sending to the same peer at the same time, ideally without sending blocks more times than neccesary.
+Once a request is dequeued, we generate an intercepted loader and provide it to go-ipld-prime to execute a traversal. Each call to the loader will generate a block that we either have or don't. We need to transmit that information across the network. However, that information needs to be encoded in the GraphSync message format, and combined with any other responses we may be sent to the same peer at the same time, ideally without sending blocks more times than necessary.
 
-These tasks are generally managed by the PeerResponseManager which spins up one PeerResponseSender for each peer. The PeerResponseSender tracks links with the LinkTracker and aggregates responses with the ResponseBuilder. Everytime the PeerResponseSender is called by the intercepted loader, it users the LinkTracker and ResponseBuilder to add block information and metadata to the response. Meanwhile, the PeerResponseSender runs a continuous loop that is synchronized with the message sending layer -- a new response is aggregated until the message sending layer notifies that the last message was sent, at which point the new response is encoded and sent.
+These tasks are generally managed by the PeerResponseManager which spins up one PeerResponseSender for each peer. The PeerResponseSender tracks links with the LinkTracker and aggregates responses with the ResponseBuilder. Every time the PeerResponseSender is called by the intercepted loader, it users the LinkTracker and ResponseBuilder to add block information and metadata to the response. Meanwhile, the PeerResponseSender runs a continuous loop that is synchronized with the message sending layer -- a new response is aggregated until the message sending layer notifies that the last message was sent, at which point the new response is encoded and sent.
 
 ## Message Sending Layer
 
