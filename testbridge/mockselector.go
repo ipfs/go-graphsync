@@ -1,10 +1,9 @@
 package testbridge
 
 import (
-	"github.com/ipfs/go-cid"
+	cid "github.com/ipfs/go-cid"
 	ipldbridge "github.com/ipfs/go-graphsync/ipldbridge"
 	ipld "github.com/ipld/go-ipld-prime"
-	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 )
 
 type mockSelector struct {
@@ -15,12 +14,12 @@ func newMockSelector(mss *mockSelectorSpec) ipldbridge.Selector {
 	return &mockSelector{mss.cidsVisited}
 }
 
-func (ms *mockSelector) Explore(ipld.Node, ipldselector.PathSegment) ipldbridge.Selector {
+func (ms *mockSelector) Explore(ipld.Node, ipld.PathSegment) ipldbridge.Selector {
 	return ms
 }
 
-func (ms *mockSelector) Interests() []ipldselector.PathSegment {
-	return []ipldselector.PathSegment{}
+func (ms *mockSelector) Interests() []ipld.PathSegment {
+	return []ipld.PathSegment{}
 }
 
 func (ms *mockSelector) Decide(ipld.Node) bool { return false }
