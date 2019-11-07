@@ -32,10 +32,16 @@ func NewUnencodableSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
 }
 
 func (mss *mockSelectorSpec) ReprKind() ipld.ReprKind { return ipld.ReprKind_Null }
-func (mss *mockSelectorSpec) TraverseField(key string) (ipld.Node, error) {
+func (mss *mockSelectorSpec) Lookup(key ipld.Node) (ipld.Node, error) {
 	return nil, fmt.Errorf("404")
 }
-func (mss *mockSelectorSpec) TraverseIndex(idx int) (ipld.Node, error) {
+func (mss *mockSelectorSpec) LookupString(key string) (ipld.Node, error) {
+	return nil, fmt.Errorf("404")
+}
+func (mss *mockSelectorSpec) LookupIndex(idx int) (ipld.Node, error) {
+	return nil, fmt.Errorf("404")
+}
+func (mss *mockSelectorSpec) LookupSegment(seg ipld.PathSegment) (ipld.Node, error) {
 	return nil, fmt.Errorf("404")
 }
 func (mss *mockSelectorSpec) ListIterator() ipld.ListIterator { return nil }
@@ -62,10 +68,16 @@ func NewMockBlockNode(data []byte) ipld.Node {
 }
 
 func (mbn *mockBlockNode) ReprKind() ipld.ReprKind { return ipld.ReprKind_Bytes }
-func (mbn *mockBlockNode) TraverseField(key string) (ipld.Node, error) {
+func (mbn *mockBlockNode) Lookup(key ipld.Node) (ipld.Node, error) {
 	return nil, fmt.Errorf("404")
 }
-func (mbn *mockBlockNode) TraverseIndex(idx int) (ipld.Node, error) {
+func (mbn *mockBlockNode) LookupString(key string) (ipld.Node, error) {
+	return nil, fmt.Errorf("404")
+}
+func (mbn *mockBlockNode) LookupIndex(idx int) (ipld.Node, error) {
+	return nil, fmt.Errorf("404")
+}
+func (mbn *mockBlockNode) LookupSegment(seg ipld.PathSegment) (ipld.Node, error) {
 	return nil, fmt.Errorf("404")
 }
 

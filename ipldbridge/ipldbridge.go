@@ -47,10 +47,10 @@ type ExploreFieldsSpecBuilder = selectorbuilder.ExploreFieldsSpecBuilder
 type LinkContext = ipld.LinkContext
 
 // TraversalProgress is an alias from ipld, in case it's renamed/moved.
-type TraversalProgress = ipldtraversal.TraversalProgress
+type TraversalProgress = ipldtraversal.Progress
 
 // TraversalReason is an alias from ipld, in case it's renamed/moved.
-type TraversalReason = ipldtraversal.TraversalReason
+type TraversalReason = ipldtraversal.VisitReason
 
 // NodeBuilder is an alias from the ipld fluent nodebuilder, in case it's moved
 type NodeBuilder = fluent.NodeBuilder

@@ -15,7 +15,7 @@ import (
 )
 
 // TraversalConfig is an alias from ipld, in case it's renamed/moved.
-type TraversalConfig = ipldtraversal.TraversalConfig
+type TraversalConfig = ipldtraversal.Config
 
 type ipldBridge struct {
 }
@@ -71,7 +71,7 @@ func (rb *ipldBridge) Traverse(ctx context.Context, loader Loader, root ipld.Lin
 			Ctx:        ctx,
 			LinkLoader: loader,
 		},
-	}.TraverseInformatively(node, s, fn)
+	}.WalkAdv(node, s, fn)
 }
 
 func (rb *ipldBridge) EncodeNode(node ipld.Node) ([]byte, error) {

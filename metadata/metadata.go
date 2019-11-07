@@ -31,8 +31,8 @@ func DecodeMetadata(data []byte, ipldBridge ipldbridge.IPLDBridge) (Metadata, er
 
 		for !iterator.Done() {
 			_, item := iterator.Next()
-			link := item.TraverseField("link").AsLink()
-			blockPresent := item.TraverseField("blockPresent").AsBool()
+			link := item.LookupString("link").AsLink()
+			blockPresent := item.LookupString("blockPresent").AsBool()
 			metadata = append(metadata, Item{link, blockPresent})
 		}
 		return metadata
