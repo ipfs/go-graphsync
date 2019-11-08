@@ -191,13 +191,16 @@ func metadataForBlocks(blks []blocks.Block, present bool) metadata.Metadata {
 	return md
 }
 
-func encodedMetadataForBlocks(t *testing.T, ipldBridge ipldbridge.IPLDBridge, blks []blocks.Block, present bool) []byte {
+func encodedMetadataForBlocks(t *testing.T, ipldBridge ipldbridge.IPLDBridge, blks []blocks.Block, present bool) gsmsg.GraphSyncExtension {
 	md := metadataForBlocks(blks, present)
 	metadataEncoded, err := metadata.EncodeMetadata(md, ipldBridge)
 	if err != nil {
 		t.Fatal("did not encode metadata")
 	}
-	return metadataEncoded
+	return gsmsg.GraphSyncExtension{
+		Name: gsmsg.ExtensionMetadata,
+		Data: metadataEncoded,
+	}
 }
 
 func TestNormalSimultaneousFetch(t *testing.T) {
@@ -254,8 +257,14 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 		t.Fatal("did not encode metadata")
 	}
 	firstResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(requestRecords[0].gsr.ID(), gsmsg.RequestCompletedFull, firstMetadataEncoded1),
-		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.PartialResponse, firstMetadataEncoded2),
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), gsmsg.RequestCompletedFull, gsmsg.GraphSyncExtension{
+			Name: gsmsg.ExtensionMetadata,
+			Data: firstMetadataEncoded1,
+		}),
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.PartialResponse, gsmsg.GraphSyncExtension{
+			Name: gsmsg.ExtensionMetadata,
+			Data: firstMetadataEncoded2,
+		}),
 	}
 
 	requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
@@ -279,7 +288,10 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 		t.Fatal("did not encode metadata")
 	}
 	moreResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.RequestCompletedFull, moreMetadataEncoded),
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.RequestCompletedFull, gsmsg.GraphSyncExtension{
+			Name: gsmsg.ExtensionMetadata,
+			Data: moreMetadataEncoded,
+		}),
 	}
 
 	requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
@@ -469,7 +481,7 @@ func TestFailedRequest(t *testing.T) {
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 	failedResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.RequestFailedContentNotFound, nil),
+		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.RequestFailedContentNotFound),
 	}
 	requestManager.ProcessResponses(peers[0], failedResponses, nil)
 
@@ -506,7 +518,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 
 	// failure comes in later over network
 	failedResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.RequestFailedContentNotFound, nil),
+		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.RequestFailedContentNotFound),
 	}
 
 	requestManager.ProcessResponses(peers[0], failedResponses, nil)

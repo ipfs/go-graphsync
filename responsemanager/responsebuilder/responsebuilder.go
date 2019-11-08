@@ -64,12 +64,16 @@ func (rb *ResponseBuilder) Empty() bool {
 func (rb *ResponseBuilder) Build(ipldBridge ipldbridge.IPLDBridge) ([]gsmsg.GraphSyncResponse, []blocks.Block, error) {
 	responses := make([]gsmsg.GraphSyncResponse, 0, len(rb.outgoingResponses))
 	for requestID, linkMap := range rb.outgoingResponses {
-		extra, err := metadata.EncodeMetadata(linkMap, ipldBridge)
+		mdRaw, err := metadata.EncodeMetadata(linkMap, ipldBridge)
 		if err != nil {
 			return nil, nil, err
 		}
+		md := gsmsg.GraphSyncExtension{
+			Name: gsmsg.ExtensionMetadata,
+			Data: mdRaw,
+		}
 		status, isComplete := rb.completedResponses[requestID]
-		responses = append(responses, gsmsg.NewResponse(requestID, responseCode(status, isComplete), extra))
+		responses = append(responses, gsmsg.NewResponse(requestID, responseCode(status, isComplete), md))
 	}
 	return responses, rb.outgoingBlocks, nil
 }

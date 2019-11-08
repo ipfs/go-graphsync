@@ -175,9 +175,13 @@ func TestProcessingNotification(t *testing.T) {
 
 	newMessage := gsmsg.New()
 	responseID := gsmsg.GraphSyncRequestID(rand.Int31())
-	extra := testutil.RandomBytes(100)
+	extensionName := gsmsg.GraphSyncExtensionName("graphsync/awesome")
+	extension := gsmsg.GraphSyncExtension{
+		Name: extensionName,
+		Data: testutil.RandomBytes(100),
+	}
 	status := gsmsg.RequestCompletedFull
-	newMessage.AddResponse(gsmsg.NewResponse(responseID, status, extra))
+	newMessage.AddResponse(gsmsg.NewResponse(responseID, status, extension))
 	processing := messageQueue.AddResponses(newMessage.Responses(), blks)
 	select {
 	case <-processing:
@@ -205,9 +209,11 @@ func TestProcessingNotification(t *testing.T) {
 			}
 		}
 		firstResponse := message.Responses()[0]
+		extensionData, err := firstResponse.Extension(extensionName)
 		if responseID != firstResponse.RequestID() ||
 			status != firstResponse.Status() ||
-			!reflect.DeepEqual(firstResponse.Extra(), extra) {
+			err != nil ||
+			!reflect.DeepEqual(extension.Data, extensionData) {
 			t.Fatal("Send incorrect response")
 		}
 	}
