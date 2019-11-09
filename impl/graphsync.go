@@ -92,7 +92,11 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 // the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
 func (gs *GraphSync) RegisterRequestReceivedHook(hook graphsync.OnRequestReceivedHook) error {
 	gs.responseManager.RegisterHook(hook)
-	// may be a need to return errors here in the future...
+	return nil
+}
+
+// RegisterResponseReceivedHook adds a hook that runs when a response is received
+func (gs *GraphSync) RegisterResponseReceivedHook(graphsync.OnResponseReceivedHook) error {
 	return nil
 }
 
