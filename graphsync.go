@@ -98,7 +98,35 @@ type ResponseProgress struct {
 	}
 }
 
+// OnRequestReceivedHook processes extension data in a request
+// responseData - the value that should be sent for the extension in the reply
+// err - error - if not nil, halt request and return RequestRejected with the responseData
+type OnRequestReceivedHook func(requestData ExtensionData) (responseData ExtensionData, err error)
+
+// OnResponseReceivedHook processes extension data in a response
+// When it returns an error processing is halted and the original request is cancelled
+type OnResponseReceivedHook func(responseData ExtensionData) error
+
+// ExtensionConfig defines behavior for user supplied extension 
+type ExtensionConfig struct {
+	Name              ExtensionName
+	// PerformsValidation specifies if the request received hook can be considered "a validator"
+	// if true, and the hook does not error, then one can assume the request is valid and this
+	// should override default validation schemes
+	PerformsValidation bool
+
+	// OnRequestReceived is called whenever a request is received that has data for this extension
+	OnRequestReceived  OnRequestReceivedHook
+
+	// OnResponseReceived is called whenever a response comes back that has data for this extension
+	OnResponseReceived OnResponseReceivedHook
+}
+
 // GraphExchange is a protocol that can exchange IPLD graphs based on a selector
 type GraphExchange interface {
-	Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node) (<-chan ResponseProgress, <-chan error)
+	// Request initiates a new GraphSync request to the given peer using the given selector spec.
+	Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...ExtensionData) (<-chan ResponseProgress, <-chan error)
+
+	// RegisterExtension adds a user supplied extension with the given extension config
+	RegisterExtension(config ExtensionConfig) error
 }
