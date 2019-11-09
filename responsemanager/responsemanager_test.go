@@ -10,6 +10,7 @@ import (
 	"time"
 
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-graphsync/testbridge"
@@ -81,32 +82,32 @@ func (fpm *fakePeerManager) SenderForPeer(p peer.ID) peerresponsemanager.PeerRes
 }
 
 type sentResponse struct {
-	requestID gsmsg.GraphSyncRequestID
+	requestID graphsync.RequestID
 	link      ipld.Link
 	data      []byte
 }
 
 type fakePeerResponseSender struct {
 	sentResponses        chan sentResponse
-	lastCompletedRequest chan gsmsg.GraphSyncRequestID
+	lastCompletedRequest chan graphsync.RequestID
 }
 
 func (fprs *fakePeerResponseSender) Startup()  {}
 func (fprs *fakePeerResponseSender) Shutdown() {}
 
 func (fprs *fakePeerResponseSender) SendResponse(
-	requestID gsmsg.GraphSyncRequestID,
+	requestID graphsync.RequestID,
 	link ipld.Link,
 	data []byte,
 ) {
 	fprs.sentResponses <- sentResponse{requestID, link, data}
 }
 
-func (fprs *fakePeerResponseSender) FinishRequest(requestID gsmsg.GraphSyncRequestID) {
+func (fprs *fakePeerResponseSender) FinishRequest(requestID graphsync.RequestID) {
 	fprs.lastCompletedRequest <- requestID
 }
 
-func (fprs *fakePeerResponseSender) FinishWithError(requestID gsmsg.GraphSyncRequestID, status gsmsg.GraphSyncResponseStatusCode) {
+func (fprs *fakePeerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
 	fprs.lastCompletedRequest <- requestID
 }
 
@@ -117,7 +118,7 @@ func TestIncomingQuery(t *testing.T) {
 	blks := testutil.GenerateBlocksOfSize(5, 20)
 	loader := testbridge.NewMockLoader(blks)
 	ipldBridge := testbridge.NewMockIPLDBridge()
-	requestIDChan := make(chan gsmsg.GraphSyncRequestID, 1)
+	requestIDChan := make(chan graphsync.RequestID, 1)
 	sentResponses := make(chan sentResponse, len(blks))
 	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
@@ -134,9 +135,9 @@ func TestIncomingQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal("error encoding selector")
 	}
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, cids[0], selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, cids[0], selector, graphsync.Priority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)
@@ -172,7 +173,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	blks := testutil.GenerateBlocksOfSize(5, 20)
 	loader := testbridge.NewMockLoader(blks)
 	ipldBridge := testbridge.NewMockIPLDBridge()
-	requestIDChan := make(chan gsmsg.GraphSyncRequestID)
+	requestIDChan := make(chan graphsync.RequestID)
 	sentResponses := make(chan sentResponse)
 	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
@@ -189,9 +190,9 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal("error encoding selector")
 	}
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, cids[0], selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, cids[0], selector, graphsync.Priority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)
@@ -259,7 +260,7 @@ func TestEarlyCancellation(t *testing.T) {
 	blks := testutil.GenerateBlocksOfSize(5, 20)
 	loader := testbridge.NewMockLoader(blks)
 	ipldBridge := testbridge.NewMockIPLDBridge()
-	requestIDChan := make(chan gsmsg.GraphSyncRequestID)
+	requestIDChan := make(chan graphsync.RequestID)
 	sentResponses := make(chan sentResponse)
 	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
@@ -277,9 +278,9 @@ func TestEarlyCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal("error encoding selector")
 	}
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, cids[0], selector, gsmsg.GraphSyncPriority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, cids[0], selector, graphsync.Priority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)

@@ -5,9 +5,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
+	"github.com/ipfs/go-graphsync"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	random "github.com/jbenet/go-random"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -86,8 +86,8 @@ func ContainsBlock(blks []blocks.Block, block blocks.Block) bool {
 
 // CollectResponses is just a utility to convert a graphsync response progress
 // channel into an array.
-func CollectResponses(ctx context.Context, t *testing.T, responseChan <-chan types.ResponseProgress) []types.ResponseProgress {
-	var collectedBlocks []types.ResponseProgress
+func CollectResponses(ctx context.Context, t *testing.T, responseChan <-chan graphsync.ResponseProgress) []graphsync.ResponseProgress {
+	var collectedBlocks []graphsync.ResponseProgress
 	for {
 		select {
 		case blk, ok := <-responseChan:
@@ -119,8 +119,8 @@ func CollectErrors(ctx context.Context, t *testing.T, errChan <-chan error) []er
 
 // ReadNResponses does a partial read from a ResponseProgress channel -- up
 // to n values
-func ReadNResponses(ctx context.Context, t *testing.T, responseChan <-chan types.ResponseProgress, count int) []types.ResponseProgress {
-	var returnedBlocks []types.ResponseProgress
+func ReadNResponses(ctx context.Context, t *testing.T, responseChan <-chan graphsync.ResponseProgress, count int) []graphsync.ResponseProgress {
+	var returnedBlocks []graphsync.ResponseProgress
 	for i := 0; i < count; i++ {
 		select {
 		case blk := <-responseChan:
@@ -171,7 +171,7 @@ func VerifyEmptyErrors(ctx context.Context, t *testing.T, errChan <-chan error) 
 
 // VerifyEmptyResponse verifies that no response progress happened before the
 // channel was closed.
-func VerifyEmptyResponse(ctx context.Context, t *testing.T, responseChan <-chan types.ResponseProgress) {
+func VerifyEmptyResponse(ctx context.Context, t *testing.T, responseChan <-chan graphsync.ResponseProgress) {
 	for {
 		select {
 		case _, ok := <-responseChan:

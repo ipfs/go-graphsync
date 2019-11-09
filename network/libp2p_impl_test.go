@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -73,14 +74,14 @@ func TestMessageSendAndReceive(t *testing.T) {
 
 	root := testutil.GenerateCids(1)[0]
 	selector := testutil.RandomBytes(100)
-	extensionName := gsmsg.GraphSyncExtensionName("graphsync/awesome")
-	extension := gsmsg.GraphSyncExtension{
+	extensionName := graphsync.ExtensionName("graphsync/awesome")
+	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: testutil.RandomBytes(100),
 	}
-	id := gsmsg.GraphSyncRequestID(rand.Int31())
-	priority := gsmsg.GraphSyncPriority(rand.Int31())
-	status := gsmsg.RequestAcknowledged
+	id := graphsync.RequestID(rand.Int31())
+	priority := graphsync.Priority(rand.Int31())
+	status := graphsync.RequestAcknowledged
 
 	sent := gsmsg.New()
 	sent.AddRequest(gsmsg.NewRequest(id, root, selector, priority))

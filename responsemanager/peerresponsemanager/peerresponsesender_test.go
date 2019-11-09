@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/testbridge"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -36,9 +37,9 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := gsmsg.GraphSyncRequestID(rand.Int31())
-	requestID2 := gsmsg.GraphSyncRequestID(rand.Int31())
-	requestID3 := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
+	requestID3 := graphsync.RequestID(rand.Int31())
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -67,7 +68,7 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	}
 
 	if len(fph.lastResponses) != 1 || fph.lastResponses[0].RequestID() != requestID1 ||
-		fph.lastResponses[0].Status() != gsmsg.PartialResponse {
+		fph.lastResponses[0].Status() != graphsync.PartialResponse {
 		t.Fatal("Did not send correct responses for first message")
 	}
 
@@ -96,14 +97,14 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	if err != nil {
 		t.Fatal("Did not send correct response for second message")
 	}
-	if response1.Status() != gsmsg.RequestCompletedPartial {
+	if response1.Status() != graphsync.RequestCompletedPartial {
 		t.Fatal("Did not send proper response code in second message")
 	}
 	response2, err := findResponseForRequestID(fph.lastResponses, requestID2)
 	if err != nil {
 		t.Fatal("Did not send correct response for second message")
 	}
-	if response2.Status() != gsmsg.PartialResponse {
+	if response2.Status() != graphsync.PartialResponse {
 		t.Fatal("Did not send proper response code in second message")
 	}
 
@@ -133,14 +134,14 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	if err != nil {
 		t.Fatal("Did not send correct response for third message")
 	}
-	if response2.Status() != gsmsg.RequestCompletedFull {
+	if response2.Status() != graphsync.RequestCompletedFull {
 		t.Fatal("Did not send proper response code in third message")
 	}
 	response3, err := findResponseForRequestID(fph.lastResponses, requestID3)
 	if err != nil {
 		t.Fatal("Did not send correct response for third message")
 	}
-	if response3.Status() != gsmsg.PartialResponse {
+	if response3.Status() != graphsync.PartialResponse {
 		t.Fatal("Did not send proper response code in third message")
 	}
 
@@ -161,7 +162,7 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	}
 
 	if len(fph.lastResponses) != 1 || fph.lastResponses[0].RequestID() != requestID3 ||
-		fph.lastResponses[0].Status() != gsmsg.PartialResponse {
+		fph.lastResponses[0].Status() != graphsync.PartialResponse {
 		t.Fatal("Did not send correct responses for fourth message")
 	}
 }
@@ -169,7 +170,7 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID1 := graphsync.RequestID(rand.Int31())
 	// generate large blocks before proceeding
 	blks := testutil.GenerateBlocksOfSize(5, 1000000)
 	ctx := context.Background()
@@ -202,7 +203,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	}
 
 	if len(fph.lastResponses) != 1 || fph.lastResponses[0].RequestID() != requestID1 ||
-		fph.lastResponses[0].Status() != gsmsg.PartialResponse {
+		fph.lastResponses[0].Status() != graphsync.PartialResponse {
 		t.Fatal("Did not send correct responses for first message")
 	}
 
@@ -287,13 +288,13 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	if err != nil {
 		t.Fatal("Did not send correct response for fifth message")
 	}
-	if response.Status() != gsmsg.RequestCompletedFull {
+	if response.Status() != graphsync.RequestCompletedFull {
 		t.Fatal("Did not send proper response code in fifth message")
 	}
 
 }
 
-func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID gsmsg.GraphSyncRequestID) (gsmsg.GraphSyncResponse, error) {
+func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID graphsync.RequestID) (gsmsg.GraphSyncResponse, error) {
 	for _, response := range responses {
 		if response.RequestID() == requestID {
 			return response, nil

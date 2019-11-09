@@ -4,15 +4,15 @@ import (
 	"bytes"
 	"io"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldbridge"
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
 // ResponseSender sends responses over the network
 type ResponseSender interface {
 	SendResponse(
-		requestID gsmsg.GraphSyncRequestID,
+		requestID graphsync.RequestID,
 		link ipld.Link,
 		data []byte,
 	)
@@ -21,7 +21,7 @@ type ResponseSender interface {
 // WrapLoader wraps a given loader with an interceptor that sends loaded
 // blocks out to the network with the given response sender.
 func WrapLoader(loader ipldbridge.Loader,
-	requestID gsmsg.GraphSyncRequestID,
+	requestID graphsync.RequestID,
 	responseSender ResponseSender) ipldbridge.Loader {
 	return func(lnk ipld.Link, lnkCtx ipldbridge.LinkContext) (io.Reader, error) {
 		result, err := loader(lnk, lnkCtx)

@@ -2,6 +2,7 @@ package responsebuilder
 
 import (
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
@@ -14,15 +15,15 @@ import (
 type ResponseBuilder struct {
 	outgoingBlocks     []blocks.Block
 	blkSize            int
-	completedResponses map[gsmsg.GraphSyncRequestID]gsmsg.GraphSyncResponseStatusCode
-	outgoingResponses  map[gsmsg.GraphSyncRequestID]metadata.Metadata
+	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
+	outgoingResponses  map[graphsync.RequestID]metadata.Metadata
 }
 
 // New generates a new ResponseBuilder.
 func New() *ResponseBuilder {
 	return &ResponseBuilder{
-		completedResponses: make(map[gsmsg.GraphSyncRequestID]gsmsg.GraphSyncResponseStatusCode),
-		outgoingResponses:  make(map[gsmsg.GraphSyncRequestID]metadata.Metadata),
+		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
+		outgoingResponses:  make(map[graphsync.RequestID]metadata.Metadata),
 	}
 }
 
@@ -39,14 +40,14 @@ func (rb *ResponseBuilder) BlockSize() int {
 
 // AddLink adds the given link and whether its block is present
 // to the response for the given request ID.
-func (rb *ResponseBuilder) AddLink(requestID gsmsg.GraphSyncRequestID, link ipld.Link, blockPresent bool) {
+func (rb *ResponseBuilder) AddLink(requestID graphsync.RequestID, link ipld.Link, blockPresent bool) {
 	rb.outgoingResponses[requestID] = append(rb.outgoingResponses[requestID], metadata.Item{Link: link, BlockPresent: blockPresent})
 }
 
 // AddCompletedRequest marks the given request as completed in the response,
 // as well as whether the graphsync request responded with complete or partial
 // data.
-func (rb *ResponseBuilder) AddCompletedRequest(requestID gsmsg.GraphSyncRequestID, status gsmsg.GraphSyncResponseStatusCode) {
+func (rb *ResponseBuilder) AddCompletedRequest(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
 	rb.completedResponses[requestID] = status
 	// make sure this completion goes out in next response even if no links are sent
 	_, ok := rb.outgoingResponses[requestID]
@@ -68,8 +69,8 @@ func (rb *ResponseBuilder) Build(ipldBridge ipldbridge.IPLDBridge) ([]gsmsg.Grap
 		if err != nil {
 			return nil, nil, err
 		}
-		md := gsmsg.GraphSyncExtension{
-			Name: gsmsg.ExtensionMetadata,
+		md := graphsync.ExtensionData{
+			Name: graphsync.ExtensionMetadata,
 			Data: mdRaw,
 		}
 		status, isComplete := rb.completedResponses[requestID]
@@ -78,9 +79,9 @@ func (rb *ResponseBuilder) Build(ipldBridge ipldbridge.IPLDBridge) ([]gsmsg.Grap
 	return responses, rb.outgoingBlocks, nil
 }
 
-func responseCode(status gsmsg.GraphSyncResponseStatusCode, isComplete bool) gsmsg.GraphSyncResponseStatusCode {
+func responseCode(status graphsync.ResponseStatusCode, isComplete bool) graphsync.ResponseStatusCode {
 	if !isComplete {
-		return gsmsg.PartialResponse
+		return graphsync.PartialResponse
 	}
 	return status
 }

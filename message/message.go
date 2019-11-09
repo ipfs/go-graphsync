@@ -5,6 +5,7 @@ import (
 	"io"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync"
 
 	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
@@ -12,100 +13,25 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 )
 
-// GraphSyncRequestID is a unique identifier for a GraphSync request.
-type GraphSyncRequestID int32
-
-// GraphSyncPriority a priority for a GraphSync request.
-type GraphSyncPriority int32
-
-// GraphSyncResponseStatusCode is a status returned for a GraphSync Request.
-type GraphSyncResponseStatusCode int32
-
-// GraphSyncExtensionName is a name for a GraphSync extension
-type GraphSyncExtensionName string
-
-// GraphSyncExtension is a name/data pair for a graphsync extension
-type GraphSyncExtension struct {
-	Name GraphSyncExtensionName
-	Data []byte
-}
-
-const (
-
-	// Known Graphsync Extensions
-
-	// ExtensionMetadata provides response metadata for a Graphsync request and is
-	// documented at
-	// https://github.com/ipld/specs/blob/master/block-layer/graphsync/known_extensions.md
-	ExtensionMetadata = GraphSyncExtensionName("graphsync/response-metadata")
-
-	// ExtensionDoNotSendCIDs tells the responding peer not to send certain blocks if they
-	// are encountered in a traversal and is documented at
-	// https://github.com/ipld/specs/blob/master/block-layer/graphsync/known_extensions.md
-	ExtensionDoNotSendCIDs = GraphSyncExtensionName("graphsync/do-not-send-cids")
-
-	// GraphSync Response Status Codes
-
-	// Informational Response Codes (partial)
-
-	// RequestAcknowledged means the request was received and is being worked on.
-	RequestAcknowledged = GraphSyncResponseStatusCode(10)
-	// AdditionalPeers means additional peers were found that may be able
-	// to satisfy the request and contained in the extra block of the response.
-	AdditionalPeers = GraphSyncResponseStatusCode(11)
-	// NotEnoughGas means fulfilling this request requires payment.
-	NotEnoughGas = GraphSyncResponseStatusCode(12)
-	// OtherProtocol means a different type of response than GraphSync is
-	// contained in extra.
-	OtherProtocol = GraphSyncResponseStatusCode(13)
-	// PartialResponse may include blocks and metadata about the in progress response
-	// in extra.
-	PartialResponse = GraphSyncResponseStatusCode(14)
-
-	// Success Response Codes (request terminated)
-
-	// RequestCompletedFull means the entire fulfillment of the GraphSync request
-	// was sent back.
-	RequestCompletedFull = GraphSyncResponseStatusCode(20)
-	// RequestCompletedPartial means the response is completed, and part of the
-	// GraphSync request was sent back, but not the complete request.
-	RequestCompletedPartial = GraphSyncResponseStatusCode(21)
-
-	// Error Response Codes (request terminated)
-
-	// RequestRejected means the node did not accept the incoming request.
-	RequestRejected = GraphSyncResponseStatusCode(30)
-	// RequestFailedBusy means the node is too busy, try again later. Backoff may
-	// be contained in extra.
-	RequestFailedBusy = GraphSyncResponseStatusCode(31)
-	// RequestFailedUnknown means the request failed for an unspecified reason. May
-	// contain data about why in extra.
-	RequestFailedUnknown = GraphSyncResponseStatusCode(32)
-	// RequestFailedLegal means the request failed for legal reasons.
-	RequestFailedLegal = GraphSyncResponseStatusCode(33)
-	// RequestFailedContentNotFound means the respondent does not have the content.
-	RequestFailedContentNotFound = GraphSyncResponseStatusCode(34)
-)
-
 // IsTerminalSuccessCode returns true if the response code indicates the
 // request terminated successfully.
-func IsTerminalSuccessCode(status GraphSyncResponseStatusCode) bool {
-	return status == RequestCompletedFull ||
-		status == RequestCompletedPartial
+func IsTerminalSuccessCode(status graphsync.ResponseStatusCode) bool {
+	return status == graphsync.RequestCompletedFull ||
+		status == graphsync.RequestCompletedPartial
 }
 
 // IsTerminalFailureCode returns true if the response code indicates the
 // request terminated in failure.
-func IsTerminalFailureCode(status GraphSyncResponseStatusCode) bool {
-	return status == RequestFailedBusy ||
-		status == RequestFailedContentNotFound ||
-		status == RequestFailedLegal ||
-		status == RequestFailedUnknown
+func IsTerminalFailureCode(status graphsync.ResponseStatusCode) bool {
+	return status == graphsync.RequestFailedBusy ||
+		status == graphsync.RequestFailedContentNotFound ||
+		status == graphsync.RequestFailedLegal ||
+		status == graphsync.RequestFailedUnknown
 }
 
 // IsTerminalResponseCode returns true if the response code signals
 // the end of the request
-func IsTerminalResponseCode(status GraphSyncResponseStatusCode) bool {
+func IsTerminalResponseCode(status graphsync.ResponseStatusCode) bool {
 	return IsTerminalSuccessCode(status) || IsTerminalFailureCode(status)
 }
 
@@ -142,8 +68,8 @@ type Exportable interface {
 type GraphSyncRequest struct {
 	root       cid.Cid
 	selector   []byte
-	priority   GraphSyncPriority
-	id         GraphSyncRequestID
+	priority   graphsync.Priority
+	id         graphsync.RequestID
 	extensions map[string][]byte
 	isCancel   bool
 }
@@ -151,14 +77,14 @@ type GraphSyncRequest struct {
 // GraphSyncResponse is an struct to capture data on a response sent back
 // in a GraphSyncMessage.
 type GraphSyncResponse struct {
-	requestID  GraphSyncRequestID
-	status     GraphSyncResponseStatusCode
+	requestID  graphsync.RequestID
+	status     graphsync.ResponseStatusCode
 	extensions map[string][]byte
 }
 
 type graphSyncMessage struct {
-	requests  map[GraphSyncRequestID]GraphSyncRequest
-	responses map[GraphSyncRequestID]GraphSyncResponse
+	requests  map[graphsync.RequestID]GraphSyncRequest
+	responses map[graphsync.RequestID]GraphSyncResponse
 	blocks    map[cid.Cid]blocks.Block
 }
 
@@ -169,28 +95,28 @@ func New() GraphSyncMessage {
 
 func newMsg() *graphSyncMessage {
 	return &graphSyncMessage{
-		requests:  make(map[GraphSyncRequestID]GraphSyncRequest),
-		responses: make(map[GraphSyncRequestID]GraphSyncResponse),
+		requests:  make(map[graphsync.RequestID]GraphSyncRequest),
+		responses: make(map[graphsync.RequestID]GraphSyncResponse),
 		blocks:    make(map[cid.Cid]blocks.Block),
 	}
 }
 
 // NewRequest builds a new Graphsync request
-func NewRequest(id GraphSyncRequestID,
+func NewRequest(id graphsync.RequestID,
 	root cid.Cid,
 	selector []byte,
-	priority GraphSyncPriority,
-	extensions ...GraphSyncExtension) GraphSyncRequest {
+	priority graphsync.Priority,
+	extensions ...graphsync.ExtensionData) GraphSyncRequest {
 
 	return newRequest(id, root, selector, priority, false, toExtensionsMap(extensions))
 }
 
 // CancelRequest request generates a request to cancel an in progress request
-func CancelRequest(id GraphSyncRequestID) GraphSyncRequest {
+func CancelRequest(id graphsync.RequestID) GraphSyncRequest {
 	return newRequest(id, cid.Cid{}, nil, 0, true, nil)
 }
 
-func toExtensionsMap(extensions []GraphSyncExtension) (extensionsMap map[string][]byte) {
+func toExtensionsMap(extensions []graphsync.ExtensionData) (extensionsMap map[string][]byte) {
 	if len(extensions) > 0 {
 		extensionsMap = make(map[string][]byte, len(extensions))
 		for _, extension := range extensions {
@@ -200,10 +126,10 @@ func toExtensionsMap(extensions []GraphSyncExtension) (extensionsMap map[string]
 	return
 }
 
-func newRequest(id GraphSyncRequestID,
+func newRequest(id graphsync.RequestID,
 	root cid.Cid,
 	selector []byte,
-	priority GraphSyncPriority,
+	priority graphsync.Priority,
 	isCancel bool,
 	extensions map[string][]byte) GraphSyncRequest {
 	return GraphSyncRequest{
@@ -217,14 +143,14 @@ func newRequest(id GraphSyncRequestID,
 }
 
 // NewResponse builds a new Graphsync response
-func NewResponse(requestID GraphSyncRequestID,
-	status GraphSyncResponseStatusCode,
-	extensions ...GraphSyncExtension) GraphSyncResponse {
+func NewResponse(requestID graphsync.RequestID,
+	status graphsync.ResponseStatusCode,
+	extensions ...graphsync.ExtensionData) GraphSyncResponse {
 	return newResponse(requestID, status, toExtensionsMap(extensions))
 }
 
-func newResponse(requestID GraphSyncRequestID,
-	status GraphSyncResponseStatusCode, extensions map[string][]byte) GraphSyncResponse {
+func newResponse(requestID graphsync.RequestID,
+	status graphsync.ResponseStatusCode, extensions map[string][]byte) GraphSyncResponse {
 	return GraphSyncResponse{
 		requestID:  requestID,
 		status:     status,
@@ -238,11 +164,11 @@ func newMessageFromProto(pbm pb.Message) (GraphSyncMessage, error) {
 		if err != nil {
 			return nil, err
 		}
-		gsm.AddRequest(newRequest(GraphSyncRequestID(req.Id), root, req.Selector, GraphSyncPriority(req.Priority), req.Cancel, req.GetExtensions()))
+		gsm.AddRequest(newRequest(graphsync.RequestID(req.Id), root, req.Selector, graphsync.Priority(req.Priority), req.Cancel, req.GetExtensions()))
 	}
 
 	for _, res := range pbm.Responses {
-		gsm.AddResponse(newResponse(GraphSyncRequestID(res.Id), GraphSyncResponseStatusCode(res.Status), res.GetExtensions()))
+		gsm.AddResponse(newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), res.GetExtensions()))
 	}
 
 	for _, b := range pbm.GetData() {
@@ -379,7 +305,7 @@ func (gsm *graphSyncMessage) Loggable() map[string]interface{} {
 }
 
 // ID Returns the request ID for this Request
-func (gsr GraphSyncRequest) ID() GraphSyncRequestID { return gsr.id }
+func (gsr GraphSyncRequest) ID() graphsync.RequestID { return gsr.id }
 
 // Root returns the CID to the root block of this request
 func (gsr GraphSyncRequest) Root() cid.Cid { return gsr.root }
@@ -388,11 +314,11 @@ func (gsr GraphSyncRequest) Root() cid.Cid { return gsr.root }
 func (gsr GraphSyncRequest) Selector() []byte { return gsr.selector }
 
 // Priority returns the priority of this request
-func (gsr GraphSyncRequest) Priority() GraphSyncPriority { return gsr.priority }
+func (gsr GraphSyncRequest) Priority() graphsync.Priority { return gsr.priority }
 
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
-func (gsr GraphSyncRequest) Extension(name GraphSyncExtensionName) ([]byte, bool) {
+func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) ([]byte, bool) {
 	if gsr.extensions == nil {
 		return nil, false
 	}
@@ -407,14 +333,14 @@ func (gsr GraphSyncRequest) Extension(name GraphSyncExtensionName) ([]byte, bool
 func (gsr GraphSyncRequest) IsCancel() bool { return gsr.isCancel }
 
 // RequestID returns the request ID for this response
-func (gsr GraphSyncResponse) RequestID() GraphSyncRequestID { return gsr.requestID }
+func (gsr GraphSyncResponse) RequestID() graphsync.RequestID { return gsr.requestID }
 
 // Status returns the status for a response
-func (gsr GraphSyncResponse) Status() GraphSyncResponseStatusCode { return gsr.status }
+func (gsr GraphSyncResponse) Status() graphsync.ResponseStatusCode { return gsr.status }
 
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
-func (gsr GraphSyncResponse) Extension(name GraphSyncExtensionName) ([]byte, bool) {
+func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) ([]byte, bool) {
 	if gsr.extensions == nil {
 		return nil, false
 	}

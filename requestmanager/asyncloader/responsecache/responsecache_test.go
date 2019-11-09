@@ -6,12 +6,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/testutil"
-	"github.com/ipld/go-ipld-prime/linking/cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	ipld "github.com/ipld/go-ipld-prime"
 )
@@ -54,8 +54,8 @@ func (ubs *fakeUnverifiedBlockStore) blocks() []blocks.Block {
 
 func TestResponseCacheManagingLinks(t *testing.T) {
 	blks := testutil.GenerateBlocksOfSize(5, 100)
-	requestID1 := gsmsg.GraphSyncRequestID(rand.Int31())
-	requestID2 := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
 
 	request1Metadata := metadata.Metadata{
 		metadata.Item{
@@ -87,7 +87,7 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 		},
 	}
 
-	responses := map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+	responses := map[graphsync.RequestID]metadata.Metadata{
 		requestID1: request1Metadata,
 		requestID2: request2Metadata,
 	}

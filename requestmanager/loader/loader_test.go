@@ -10,23 +10,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
-
-	gsmsg "github.com/ipfs/go-graphsync/message"
 )
 
 type callParams struct {
-	requestID gsmsg.GraphSyncRequestID
+	requestID graphsync.RequestID
 	link      ipld.Link
 }
 
 func makeAsyncLoadFn(responseChan chan types.AsyncLoadResult, calls chan callParams) AsyncLoadFn {
-	return func(requestID gsmsg.GraphSyncRequestID, link ipld.Link) <-chan types.AsyncLoadResult {
+	return func(requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
 		calls <- callParams{requestID, link}
 		return responseChan
 	}
@@ -40,7 +39,7 @@ func TestWrappedAsyncLoaderReturnsValues(t *testing.T) {
 	calls := make(chan callParams, 1)
 	asyncLoadFn := makeAsyncLoadFn(responseChan, calls)
 	errChan := make(chan error)
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	loader := WrapAsyncLoader(ctx, asyncLoadFn, requestID, errChan)
 
 	link := testbridge.NewMockLink()
@@ -67,7 +66,7 @@ func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
 	calls := make(chan callParams, 1)
 	asyncLoadFn := makeAsyncLoadFn(responseChan, calls)
 	errChan := make(chan error, 1)
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	loader := WrapAsyncLoader(ctx, asyncLoadFn, requestID, errChan)
 
 	link := testbridge.NewMockLink()
@@ -96,7 +95,7 @@ func TestWrappedAsyncLoaderContextCancels(t *testing.T) {
 	calls := make(chan callParams, 1)
 	asyncLoadFn := makeAsyncLoadFn(responseChan, calls)
 	errChan := make(chan error, 1)
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	loader := WrapAsyncLoader(subCtx, asyncLoadFn, requestID, errChan)
 	link := testbridge.NewMockLink()
 	resultsChan := make(chan struct {

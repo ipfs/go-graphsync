@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/testbridge"
@@ -22,27 +23,27 @@ func TestMessageBuilding(t *testing.T) {
 	for _, block := range blocks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	requestID1 := gsmsg.GraphSyncRequestID(rand.Int31())
-	requestID2 := gsmsg.GraphSyncRequestID(rand.Int31())
-	requestID3 := gsmsg.GraphSyncRequestID(rand.Int31())
-	requestID4 := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
+	requestID3 := graphsync.RequestID(rand.Int31())
+	requestID4 := graphsync.RequestID(rand.Int31())
 
 	rb.AddLink(requestID1, links[0], true)
 	rb.AddLink(requestID1, links[1], false)
 	rb.AddLink(requestID1, links[2], true)
 
-	rb.AddCompletedRequest(requestID1, gsmsg.RequestCompletedPartial)
+	rb.AddCompletedRequest(requestID1, graphsync.RequestCompletedPartial)
 
 	rb.AddLink(requestID2, links[1], true)
 	rb.AddLink(requestID2, links[2], true)
 	rb.AddLink(requestID2, links[1], true)
 
-	rb.AddCompletedRequest(requestID2, gsmsg.RequestCompletedFull)
+	rb.AddCompletedRequest(requestID2, graphsync.RequestCompletedFull)
 
 	rb.AddLink(requestID3, links[0], true)
 	rb.AddLink(requestID3, links[1], true)
 
-	rb.AddCompletedRequest(requestID4, gsmsg.RequestCompletedFull)
+	rb.AddCompletedRequest(requestID4, graphsync.RequestCompletedFull)
 
 	for _, block := range blocks {
 		rb.AddBlock(block)
@@ -62,11 +63,11 @@ func TestMessageBuilding(t *testing.T) {
 	}
 
 	response1, err := findResponseForRequestID(responses, requestID1)
-	if err != nil || response1.Status() != gsmsg.RequestCompletedPartial {
+	if err != nil || response1.Status() != graphsync.RequestCompletedPartial {
 		t.Fatal("did not generate completed partial response")
 	}
 
-	response1MetadataRaw, found := response1.Extension(gsmsg.ExtensionMetadata)
+	response1MetadataRaw, found := response1.Extension(graphsync.ExtensionMetadata)
 	if !found {
 		t.Fatal("Metadata not included in response")
 	}
@@ -80,10 +81,10 @@ func TestMessageBuilding(t *testing.T) {
 	}
 
 	response2, err := findResponseForRequestID(responses, requestID2)
-	if err != nil || response2.Status() != gsmsg.RequestCompletedFull {
+	if err != nil || response2.Status() != graphsync.RequestCompletedFull {
 		t.Fatal("did not generate completed partial response")
 	}
-	response2MetadataRaw, found := response2.Extension(gsmsg.ExtensionMetadata)
+	response2MetadataRaw, found := response2.Extension(graphsync.ExtensionMetadata)
 	if !found {
 		t.Fatal("Metadata not included in response")
 	}
@@ -97,10 +98,10 @@ func TestMessageBuilding(t *testing.T) {
 	}
 
 	response3, err := findResponseForRequestID(responses, requestID3)
-	if err != nil || response3.Status() != gsmsg.PartialResponse {
+	if err != nil || response3.Status() != graphsync.PartialResponse {
 		t.Fatal("did not generate completed partial response")
 	}
-	response3MetadataRaw, found := response3.Extension(gsmsg.ExtensionMetadata)
+	response3MetadataRaw, found := response3.Extension(graphsync.ExtensionMetadata)
 	if !found {
 		t.Fatal("Metadata not included in response")
 	}
@@ -113,7 +114,7 @@ func TestMessageBuilding(t *testing.T) {
 	}
 
 	response4, err := findResponseForRequestID(responses, requestID4)
-	if err != nil || response4.Status() != gsmsg.RequestCompletedFull {
+	if err != nil || response4.Status() != graphsync.RequestCompletedFull {
 		t.Fatal("did not generate completed partial response")
 	}
 
@@ -128,7 +129,7 @@ func TestMessageBuilding(t *testing.T) {
 	}
 }
 
-func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID gsmsg.GraphSyncRequestID) (gsmsg.GraphSyncResponse, error) {
+func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID graphsync.RequestID) (gsmsg.GraphSyncResponse, error) {
 	for _, response := range responses {
 		if response.RequestID() == requestID {
 			return response, nil

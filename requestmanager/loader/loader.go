@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldbridge"
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
 // AsyncLoadFn is a function which given a request id and an ipld.Link, returns
 // a channel which will eventually return data for the link or an err
-type AsyncLoadFn func(gsmsg.GraphSyncRequestID, ipld.Link) <-chan types.AsyncLoadResult
+type AsyncLoadFn func(graphsync.RequestID, ipld.Link) <-chan types.AsyncLoadResult
 
 // WrapAsyncLoader creates a regular ipld link laoder from an asynchronous load
 // function, with the given cancellation context, for the given requests, and will
@@ -22,7 +22,7 @@ type AsyncLoadFn func(gsmsg.GraphSyncRequestID, ipld.Link) <-chan types.AsyncLoa
 func WrapAsyncLoader(
 	ctx context.Context,
 	asyncLoadFn AsyncLoadFn,
-	requestID gsmsg.GraphSyncRequestID,
+	requestID graphsync.RequestID,
 	errorChan chan error) ipld.Loader {
 	return func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
 		resultChan := asyncLoadFn(requestID, link)

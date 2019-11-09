@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-graphsync/requestmanager/types"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/testbridge"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -22,7 +22,7 @@ func TestBufferingResponseProgress(t *testing.T) {
 	rc := newResponseCollector(ctx)
 	requestCtx, requestCancel := context.WithCancel(backgroundCtx)
 	defer requestCancel()
-	incomingResponses := make(chan types.ResponseProgress)
+	incomingResponses := make(chan graphsync.ResponseProgress)
 	incomingErrors := make(chan error)
 	cancelRequest := func() {}
 
@@ -35,7 +35,7 @@ func TestBufferingResponseProgress(t *testing.T) {
 		select {
 		case <-ctx.Done():
 			t.Fatal("should have written to channel but couldn't")
-		case incomingResponses <- types.ResponseProgress{
+		case incomingResponses <- graphsync.ResponseProgress{
 			Node: testbridge.NewMockBlockNode(block.RawData()),
 			LastBlock: struct {
 				Path ipld.Path

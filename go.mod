@@ -18,6 +18,7 @@ require (
 	github.com/libp2p/go-eventbus v0.0.3 // indirect
 	github.com/libp2p/go-libp2p v0.2.1
 	github.com/libp2p/go-libp2p-core v0.0.9
+	github.com/libp2p/go-libp2p-peer v0.2.0
 	github.com/libp2p/go-libp2p-secio v0.1.1 // indirect
 	github.com/libp2p/go-msgio v0.0.4 // indirect
 	github.com/mattn/go-colorable v0.1.2 // indirect

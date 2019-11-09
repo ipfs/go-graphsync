@@ -5,10 +5,10 @@ import (
 	"errors"
 	"io/ioutil"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync"
 
 	"github.com/ipfs/go-graphsync/ipldbridge"
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/loadattemptqueue"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/responsecache"
@@ -29,7 +29,7 @@ type AsyncLoader struct {
 	incomingMessages chan loaderMessage
 	outgoingMessages chan loaderMessage
 
-	activeRequests   map[gsmsg.GraphSyncRequestID]bool
+	activeRequests   map[graphsync.RequestID]bool
 	loadAttemptQueue *loadattemptqueue.LoadAttemptQueue
 	responseCache    *responsecache.ResponseCache
 }
@@ -39,7 +39,7 @@ type AsyncLoader struct {
 func New(ctx context.Context, loader ipld.Loader, storer ipld.Storer) *AsyncLoader {
 	unverifiedBlockStore := unverifiedblockstore.New(storer)
 	responseCache := responsecache.New(unverifiedBlockStore)
-	loadAttemptQueue := loadattemptqueue.New(func(requestID gsmsg.GraphSyncRequestID, link ipld.Link) ([]byte, error) {
+	loadAttemptQueue := loadattemptqueue.New(func(requestID graphsync.RequestID, link ipld.Link) ([]byte, error) {
 		// load from response cache
 		data, err := responseCache.AttemptLoad(requestID, link)
 		if data == nil && err == nil {
@@ -60,7 +60,7 @@ func New(ctx context.Context, loader ipld.Loader, storer ipld.Storer) *AsyncLoad
 		cancel:           cancel,
 		incomingMessages: make(chan loaderMessage),
 		outgoingMessages: make(chan loaderMessage),
-		activeRequests:   make(map[gsmsg.GraphSyncRequestID]bool),
+		activeRequests:   make(map[graphsync.RequestID]bool),
 		responseCache:    responseCache,
 		loadAttemptQueue: loadAttemptQueue,
 	}
@@ -79,7 +79,7 @@ func (al *AsyncLoader) Shutdown() {
 
 // StartRequest indicates the given request has started and the manager should
 // continually attempt to load links for this request as new responses come in
-func (al *AsyncLoader) StartRequest(requestID gsmsg.GraphSyncRequestID) {
+func (al *AsyncLoader) StartRequest(requestID graphsync.RequestID) {
 	select {
 	case <-al.ctx.Done():
 	case al.incomingMessages <- &startRequestMessage{requestID}:
@@ -88,7 +88,7 @@ func (al *AsyncLoader) StartRequest(requestID gsmsg.GraphSyncRequestID) {
 
 // ProcessResponse injests new responses and completes asynchronous loads as
 // neccesary
-func (al *AsyncLoader) ProcessResponse(responses map[gsmsg.GraphSyncRequestID]metadata.Metadata,
+func (al *AsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
 	al.responseCache.ProcessResponse(responses, blks)
 	select {
@@ -99,7 +99,7 @@ func (al *AsyncLoader) ProcessResponse(responses map[gsmsg.GraphSyncRequestID]me
 
 // AsyncLoad asynchronously loads the given link for the given request ID. It returns a channel for data and a channel
 // for errors -- only one message will be sent over either.
-func (al *AsyncLoader) AsyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) <-chan types.AsyncLoadResult {
+func (al *AsyncLoader) AsyncLoad(requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	lr := loadattemptqueue.NewLoadRequest(requestID, link, resultChan)
 	select {
@@ -114,7 +114,7 @@ func (al *AsyncLoader) AsyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.L
 // CompleteResponsesFor indicates no further responses will come in for the given
 // requestID, so if no responses are in the cache or local store, a link load
 // should not retry
-func (al *AsyncLoader) CompleteResponsesFor(requestID gsmsg.GraphSyncRequestID) {
+func (al *AsyncLoader) CompleteResponsesFor(requestID graphsync.RequestID) {
 	select {
 	case <-al.ctx.Done():
 	case al.incomingMessages <- &finishRequestMessage{requestID}:
@@ -124,12 +124,12 @@ func (al *AsyncLoader) CompleteResponsesFor(requestID gsmsg.GraphSyncRequestID) 
 // CleanupRequest indicates the given request is complete on the client side,
 // and no further attempts will be made to load links for this request,
 // so any cached response data is invalid can be cleaned
-func (al *AsyncLoader) CleanupRequest(requestID gsmsg.GraphSyncRequestID) {
+func (al *AsyncLoader) CleanupRequest(requestID graphsync.RequestID) {
 	al.responseCache.FinishRequest(requestID)
 }
 
 type loadRequestMessage struct {
-	requestID   gsmsg.GraphSyncRequestID
+	requestID   graphsync.RequestID
 	loadRequest loadattemptqueue.LoadRequest
 }
 
@@ -137,11 +137,11 @@ type newResponsesAvailableMessage struct {
 }
 
 type startRequestMessage struct {
-	requestID gsmsg.GraphSyncRequestID
+	requestID graphsync.RequestID
 }
 
 type finishRequestMessage struct {
-	requestID gsmsg.GraphSyncRequestID
+	requestID graphsync.RequestID
 }
 
 func (al *AsyncLoader) run() {

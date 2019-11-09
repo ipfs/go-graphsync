@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/peermanager"
 
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -52,12 +53,12 @@ type peerResponseSender struct {
 type PeerResponseSender interface {
 	peermanager.PeerProcess
 	SendResponse(
-		requestID gsmsg.GraphSyncRequestID,
+		requestID graphsync.RequestID,
 		link ipld.Link,
 		data []byte,
 	)
-	FinishRequest(requestID gsmsg.GraphSyncRequestID)
-	FinishWithError(requestID gsmsg.GraphSyncRequestID, status gsmsg.GraphSyncResponseStatusCode)
+	FinishRequest(requestID graphsync.RequestID)
+	FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode)
 }
 
 // NewResponseSender generates a new PeerResponseSender for the given context, peer ID,
@@ -89,7 +90,7 @@ func (prm *peerResponseSender) Shutdown() {
 // requestID across the wire, as well as its corresponding
 // block if the block is present and has not already been sent
 func (prm *peerResponseSender) SendResponse(
-	requestID gsmsg.GraphSyncRequestID,
+	requestID graphsync.RequestID,
 	link ipld.Link,
 	data []byte,
 ) {
@@ -119,21 +120,21 @@ func (prm *peerResponseSender) SendResponse(
 }
 
 // FinishRequest marks the given requestID as having sent all responses
-func (prm *peerResponseSender) FinishRequest(requestID gsmsg.GraphSyncRequestID) {
+func (prm *peerResponseSender) FinishRequest(requestID graphsync.RequestID) {
 	prm.linkTrackerLk.Lock()
 	isComplete := prm.linkTracker.FinishRequest(requestID)
 	prm.linkTrackerLk.Unlock()
-	var status gsmsg.GraphSyncResponseStatusCode
+	var status graphsync.ResponseStatusCode
 	if isComplete {
-		status = gsmsg.RequestCompletedFull
+		status = graphsync.RequestCompletedFull
 	} else {
-		status = gsmsg.RequestCompletedPartial
+		status = graphsync.RequestCompletedPartial
 	}
 	prm.finish(requestID, status)
 }
 
 // FinishWithError marks the given requestID as having terminated with an error
-func (prm *peerResponseSender) FinishWithError(requestID gsmsg.GraphSyncRequestID, status gsmsg.GraphSyncResponseStatusCode) {
+func (prm *peerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
 	prm.linkTrackerLk.Lock()
 	prm.linkTracker.FinishRequest(requestID)
 	prm.linkTrackerLk.Unlock()
@@ -141,7 +142,7 @@ func (prm *peerResponseSender) FinishWithError(requestID gsmsg.GraphSyncRequestI
 	prm.finish(requestID, status)
 }
 
-func (prm *peerResponseSender) finish(requestID gsmsg.GraphSyncRequestID, status gsmsg.GraphSyncResponseStatusCode) {
+func (prm *peerResponseSender) finish(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
 	if prm.buildResponse(0, func(responseBuilder *responsebuilder.ResponseBuilder) {
 		responseBuilder.AddCompletedRequest(requestID, status)
 	}) {

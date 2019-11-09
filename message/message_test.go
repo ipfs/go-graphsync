@@ -7,21 +7,22 @@ import (
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync"
 
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestAppendingRequests(t *testing.T) {
-	extensionName := GraphSyncExtensionName("graphsync/awesome")
-	extension := GraphSyncExtension{
+	extensionName := graphsync.ExtensionName("graphsync/awesome")
+	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: testutil.RandomBytes(100),
 	}
 	root := testutil.GenerateCids(1)[0]
 	selector := testutil.RandomBytes(100)
-	id := GraphSyncRequestID(rand.Int31())
-	priority := GraphSyncPriority(rand.Int31())
+	id := graphsync.RequestID(rand.Int31())
+	priority := graphsync.Priority(rand.Int31())
 
 	gsm := New()
 	gsm.AddRequest(NewRequest(id, root, selector, priority, extension))
@@ -74,13 +75,13 @@ func TestAppendingRequests(t *testing.T) {
 }
 
 func TestAppendingResponses(t *testing.T) {
-	extensionName := GraphSyncExtensionName("graphsync/awesome")
-	extension := GraphSyncExtension{
+	extensionName := graphsync.ExtensionName("graphsync/awesome")
+	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: testutil.RandomBytes(100),
 	}
-	requestID := GraphSyncRequestID(rand.Int31())
-	status := RequestAcknowledged
+	requestID := graphsync.RequestID(rand.Int31())
+	status := graphsync.RequestAcknowledged
 
 	gsm := New()
 	gsm.AddResponse(NewResponse(requestID, status, extension))
@@ -155,8 +156,8 @@ func contains(strs []string, x string) bool {
 
 func TestRequestCancel(t *testing.T) {
 	selector := testutil.RandomBytes(100)
-	id := GraphSyncRequestID(rand.Int31())
-	priority := GraphSyncPriority(rand.Int31())
+	id := graphsync.RequestID(rand.Int31())
+	priority := graphsync.Priority(rand.Int31())
 	root := testutil.GenerateCids(1)[0]
 
 	gsm := New()
@@ -178,14 +179,14 @@ func TestRequestCancel(t *testing.T) {
 func TestToNetFromNetEquivalency(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
 	selector := testutil.RandomBytes(100)
-	extensionName := GraphSyncExtensionName("graphsync/awesome")
-	extension := GraphSyncExtension{
+	extensionName := graphsync.ExtensionName("graphsync/awesome")
+	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: testutil.RandomBytes(100),
 	}
-	id := GraphSyncRequestID(rand.Int31())
-	priority := GraphSyncPriority(rand.Int31())
-	status := RequestAcknowledged
+	id := graphsync.RequestID(rand.Int31())
+	priority := graphsync.Priority(rand.Int31())
+	status := graphsync.RequestAcknowledged
 
 	gsm := New()
 	gsm.AddRequest(NewRequest(id, root, selector, priority, extension))

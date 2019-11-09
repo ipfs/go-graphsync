@@ -39,7 +39,7 @@ If your existing library (i.e. `go-ipfs` or `go-filecoin`) uses these other olde
 
 ```golang
 import (
-  graphsync "github.com/ipfs/go-graphsync"
+  graphsync "github.com/ipfs/go-graphsync/impl"
   gsnet "github.com/ipfs/go-graphsync/network"
   gsbridge "github.com/ipfs/go-graphsync/ipldbridge"
   ipld "github.com/ipfs/go-ipld-prime"
