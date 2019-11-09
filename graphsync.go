@@ -3,6 +3,7 @@ package graphsync
 import (
 	"context"
 
+	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
@@ -92,8 +93,43 @@ type ResponseProgress struct {
 	}
 }
 
+// RequestData describes a received graphsync request.
+type RequestData interface {
+	// ID Returns the request ID for this Request
+	ID() RequestID
+
+	// Root returns the CID to the root block of this request
+	Root() cid.Cid
+
+	// Selector returns the byte representation of the selector for this request
+	Selector() []byte
+
+	// Priority returns the priority of this request
+	Priority() Priority
+
+	// Extension returns the content for an extension on a response, or errors
+	// if extension is not present
+	Extension(name ExtensionName) ([]byte, bool)
+
+	// IsCancel returns true if this particular request is being cancelled
+	IsCancel() bool
+}
+
+// OnRequestReceivedHook is a hook that runs each time a request is received.
+// It receives the peer that sent the request and all data about the request.
+// It should return:
+// extensionData - any extension data to add to the outgoing response
+// err - error - if not nil, halt request and return RequestRejected with the responseData
+type OnRequestReceivedHook func(p peer.ID, request RequestData) (extensionData []ExtensionData, err error)
+
 // GraphExchange is a protocol that can exchange IPLD graphs based on a selector
 type GraphExchange interface {
 	// Request initiates a new GraphSync request to the given peer using the given selector spec.
 	Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...ExtensionData) (<-chan ResponseProgress, <-chan error)
+
+	// RegisterRequestReceivedHook adds a hook that runs when a request is received
+	// If overrideDefaultValidation is set to true, then if the hook does not error,
+	// it is considered to have "validated" the request -- and that validation supersedes
+	// the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
+	RegisterRequestReceivedHook(overrideDefaultValidation bool, hook OnRequestReceivedHook) error
 }
