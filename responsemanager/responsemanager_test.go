@@ -20,55 +20,61 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
+type taskRQ struct {
+	tasks  []*peertask.Task
+	target peer.ID
+}
+
 type fakeQueryQueue struct {
 	popWait   sync.WaitGroup
 	queriesLk sync.RWMutex
-	queries   []*peertask.TaskBlock
+	queries   []*taskRQ
 }
 
-func (fqq *fakeQueryQueue) PushBlock(to peer.ID, tasks ...peertask.Task) {
+func (fqq *fakeQueryQueue) PushTasks(to peer.ID, tasks ...peertask.Task) {
 	fqq.queriesLk.Lock()
-	fqq.queries = append(fqq.queries, &peertask.TaskBlock{
-		Tasks:    tasks,
-		Priority: tasks[0].Priority,
-		Target:   to,
-		Done:     func([]peertask.Task) {},
+	var ptrs []*peertask.Task
+	for _, t := range tasks {
+		ptrs = append(ptrs, &t)
+	}
+	fqq.queries = append(fqq.queries, &taskRQ{
+		tasks:  ptrs,
+		target: to,
 	})
 	fqq.queriesLk.Unlock()
 }
 
-func (fqq *fakeQueryQueue) PopBlock() *peertask.TaskBlock {
+func (fqq *fakeQueryQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task, int) {
 	fqq.popWait.Wait()
 	fqq.queriesLk.Lock()
 	defer fqq.queriesLk.Unlock()
 	if len(fqq.queries) == 0 {
-		return nil
+		return "", nil, 0
 	}
-	block := fqq.queries[0]
+	trq := fqq.queries[0]
 	fqq.queries = fqq.queries[1:]
-	return block
+	return trq.target, trq.tasks, 0
 }
 
-func (fqq *fakeQueryQueue) Remove(identifier peertask.Identifier, p peer.ID) {
+func (fqq *fakeQueryQueue) Remove(topic peertask.Topic, p peer.ID) {
 	fqq.queriesLk.Lock()
 	defer fqq.queriesLk.Unlock()
 	for i, query := range fqq.queries {
-		if query.Target == p {
-			for j, task := range query.Tasks {
-				if task.Identifier == identifier {
-					query.Tasks = append(query.Tasks[:j], query.Tasks[j+1:]...)
+		if query.target == p {
+			for j, task := range query.tasks {
+				if task.Topic == topic {
+					query.tasks = append(query.tasks[:j], query.tasks[j+1:]...)
 				}
 			}
-			if len(query.Tasks) == 0 {
+			if len(query.tasks) == 0 {
 				fqq.queries = append(fqq.queries[:i], fqq.queries[i+1:]...)
 			}
 		}
 	}
 }
 
-func (fqq *fakeQueryQueue) ThawRound() {
-
-}
+func (fqq *fakeQueryQueue) ThawRound()                                    {}
+func (fqq *fakeQueryQueue) TasksDone(to peer.ID, tasks ...*peertask.Task) {}
 
 type fakePeerManager struct {
 	lastPeer           peer.ID
