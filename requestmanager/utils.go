@@ -27,7 +27,12 @@ func visitToChannel(ctx context.Context, inProgressChan chan types.ResponseProgr
 func metadataForResponses(responses []gsmsg.GraphSyncResponse, ipldBridge ipldbridge.IPLDBridge) map[gsmsg.GraphSyncRequestID]metadata.Metadata {
 	responseMetadata := make(map[gsmsg.GraphSyncRequestID]metadata.Metadata, len(responses))
 	for _, response := range responses {
-		md, err := metadata.DecodeMetadata(response.Extra(), ipldBridge)
+		mdRaw, found := response.Extension(gsmsg.ExtensionMetadata)
+		if !found {
+			log.Warningf("Unable to decode metadata in response for request id: %d", response.RequestID())
+			continue
+		}
+		md, err := metadata.DecodeMetadata(mdRaw, ipldBridge)
 		if err != nil {
 			log.Warningf("Unable to decode metadata in response for request id: %d", response.RequestID())
 			continue

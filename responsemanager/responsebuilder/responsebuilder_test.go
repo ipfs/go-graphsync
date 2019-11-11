@@ -66,7 +66,11 @@ func TestMessageBuilding(t *testing.T) {
 		t.Fatal("did not generate completed partial response")
 	}
 
-	response1Metadata, err := metadata.DecodeMetadata(response1.Extra(), ipldBridge)
+	response1MetadataRaw, found := response1.Extension(gsmsg.ExtensionMetadata)
+	if !found {
+		t.Fatal("Metadata not included in response")
+	}
+	response1Metadata, err := metadata.DecodeMetadata(response1MetadataRaw, ipldBridge)
 	if err != nil || !reflect.DeepEqual(response1Metadata, metadata.Metadata{
 		metadata.Item{Link: links[0], BlockPresent: true},
 		metadata.Item{Link: links[1], BlockPresent: false},
@@ -79,7 +83,11 @@ func TestMessageBuilding(t *testing.T) {
 	if err != nil || response2.Status() != gsmsg.RequestCompletedFull {
 		t.Fatal("did not generate completed partial response")
 	}
-	response2Metadata, err := metadata.DecodeMetadata(response2.Extra(), ipldBridge)
+	response2MetadataRaw, found := response2.Extension(gsmsg.ExtensionMetadata)
+	if !found {
+		t.Fatal("Metadata not included in response")
+	}
+	response2Metadata, err := metadata.DecodeMetadata(response2MetadataRaw, ipldBridge)
 	if err != nil || !reflect.DeepEqual(response2Metadata, metadata.Metadata{
 		metadata.Item{Link: links[1], BlockPresent: true},
 		metadata.Item{Link: links[2], BlockPresent: true},
@@ -92,7 +100,11 @@ func TestMessageBuilding(t *testing.T) {
 	if err != nil || response3.Status() != gsmsg.PartialResponse {
 		t.Fatal("did not generate completed partial response")
 	}
-	response3Metadata, err := metadata.DecodeMetadata(response3.Extra(), ipldBridge)
+	response3MetadataRaw, found := response3.Extension(gsmsg.ExtensionMetadata)
+	if !found {
+		t.Fatal("Metadata not included in response")
+	}
+	response3Metadata, err := metadata.DecodeMetadata(response3MetadataRaw, ipldBridge)
 	if err != nil || !reflect.DeepEqual(response3Metadata, metadata.Metadata{
 		metadata.Item{Link: links[0], BlockPresent: true},
 		metadata.Item{Link: links[1], BlockPresent: true},

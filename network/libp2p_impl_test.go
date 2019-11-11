@@ -73,14 +73,18 @@ func TestMessageSendAndReceive(t *testing.T) {
 
 	root := testutil.GenerateCids(1)[0]
 	selector := testutil.RandomBytes(100)
-	extra := testutil.RandomBytes(100)
+	extensionName := gsmsg.GraphSyncExtensionName("graphsync/awesome")
+	extension := gsmsg.GraphSyncExtension{
+		Name: extensionName,
+		Data: testutil.RandomBytes(100),
+	}
 	id := gsmsg.GraphSyncRequestID(rand.Int31())
 	priority := gsmsg.GraphSyncPriority(rand.Int31())
 	status := gsmsg.RequestAcknowledged
 
 	sent := gsmsg.New()
 	sent.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	sent.AddResponse(gsmsg.NewResponse(id, status, extra))
+	sent.AddResponse(gsmsg.NewResponse(id, status, extension))
 
 	err = gsnet1.ConnectTo(ctx, host2.ID())
 	if err != nil {
@@ -129,9 +133,11 @@ func TestMessageSendAndReceive(t *testing.T) {
 		t.Fatal("Did not add response to received message")
 	}
 	receivedResponse := receivedResponses[0]
+	extensionData, found := receivedResponse.Extension(extensionName)
 	if receivedResponse.RequestID() != sentResponse.RequestID() ||
 		receivedResponse.Status() != sentResponse.Status() ||
-		!reflect.DeepEqual(receivedResponse.Extra(), sentResponse.Extra()) {
+		!found ||
+		!reflect.DeepEqual(extension.Data, extensionData) {
 		t.Fatal("Sent message responses did not match received message responses")
 	}
 
