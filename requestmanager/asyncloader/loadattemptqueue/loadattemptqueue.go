@@ -3,7 +3,7 @@ package loadattemptqueue
 import (
 	"errors"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipld/go-ipld-prime"
 )
@@ -11,14 +11,14 @@ import (
 // LoadRequest is a request to load the given link for the given request id,
 // with results returned to the given channel
 type LoadRequest struct {
-	requestID  gsmsg.GraphSyncRequestID
+	requestID  graphsync.RequestID
 	link       ipld.Link
 	resultChan chan types.AsyncLoadResult
 }
 
 // NewLoadRequest returns a new LoadRequest for the given request id, link,
 // and results channel
-func NewLoadRequest(requestID gsmsg.GraphSyncRequestID,
+func NewLoadRequest(requestID graphsync.RequestID,
 	link ipld.Link,
 	resultChan chan types.AsyncLoadResult) LoadRequest {
 	return LoadRequest{requestID, link, resultChan}
@@ -29,7 +29,7 @@ func NewLoadRequest(requestID gsmsg.GraphSyncRequestID,
 // bytes present, error nil = success
 // bytes nil, error present = error
 // bytes nil, error nil = did not load, but try again later
-type LoadAttempter func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error)
+type LoadAttempter func(graphsync.RequestID, ipld.Link) ([]byte, error)
 
 // LoadAttemptQueue attempts to load using the load attempter, and then can
 // place requests on a retry queue
@@ -68,7 +68,7 @@ func (laq *LoadAttemptQueue) AttemptLoad(lr LoadRequest, retry bool) {
 
 // ClearRequest purges the given request from the queue of load requests
 // to retry
-func (laq *LoadAttemptQueue) ClearRequest(requestID gsmsg.GraphSyncRequestID) {
+func (laq *LoadAttemptQueue) ClearRequest(requestID graphsync.RequestID) {
 	pausedRequests := laq.pausedRequests
 	laq.pausedRequests = nil
 	for _, lr := range pausedRequests {

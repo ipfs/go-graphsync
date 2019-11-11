@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	"github.com/ipfs/go-graphsync/metadata"
-	"github.com/ipld/go-ipld-prime/linking/cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
@@ -45,7 +45,7 @@ func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
 	asyncLoader := New(ctx, wrappedLoader, storer)
 	asyncLoader.Startup()
 
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
 	select {
@@ -85,8 +85,8 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 	asyncLoader := New(ctx, wrappedLoader, storer)
 	asyncLoader.Startup()
 
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
-	responses := map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+	requestID := graphsync.RequestID(rand.Int31())
+	responses := map[graphsync.RequestID]metadata.Metadata{
 		requestID: metadata.Metadata{
 			metadata.Item{
 				Link:         link,
@@ -135,9 +135,9 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	asyncLoader.Startup()
 
 	link := testbridge.NewMockLink()
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 
-	responses := map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+	responses := map[graphsync.RequestID]metadata.Metadata{
 		requestID: metadata.Metadata{
 			metadata.Item{
 				Link:         link,
@@ -183,7 +183,7 @@ func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T)
 	asyncLoader.Startup()
 
 	link := testbridge.NewMockLink()
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
 	select {
@@ -224,7 +224,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 	asyncLoader := New(ctx, wrappedLoader, storer)
 	asyncLoader.Startup()
 
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	asyncLoader.StartRequest(requestID)
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
@@ -236,7 +236,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 		t.Fatal("should have attempted load once")
 	}
 
-	responses := map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+	responses := map[graphsync.RequestID]metadata.Metadata{
 		requestID: metadata.Metadata{
 			metadata.Item{
 				Link:         link,
@@ -286,7 +286,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 	asyncLoader := New(ctx, wrappedLoader, storer)
 	asyncLoader.Startup()
 
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	asyncLoader.StartRequest(requestID)
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
@@ -297,7 +297,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("should have attempted load once")
 	}
-	responses := map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+	responses := map[graphsync.RequestID]metadata.Metadata{
 		requestID: metadata.Metadata{
 			metadata.Item{
 				Link:         link,
@@ -343,7 +343,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	asyncLoader := New(ctx, wrappedLoader, storer)
 	asyncLoader.Startup()
 
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	asyncLoader.StartRequest(requestID)
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
@@ -393,8 +393,8 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 	asyncLoader := New(ctx, wrappedLoader, storer)
 	asyncLoader.Startup()
 
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
-	responses := map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+	requestID := graphsync.RequestID(rand.Int31())
+	responses := map[graphsync.RequestID]metadata.Metadata{
 		requestID: metadata.Metadata{
 			metadata.Item{
 				Link:         link,

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/testutil"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
@@ -65,8 +66,8 @@ func TestStartupAndShutdown(t *testing.T) {
 
 	messageQueue := New(ctx, peer, messageNetwork)
 	messageQueue.Startup()
-	id := gsmsg.GraphSyncRequestID(rand.Int31())
-	priority := gsmsg.GraphSyncPriority(rand.Int31())
+	id := graphsync.RequestID(rand.Int31())
+	priority := graphsync.Priority(rand.Int31())
 	selector := testutil.RandomBytes(100)
 	root := testutil.GenerateCids(1)[0]
 
@@ -109,8 +110,8 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 
 	messageQueue := New(ctx, peer, messageNetwork)
 	messageQueue.Startup()
-	id := gsmsg.GraphSyncRequestID(rand.Int31())
-	priority := gsmsg.GraphSyncPriority(rand.Int31())
+	id := graphsync.RequestID(rand.Int31())
+	priority := graphsync.Priority(rand.Int31())
 	selector := testutil.RandomBytes(100)
 	root := testutil.GenerateCids(1)[0]
 
@@ -174,13 +175,13 @@ func TestProcessingNotification(t *testing.T) {
 	blks := testutil.GenerateBlocksOfSize(3, 128)
 
 	newMessage := gsmsg.New()
-	responseID := gsmsg.GraphSyncRequestID(rand.Int31())
-	extensionName := gsmsg.GraphSyncExtensionName("graphsync/awesome")
-	extension := gsmsg.GraphSyncExtension{
+	responseID := graphsync.RequestID(rand.Int31())
+	extensionName := graphsync.ExtensionName("graphsync/awesome")
+	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: testutil.RandomBytes(100),
 	}
-	status := gsmsg.RequestCompletedFull
+	status := graphsync.RequestCompletedFull
 	newMessage.AddResponse(gsmsg.NewResponse(responseID, status, extension))
 	processing := messageQueue.AddResponses(newMessage.Responses(), blks)
 	select {
@@ -235,20 +236,20 @@ func TestDedupingMessages(t *testing.T) {
 	messageQueue := New(ctx, peer, messageNetwork)
 	messageQueue.Startup()
 	waitGroup.Add(1)
-	id := gsmsg.GraphSyncRequestID(rand.Int31())
-	priority := gsmsg.GraphSyncPriority(rand.Int31())
+	id := graphsync.RequestID(rand.Int31())
+	priority := graphsync.Priority(rand.Int31())
 	selector := testutil.RandomBytes(100)
 	root := testutil.GenerateCids(1)[0]
 
 	messageQueue.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 	// wait for send attempt
 	waitGroup.Wait()
-	id2 := gsmsg.GraphSyncRequestID(rand.Int31())
-	priority2 := gsmsg.GraphSyncPriority(rand.Int31())
+	id2 := graphsync.RequestID(rand.Int31())
+	priority2 := graphsync.Priority(rand.Int31())
 	selector2 := testutil.RandomBytes(100)
 	root2 := testutil.GenerateCids(1)[0]
-	id3 := gsmsg.GraphSyncRequestID(rand.Int31())
-	priority3 := gsmsg.GraphSyncPriority(rand.Int31())
+	id3 := graphsync.RequestID(rand.Int31())
+	priority3 := graphsync.Priority(rand.Int31())
 	selector3 := testutil.RandomBytes(100)
 	root3 := testutil.GenerateCids(1)[0]
 

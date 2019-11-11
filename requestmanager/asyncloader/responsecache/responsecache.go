@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/metadata"
 	logging "github.com/ipfs/go-log"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync/linktracker"
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/linking/cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
 var log = logging.Logger("graphsync")
@@ -47,7 +47,7 @@ func New(unverifiedBlockStore UnverifiedBlockStore) *ResponseCache {
 
 // FinishRequest indicate there is no more need to track blocks tied to this
 // response
-func (rc *ResponseCache) FinishRequest(requestID gsmsg.GraphSyncRequestID) {
+func (rc *ResponseCache) FinishRequest(requestID graphsync.RequestID) {
 	rc.responseCacheLk.Lock()
 	rc.linkTracker.FinishRequest(requestID)
 
@@ -58,7 +58,7 @@ func (rc *ResponseCache) FinishRequest(requestID gsmsg.GraphSyncRequestID) {
 }
 
 // AttemptLoad attempts to laod the given block from the cache
-func (rc *ResponseCache) AttemptLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) ([]byte, error) {
+func (rc *ResponseCache) AttemptLoad(requestID graphsync.RequestID, link ipld.Link) ([]byte, error) {
 	rc.responseCacheLk.Lock()
 	defer rc.responseCacheLk.Unlock()
 	if rc.linkTracker.IsKnownMissingLink(requestID, link) {
@@ -70,7 +70,7 @@ func (rc *ResponseCache) AttemptLoad(requestID gsmsg.GraphSyncRequestID, link ip
 
 // ProcessResponse processes incoming response data, adding unverified blocks,
 // and tracking link metadata from a remote peer
-func (rc *ResponseCache) ProcessResponse(responses map[gsmsg.GraphSyncRequestID]metadata.Metadata,
+func (rc *ResponseCache) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
 	rc.responseCacheLk.Lock()
 

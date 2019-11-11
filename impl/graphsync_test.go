@@ -12,6 +12,7 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync"
 
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
@@ -263,10 +264,10 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal("could not encode selector spec")
 	}
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 
 	message := gsmsg.New()
-	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.tipLink.(cidlink.Link).Cid, selectorData, gsmsg.GraphSyncPriority(math.MaxInt32)))
+	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.tipLink.(cidlink.Link).Cid, selectorData, graphsync.Priority(math.MaxInt32)))
 	// send request across network
 	gsnet1.SendMessage(ctx, host2.ID(), message)
 	// read the values sent back to requestor
@@ -292,7 +293,7 @@ readAllMessages:
 			if receivedResponses[0].RequestID() != requestID {
 				t.Fatal("Sent response for incorrect request id")
 			}
-			if receivedResponses[0].Status() != gsmsg.PartialResponse {
+			if receivedResponses[0].Status() != graphsync.PartialResponse {
 				break readAllMessages
 			}
 		}

@@ -9,22 +9,22 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 
 	"github.com/ipfs/go-graphsync/ipldbridge"
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
 type fakeResponseSender struct {
-	lastRequestID gsmsg.GraphSyncRequestID
+	lastRequestID graphsync.RequestID
 	lastLink      ipld.Link
 	lastData      []byte
 }
 
 func (frs *fakeResponseSender) SendResponse(
-	requestID gsmsg.GraphSyncRequestID,
+	requestID graphsync.RequestID,
 	link ipld.Link,
 	data []byte,
 ) {
@@ -46,7 +46,7 @@ func TestWrappedLoaderSendsResponses(t *testing.T) {
 		}
 		return nil, fmt.Errorf("unable to load block")
 	}
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	wrappedLoader := WrapLoader(loader, requestID, frs)
 
 	reader, err := wrappedLoader(link1, ipldbridge.LinkContext{})

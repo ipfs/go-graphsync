@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -43,27 +44,27 @@ func (fph *fakePeerHandler) SendRequest(p peer.ID,
 }
 
 type requestKey struct {
-	requestID gsmsg.GraphSyncRequestID
+	requestID graphsync.RequestID
 	link      ipld.Link
 }
 
 type fakeAsyncLoader struct {
 	responseChannelsLk sync.RWMutex
 	responseChannels   map[requestKey]chan types.AsyncLoadResult
-	responses          chan map[gsmsg.GraphSyncRequestID]metadata.Metadata
+	responses          chan map[graphsync.RequestID]metadata.Metadata
 	blks               chan []blocks.Block
 }
 
 func newFakeAsyncLoader() *fakeAsyncLoader {
 	return &fakeAsyncLoader{
 		responseChannels: make(map[requestKey]chan types.AsyncLoadResult),
-		responses:        make(chan map[gsmsg.GraphSyncRequestID]metadata.Metadata, 1),
+		responses:        make(chan map[graphsync.RequestID]metadata.Metadata, 1),
 		blks:             make(chan []blocks.Block, 1),
 	}
 }
-func (fal *fakeAsyncLoader) StartRequest(requestID gsmsg.GraphSyncRequestID) {
+func (fal *fakeAsyncLoader) StartRequest(requestID graphsync.RequestID) {
 }
-func (fal *fakeAsyncLoader) ProcessResponse(responses map[gsmsg.GraphSyncRequestID]metadata.Metadata,
+func (fal *fakeAsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
 	fal.responses <- responses
 	fal.blks <- blks
@@ -79,7 +80,7 @@ func (fal *fakeAsyncLoader) verifyLastProcessedBlocks(ctx context.Context, t *te
 	}
 }
 func (fal *fakeAsyncLoader) verifyLastProcessedResponses(ctx context.Context, t *testing.T,
-	expectedResponses map[gsmsg.GraphSyncRequestID]metadata.Metadata) {
+	expectedResponses map[graphsync.RequestID]metadata.Metadata) {
 	select {
 	case <-ctx.Done():
 		t.Fatal("should have processed responses but didn't")
@@ -90,7 +91,7 @@ func (fal *fakeAsyncLoader) verifyLastProcessedResponses(ctx context.Context, t 
 	}
 }
 
-func (fal *fakeAsyncLoader) verifyNoRemainingData(t *testing.T, requestID gsmsg.GraphSyncRequestID) {
+func (fal *fakeAsyncLoader) verifyNoRemainingData(t *testing.T, requestID graphsync.RequestID) {
 	fal.responseChannelsLk.Lock()
 	for key := range fal.responseChannels {
 		if key.requestID == requestID {
@@ -108,7 +109,7 @@ func cidsForBlocks(blks []blocks.Block) []cid.Cid {
 	return cids
 }
 
-func (fal *fakeAsyncLoader) asyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) chan types.AsyncLoadResult {
+func (fal *fakeAsyncLoader) asyncLoad(requestID graphsync.RequestID, link ipld.Link) chan types.AsyncLoadResult {
 	fal.responseChannelsLk.Lock()
 	responseChannel, ok := fal.responseChannels[requestKey{requestID, link}]
 	if !ok {
@@ -119,11 +120,11 @@ func (fal *fakeAsyncLoader) asyncLoad(requestID gsmsg.GraphSyncRequestID, link i
 	return responseChannel
 }
 
-func (fal *fakeAsyncLoader) AsyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) <-chan types.AsyncLoadResult {
+func (fal *fakeAsyncLoader) AsyncLoad(requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
 	return fal.asyncLoad(requestID, link)
 }
-func (fal *fakeAsyncLoader) CompleteResponsesFor(requestID gsmsg.GraphSyncRequestID) {}
-func (fal *fakeAsyncLoader) CleanupRequest(requestID gsmsg.GraphSyncRequestID) {
+func (fal *fakeAsyncLoader) CompleteResponsesFor(requestID graphsync.RequestID) {}
+func (fal *fakeAsyncLoader) CleanupRequest(requestID graphsync.RequestID) {
 	fal.responseChannelsLk.Lock()
 	for key := range fal.responseChannels {
 		if key.requestID == requestID {
@@ -133,13 +134,13 @@ func (fal *fakeAsyncLoader) CleanupRequest(requestID gsmsg.GraphSyncRequestID) {
 	fal.responseChannelsLk.Unlock()
 }
 
-func (fal *fakeAsyncLoader) responseOn(requestID gsmsg.GraphSyncRequestID, link ipld.Link, result types.AsyncLoadResult) {
+func (fal *fakeAsyncLoader) responseOn(requestID graphsync.RequestID, link ipld.Link, result types.AsyncLoadResult) {
 	responseChannel := fal.asyncLoad(requestID, link)
 	responseChannel <- result
 	close(responseChannel)
 }
 
-func (fal *fakeAsyncLoader) successResponseOn(requestID gsmsg.GraphSyncRequestID, blks []blocks.Block) {
+func (fal *fakeAsyncLoader) successResponseOn(requestID graphsync.RequestID, blks []blocks.Block) {
 	for _, block := range blks {
 		fal.responseOn(requestID, cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: block.RawData(), Err: nil})
 	}
@@ -161,7 +162,7 @@ func readNNetworkRequests(ctx context.Context,
 	return requestRecords
 }
 
-func verifyMatchedResponses(t *testing.T, actualResponse []types.ResponseProgress, expectedBlocks []blocks.Block) {
+func verifyMatchedResponses(t *testing.T, actualResponse []graphsync.ResponseProgress, expectedBlocks []blocks.Block) {
 	if len(actualResponse) != len(expectedBlocks) {
 		t.Fatal("wrong number of responses sent")
 	}
@@ -191,14 +192,14 @@ func metadataForBlocks(blks []blocks.Block, present bool) metadata.Metadata {
 	return md
 }
 
-func encodedMetadataForBlocks(t *testing.T, ipldBridge ipldbridge.IPLDBridge, blks []blocks.Block, present bool) gsmsg.GraphSyncExtension {
+func encodedMetadataForBlocks(t *testing.T, ipldBridge ipldbridge.IPLDBridge, blks []blocks.Block, present bool) graphsync.ExtensionData {
 	md := metadataForBlocks(blks, present)
 	metadataEncoded, err := metadata.EncodeMetadata(md, ipldBridge)
 	if err != nil {
 		t.Fatal("did not encode metadata")
 	}
-	return gsmsg.GraphSyncExtension{
-		Name: gsmsg.ExtensionMetadata,
+	return graphsync.ExtensionData{
+		Name: graphsync.ExtensionMetadata,
 		Data: metadataEncoded,
 	}
 }
@@ -257,19 +258,19 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 		t.Fatal("did not encode metadata")
 	}
 	firstResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(requestRecords[0].gsr.ID(), gsmsg.RequestCompletedFull, gsmsg.GraphSyncExtension{
-			Name: gsmsg.ExtensionMetadata,
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
+			Name: graphsync.ExtensionMetadata,
 			Data: firstMetadataEncoded1,
 		}),
-		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.PartialResponse, gsmsg.GraphSyncExtension{
-			Name: gsmsg.ExtensionMetadata,
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.PartialResponse, graphsync.ExtensionData{
+			Name: graphsync.ExtensionMetadata,
 			Data: firstMetadataEncoded2,
 		}),
 	}
 
 	requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
 	fal.verifyLastProcessedBlocks(ctx, t, firstBlocks)
-	fal.verifyLastProcessedResponses(ctx, t, map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+	fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 		requestRecords[0].gsr.ID(): firstMetadata1,
 		requestRecords[1].gsr.ID(): firstMetadata2,
 	})
@@ -288,15 +289,15 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 		t.Fatal("did not encode metadata")
 	}
 	moreResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.RequestCompletedFull, gsmsg.GraphSyncExtension{
-			Name: gsmsg.ExtensionMetadata,
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
+			Name: graphsync.ExtensionMetadata,
 			Data: moreMetadataEncoded,
 		}),
 	}
 
 	requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
 	fal.verifyLastProcessedBlocks(ctx, t, moreBlocks)
-	fal.verifyLastProcessedResponses(ctx, t, map[gsmsg.GraphSyncRequestID]metadata.Metadata{
+	fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 		requestRecords[1].gsr.ID(): moreMetadata,
 	})
 
@@ -336,8 +337,8 @@ func TestCancelRequestInProgress(t *testing.T) {
 	firstBlocks := blocks1[:3]
 	firstMetadata := encodedMetadataForBlocks(t, fakeIPLDBridge, blocks1[:3], true)
 	firstResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(requestRecords[0].gsr.ID(), gsmsg.PartialResponse, firstMetadata),
-		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.PartialResponse, firstMetadata),
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.PartialResponse, firstMetadata),
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.PartialResponse, firstMetadata),
 	}
 
 	requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
@@ -355,8 +356,8 @@ func TestCancelRequestInProgress(t *testing.T) {
 	moreBlocks := blocks1[3:]
 	moreMetadata := encodedMetadataForBlocks(t, fakeIPLDBridge, blocks1[3:], true)
 	moreResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(requestRecords[0].gsr.ID(), gsmsg.RequestCompletedFull, moreMetadata),
-		gsmsg.NewResponse(requestRecords[1].gsr.ID(), gsmsg.RequestCompletedFull, moreMetadata),
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
 	requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
 	fal.successResponseOn(requestRecords[0].gsr.ID(), blocks1[3:])
@@ -395,7 +396,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	firstBlocks := blocks[:3]
 	firstMetadata := encodedMetadataForBlocks(t, fakeIPLDBridge, firstBlocks, true)
 	firstResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.PartialResponse, firstMetadata),
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.PartialResponse, firstMetadata),
 	}
 	requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
 	fal.successResponseOn(rr.gsr.ID(), firstBlocks)
@@ -405,7 +406,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	moreBlocks := blocks[3:]
 	moreMetadata := encodedMetadataForBlocks(t, fakeIPLDBridge, moreBlocks, true)
 	moreResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.RequestCompletedFull, moreMetadata),
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
 	requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
 	fal.successResponseOn(rr.gsr.ID(), moreBlocks)
@@ -481,7 +482,7 @@ func TestFailedRequest(t *testing.T) {
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 	failedResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.RequestFailedContentNotFound),
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound),
 	}
 	requestManager.ProcessResponses(peers[0], failedResponses, nil)
 
@@ -518,7 +519,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 
 	// failure comes in later over network
 	failedResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.RequestFailedContentNotFound),
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound),
 	}
 
 	requestManager.ProcessResponses(peers[0], failedResponses, nil)
@@ -555,7 +556,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 
 	md := encodedMetadataForBlocks(t, fakeIPLDBridge, blocks, true)
 	firstResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.RequestCompletedFull, md),
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
 	requestManager.ProcessResponses(peers[0], firstResponses, blocks)
 
@@ -586,7 +587,7 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 
 	md := encodedMetadataForBlocks(t, fakeIPLDBridge, blocks, false)
 	firstResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), gsmsg.RequestCompletedPartial, md),
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedPartial, md),
 	}
 	requestManager.ProcessResponses(peers[0], firstResponses, nil)
 	for _, block := range blocks {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
@@ -19,14 +19,14 @@ func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
 	callCount := 0
-	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
+	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
 		callCount++
 		return testutil.RandomBytes(100), nil
 	}
 	loadAttemptQueue := New(loadAttempter)
 
 	link := testbridge.NewMockLink()
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	lr := NewLoadRequest(requestID, link, resultChan)
@@ -54,14 +54,14 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
 	callCount := 0
-	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
+	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
 		callCount++
 		return nil, fmt.Errorf("something went wrong")
 	}
 	loadAttemptQueue := New(loadAttempter)
 
 	link := testbridge.NewMockLink()
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	lr := NewLoadRequest(requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, false)
@@ -89,7 +89,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
 	callCount := 0
-	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
+	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
 		var result []byte
 		if callCount > 0 {
 			result = testutil.RandomBytes(100)
@@ -101,7 +101,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 	loadAttemptQueue := New(loadAttempter)
 
 	link := testbridge.NewMockLink()
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	lr := NewLoadRequest(requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, false)
@@ -130,7 +130,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing
 	defer cancel()
 	callCount := 0
 	called := make(chan struct{}, 2)
-	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
+	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
 		var result []byte
 		called <- struct{}{}
 		if callCount > 0 {
@@ -142,7 +142,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing
 	loadAttemptQueue := New(loadAttempter)
 
 	link := testbridge.NewMockLink()
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	lr := NewLoadRequest(requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, true)
@@ -179,7 +179,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	defer cancel()
 	callCount := 0
 	called := make(chan struct{}, 2)
-	loadAttempter := func(gsmsg.GraphSyncRequestID, ipld.Link) ([]byte, error) {
+	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
 		var result []byte
 		called <- struct{}{}
 		if callCount > 0 {
@@ -191,7 +191,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	loadAttemptQueue := New(loadAttempter)
 
 	link := testbridge.NewMockLink()
-	requestID := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	lr := NewLoadRequest(requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, true)

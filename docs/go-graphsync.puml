@@ -194,8 +194,8 @@ package "go-graphsync" {
 
       class AsyncLoader {
         StartRequest(GraphSyncRequestID)
-        ProcessResponse(map[gsmsg.GraphSyncRequestID]metadata.Metadata, []blocks.Block)
-        AsyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) AsyncLoadResult
+        ProcessResponse(map[graphsync.RequestID]metadata.Metadata, []blocks.Block)
+        AsyncLoad(requestID graphsync.RequestID, link ipld.Link) AsyncLoadResult
         CompleteResponsesFor(GraphSyncRequestID)
         CleanupRequest(GraphSyncRequestID)
       }
@@ -299,7 +299,7 @@ package "go-graphsync" {
       class ResponseBuilder {
         AddBlock(Block)
         AddLink(GraphSyncRequestID, Link, bool)
-        AddCompletedRequest(GraphSyncRequestID, GraphSyncResponseStatusCode)
+        AddCompletedRequest(GraphSyncRequestID, graphsync.ResponseStatusCode)
         Empty() bool
         Build(IPLDBridge) ([]GraphSyncResponse, []Block, error)    
       }
@@ -317,7 +317,7 @@ package "go-graphsync" {
         Shutdown()
         SendResponse(GraphSyncRequestID,Link,[]byte)
 	      FinishRequest(GraphSyncRequestID)
-	      FinishWithError(GraphSyncRequestID, GraphSyncResponseStatusCode)
+	      FinishWithError(GraphSyncRequestID, graphsync.ResponseStatusCode)
       }
 
       object "Package Public Functions" as goPeerResponseManagerPF {
@@ -356,7 +356,7 @@ package "go-graphsync" {
       func New() GraphSyncMessage
       func NewRequest(GraphSyncRequestID, []byte, GraphSyncPriority) GraphSyncRequest
       func CancelRequest(GraphSyncRequestID) GraphSyncRequest
-      func NewResponse(GraphSyncRequestID, GraphSyncResponseStatusCode, []byte) GraphSyncResponse
+      func NewResponse(GraphSyncRequestID, graphsync.ResponseStatusCode, []byte) GraphSyncResponse
     }
     goGraphSyncMessagePF .. libP2PGraphSyncNetwork
 

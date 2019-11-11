@@ -8,6 +8,7 @@ import (
 	"time"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
@@ -55,8 +56,8 @@ func TestSendingMessagesToPeers(t *testing.T) {
 
 	tp := testutil.GeneratePeers(5)
 
-	id := gsmsg.GraphSyncRequestID(rand.Int31())
-	priority := gsmsg.GraphSyncPriority(rand.Int31())
+	id := graphsync.RequestID(rand.Int31())
+	priority := graphsync.Priority(rand.Int31())
 	root := testutil.GenerateCids(1)[0]
 	selector := testutil.RandomBytes(100)
 

@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/testbridge"
 )
 
@@ -15,8 +15,8 @@ func TestBlockRefCount(t *testing.T) {
 	if linkTracker.BlockRefCount(link1) != 0 || linkTracker.BlockRefCount(link2) != 0 {
 		t.Fatal("Links not traversed should have refcount 0")
 	}
-	requestID1 := gsmsg.GraphSyncRequestID(rand.Int31())
-	requestID2 := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
 
 	linkTracker.RecordLinkTraversal(requestID1, link1, true)
 	linkTracker.RecordLinkTraversal(requestID1, link2, true)
@@ -36,8 +36,8 @@ func TestHasAllBlocks(t *testing.T) {
 	linkTracker := New()
 	link1 := testbridge.NewMockLink()
 	link2 := testbridge.NewMockLink()
-	requestID1 := gsmsg.GraphSyncRequestID(rand.Int31())
-	requestID2 := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
 
 	linkTracker.RecordLinkTraversal(requestID1, link1, true)
 	linkTracker.RecordLinkTraversal(requestID1, link2, false)
@@ -56,8 +56,8 @@ func TestBlockBecomesAvailable(t *testing.T) {
 	if linkTracker.BlockRefCount(link1) != 0 {
 		t.Fatal("Links not traversed should send blocks")
 	}
-	requestID1 := gsmsg.GraphSyncRequestID(rand.Int31())
-	requestID2 := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
 
 	linkTracker.RecordLinkTraversal(requestID1, link1, false)
 	linkTracker.RecordLinkTraversal(requestID2, link1, false)
@@ -85,8 +85,8 @@ func TestMissingLink(t *testing.T) {
 	linkTracker := New()
 	link1 := testbridge.NewMockLink()
 	link2 := testbridge.NewMockLink()
-	requestID1 := gsmsg.GraphSyncRequestID(rand.Int31())
-	requestID2 := gsmsg.GraphSyncRequestID(rand.Int31())
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
 
 	linkTracker.RecordLinkTraversal(requestID1, link1, true)
 	linkTracker.RecordLinkTraversal(requestID1, link2, false)

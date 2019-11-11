@@ -6,6 +6,7 @@ import (
 	"math"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync"
 	ipldbridge "github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
@@ -21,7 +22,7 @@ var log = logging.Logger("graphsync")
 
 const (
 	// maxPriority is the max priority as defined by the bitswap protocol
-	maxPriority = gsmsg.GraphSyncPriority(math.MaxInt32)
+	maxPriority = graphsync.Priority(math.MaxInt32)
 )
 
 type inProgressRequestStatus struct {
@@ -39,12 +40,12 @@ type PeerHandler interface {
 // AsyncLoader is an interface for loading links asynchronously, returning
 // results as new responses are processed
 type AsyncLoader interface {
-	StartRequest(requestID gsmsg.GraphSyncRequestID)
-	ProcessResponse(responses map[gsmsg.GraphSyncRequestID]metadata.Metadata,
+	StartRequest(requestID graphsync.RequestID)
+	ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
 		blks []blocks.Block)
-	AsyncLoad(requestID gsmsg.GraphSyncRequestID, link ipld.Link) <-chan types.AsyncLoadResult
-	CompleteResponsesFor(requestID gsmsg.GraphSyncRequestID)
-	CleanupRequest(requestID gsmsg.GraphSyncRequestID)
+	AsyncLoad(requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult
+	CompleteResponsesFor(requestID graphsync.RequestID)
+	CleanupRequest(requestID graphsync.RequestID)
 }
 
 // RequestManager tracks outgoing requests and processes incoming reponses
@@ -58,8 +59,8 @@ type RequestManager struct {
 	rc          *responseCollector
 	asyncLoader AsyncLoader
 	// dont touch out side of run loop
-	nextRequestID             gsmsg.GraphSyncRequestID
-	inProgressRequestStatuses map[gsmsg.GraphSyncRequestID]*inProgressRequestStatus
+	nextRequestID             graphsync.RequestID
+	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
 }
 
 type requestManagerMessage interface {
@@ -76,7 +77,7 @@ func New(ctx context.Context, asyncLoader AsyncLoader, ipldBridge ipldbridge.IPL
 		asyncLoader:               asyncLoader,
 		rc:                        newResponseCollector(ctx),
 		messages:                  make(chan requestManagerMessage, 16),
-		inProgressRequestStatuses: make(map[gsmsg.GraphSyncRequestID]*inProgressRequestStatus),
+		inProgressRequestStatuses: make(map[graphsync.RequestID]*inProgressRequestStatus),
 	}
 }
 
@@ -86,8 +87,8 @@ func (rm *RequestManager) SetDelegate(peerHandler PeerHandler) {
 }
 
 type inProgressRequest struct {
-	requestID     gsmsg.GraphSyncRequestID
-	incoming      chan types.ResponseProgress
+	requestID     graphsync.RequestID
+	incoming      chan graphsync.ResponseProgress
 	incomingError chan error
 }
 
@@ -102,7 +103,7 @@ type newRequestMessage struct {
 func (rm *RequestManager) SendRequest(ctx context.Context,
 	p peer.ID,
 	root ipld.Link,
-	selector ipld.Node) (<-chan types.ResponseProgress, <-chan error) {
+	selector ipld.Node) (<-chan graphsync.ResponseProgress, <-chan error) {
 	if _, err := rm.ipldBridge.ParseSelector(selector); err != nil {
 		return rm.singleErrorResponse(fmt.Errorf("Invalid Selector Spec"))
 	}
@@ -133,16 +134,16 @@ func (rm *RequestManager) SendRequest(ctx context.Context,
 		})
 }
 
-func (rm *RequestManager) emptyResponse() (chan types.ResponseProgress, chan error) {
-	ch := make(chan types.ResponseProgress)
+func (rm *RequestManager) emptyResponse() (chan graphsync.ResponseProgress, chan error) {
+	ch := make(chan graphsync.ResponseProgress)
 	close(ch)
 	errCh := make(chan error)
 	close(errCh)
 	return ch, errCh
 }
 
-func (rm *RequestManager) singleErrorResponse(err error) (chan types.ResponseProgress, chan error) {
-	ch := make(chan types.ResponseProgress)
+func (rm *RequestManager) singleErrorResponse(err error) (chan graphsync.ResponseProgress, chan error) {
+	ch := make(chan graphsync.ResponseProgress)
 	close(ch)
 	errCh := make(chan error, 1)
 	errCh <- err
@@ -151,11 +152,11 @@ func (rm *RequestManager) singleErrorResponse(err error) (chan types.ResponsePro
 }
 
 type cancelRequestMessage struct {
-	requestID gsmsg.GraphSyncRequestID
+	requestID graphsync.RequestID
 }
 
-func (rm *RequestManager) cancelRequest(requestID gsmsg.GraphSyncRequestID,
-	incomingResponses chan types.ResponseProgress,
+func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID,
+	incomingResponses chan graphsync.ResponseProgress,
 	incomingErrors chan error) {
 	cancelMessageChannel := rm.messages
 	for cancelMessageChannel != nil || incomingResponses != nil || incomingErrors != nil {
@@ -226,7 +227,7 @@ func (rm *RequestManager) cleanupInProcessRequests() {
 }
 
 type terminateRequestMessage struct {
-	requestID gsmsg.GraphSyncRequestID
+	requestID graphsync.RequestID
 }
 
 func (nrm *newRequestMessage) handle(rm *RequestManager) {
@@ -298,22 +299,22 @@ func (rm *RequestManager) processTerminations(responses []gsmsg.GraphSyncRespons
 	}
 }
 
-func (rm *RequestManager) generateResponseErrorFromStatus(status gsmsg.GraphSyncResponseStatusCode) error {
+func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.ResponseStatusCode) error {
 	switch status {
-	case gsmsg.RequestFailedBusy:
+	case graphsync.RequestFailedBusy:
 		return fmt.Errorf("Request Failed - Peer Is Busy")
-	case gsmsg.RequestFailedContentNotFound:
+	case graphsync.RequestFailedContentNotFound:
 		return fmt.Errorf("Request Failed - Content Not Found")
-	case gsmsg.RequestFailedLegal:
+	case graphsync.RequestFailedLegal:
 		return fmt.Errorf("Request Failed - For Legal Reasons")
-	case gsmsg.RequestFailedUnknown:
+	case graphsync.RequestFailedUnknown:
 		return fmt.Errorf("Request Failed - Unknown Reason")
 	default:
 		return fmt.Errorf("Unknown")
 	}
 }
 
-func (rm *RequestManager) setupRequest(requestID gsmsg.GraphSyncRequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node) (chan types.ResponseProgress, chan error) {
+func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node) (chan graphsync.ResponseProgress, chan error) {
 	selectorBytes, err := rm.ipldBridge.EncodeNode(selectorSpec)
 	if err != nil {
 		return rm.singleErrorResponse(err)
@@ -338,12 +339,12 @@ func (rm *RequestManager) setupRequest(requestID gsmsg.GraphSyncRequestID, p pee
 
 func (rm *RequestManager) executeTraversal(
 	ctx context.Context,
-	requestID gsmsg.GraphSyncRequestID,
+	requestID graphsync.RequestID,
 	root ipld.Link,
 	selector ipldbridge.Selector,
 	networkErrorChan chan error,
-) (chan types.ResponseProgress, chan error) {
-	inProgressChan := make(chan types.ResponseProgress)
+) (chan graphsync.ResponseProgress, chan error) {
+	inProgressChan := make(chan graphsync.ResponseProgress)
 	inProgressErr := make(chan error)
 	loaderFn := loader.WrapAsyncLoader(ctx, rm.asyncLoader.AsyncLoad, requestID, inProgressErr)
 	visitor := visitToChannel(ctx, inProgressChan)

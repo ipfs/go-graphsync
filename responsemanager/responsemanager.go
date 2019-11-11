@@ -5,6 +5,7 @@ import (
 	"time"
 
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/loader"
@@ -29,7 +30,7 @@ type inProgressResponseStatus struct {
 
 type responseKey struct {
 	p         peer.ID
-	requestID gsmsg.GraphSyncRequestID
+	requestID graphsync.RequestID
 }
 
 type responseTaskData struct {
@@ -180,25 +181,25 @@ func noopVisitor(tp ipldbridge.TraversalProgress, n ipld.Node, tr ipldbridge.Tra
 
 func (rm *ResponseManager) executeQuery(ctx context.Context,
 	p peer.ID,
-	requestID gsmsg.GraphSyncRequestID,
+	requestID graphsync.RequestID,
 	root cid.Cid,
 	selectorBytes []byte) {
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
 	selectorSpec, err := rm.ipldBridge.DecodeNode(selectorBytes)
 	if err != nil {
-		peerResponseSender.FinishWithError(requestID, gsmsg.RequestFailedUnknown)
+		peerResponseSender.FinishWithError(requestID, graphsync.RequestFailedUnknown)
 		return
 	}
 	rootLink := cidlink.Link{Cid: root}
 	selector, err := rm.ipldBridge.ParseSelector(selectorSpec)
 	if err != nil {
-		peerResponseSender.FinishWithError(requestID, gsmsg.RequestFailedUnknown)
+		peerResponseSender.FinishWithError(requestID, graphsync.RequestFailedUnknown)
 		return
 	}
 	wrappedLoader := loader.WrapLoader(rm.loader, requestID, peerResponseSender)
 	err = rm.ipldBridge.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
 	if err != nil {
-		peerResponseSender.FinishWithError(requestID, gsmsg.RequestFailedUnknown)
+		peerResponseSender.FinishWithError(requestID, graphsync.RequestFailedUnknown)
 		return
 	}
 	peerResponseSender.FinishRequest(requestID)
