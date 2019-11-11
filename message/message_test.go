@@ -30,13 +30,13 @@ func TestAppendingRequests(t *testing.T) {
 		t.Fatal("Did not add request to message")
 	}
 	request := requests[0]
-	extensionData, err := request.Extension(extensionName)
+	extensionData, found := request.Extension(extensionName)
 	if request.ID() != id ||
 		request.IsCancel() != false ||
 		request.Priority() != priority ||
 		request.Root().String() != root.String() ||
 		!reflect.DeepEqual(request.Selector(), selector) ||
-		err != nil ||
+		!found ||
 		!reflect.DeepEqual(extension.Data, extensionData) {
 		t.Fatal("Did not properly add request to message")
 	}
@@ -61,13 +61,13 @@ func TestAppendingRequests(t *testing.T) {
 		t.Fatal("Did not add request to deserialized message")
 	}
 	deserializedRequest := deserializedRequests[0]
-	extensionData, err = deserializedRequest.Extension(extensionName)
+	extensionData, found = deserializedRequest.Extension(extensionName)
 	if deserializedRequest.ID() != id ||
 		deserializedRequest.IsCancel() != false ||
 		deserializedRequest.Priority() != priority ||
 		deserializedRequest.Root().String() != root.String() ||
 		!reflect.DeepEqual(deserializedRequest.Selector(), selector) ||
-		err != nil ||
+		!found ||
 		!reflect.DeepEqual(extension.Data, extensionData) {
 		t.Fatal("Did not properly deserialize protobuf messages so requests are equal")
 	}
@@ -89,10 +89,10 @@ func TestAppendingResponses(t *testing.T) {
 		t.Fatal("Did not add response to message")
 	}
 	response := responses[0]
-	extensionData, err := response.Extension(extensionName)
+	extensionData, found := response.Extension(extensionName)
 	if response.RequestID() != requestID ||
 		response.Status() != status ||
-		err != nil ||
+		!found ||
 		!reflect.DeepEqual(extension.Data, extensionData) {
 		t.Fatal("Did not properly add response to message")
 	}
@@ -114,10 +114,10 @@ func TestAppendingResponses(t *testing.T) {
 		t.Fatal("Did not add response to message")
 	}
 	deserializedResponse := deserializedResponses[0]
-	extensionData, err = deserializedResponse.Extension(extensionName)
+	extensionData, found = deserializedResponse.Extension(extensionName)
 	if deserializedResponse.RequestID() != response.RequestID() ||
 		deserializedResponse.Status() != response.Status() ||
-		err != nil ||
+		!found ||
 		!reflect.DeepEqual(extensionData, extension.Data) {
 		t.Fatal("Did not properly deserialize protobuf messages so responses are equal")
 	}
@@ -216,13 +216,13 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 		t.Fatal("Did not add request to deserialized message")
 	}
 	deserializedRequest := deserializedRequests[0]
-	extensionData, err := deserializedRequest.Extension(extensionName)
+	extensionData, found := deserializedRequest.Extension(extensionName)
 	if deserializedRequest.ID() != request.ID() ||
 		deserializedRequest.IsCancel() != request.IsCancel() ||
 		deserializedRequest.Priority() != request.Priority() ||
 		deserializedRequest.Root().String() != request.Root().String() ||
 		!reflect.DeepEqual(deserializedRequest.Selector(), request.Selector()) ||
-		err != nil ||
+		!found ||
 		!reflect.DeepEqual(extensionData, extension.Data) {
 		t.Fatal("Did not keep requests when writing to stream and back")
 	}
@@ -237,10 +237,10 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 		t.Fatal("Did not add response to message")
 	}
 	deserializedResponse := deserializedResponses[0]
-	extensionData, err = deserializedResponse.Extension(extensionName)
+	extensionData, found = deserializedResponse.Extension(extensionName)
 	if deserializedResponse.RequestID() != response.RequestID() ||
 		deserializedResponse.Status() != response.Status() ||
-		err != nil ||
+		!found ||
 		!reflect.DeepEqual(extensionData, extension.Data) {
 		t.Fatal("Did not keep responses when writing to stream and back")
 	}

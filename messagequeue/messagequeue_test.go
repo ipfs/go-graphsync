@@ -209,10 +209,10 @@ func TestProcessingNotification(t *testing.T) {
 			}
 		}
 		firstResponse := message.Responses()[0]
-		extensionData, err := firstResponse.Extension(extensionName)
+		extensionData, found := firstResponse.Extension(extensionName)
 		if responseID != firstResponse.RequestID() ||
 			status != firstResponse.Status() ||
-			err != nil ||
+			!found ||
 			!reflect.DeepEqual(extension.Data, extensionData) {
 			t.Fatal("Send incorrect response")
 		}

@@ -1,7 +1,6 @@
 package message
 
 import (
-	"errors"
 	"fmt"
 	"io"
 
@@ -86,11 +85,6 @@ const (
 	RequestFailedLegal = GraphSyncResponseStatusCode(33)
 	// RequestFailedContentNotFound means the respondent does not have the content.
 	RequestFailedContentNotFound = GraphSyncResponseStatusCode(34)
-)
-
-var (
-	// ErrExtensionNotPresent means the looked up extension was not found
-	ErrExtensionNotPresent = errors.New("Extension is missing from this message")
 )
 
 // IsTerminalSuccessCode returns true if the response code indicates the
@@ -398,15 +392,15 @@ func (gsr GraphSyncRequest) Priority() GraphSyncPriority { return gsr.priority }
 
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
-func (gsr GraphSyncRequest) Extension(name GraphSyncExtensionName) ([]byte, error) {
+func (gsr GraphSyncRequest) Extension(name GraphSyncExtensionName) ([]byte, bool) {
 	if gsr.extensions == nil {
-		return nil, ErrExtensionNotPresent
+		return nil, false
 	}
 	val, ok := gsr.extensions[string(name)]
 	if !ok {
-		return nil, ErrExtensionNotPresent
+		return nil, false
 	}
-	return val, nil
+	return val, true
 }
 
 // IsCancel returns true if this particular request is being cancelled
@@ -420,14 +414,14 @@ func (gsr GraphSyncResponse) Status() GraphSyncResponseStatusCode { return gsr.s
 
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
-func (gsr GraphSyncResponse) Extension(name GraphSyncExtensionName) ([]byte, error) {
+func (gsr GraphSyncResponse) Extension(name GraphSyncExtensionName) ([]byte, bool) {
 	if gsr.extensions == nil {
-		return nil, ErrExtensionNotPresent
+		return nil, false
 	}
 	val, ok := gsr.extensions[string(name)]
 	if !ok {
-		return nil, ErrExtensionNotPresent
+		return nil, false
 	}
-	return val, nil
+	return val, true
 
 }

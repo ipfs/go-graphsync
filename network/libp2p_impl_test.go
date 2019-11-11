@@ -133,10 +133,10 @@ func TestMessageSendAndReceive(t *testing.T) {
 		t.Fatal("Did not add response to received message")
 	}
 	receivedResponse := receivedResponses[0]
-	extensionData, err := receivedResponse.Extension(extensionName)
+	extensionData, found := receivedResponse.Extension(extensionName)
 	if receivedResponse.RequestID() != sentResponse.RequestID() ||
 		receivedResponse.Status() != sentResponse.Status() ||
-		err != nil ||
+		!found ||
 		!reflect.DeepEqual(extension.Data, extensionData) {
 		t.Fatal("Sent message responses did not match received message responses")
 	}
