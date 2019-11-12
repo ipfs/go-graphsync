@@ -2,6 +2,7 @@ package requestmanager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -631,7 +632,19 @@ func TestEncodingExtensions(t *testing.T) {
 		Name: extensionName2,
 		Data: extensionData2,
 	}
-	_, _ = requestManager.SendRequest(requestCtx, peers[0], root, selector, extension1, extension2)
+
+	expectedError := make(chan error, 2)
+	receivedExtensionData := make(chan []byte, 2)
+	hook := func(p peer.ID, responseData graphsync.ResponseData) error {
+		data, has := responseData.Extension(extensionName1)
+		if !has {
+			t.Fatal("Did not receive extension data in response")
+		}
+		receivedExtensionData <- data
+		return <-expectedError
+	}
+	requestManager.RegisterHook(hook)
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], root, selector, extension1, extension2)
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 
@@ -646,4 +659,55 @@ func TestEncodingExtensions(t *testing.T) {
 		t.Fatal("Failed to encode first extension")
 	}
 
+	t.Run("responding to extensions", func(t *testing.T) {
+		expectedData := testutil.RandomBytes(100)
+		firstResponses := []gsmsg.GraphSyncResponse{
+			gsmsg.NewResponse(gsr.ID(),
+				graphsync.PartialResponse, graphsync.ExtensionData{
+					Name: graphsync.ExtensionMetadata,
+					Data: nil,
+				},
+				graphsync.ExtensionData{
+					Name: extensionName1,
+					Data: expectedData,
+				},
+			),
+		}
+		expectedError <- nil
+		requestManager.ProcessResponses(peers[0], firstResponses, nil)
+		select {
+		case <-requestCtx.Done():
+			t.Fatal("Should have checked extension but didn't")
+		case received := <-receivedExtensionData:
+			if !reflect.DeepEqual(received, expectedData) {
+				t.Fatal("Did not receive correct extension data from resposne")
+			}
+		}
+		nextExpectedData := testutil.RandomBytes(100)
+
+		secondResponses := []gsmsg.GraphSyncResponse{
+			gsmsg.NewResponse(gsr.ID(),
+				graphsync.PartialResponse, graphsync.ExtensionData{
+					Name: graphsync.ExtensionMetadata,
+					Data: nil,
+				},
+				graphsync.ExtensionData{
+					Name: extensionName1,
+					Data: nextExpectedData,
+				},
+			),
+		}
+		expectedError <- errors.New("a terrible thing happened")
+		requestManager.ProcessResponses(peers[0], secondResponses, nil)
+		select {
+		case <-requestCtx.Done():
+			t.Fatal("Should have checked extension but didn't")
+		case received := <-receivedExtensionData:
+			if !reflect.DeepEqual(received, nextExpectedData) {
+				t.Fatal("Did not receive correct extension data from resposne")
+			}
+		}
+		testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
+		testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
+	})
 }

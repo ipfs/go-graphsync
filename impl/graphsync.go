@@ -96,7 +96,8 @@ func (gs *GraphSync) RegisterRequestReceivedHook(hook graphsync.OnRequestReceive
 }
 
 // RegisterResponseReceivedHook adds a hook that runs when a response is received
-func (gs *GraphSync) RegisterResponseReceivedHook(graphsync.OnResponseReceivedHook) error {
+func (gs *GraphSync) RegisterResponseReceivedHook(hook graphsync.OnResponseReceivedHook) error {
+        gs.requestManager.RegisterHook(hook)
 	return nil
 }
 
