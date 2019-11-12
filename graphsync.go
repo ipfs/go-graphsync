@@ -2,6 +2,7 @@ package graphsync
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-peer"
@@ -82,6 +83,11 @@ const (
 	RequestFailedContentNotFound = ResponseStatusCode(34)
 )
 
+var (
+	// ErrExtensionAlreadyRegistered means a user extension can be registered only once
+	ErrExtensionAlreadyRegistered = errors.New("extension already registered")
+)
+
 // ResponseProgress is the fundamental unit of responses making progress in Graphsync.
 type ResponseProgress struct {
 	Node      ipld.Node // a node which matched the graphsync query
@@ -95,11 +101,11 @@ type ResponseProgress struct {
 // OnRequestReceivedHook processes extension data in a request
 // responseData - the value that should be sent for the extension in the reply
 // err - error - if not nil, halt request and return RequestRejected with the responseData
-type OnRequestReceivedHook func(requestData ExtensionData) (responseData ExtensionData, err error)
+type OnRequestReceivedHook func(requestData []byte) (responseData ExtensionData, err error)
 
 // OnResponseReceivedHook processes extension data in a response
 // When it returns an error processing is halted and the original request is cancelled
-type OnResponseReceivedHook func(responseData ExtensionData) error
+type OnResponseReceivedHook func(responseData []byte) error
 
 // ExtensionConfig defines behavior for user supplied extension
 type ExtensionConfig struct {

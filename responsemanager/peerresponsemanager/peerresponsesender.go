@@ -57,6 +57,7 @@ type PeerResponseSender interface {
 		link ipld.Link,
 		data []byte,
 	)
+	SendExtensionData(graphsync.RequestID, graphsync.ExtensionData)
 	FinishRequest(requestID graphsync.RequestID)
 	FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode)
 }
@@ -84,6 +85,14 @@ func (prm *peerResponseSender) Startup() {
 // Shutdown stops sending messages for a peer
 func (prm *peerResponseSender) Shutdown() {
 	prm.cancel()
+}
+
+func (prm *peerResponseSender) SendExtensionData(requestID graphsync.RequestID, extension graphsync.ExtensionData) {
+	if prm.buildResponse(0, func(responseBuilder *responsebuilder.ResponseBuilder) {
+		responseBuilder.AddExtensionData(requestID, extension)
+	}) {
+		prm.signalWork()
+	}
 }
 
 // SendResponse sends a given link for a given

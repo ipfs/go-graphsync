@@ -2,6 +2,7 @@ package graphsync
 
 import (
 	"context"
+	"sync"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
@@ -25,18 +26,20 @@ var log = logging.Logger("graphsync")
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
 type GraphSync struct {
-	ipldBridge          ipldbridge.IPLDBridge
-	network             gsnet.GraphSyncNetwork
-	loader              ipldbridge.Loader
-	storer              ipldbridge.Storer
-	requestManager      *requestmanager.RequestManager
-	responseManager     *responsemanager.ResponseManager
-	asyncLoader         *asyncloader.AsyncLoader
-	peerResponseManager *peerresponsemanager.PeerResponseManager
-	peerTaskQueue       *peertaskqueue.PeerTaskQueue
-	peerManager         *peermanager.PeerMessageManager
-	ctx                 context.Context
-	cancel              context.CancelFunc
+	ipldBridge             ipldbridge.IPLDBridge
+	network                gsnet.GraphSyncNetwork
+	loader                 ipldbridge.Loader
+	storer                 ipldbridge.Storer
+	requestManager         *requestmanager.RequestManager
+	responseManager        *responsemanager.ResponseManager
+	asyncLoader            *asyncloader.AsyncLoader
+	peerResponseManager    *peerresponsemanager.PeerResponseManager
+	peerTaskQueue          *peertaskqueue.PeerTaskQueue
+	peerManager            *peermanager.PeerMessageManager
+	ctx                    context.Context
+	cancel                 context.CancelFunc
+	registeredExtensionsLk sync.RWMutex
+	registeredExtensions   map[graphsync.ExtensionName]struct{}
 }
 
 // New creates a new GraphSync Exchange on the given network,
@@ -59,18 +62,19 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
 	responseManager := responsemanager.New(ctx, loader, ipldBridge, peerResponseManager, peerTaskQueue)
 	graphSync := &GraphSync{
-		ipldBridge:          ipldBridge,
-		network:             network,
-		loader:              loader,
-		storer:              storer,
-		asyncLoader:         asyncLoader,
-		requestManager:      requestManager,
-		peerManager:         peerManager,
-		peerTaskQueue:       peerTaskQueue,
-		peerResponseManager: peerResponseManager,
-		responseManager:     responseManager,
-		ctx:                 ctx,
-		cancel:              cancel,
+		ipldBridge:           ipldBridge,
+		network:              network,
+		loader:               loader,
+		storer:               storer,
+		asyncLoader:          asyncLoader,
+		requestManager:       requestManager,
+		peerManager:          peerManager,
+		peerTaskQueue:        peerTaskQueue,
+		peerResponseManager:  peerResponseManager,
+		responseManager:      responseManager,
+		ctx:                  ctx,
+		cancel:               cancel,
+		registeredExtensions: make(map[graphsync.ExtensionName]struct{}),
 	}
 
 	asyncLoader.Startup()
@@ -88,6 +92,14 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 
 // RegisterExtension adds a user supplied extension with the given extension config
 func (gs *GraphSync) RegisterExtension(config graphsync.ExtensionConfig) error {
+	gs.registeredExtensionsLk.Lock()
+	defer gs.registeredExtensionsLk.Unlock()
+	_, ok := gs.registeredExtensions[config.Name]
+	if ok {
+		return graphsync.ErrExtensionAlreadyRegistered
+	}
+	gs.registeredExtensions[config.Name] = struct{}{}
+	gs.responseManager.RegisterExtension(config.Name, config.PerformsValidation, config.OnRequestReceived)
 	return nil
 }
 

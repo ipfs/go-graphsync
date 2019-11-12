@@ -65,6 +65,7 @@ func TestEncodeParseSelector(t *testing.T) {
 	spec := NewMockSelectorSpec(cids)
 	bridge := NewMockIPLDBridge()
 	data, err := bridge.EncodeNode(spec)
+	fmt.Println(string(data))
 	if err != nil {
 		t.Fatal("error encoding selector spec")
 	}
@@ -76,17 +77,17 @@ func TestEncodeParseSelector(t *testing.T) {
 	if !ok {
 		t.Fatal("did not decode a selector")
 	}
-	if len(returnedSpec.cidsVisited) != 5 {
+	if len(returnedSpec.CidsVisited) != 5 {
 		t.Fatal("did not decode enough cids")
 	}
-	if !reflect.DeepEqual(cids, returnedSpec.cidsVisited) {
+	if !reflect.DeepEqual(cids, returnedSpec.CidsVisited) {
 		t.Fatal("did not decode correct cids")
 	}
 }
 
-func TestFailValidationSelectorSpec(t *testing.T) {
+func TestFailParseSelectorSpec(t *testing.T) {
 	cids := testutil.GenerateCids(5)
-	spec := NewInvalidSelectorSpec(cids)
+	spec := NewUnparsableSelectorSpec(cids)
 	bridge := NewMockIPLDBridge()
 	_, err := bridge.ParseSelector(spec)
 	if err == nil {

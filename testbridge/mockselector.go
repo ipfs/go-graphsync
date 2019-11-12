@@ -11,7 +11,7 @@ type mockSelector struct {
 }
 
 func newMockSelector(mss *mockSelectorSpec) ipldbridge.Selector {
-	return &mockSelector{mss.cidsVisited}
+	return &mockSelector{mss.CidsVisited}
 }
 
 func (ms *mockSelector) Explore(ipld.Node, ipld.PathSegment) ipldbridge.Selector {
