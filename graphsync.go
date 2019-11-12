@@ -2,7 +2,6 @@ package graphsync
 
 import (
 	"context"
-	"errors"
 
 	"github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-peer"
@@ -83,11 +82,6 @@ const (
 	RequestFailedContentNotFound = ResponseStatusCode(34)
 )
 
-var (
-	// ErrExtensionNotPresent means the looked up extension was not found
-	ErrExtensionNotPresent = errors.New("Extension is missing from this message")
-)
-
 // ResponseProgress is the fundamental unit of responses making progress in Graphsync.
 type ResponseProgress struct {
 	Node      ipld.Node // a node which matched the graphsync query
@@ -107,16 +101,16 @@ type OnRequestReceivedHook func(requestData ExtensionData) (responseData Extensi
 // When it returns an error processing is halted and the original request is cancelled
 type OnResponseReceivedHook func(responseData ExtensionData) error
 
-// ExtensionConfig defines behavior for user supplied extension 
+// ExtensionConfig defines behavior for user supplied extension
 type ExtensionConfig struct {
-	Name              ExtensionName
+	Name ExtensionName
 	// PerformsValidation specifies if the request received hook can be considered "a validator"
 	// if true, and the hook does not error, then one can assume the request is valid and this
 	// should override default validation schemes
 	PerformsValidation bool
 
 	// OnRequestReceived is called whenever a request is received that has data for this extension
-	OnRequestReceived  OnRequestReceivedHook
+	OnRequestReceived OnRequestReceivedHook
 
 	// OnResponseReceived is called whenever a response comes back that has data for this extension
 	OnResponseReceived OnResponseReceivedHook
