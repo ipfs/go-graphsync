@@ -52,6 +52,22 @@ func TestMessageBuilding(t *testing.T) {
 	if rb.BlockSize() != 300 {
 		t.Fatal("did not calculate block size correctly")
 	}
+
+	extensionData1 := testutil.RandomBytes(100)
+	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
+	extension1 := graphsync.ExtensionData{
+		Name: extensionName1,
+		Data: extensionData1,
+	}
+	extensionData2 := testutil.RandomBytes(100)
+	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
+	extension2 := graphsync.ExtensionData{
+		Name: extensionName2,
+		Data: extensionData2,
+	}
+	rb.AddExtensionData(requestID1, extension1)
+	rb.AddExtensionData(requestID3, extension2)
+
 	responses, sentBlocks, err := rb.Build(ipldBridge)
 
 	if err != nil {
@@ -78,6 +94,11 @@ func TestMessageBuilding(t *testing.T) {
 		metadata.Item{Link: links[2], BlockPresent: true},
 	}) {
 		t.Fatal("Metadata did not match expected")
+	}
+
+	response1ReturnedExtensionData, found := response1.Extension(extensionName1)
+	if !found || !reflect.DeepEqual(extensionData1, response1ReturnedExtensionData) {
+		t.Fatal("Failed to encode first extension")
 	}
 
 	response2, err := findResponseForRequestID(responses, requestID2)
@@ -111,6 +132,11 @@ func TestMessageBuilding(t *testing.T) {
 		metadata.Item{Link: links[1], BlockPresent: true},
 	}) {
 		t.Fatal("Metadata did not match expected")
+	}
+
+	response3ReturnedExtensionData, found := response3.Extension(extensionName2)
+	if !found || !reflect.DeepEqual(extensionData2, response3ReturnedExtensionData) {
+		t.Fatal("Failed to encode second extension")
 	}
 
 	response4, err := findResponseForRequestID(responses, requestID4)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"reflect"
 	"testing"
 	"time"
 
@@ -292,6 +293,84 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 		t.Fatal("Did not send proper response code in fifth message")
 	}
 
+}
+
+func TestPeerResponseManagerSendsExtensionData(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	defer cancel()
+	p := testutil.GeneratePeers(1)[0]
+	requestID1 := graphsync.RequestID(rand.Int31())
+	blks := testutil.GenerateBlocksOfSize(5, 100)
+	links := make([]ipld.Link, 0, len(blks))
+	for _, block := range blks {
+		links = append(links, cidlink.Link{Cid: block.Cid()})
+	}
+	done := make(chan struct{}, 1)
+	sent := make(chan struct{}, 1)
+	fph := &fakePeerHandler{
+		done: done,
+		sent: sent,
+	}
+	ipldBridge := testbridge.NewMockIPLDBridge()
+	peerResponseManager := NewResponseSender(ctx, p, fph, ipldBridge)
+	peerResponseManager.Startup()
+
+	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())
+
+	select {
+	case <-ctx.Done():
+		t.Fatal("Did not send first message")
+	case <-sent:
+	}
+
+	if len(fph.lastBlocks) != 1 || fph.lastBlocks[0].Cid() != blks[0].Cid() {
+		t.Fatal("Did not send correct blocks for first message")
+	}
+
+	if len(fph.lastResponses) != 1 || fph.lastResponses[0].RequestID() != requestID1 ||
+		fph.lastResponses[0].Status() != graphsync.PartialResponse {
+		t.Fatal("Did not send correct responses for first message")
+	}
+
+	extensionData1 := testutil.RandomBytes(100)
+	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
+	extension1 := graphsync.ExtensionData{
+		Name: extensionName1,
+		Data: extensionData1,
+	}
+	extensionData2 := testutil.RandomBytes(100)
+	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
+	extension2 := graphsync.ExtensionData{
+		Name: extensionName2,
+		Data: extensionData2,
+	}
+	peerResponseManager.SendResponse(requestID1, links[1], blks[1].RawData())
+	peerResponseManager.SendExtensionData(requestID1, extension1)
+	peerResponseManager.SendExtensionData(requestID1, extension2)
+	// let peer reponse manager know last message was sent so message sending can continue
+	done <- struct{}{}
+
+	select {
+	case <-ctx.Done():
+		t.Fatal("Should have sent second message but didn't")
+	case <-sent:
+	}
+
+	if len(fph.lastResponses) != 1 {
+		t.Fatal("Did not send correct number of responses for second message")
+	}
+
+	lastResponse := fph.lastResponses[0]
+	returnedData1, found := lastResponse.Extension(extensionName1)
+	if !found || !reflect.DeepEqual(extensionData1, returnedData1) {
+		t.Fatal("Failed to encode first extension")
+	}
+
+	returnedData2, found := lastResponse.Extension(extensionName2)
+	if !found || !reflect.DeepEqual(extensionData2, returnedData2) {
+		t.Fatal("Failed to encode first extension")
+	}
 }
 
 func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID graphsync.RequestID) (gsmsg.GraphSyncResponse, error) {

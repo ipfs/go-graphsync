@@ -3,6 +3,8 @@ package metadata
 import (
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/fluent"
+	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 )
 
 // Item is a single link traversed in a repsonse
@@ -22,7 +24,9 @@ func DecodeMetadata(data []byte, ipldBridge ipldbridge.IPLDBridge) (Metadata, er
 	if err != nil {
 		return nil, err
 	}
-	decodedData, err := ipldBridge.ExtractData(node, func(simpleNode ipldbridge.SimpleNode) interface{} {
+	var decodedData interface{}
+	err = fluent.Recover(func() {
+		simpleNode := fluent.WrapNode(node)
 		iterator := simpleNode.ListIterator()
 		var metadata Metadata
 		if simpleNode.Length() != -1 {
@@ -35,7 +39,7 @@ func DecodeMetadata(data []byte, ipldBridge ipldbridge.IPLDBridge) (Metadata, er
 			blockPresent := item.LookupString("blockPresent").AsBool()
 			metadata = append(metadata, Item{link, blockPresent})
 		}
-		return metadata
+		decodedData = metadata
 	})
 	if err != nil {
 		return nil, err
@@ -45,8 +49,10 @@ func DecodeMetadata(data []byte, ipldBridge ipldbridge.IPLDBridge) (Metadata, er
 
 // EncodeMetadata encodes metadata to an IPLD node then serializes to raw bytes
 func EncodeMetadata(entries Metadata, ipldBridge ipldbridge.IPLDBridge) ([]byte, error) {
-	node, err := ipldBridge.BuildNode(func(nb ipldbridge.NodeBuilder) ipld.Node {
-		return nb.CreateList(func(lb ipldbridge.ListBuilder, nb ipldbridge.NodeBuilder) {
+	var node ipld.Node
+	err := fluent.Recover(func() {
+		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
+		node = nb.CreateList(func(lb ipldbridge.ListBuilder, nb ipldbridge.NodeBuilder) {
 			for _, item := range entries {
 				lb.Append(
 					nb.CreateMap(func(mb ipldbridge.MapBuilder, knb ipldbridge.NodeBuilder, vnb ipldbridge.NodeBuilder) {
