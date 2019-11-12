@@ -407,7 +407,46 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	blockChain := setupBlockChain(ctx, t, storer2, bridge2, 100, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
-	New(ctx, gsnet2, bridge2, loader2, storer2)
+	responder := New(ctx, gsnet2, bridge2, loader2, storer2)
+
+	// setup extension handlers
+	extensionData := testutil.RandomBytes(100)
+	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
+	extension := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionData,
+	}
+	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponse := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionResponseData,
+	}
+
+	var receivedResponseData []byte
+	var receivedRequestData []byte
+
+	err = requestor.RegisterExtension(graphsync.ExtensionConfig{
+		Name: extensionName,
+		OnResponseReceived: func(responseData []byte) error {
+			receivedResponseData = responseData
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal("Error setting up extension")
+	}
+
+	err = responder.RegisterExtension(graphsync.ExtensionConfig{
+		Name: extensionName,
+		OnRequestReceived: func(requestData []byte) (graphsync.ExtensionData, error) {
+			receivedRequestData = requestData
+			return extensionResponse, nil
+		},
+		PerformsValidation: false,
+	})
+	if err != nil {
+		t.Fatal("Error setting up extension")
+	}
 
 	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
 	spec := ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
@@ -416,7 +455,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 				ssb.ExploreRecursiveEdge()))
 		})).Node()
 
-	progressChan, errChan := requestor.Request(ctx, host2.ID(), blockChain.tipLink, spec)
+	progressChan, errChan := requestor.Request(ctx, host2.ID(), blockChain.tipLink, spec, extension)
 
 	responses := testutil.CollectResponses(ctx, t, progressChan)
 	errs := testutil.CollectErrors(ctx, t, errChan)
@@ -445,6 +484,15 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 		} else {
 			expectedPath = expectedPath + "/0"
 		}
+	}
+
+	// verify extension roundtrip
+	if !reflect.DeepEqual(receivedRequestData, extensionData) {
+		t.Fatal("did not receive correct extension request data")
+	}
+
+	if !reflect.DeepEqual(receivedResponseData, extensionResponseData) {
+		t.Fatal("did not receive correct extension response data")
 	}
 }
 

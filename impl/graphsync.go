@@ -99,7 +99,12 @@ func (gs *GraphSync) RegisterExtension(config graphsync.ExtensionConfig) error {
 		return graphsync.ErrExtensionAlreadyRegistered
 	}
 	gs.registeredExtensions[config.Name] = struct{}{}
-	gs.responseManager.RegisterExtension(config.Name, config.PerformsValidation, config.OnRequestReceived)
+	if config.OnRequestReceived != nil {
+		gs.responseManager.RegisterExtension(config.Name, config.PerformsValidation, config.OnRequestReceived)
+	}
+	if config.OnResponseReceived != nil {
+		gs.requestManager.RegisterExtension(config.Name, config.OnResponseReceived)
+	}
 	return nil
 }
 
