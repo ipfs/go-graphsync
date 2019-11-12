@@ -17,6 +17,7 @@ type ResponseBuilder struct {
 	blkSize            int
 	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
 	outgoingResponses  map[graphsync.RequestID]metadata.Metadata
+	extensions         map[graphsync.RequestID][]graphsync.ExtensionData
 }
 
 // New generates a new ResponseBuilder.
@@ -24,6 +25,7 @@ func New() *ResponseBuilder {
 	return &ResponseBuilder{
 		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
 		outgoingResponses:  make(map[graphsync.RequestID]metadata.Metadata),
+		extensions:         make(map[graphsync.RequestID][]graphsync.ExtensionData),
 	}
 }
 
@@ -31,6 +33,11 @@ func New() *ResponseBuilder {
 func (rb *ResponseBuilder) AddBlock(block blocks.Block) {
 	rb.blkSize += len(block.RawData())
 	rb.outgoingBlocks = append(rb.outgoingBlocks, block)
+}
+
+// AddExtensionData adds the given extension data to to the response
+func (rb *ResponseBuilder) AddExtensionData(requestID graphsync.RequestID, extension graphsync.ExtensionData) {
+	rb.extensions[requestID] = append(rb.extensions[requestID], extension)
 }
 
 // BlockSize returns the total size of all blocks in this response
@@ -69,12 +76,12 @@ func (rb *ResponseBuilder) Build(ipldBridge ipldbridge.IPLDBridge) ([]gsmsg.Grap
 		if err != nil {
 			return nil, nil, err
 		}
-		md := graphsync.ExtensionData{
+		rb.extensions[requestID] = append(rb.extensions[requestID], graphsync.ExtensionData{
 			Name: graphsync.ExtensionMetadata,
 			Data: mdRaw,
-		}
+		})
 		status, isComplete := rb.completedResponses[requestID]
-		responses = append(responses, gsmsg.NewResponse(requestID, responseCode(status, isComplete), md))
+		responses = append(responses, gsmsg.NewResponse(requestID, responseCode(status, isComplete), rb.extensions[requestID]...))
 	}
 	return responses, rb.outgoingBlocks, nil
 }

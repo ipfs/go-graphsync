@@ -395,7 +395,6 @@ package "go-graphsync" {
 
   package ipldbridge {
     interface IPLDBridge {
-      BuildNode(func(NodeBuilder) ipld.Node) (ipld.Node, error)
 	    EncodeNode(ipld.Node) ([]byte, error)
 	    DecodeNode([]byte) (ipld.Node, error)
 	    ParseSelector(selector ipld.Node) (Selector, error)

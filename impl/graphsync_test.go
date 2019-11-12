@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipld/go-ipld-prime/fluent"
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -89,8 +90,10 @@ func setupBlockChain(
 	size int64,
 	blockChainLength int) *blockChain {
 	linkBuilder := cidlink.LinkBuilder{Prefix: cid.NewPrefixV1(cid.DagCBOR, mh.SHA2_256)}
-	genisisNode, err := bridge.BuildNode(func(nb ipldbridge.NodeBuilder) ipld.Node {
-		return createBlock(nb, []ipld.Link{}, size)
+	var genisisNode ipld.Node
+	err := fluent.Recover(func() {
+		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
+		genisisNode = createBlock(nb, []ipld.Link{}, size)
 	})
 	if err != nil {
 		t.Fatal("Error creating genesis block")
@@ -103,8 +106,10 @@ func setupBlockChain(
 	middleNodes := make([]ipld.Node, 0, blockChainLength-2)
 	middleLinks := make([]ipld.Link, 0, blockChainLength-2)
 	for i := 0; i < blockChainLength-2; i++ {
-		node, err := bridge.BuildNode(func(nb ipldbridge.NodeBuilder) ipld.Node {
-			return createBlock(nb, []ipld.Link{parent}, size)
+		var node ipld.Node
+		err := fluent.Recover(func() {
+			nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
+			node = createBlock(nb, []ipld.Link{parent}, size)
 		})
 		if err != nil {
 			t.Fatal("Error creating middle block")
@@ -117,8 +122,10 @@ func setupBlockChain(
 		middleLinks = append(middleLinks, link)
 		parent = link
 	}
-	tipNode, err := bridge.BuildNode(func(nb ipldbridge.NodeBuilder) ipld.Node {
-		return createBlock(nb, []ipld.Link{parent}, size)
+	var tipNode ipld.Node
+	err = fluent.Recover(func() {
+		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
+		tipNode = createBlock(nb, []ipld.Link{parent}, size)
 	})
 	if err != nil {
 		t.Fatal("Error creating tip block")
@@ -256,8 +263,34 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	loader, storer := testbridge.NewMockStore(blockStore)
 	bridge := ipldbridge.NewIPLDBridge()
 
+	extensionData := testutil.RandomBytes(100)
+	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
+	extension := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionData,
+	}
+	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponse := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionResponseData,
+	}
+
+	var receivedRequestData []byte
 	// initialize graphsync on second node to response to requests
-	New(ctx, gsnet2, bridge, loader, storer)
+	gsnet := New(ctx, gsnet2, bridge, loader, storer)
+	err = gsnet.RegisterRequestReceivedHook(false,
+		func(p peer.ID, requestData graphsync.RequestData) ([]graphsync.ExtensionData, error) {
+			var has bool
+			receivedRequestData, has = requestData.Extension(extensionName)
+			if !has {
+				t.Fatal("did not have expected extension")
+			}
+			return []graphsync.ExtensionData{extensionResponse}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal("error registering extension")
+	}
 
 	blockChainLength := 100
 	blockChain := setupBlockChain(ctx, t, storer, bridge, 100, blockChainLength)
@@ -275,12 +308,13 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	requestID := graphsync.RequestID(rand.Int31())
 
 	message := gsmsg.New()
-	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.tipLink.(cidlink.Link).Cid, selectorData, graphsync.Priority(math.MaxInt32)))
+	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.tipLink.(cidlink.Link).Cid, selectorData, graphsync.Priority(math.MaxInt32), extension))
 	// send request across network
 	gsnet1.SendMessage(ctx, host2.ID(), message)
 	// read the values sent back to requestor
 	var received gsmsg.GraphSyncMessage
 	var receivedBlocks []blocks.Block
+	var receivedExtensions [][]byte
 readAllMessages:
 	for {
 		select {
@@ -295,6 +329,10 @@ readAllMessages:
 			received = message.message
 			receivedBlocks = append(receivedBlocks, received.Blocks()...)
 			receivedResponses := received.Responses()
+			receivedExtension, found := receivedResponses[0].Extension(extensionName)
+			if found {
+				receivedExtensions = append(receivedExtensions, receivedExtension)
+			}
 			if len(receivedResponses) != 1 {
 				t.Fatal("Did not receive response")
 			}
@@ -309,6 +347,18 @@ readAllMessages:
 
 	if len(receivedBlocks) != blockChainLength {
 		t.Fatal("Send incorrect number of blocks or there were duplicate blocks")
+	}
+
+	if !reflect.DeepEqual(extensionData, receivedRequestData) {
+		t.Fatal("did not receive correct request extension data")
+	}
+
+	if len(receivedExtensions) != 1 {
+		t.Fatal("should have sent extension responses but didn't")
+	}
+
+	if !reflect.DeepEqual(receivedExtensions[0], extensionResponseData) {
+		t.Fatal("did not return correct extension data")
 	}
 }
 

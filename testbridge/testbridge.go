@@ -11,7 +11,6 @@ import (
 	ipldbridge "github.com/ipfs/go-graphsync/ipldbridge"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/encoding/dagjson"
-	"github.com/ipld/go-ipld-prime/fluent"
 	free "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	multihash "github.com/multiformats/go-multihash"
@@ -20,42 +19,16 @@ import (
 type mockIPLDBridge struct {
 }
 
-// NewMockIPLDBridge returns an IPLD bridge that works with MockSelectors
+// NewMockIPLDBridge returns an ipld bridge with mocked behavior
 func NewMockIPLDBridge() ipldbridge.IPLDBridge {
 	return &mockIPLDBridge{}
-}
-
-func (mb *mockIPLDBridge) ExtractData(
-	node ipld.Node,
-	buildFn func(ipldbridge.SimpleNode) interface{}) (interface{}, error) {
-	var value interface{}
-	err := fluent.Recover(func() {
-		simpleNode := fluent.WrapNode(node)
-		value = buildFn(simpleNode)
-	})
-	if err != nil {
-		return nil, err
-	}
-	return value, nil
-}
-
-func (mb *mockIPLDBridge) BuildNode(buildFn func(ipldbridge.NodeBuilder) ipld.Node) (ipld.Node, error) {
-	var node ipld.Node
-	err := fluent.Recover(func() {
-		nb := fluent.WrapNodeBuilder(free.NodeBuilder())
-		node = buildFn(nb)
-	})
-	if err != nil {
-		return nil, err
-	}
-	return node, nil
 }
 
 func (mb *mockIPLDBridge) EncodeNode(node ipld.Node) ([]byte, error) {
 	spec, ok := node.(*mockSelectorSpec)
 	if ok {
-		if !spec.failEncode {
-			data, err := json.Marshal(spec.cidsVisited)
+		if !spec.FailEncode {
+			data, err := json.Marshal(*spec)
 			if err != nil {
 				return nil, err
 			}
@@ -72,10 +45,10 @@ func (mb *mockIPLDBridge) EncodeNode(node ipld.Node) ([]byte, error) {
 }
 
 func (mb *mockIPLDBridge) DecodeNode(data []byte) (ipld.Node, error) {
-	var cidsVisited []cid.Cid
-	err := json.Unmarshal(data, &cidsVisited)
+	var spec mockSelectorSpec
+	err := json.Unmarshal(data, &spec)
 	if err == nil {
-		return &mockSelectorSpec{cidsVisited, false, false}, nil
+		return &spec, nil
 	}
 	reader := bytes.NewReader(data)
 	return dagjson.Decoder(free.NodeBuilder(), reader)
@@ -83,7 +56,7 @@ func (mb *mockIPLDBridge) DecodeNode(data []byte) (ipld.Node, error) {
 
 func (mb *mockIPLDBridge) ParseSelector(selectorSpec ipld.Node) (ipldbridge.Selector, error) {
 	spec, ok := selectorSpec.(*mockSelectorSpec)
-	if !ok || spec.failValidation {
+	if !ok || spec.FalseParse {
 		return nil, fmt.Errorf("not a selector")
 	}
 	return newMockSelector(spec), nil
@@ -113,6 +86,10 @@ func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.Loader
 }
 
 func (mb *mockIPLDBridge) WalkMatching(node ipld.Node, s ipldbridge.Selector, fn ipldbridge.VisitFn) error {
+	spec, ok := node.(*mockSelectorSpec)
+	if ok && spec.FailValidation {
+		return fmt.Errorf("not a valid kind of selector")
+	}
 	return nil
 }
 

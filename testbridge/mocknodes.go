@@ -8,29 +8,35 @@ import (
 )
 
 type mockSelectorSpec struct {
-	cidsVisited    []cid.Cid
-	failValidation bool
-	failEncode     bool
+	CidsVisited    []cid.Cid
+	FalseParse     bool
+	FailEncode     bool
+	FailValidation bool
 }
 
 // NewMockSelectorSpec returns a new mock selector that will visit the given
 // cids.
 func NewMockSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
-	return &mockSelectorSpec{cidsVisited, false, false}
+	return &mockSelectorSpec{cidsVisited, false, false, false}
+}
+
+// NewUnparsableSelectorSpec returns a spec that will fail when you attempt to
+// validate it or decompose to a node + selector.
+func NewUnparsableSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
+	return &mockSelectorSpec{cidsVisited, true, false, false}
 }
 
 // NewInvalidSelectorSpec returns a spec that will fail when you attempt to
-// validate it or decompose to a node + selector.
+// encode it.
 func NewInvalidSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
-	return &mockSelectorSpec{cidsVisited, true, false}
+	return &mockSelectorSpec{cidsVisited, false, false, true}
 }
 
 // NewUnencodableSelectorSpec returns a spec that will fail when you attempt to
 // encode it.
 func NewUnencodableSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
-	return &mockSelectorSpec{cidsVisited, false, true}
+	return &mockSelectorSpec{cidsVisited, false, true, false}
 }
-
 func (mss *mockSelectorSpec) ReprKind() ipld.ReprKind { return ipld.ReprKind_Null }
 func (mss *mockSelectorSpec) Lookup(key ipld.Node) (ipld.Node, error) {
 	return nil, fmt.Errorf("404")

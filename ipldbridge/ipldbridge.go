@@ -72,14 +72,6 @@ type SimpleNode = fluent.Node
 // replaced with alternative implementations
 type IPLDBridge interface {
 
-	// ExtractData provides an efficient mechanism for reading nodes w/ fluent
-	// interface
-	ExtractData(ipld.Node, func(SimpleNode) interface{}) (interface{}, error)
-
-	// BuildNode provides an efficient mechanism for assembling nodes w/ fluent
-	// interface
-	BuildNode(func(NodeBuilder) ipld.Node) (ipld.Node, error)
-
 	// EncodeNode encodes an IPLD Node to bytes for network transfer.
 	EncodeNode(ipld.Node) ([]byte, error)
 
