@@ -2,7 +2,6 @@ package graphsync
 
 import (
 	"context"
-	"errors"
 
 	"github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-peer"
@@ -83,11 +82,6 @@ const (
 	RequestFailedContentNotFound = ResponseStatusCode(34)
 )
 
-var (
-	// ErrExtensionNotPresent means the looked up extension was not found
-	ErrExtensionNotPresent = errors.New("Extension is missing from this message")
-)
-
 // ResponseProgress is the fundamental unit of responses making progress in Graphsync.
 type ResponseProgress struct {
 	Node      ipld.Node // a node which matched the graphsync query
@@ -100,5 +94,6 @@ type ResponseProgress struct {
 
 // GraphExchange is a protocol that can exchange IPLD graphs based on a selector
 type GraphExchange interface {
-	Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node) (<-chan ResponseProgress, <-chan error)
+	// Request initiates a new GraphSync request to the given peer using the given selector spec.
+	Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...ExtensionData) (<-chan ResponseProgress, <-chan error)
 }

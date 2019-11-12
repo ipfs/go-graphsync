@@ -600,3 +600,50 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	}
 
 }
+
+func TestEncodingExtensions(t *testing.T) {
+	requestRecordChan := make(chan requestRecord, 2)
+	fph := &fakePeerHandler{requestRecordChan}
+	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
+	ctx := context.Background()
+	fal := newFakeAsyncLoader()
+	requestManager := New(ctx, fal, fakeIPLDBridge)
+	requestManager.SetDelegate(fph)
+	requestManager.Startup()
+
+	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	peers := testutil.GeneratePeers(1)
+
+	cids := testutil.GenerateCids(1)
+	root := cidlink.Link{Cid: cids[0]}
+	selector := testbridge.NewMockSelectorSpec(cids)
+
+	extensionData1 := testutil.RandomBytes(100)
+	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
+	extension1 := graphsync.ExtensionData{
+		Name: extensionName1,
+		Data: extensionData1,
+	}
+	extensionData2 := testutil.RandomBytes(100)
+	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
+	extension2 := graphsync.ExtensionData{
+		Name: extensionName2,
+		Data: extensionData2,
+	}
+	_, _ = requestManager.SendRequest(requestCtx, peers[0], root, selector, extension1, extension2)
+
+	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+
+	gsr := rr.gsr
+	returnedData1, found := gsr.Extension(extensionName1)
+	if !found || !reflect.DeepEqual(extensionData1, returnedData1) {
+		t.Fatal("Failed to encode first extension")
+	}
+
+	returnedData2, found := gsr.Extension(extensionName2)
+	if !found || !reflect.DeepEqual(extensionData2, returnedData2) {
+		t.Fatal("Failed to encode first extension")
+	}
+
+}

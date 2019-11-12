@@ -96,6 +96,7 @@ type newRequestMessage struct {
 	p                     peer.ID
 	root                  ipld.Link
 	selector              ipld.Node
+	extensions            []graphsync.ExtensionData
 	inProgressRequestChan chan<- inProgressRequest
 }
 
@@ -103,7 +104,8 @@ type newRequestMessage struct {
 func (rm *RequestManager) SendRequest(ctx context.Context,
 	p peer.ID,
 	root ipld.Link,
-	selector ipld.Node) (<-chan graphsync.ResponseProgress, <-chan error) {
+	selector ipld.Node,
+	extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
 	if _, err := rm.ipldBridge.ParseSelector(selector); err != nil {
 		return rm.singleErrorResponse(fmt.Errorf("Invalid Selector Spec"))
 	}
@@ -111,7 +113,7 @@ func (rm *RequestManager) SendRequest(ctx context.Context,
 	inProgressRequestChan := make(chan inProgressRequest)
 
 	select {
-	case rm.messages <- &newRequestMessage{p, root, selector, inProgressRequestChan}:
+	case rm.messages <- &newRequestMessage{p, root, selector, extensions, inProgressRequestChan}:
 	case <-rm.ctx.Done():
 		return rm.emptyResponse()
 	case <-ctx.Done():
@@ -234,7 +236,7 @@ func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	requestID := rm.nextRequestID
 	rm.nextRequestID++
 
-	inProgressChan, inProgressErr := rm.setupRequest(requestID, nrm.p, nrm.root, nrm.selector)
+	inProgressChan, inProgressErr := rm.setupRequest(requestID, nrm.p, nrm.root, nrm.selector, nrm.extensions)
 
 	select {
 	case nrm.inProgressRequestChan <- inProgressRequest{
@@ -314,7 +316,7 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.Respo
 	}
 }
 
-func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node) (chan graphsync.ResponseProgress, chan error) {
+func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (chan graphsync.ResponseProgress, chan error) {
 	selectorBytes, err := rm.ipldBridge.EncodeNode(selectorSpec)
 	if err != nil {
 		return rm.singleErrorResponse(err)
@@ -333,7 +335,7 @@ func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID,
 		ctx, cancel, p, networkErrorChan,
 	}
 	rm.asyncLoader.StartRequest(requestID)
-	rm.peerHandler.SendRequest(p, gsmsg.NewRequest(requestID, asCidLink.Cid, selectorBytes, maxPriority))
+	rm.peerHandler.SendRequest(p, gsmsg.NewRequest(requestID, asCidLink.Cid, selectorBytes, maxPriority, extensions...))
 	return rm.executeTraversal(ctx, requestID, root, selector, networkErrorChan)
 }
 
