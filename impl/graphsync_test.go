@@ -1,9 +1,15 @@
 package graphsync
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"io"
+	"io/ioutil"
 	"math"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -14,7 +20,20 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-blockservice"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-datastore"
+	dss "github.com/ipfs/go-datastore/sync"
+	bstore "github.com/ipfs/go-ipfs-blockstore"
+	chunker "github.com/ipfs/go-ipfs-chunker"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	files "github.com/ipfs/go-ipfs-files"
+	ipldformat "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-merkledag"
+	unixfile "github.com/ipfs/go-unixfs/file"
+	"github.com/ipfs/go-unixfs/importer/balanced"
+	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
+
 	"github.com/ipfs/go-graphsync"
 
 	"github.com/ipfs/go-graphsync/ipldbridge"
@@ -569,4 +588,207 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 	if len(errs) != 0 {
 		t.Fatal("errors during traverse")
 	}
+}
+
+// What this test does:
+// - Construct a blockstore + dag service
+// - Import a file to UnixFS v1
+// - setup a graphsync request from one node to the other
+// for the file
+// - Load the file from the new block store on the other node
+// using the
+// existing UnixFS v1 file reader
+// - Verify the bytes match the original
+func TestUnixFSFetch(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
+	const unixfsChunkSize uint64 = 1 << 10
+	const unixfsLinksPerLevel = 1024
+
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	makeLoader := func(bs bstore.Blockstore) ipld.Loader {
+		return func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
+			c, ok := lnk.(cidlink.Link)
+			if !ok {
+				return nil, errors.New("Incorrect Link Type")
+			}
+			// read block from one store
+			block, err := bs.Get(c.Cid)
+			if err != nil {
+				return nil, err
+			}
+			return bytes.NewReader(block.RawData()), nil
+		}
+	}
+
+	makeStorer := func(bs bstore.Blockstore) ipld.Storer {
+		return func(lnkCtx ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
+			var buf bytes.Buffer
+			var committer ipld.StoreCommitter = func(lnk ipld.Link) error {
+				c, ok := lnk.(cidlink.Link)
+				if !ok {
+					return errors.New("Incorrect Link Type")
+				}
+				block, err := blocks.NewBlockWithCid(buf.Bytes(), c.Cid)
+				if err != nil {
+					return err
+				}
+				return bs.Put(block)
+			}
+			return &buf, committer, nil
+		}
+	}
+	// make a blockstore and dag service
+	bs1 := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
+
+	// make a second blockstore
+	bs2 := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
+	dagService2 := merkledag.NewDAGService(blockservice.New(bs2, offline.Exchange(bs2)))
+
+	// read in a fixture file
+	path, err := filepath.Abs(filepath.Join("fixtures", "lorem.txt"))
+	if err != nil {
+		t.Fatal("unable to create path for fixture file")
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal("unable to open fixture file")
+	}
+	var buf bytes.Buffer
+	tr := io.TeeReader(f, &buf)
+	file := files.NewReaderFile(tr)
+
+	// import to UnixFS
+	bufferedDS := ipldformat.NewBufferedDAG(ctx, dagService2)
+
+	params := ihelper.DagBuilderParams{
+		Maxlinks:   unixfsLinksPerLevel,
+		RawLeaves:  true,
+		CidBuilder: nil,
+		Dagserv:    bufferedDS,
+	}
+
+	db, err := params.New(chunker.NewSizeSplitter(file, int64(unixfsChunkSize)))
+	if err != nil {
+		t.Fatal("unable to setup dag builder")
+	}
+	nd, err := balanced.Layout(db)
+	if err != nil {
+		t.Fatal("unable to create unix fs node")
+	}
+	err = bufferedDS.Commit()
+	if err != nil {
+		t.Fatal("unable to commit unix fs node")
+	}
+
+	// save the original files bytes
+	origBytes := buf.Bytes()
+
+	// setup an IPLD loader/storer for blockstore 1
+	loader1 := makeLoader(bs1)
+	storer1 := makeStorer(bs1)
+
+	// setup an IPLD loader/storer for blockstore 2
+	loader2 := makeLoader(bs2)
+	storer2 := makeStorer(bs2)
+
+	mn := mocknet.New(ctx)
+
+	// setup network
+	host1, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal("error generating host")
+	}
+	host2, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal("error generating host")
+	}
+	mn.SetLinkDefaults(mocknet.LinkOptions{Latency: 100 * time.Millisecond, Bandwidth: 3000000})
+	err = mn.LinkAll()
+	if err != nil {
+		t.Fatal("error linking hosts")
+	}
+
+	gsnet1 := gsnet.NewFromLibp2pHost(host1)
+
+	gsnet2 := gsnet.NewFromLibp2pHost(host2)
+
+	// setup graphsync
+	bridge1 := ipldbridge.NewIPLDBridge()
+	requestor := New(ctx, gsnet1, bridge1, loader1, storer1)
+
+	bridge2 := ipldbridge.NewIPLDBridge()
+	responder := New(ctx, gsnet2, bridge2, loader2, storer2)
+	extensionName := graphsync.ExtensionName("Free for all")
+	responder.RegisterExtension(graphsync.ExtensionConfig{
+		Name:               extensionName,
+		PerformsValidation: true,
+		OnRequestReceived: func(data []byte) (graphsync.ExtensionData, error) {
+			return graphsync.ExtensionData{
+				Name: extensionName,
+				Data: nil,
+			}, nil
+		},
+	})
+	// make a go-ipld-prime link for the root UnixFS node
+	clink := cidlink.Link{Cid: nd.Cid()}
+
+	// create a selector for the whole UnixFS dag
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+
+	allSelector := ssb.ExploreRecursive(ipldselector.RecursionLimitNone(),
+		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
+
+	// execute the traversal
+	progressChan, errChan := requestor.Request(ctx, host2.ID(), clink, allSelector,
+		graphsync.ExtensionData{
+			Name: extensionName,
+			Data: nil,
+		})
+
+	_ = testutil.CollectResponses(ctx, t, progressChan)
+	responseErrors := testutil.CollectErrors(ctx, t, errChan)
+
+	// verify traversal was successful
+	if len(responseErrors) != 0 {
+		t.Fatal("Response should be successful but wasn't")
+	}
+
+	// setup a DagService for the second block store
+	dagService1 := merkledag.NewDAGService(blockservice.New(bs1, offline.Exchange(bs1)))
+
+	// load the root of the UnixFS DAG from the new blockstore
+	otherNode, err := dagService1.Get(ctx, nd.Cid())
+	if err != nil {
+		t.Fatal("should have been able to read received root node but didn't")
+	}
+
+	// Setup a UnixFS file reader
+	n, err := unixfile.NewUnixfsFile(ctx, dagService1, otherNode)
+	if err != nil {
+		t.Fatal("should have been able to setup UnixFS file but wasn't")
+	}
+
+	fn, ok := n.(files.File)
+	if !ok {
+		t.Fatal("file should be a regular file, but wasn't")
+	}
+
+	// Read the bytes for the UnixFS File
+	finalBytes, err := ioutil.ReadAll(fn)
+	if err != nil {
+		t.Fatal("should have been able to read all of unix FS file but wasn't")
+	}
+
+	// verify original bytes match final bytes!
+	if !reflect.DeepEqual(origBytes, finalBytes) {
+		t.Fatal("should have gotten same bytes written as read but didn't")
+	}
+
 }
