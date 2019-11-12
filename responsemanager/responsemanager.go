@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/loader"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
+	"github.com/ipfs/go-graphsync/responsemanager/selectorvalidator"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -18,14 +18,14 @@ import (
 
 const (
 	maxInProcessRequests = 6
+	maxRecursionDepth    = 100
 	thawSpeed            = time.Millisecond * 100
 )
 
 type inProgressResponseStatus struct {
 	ctx      context.Context
 	cancelFn func()
-	root     cid.Cid
-	selector []byte
+	request  gsmsg.GraphSyncRequest
 }
 
 type responseKey struct {
@@ -34,9 +34,8 @@ type responseKey struct {
 }
 
 type responseTaskData struct {
-	ctx      context.Context
-	root     cid.Cid
-	selector []byte
+	ctx     context.Context
+	request gsmsg.GraphSyncRequest
 }
 
 // QueryQueue is an interface that can receive new selector query tasks
@@ -163,7 +162,7 @@ func (rm *ResponseManager) processQueriesWorker() {
 			case <-rm.ctx.Done():
 				return
 			}
-			rm.executeQuery(taskData.ctx, key.p, key.requestID, taskData.root, taskData.selector)
+			rm.executeQuery(taskData.ctx, key.p, taskData.request)
 			select {
 			case rm.messages <- &finishResponseRequest{key}:
 			case <-rm.ctx.Done():
@@ -181,28 +180,31 @@ func noopVisitor(tp ipldbridge.TraversalProgress, n ipld.Node, tr ipldbridge.Tra
 
 func (rm *ResponseManager) executeQuery(ctx context.Context,
 	p peer.ID,
-	requestID graphsync.RequestID,
-	root cid.Cid,
-	selectorBytes []byte) {
+	request gsmsg.GraphSyncRequest) {
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
-	selectorSpec, err := rm.ipldBridge.DecodeNode(selectorBytes)
+	selectorSpec, err := rm.ipldBridge.DecodeNode(request.Selector())
 	if err != nil {
-		peerResponseSender.FinishWithError(requestID, graphsync.RequestFailedUnknown)
+		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return
 	}
-	rootLink := cidlink.Link{Cid: root}
+	err = selectorvalidator.ValidateSelector(rm.ipldBridge, selectorSpec, maxRecursionDepth)
+	if err != nil {
+		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
+		return
+	}
+	rootLink := cidlink.Link{Cid: request.Root()}
 	selector, err := rm.ipldBridge.ParseSelector(selectorSpec)
 	if err != nil {
-		peerResponseSender.FinishWithError(requestID, graphsync.RequestFailedUnknown)
+		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return
 	}
-	wrappedLoader := loader.WrapLoader(rm.loader, requestID, peerResponseSender)
+	wrappedLoader := loader.WrapLoader(rm.loader, request.ID(), peerResponseSender)
 	err = rm.ipldBridge.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
 	if err != nil {
-		peerResponseSender.FinishWithError(requestID, graphsync.RequestFailedUnknown)
+		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return
 	}
-	peerResponseSender.FinishRequest(requestID)
+	peerResponseSender.FinishRequest(request.ID())
 }
 
 // Startup starts processing for the WantManager.
@@ -246,8 +248,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 				inProgressResponseStatus{
 					ctx:      ctx,
 					cancelFn: cancelFn,
-					root:     request.Root(),
-					selector: request.Selector(),
+					request:  request,
 				}
 			rm.queryQueue.PushBlock(prm.p, peertask.Task{Identifier: key, Priority: int(request.Priority())})
 			select {
@@ -268,7 +269,7 @@ func (rdr *responseDataRequest) handle(rm *ResponseManager) {
 	response, ok := rm.inProgressResponses[rdr.key]
 	var taskData *responseTaskData
 	if ok {
-		taskData = &responseTaskData{response.ctx, response.root, response.selector}
+		taskData = &responseTaskData{response.ctx, response.request}
 	} else {
 		taskData = nil
 	}
