@@ -42,10 +42,9 @@ type responseTaskData struct {
 // QueryQueue is an interface that can receive new selector query tasks
 // and prioritize them as needed, and pop them off later
 type QueryQueue interface {
-	PushTasks(to peer.ID, tasks ...peertask.Task)
-	PopTasks(targetMinWork int) (peer.ID, []*peertask.Task, int)
-	Remove(topic peertask.Topic, p peer.ID)
-	TasksDone(to peer.ID, tasks ...*peertask.Task)
+	PushBlock(to peer.ID, tasks ...peertask.Task)
+	PopBlock() *peertask.TaskBlock
+	Remove(identifier peertask.Identifier, p peer.ID)
 	ThawRound()
 }
 
@@ -140,20 +139,20 @@ func (rm *ResponseManager) processQueriesWorker() {
 	taskDataChan := make(chan *responseTaskData)
 	var taskData *responseTaskData
 	for {
-		p, nextTasks, _ := rm.queryQueue.PopTasks(1)
-		for nextTasks == nil {
+		nextTaskBlock := rm.queryQueue.PopBlock()
+		for nextTaskBlock == nil {
 			select {
 			case <-rm.ctx.Done():
 				return
 			case <-rm.workSignal:
-				p, nextTasks, _ = rm.queryQueue.PopTasks(1)
+				nextTaskBlock = rm.queryQueue.PopBlock()
 			case <-rm.ticker.C:
 				rm.queryQueue.ThawRound()
-				p, nextTasks, _ = rm.queryQueue.PopTasks(1)
+				nextTaskBlock = rm.queryQueue.PopBlock()
 			}
 		}
-		for _, task := range nextTasks {
-			key := task.Topic.(responseKey)
+		for _, task := range nextTaskBlock.Tasks {
+			key := task.Identifier.(responseKey)
 			select {
 			case rm.messages <- &responseDataRequest{key, taskDataChan}:
 			case <-rm.ctx.Done():
@@ -170,7 +169,8 @@ func (rm *ResponseManager) processQueriesWorker() {
 			case <-rm.ctx.Done():
 			}
 		}
-		rm.queryQueue.TasksDone(p, nextTasks...)
+		nextTaskBlock.Done(nextTaskBlock.Tasks)
+
 	}
 
 }
@@ -249,11 +249,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 					root:     request.Root(),
 					selector: request.Selector(),
 				}
-			rm.queryQueue.PushTasks(prm.p, peertask.Task{
-				Topic:    key,
-				Priority: int(request.Priority()),
-				Work:     1,
-			})
+			rm.queryQueue.PushBlock(prm.p, peertask.Task{Identifier: key, Priority: int(request.Priority())})
 			select {
 			case rm.workSignal <- struct{}{}:
 			default:

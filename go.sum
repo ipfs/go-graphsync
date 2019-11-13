@@ -102,8 +102,6 @@ github.com/ipfs/go-ipfs-ds-help v0.0.1 h1:QBg+Ts2zgeemK/dB0saiF/ykzRGgfoFMT90Rzo
 github.com/ipfs/go-ipfs-ds-help v0.0.1/go.mod h1:gtP9xRaZXqIQRh1HRpp595KbBEdgqWFxefeVKOV8sxo=
 github.com/ipfs/go-ipfs-pq v0.0.1 h1:zgUotX8dcAB/w/HidJh1zzc1yFq6Vm8J7T2F4itj/RU=
 github.com/ipfs/go-ipfs-pq v0.0.1/go.mod h1:LWIqQpqfRG3fNc5XsnIhz/wQ2XXGyugQwls7BgUmUfY=
-github.com/ipfs/go-ipfs-pq v0.0.2 h1:e1vOOW6MuOwG2lqxcLA+wEn93i/9laCY8sXAw76jFOY=
-github.com/ipfs/go-ipfs-pq v0.0.2/go.mod h1:LWIqQpqfRG3fNc5XsnIhz/wQ2XXGyugQwls7BgUmUfY=
 github.com/ipfs/go-ipfs-util v0.0.1 h1:Wz9bL2wB2YBJqggkA4dD7oSmqB4cAnpNbGrlHJulv50=
 github.com/ipfs/go-ipfs-util v0.0.1/go.mod h1:spsl5z8KUnrve+73pOhSVZND1SIxPW5RyBCNzQxlJBc=
 github.com/ipfs/go-log v0.0.1 h1:9XTUN/rW64BCG1YhPK9Hoy3q8nr4gOmHHBpgFdfw6Lc=
@@ -112,8 +110,6 @@ github.com/ipfs/go-metrics-interface v0.0.1 h1:j+cpbjYvu4R8zbleSs36gvB7jR+wsL2fG
 github.com/ipfs/go-metrics-interface v0.0.1/go.mod h1:6s6euYU4zowdslK0GKHmqaIZ3j/b/tL7HTWtJ4VPgWY=
 github.com/ipfs/go-peertaskqueue v0.0.4 h1:i0JprfjjILYcWM1xguO/1MCS8XKVxLSl+ECEVr6i8nw=
 github.com/ipfs/go-peertaskqueue v0.0.4/go.mod h1:03H8fhyeMfKNFWqzYEVyMbcPUeYrqP1MX6Kd+aN+rMQ=
-github.com/ipfs/go-peertaskqueue v0.1.2-0.20191111205511-fd33b91329d3 h1:c9CXamXsukIP0Ij/wIY4VECIq8uUnLPBBBy/XR3wlI8=
-github.com/ipfs/go-peertaskqueue v0.1.2-0.20191111205511-fd33b91329d3/go.mod h1:5/eNrBEbtSKWCG+kQK8K8fGNixoYUnr+P7jivavs9lY=
 github.com/ipld/go-ipld-prime v0.0.0-20190730002952-369bb56ad071 h1:+jRGf/jb5MnxBsLYczZF0u5pr3nzfbS8pPt/49Yxekw=
 github.com/ipld/go-ipld-prime v0.0.0-20190730002952-369bb56ad071/go.mod h1:bDDSvVz7vaK12FNvMeRYnpRFkSUPNQOiCYQezMD/P3w=
 github.com/ipld/go-ipld-prime v0.0.1-filecoin h1:jK1bUG/z73GNeKrNlVfdexkEIIWp0BEsBVjHkh9WvXo=
