@@ -282,7 +282,7 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 
 func (prm *processResponseMessage) handle(rm *RequestManager) {
 	filteredResponses := rm.filterResponsesForPeer(prm.responses, prm.p)
-	filteredResponses = rm.processExtensions(filteredResponses)
+	filteredResponses = rm.processExtensions(filteredResponses, prm.p)
 	responseMetadata := metadataForResponses(filteredResponses, rm.ipldBridge)
 	rm.asyncLoader.ProcessResponse(responseMetadata, prm.blks)
 	rm.processTerminations(filteredResponses)
@@ -304,10 +304,10 @@ func (rm *RequestManager) filterResponsesForPeer(responses []gsmsg.GraphSyncResp
 	return responsesForPeer
 }
 
-func (rm *RequestManager) processExtensions(responses []gsmsg.GraphSyncResponse) []gsmsg.GraphSyncResponse {
+func (rm *RequestManager) processExtensions(responses []gsmsg.GraphSyncResponse, p peer.ID) []gsmsg.GraphSyncResponse {
 	remainingResponses := make([]gsmsg.GraphSyncResponse, 0, len(responses))
 	for _, response := range responses {
-		success := rm.processExtensionsForResponse(response)
+		success := rm.processExtensionsForResponse(response, p)
 		if success {
 			remainingResponses = append(remainingResponses, response)
 		}
@@ -315,11 +315,11 @@ func (rm *RequestManager) processExtensions(responses []gsmsg.GraphSyncResponse)
 	return remainingResponses
 }
 
-func (rm *RequestManager) processExtensionsForResponse(response gsmsg.GraphSyncResponse) bool {
+func (rm *RequestManager) processExtensionsForResponse(response gsmsg.GraphSyncResponse, p peer.ID) bool {
 	for _, extension := range rm.extensionHooks {
 		data, found := response.Extension(extension.name)
 		if found {
-			err := extension.hook(data)
+			err := extension.hook(p, data)
 			if err != nil {
 				requestStatus := rm.inProgressRequestStatuses[response.RequestID()]
 				responseError := rm.generateResponseErrorFromStatus(graphsync.RequestFailedUnknown)

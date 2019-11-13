@@ -101,11 +101,11 @@ type ResponseProgress struct {
 // OnRequestReceivedHook processes extension data in a request
 // responseData - the value that should be sent for the extension in the reply
 // err - error - if not nil, halt request and return RequestRejected with the responseData
-type OnRequestReceivedHook func(requestData []byte) (responseData ExtensionData, err error)
+type OnRequestReceivedHook func(p peer.ID, root ipld.Link, selector ipld.Node, requestData []byte) (responseData ExtensionData, err error)
 
 // OnResponseReceivedHook processes extension data in a response
 // When it returns an error processing is halted and the original request is cancelled
-type OnResponseReceivedHook func(responseData []byte) error
+type OnResponseReceivedHook func(p peer.ID, responseData []byte) error
 
 // ExtensionConfig defines behavior for user supplied extension
 type ExtensionConfig struct {

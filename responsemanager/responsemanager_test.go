@@ -387,7 +387,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("if non validating hook succeeds, does not pass validation", func(t *testing.T) {
 			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
 			responseManager.Startup()
-			responseManager.RegisterExtension(extensionName, false, func(requestData []byte) (graphsync.ExtensionData, error) {
+			responseManager.RegisterExtension(extensionName, false, func(p peer.ID, root ipld.Link, selector ipld.Node, requestData []byte) (graphsync.ExtensionData, error) {
 				return extensionResponse, nil
 			})
 			responseManager.ProcessRequests(ctx, p, requests)
@@ -412,7 +412,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
 			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
 			responseManager.Startup()
-			responseManager.RegisterExtension(extensionName, true, func(requestData []byte) (graphsync.ExtensionData, error) {
+			responseManager.RegisterExtension(extensionName, true, func(p peer.ID, root ipld.Link, selector ipld.Node, requestData []byte) (graphsync.ExtensionData, error) {
 				return extensionResponse, nil
 			})
 			responseManager.ProcessRequests(ctx, p, requests)
@@ -464,7 +464,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("if any hook fails, should fail", func(t *testing.T) {
 			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
 			responseManager.Startup()
-			responseManager.RegisterExtension(extensionName, false, func(requestData []byte) (graphsync.ExtensionData, error) {
+			responseManager.RegisterExtension(extensionName, false, func(p peer.ID, root ipld.Link, selector ipld.Node, requestData []byte) (graphsync.ExtensionData, error) {
 				return extensionResponse, fmt.Errorf("everything went to crap")
 			})
 			responseManager.ProcessRequests(ctx, p, requests)

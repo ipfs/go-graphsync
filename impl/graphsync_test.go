@@ -280,7 +280,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	gsnet := New(ctx, gsnet2, bridge, loader, storer)
 	err = gsnet.RegisterExtension(graphsync.ExtensionConfig{
 		Name: extensionName,
-		OnRequestReceived: func(requestData []byte) (graphsync.ExtensionData, error) {
+		OnRequestReceived: func(p peer.ID, root ipld.Link, selector ipld.Node, requestData []byte) (graphsync.ExtensionData, error) {
 			receivedRequestData = requestData
 			return extensionResponse, nil
 		},
@@ -427,7 +427,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 
 	err = requestor.RegisterExtension(graphsync.ExtensionConfig{
 		Name: extensionName,
-		OnResponseReceived: func(responseData []byte) error {
+		OnResponseReceived: func(p peer.ID, responseData []byte) error {
 			receivedResponseData = responseData
 			return nil
 		},
@@ -438,7 +438,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 
 	err = responder.RegisterExtension(graphsync.ExtensionConfig{
 		Name: extensionName,
-		OnRequestReceived: func(requestData []byte) (graphsync.ExtensionData, error) {
+		OnRequestReceived: func(p peer.ID, root ipld.Link, selector ipld.Node, requestData []byte) (graphsync.ExtensionData, error) {
 			receivedRequestData = requestData
 			return extensionResponse, nil
 		},

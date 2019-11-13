@@ -209,7 +209,7 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 	for _, extension := range rm.extensionHooks {
 		requestData, present := request.Extension(extension.name)
 		if present {
-			responseData, err := extension.hook(requestData)
+			responseData, err := extension.hook(p, cidlink.Link{Cid: request.Root()}, selectorSpec, requestData)
 			peerResponseSender.SendExtensionData(request.ID(), responseData)
 			if err != nil {
 				peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)

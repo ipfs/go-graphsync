@@ -635,7 +635,7 @@ func TestEncodingExtensions(t *testing.T) {
 
 	expectedError := make(chan error, 2)
 	receivedExtensionData := make(chan []byte, 2)
-	extensionHandler := func(data []byte) error {
+	extensionHandler := func(p peer.ID, data []byte) error {
 		receivedExtensionData <- data
 		return <-expectedError
 	}
