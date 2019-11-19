@@ -82,8 +82,8 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 }
 
 // Request initiates a new GraphSync request to the given peer using the given selector spec.
-func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node) (<-chan graphsync.ResponseProgress, <-chan error) {
-	return gs.requestManager.SendRequest(ctx, p, root, selector)
+func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
+	return gs.requestManager.SendRequest(ctx, p, root, selector, extensions...)
 }
 
 type graphSyncReceiver GraphSync

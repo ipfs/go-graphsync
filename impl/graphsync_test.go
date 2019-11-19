@@ -175,9 +175,17 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed creating selector")
 	}
+
+	extensionData := testutil.RandomBytes(100)
+	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
+	extension := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionData,
+	}
+
 	requestCtx, requestCancel := context.WithCancel(ctx)
 	defer requestCancel()
-	graphSync.Request(requestCtx, host2.ID(), blockChain.tipLink, spec)
+	graphSync.Request(requestCtx, host2.ID(), blockChain.tipLink, spec, extension)
 
 	var message receivedMessage
 	select {
@@ -207,6 +215,11 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	_, err = bridge.ParseSelector(receivedSpec)
 	if err != nil {
 		t.Fatal("did not receive parsible selector on other side")
+	}
+
+	returnedData, found := receivedRequest.Extension(extensionName)
+	if !found || !reflect.DeepEqual(extensionData, returnedData) {
+		t.Fatal("Failed to encode extension")
 	}
 }
 
