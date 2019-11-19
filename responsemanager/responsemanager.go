@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -114,7 +115,7 @@ func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, reque
 	}
 }
 
-// RegisterExtension registers an extension to process new incoming requests
+// RegisterHook registers an extension to process new incoming requests
 func (rm *ResponseManager) RegisterHook(
 	overrideDefaultValidation bool,
 	hook graphsync.OnRequestReceivedHook) {
@@ -198,20 +199,36 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 	p peer.ID,
 	request gsmsg.GraphSyncRequest) {
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
-	selectorSpec, err := rm.ipldBridge.DecodeNode(request.Selector())
+	extensionData, selector, err := rm.validateRequest(p, request)
+	for _, datum := range extensionData {
+		peerResponseSender.SendExtensionData(request.ID(), datum)
+	}
 	if err != nil {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return
 	}
+	rootLink := cidlink.Link{Cid: request.Root()}
+	wrappedLoader := loader.WrapLoader(rm.loader, request.ID(), peerResponseSender)
+	err = rm.ipldBridge.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
+	if err != nil {
+		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
+		return
+	}
+	peerResponseSender.FinishRequest(request.ID())
+}
+
+func (rm *ResponseManager) validateRequest(p peer.ID, request graphsync.RequestData) ([]graphsync.ExtensionData, selector.Selector, error) {
+	selectorSpec, err := rm.ipldBridge.DecodeNode(request.Selector())
+	if err != nil {
+		return nil, nil, err
+	}
 	var isValidated bool
+	var allExtensionData []graphsync.ExtensionData
 	for _, requestHook := range rm.requestHooks {
 		extensionData, err := requestHook.hook(p, request)
-		for _, datum := range extensionData {
-			peerResponseSender.SendExtensionData(request.ID(), datum)
-		}
+		allExtensionData = append(allExtensionData, extensionData...)
 		if err != nil {
-			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-			return
+			return allExtensionData, nil, err
 		}
 		if requestHook.overrideDefaultValidation {
 			isValidated = true
@@ -220,24 +237,11 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 	if !isValidated {
 		err = selectorvalidator.ValidateSelector(rm.ipldBridge, selectorSpec, maxRecursionDepth)
 		if err != nil {
-			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-			return
+			return allExtensionData, nil, err
 		}
 	}
-	rootLink := cidlink.Link{Cid: request.Root()}
 	selector, err := rm.ipldBridge.ParseSelector(selectorSpec)
-
-	if err != nil {
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return
-	}
-	wrappedLoader := loader.WrapLoader(rm.loader, request.ID(), peerResponseSender)
-	err = rm.ipldBridge.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
-	if err != nil {
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return
-	}
-	peerResponseSender.FinishRequest(request.ID())
+	return allExtensionData, selector, err
 }
 
 // Startup starts processing for the WantManager.
