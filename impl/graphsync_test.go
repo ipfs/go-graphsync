@@ -26,10 +26,362 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	mh "github.com/multiformats/go-multihash"
 )
+
+func TestMakeRequestToNetwork(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+	r := &receiver{
+		messageReceived: make(chan receivedMessage),
+	}
+	td.gsnet2.SetDelegate(r)
+	graphSync := td.GraphSyncHost1()
+
+	blockChainLength := 100
+	blockChain := setupBlockChain(ctx, t, td.storer1, td.bridge, 100, blockChainLength)
+
+	spec := blockChainSelector(blockChainLength)
+
+	requestCtx, requestCancel := context.WithCancel(ctx)
+	defer requestCancel()
+	graphSync.Request(requestCtx, td.host2.ID(), blockChain.tipLink, spec, td.extension)
+
+	var message receivedMessage
+	select {
+	case <-ctx.Done():
+		t.Fatal("did not receive message sent")
+	case message = <-r.messageReceived:
+	}
+
+	sender := message.sender
+	if sender != td.host1.ID() {
+		t.Fatal("received message from wrong node")
+	}
+
+	received := message.message
+	receivedRequests := received.Requests()
+	if len(receivedRequests) != 1 {
+		t.Fatal("Did not add request to received message")
+	}
+	receivedRequest := receivedRequests[0]
+	receivedSpec, err := td.bridge.DecodeNode(receivedRequest.Selector())
+	if err != nil {
+		t.Fatal("unable to decode transmitted selector")
+	}
+	if !reflect.DeepEqual(spec, receivedSpec) {
+		t.Fatal("did not transmit selector spec correctly")
+	}
+	_, err = td.bridge.ParseSelector(receivedSpec)
+	if err != nil {
+		t.Fatal("did not receive parsible selector on other side")
+	}
+
+	returnedData, found := receivedRequest.Extension(td.extensionName)
+	if !found || !reflect.DeepEqual(td.extensionData, returnedData) {
+		t.Fatal("Failed to encode extension")
+	}
+}
+
+func TestSendResponseToIncomingRequest(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+	r := &receiver{
+		messageReceived: make(chan receivedMessage),
+	}
+	td.gsnet1.SetDelegate(r)
+
+	var receivedRequestData []byte
+	// initialize graphsync on second node to response to requests
+	gsnet := td.GraphSyncHost2()
+	err := gsnet.RegisterRequestReceivedHook(
+		func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+			var has bool
+			receivedRequestData, has = requestData.Extension(td.extensionName)
+			if !has {
+				t.Fatal("did not have expected extension")
+			}
+			hookActions.SendExtensionData(td.extensionResponse)
+		},
+	)
+	if err != nil {
+		t.Fatal("error registering extension")
+	}
+
+	blockChainLength := 100
+	blockChain := setupBlockChain(ctx, t, td.storer2, td.bridge, 100, blockChainLength)
+
+	spec := blockChainSelector(blockChainLength)
+
+	selectorData, err := td.bridge.EncodeNode(spec)
+	if err != nil {
+		t.Fatal("could not encode selector spec")
+	}
+	requestID := graphsync.RequestID(rand.Int31())
+
+	message := gsmsg.New()
+	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.tipLink.(cidlink.Link).Cid, selectorData, graphsync.Priority(math.MaxInt32), td.extension))
+	// send request across network
+	td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
+	// read the values sent back to requestor
+	var received gsmsg.GraphSyncMessage
+	var receivedBlocks []blocks.Block
+	var receivedExtensions [][]byte
+readAllMessages:
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("did not receive complete response")
+		case message := <-r.messageReceived:
+			sender := message.sender
+			if sender != td.host2.ID() {
+				t.Fatal("received message from wrong node")
+			}
+
+			received = message.message
+			receivedBlocks = append(receivedBlocks, received.Blocks()...)
+			receivedResponses := received.Responses()
+			receivedExtension, found := receivedResponses[0].Extension(td.extensionName)
+			if found {
+				receivedExtensions = append(receivedExtensions, receivedExtension)
+			}
+			if len(receivedResponses) != 1 {
+				t.Fatal("Did not receive response")
+			}
+			if receivedResponses[0].RequestID() != requestID {
+				t.Fatal("Sent response for incorrect request id")
+			}
+			if receivedResponses[0].Status() != graphsync.PartialResponse {
+				break readAllMessages
+			}
+		}
+	}
+
+	if len(receivedBlocks) != blockChainLength {
+		t.Fatal("Send incorrect number of blocks or there were duplicate blocks")
+	}
+
+	if !reflect.DeepEqual(td.extensionData, receivedRequestData) {
+		t.Fatal("did not receive correct request extension data")
+	}
+
+	if len(receivedExtensions) != 1 {
+		t.Fatal("should have sent extension responses but didn't")
+	}
+
+	if !reflect.DeepEqual(receivedExtensions[0], td.extensionResponseData) {
+		t.Fatal("did not return correct extension data")
+	}
+}
+
+func TestGraphsyncRoundTrip(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := setupBlockChain(ctx, t, td.storer2, td.bridge, 100, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	var receivedResponseData []byte
+	var receivedRequestData []byte
+
+	err := requestor.RegisterResponseReceivedHook(
+		func(p peer.ID, responseData graphsync.ResponseData) error {
+			data, has := responseData.Extension(td.extensionName)
+			if has {
+				receivedResponseData = data
+			}
+			return nil
+		})
+	if err != nil {
+		t.Fatal("Error setting up extension")
+	}
+
+	err = responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+		var has bool
+		receivedRequestData, has = requestData.Extension(td.extensionName)
+		if !has {
+			hookActions.TerminateWithError(errors.New("Missing extension"))
+		} else {
+			hookActions.SendExtensionData(td.extensionResponse)
+		}
+	})
+
+	if err != nil {
+		t.Fatal("Error setting up extension")
+	}
+
+	spec := blockChainSelector(blockChainLength)
+
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.tipLink, spec, td.extension)
+
+	responses := testutil.CollectResponses(ctx, t, progressChan)
+	errs := testutil.CollectErrors(ctx, t, errChan)
+
+	if len(responses) != blockChainLength*2 {
+		t.Fatal("did not traverse all nodes")
+	}
+	if len(errs) != 0 {
+		t.Fatal("errors during traverse")
+	}
+	if len(td.blockStore1) != blockChainLength {
+		t.Fatal("did not store all blocks")
+	}
+
+	expectedPath := ""
+	for i, response := range responses {
+		if response.Path.String() != expectedPath {
+			t.Fatal("incorrect path")
+		}
+		if i%2 == 0 {
+			if expectedPath == "" {
+				expectedPath = "Parents"
+			} else {
+				expectedPath = expectedPath + "/Parents"
+			}
+		} else {
+			expectedPath = expectedPath + "/0"
+		}
+	}
+
+	// verify extension roundtrip
+	if !reflect.DeepEqual(receivedRequestData, td.extensionData) {
+		t.Fatal("did not receive correct extension request data")
+	}
+
+	if !reflect.DeepEqual(receivedResponseData, td.extensionResponseData) {
+		t.Fatal("did not receive correct extension response data")
+	}
+}
+
+// TestRoundTripLargeBlocksSlowNetwork test verifies graphsync continues to work
+// under a specific of adverse conditions:
+// -- large blocks being returned by a query
+// -- slow network connection
+// It verifies that Graphsync will properly break up network message packets
+// so they can still be decoded on the client side, instead of building up a huge
+// backlog of blocks and then sending them in one giant network packet that can't
+// be decoded on the client side
+func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
+	// create network
+	if testing.Short() {
+		t.Skip()
+	}
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+	td.mn.SetLinkDefaults(mocknet.LinkOptions{Latency: 100 * time.Millisecond, Bandwidth: 3000000})
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 40
+	blockChain := setupBlockChain(ctx, t, td.storer2, td.bridge, 200000, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	td.GraphSyncHost2()
+
+	spec := blockChainSelector(blockChainLength)
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.tipLink, spec)
+
+	responses := testutil.CollectResponses(ctx, t, progressChan)
+	errs := testutil.CollectErrors(ctx, t, errChan)
+
+	if len(responses) != blockChainLength*2 {
+		t.Fatal("did not traverse all nodes")
+	}
+	if len(errs) != 0 {
+		t.Fatal("errors during traverse")
+	}
+}
+
+type gsTestData struct {
+	mn                       mocknet.Mocknet
+	ctx                      context.Context
+	host1                    host.Host
+	host2                    host.Host
+	gsnet1                   gsnet.GraphSyncNetwork
+	gsnet2                   gsnet.GraphSyncNetwork
+	blockStore1, blockStore2 map[ipld.Link][]byte
+	loader1, loader2         ipld.Loader
+	storer1, storer2         ipld.Storer
+	bridge                   ipldbridge.IPLDBridge
+	extensionData            []byte
+	extensionName            graphsync.ExtensionName
+	extension                graphsync.ExtensionData
+	extensionResponseData    []byte
+	extensionResponse        graphsync.ExtensionData
+}
+
+func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
+	td := &gsTestData{ctx: ctx}
+	td.mn = mocknet.New(ctx)
+	var err error
+	// setup network
+	td.host1, err = td.mn.GenPeer()
+	if err != nil {
+		t.Fatal("error generating host")
+	}
+	td.host2, err = td.mn.GenPeer()
+	if err != nil {
+		t.Fatal("error generating host")
+	}
+	err = td.mn.LinkAll()
+	if err != nil {
+		t.Fatal("error linking hosts")
+	}
+
+	td.gsnet1 = gsnet.NewFromLibp2pHost(td.host1)
+	td.gsnet2 = gsnet.NewFromLibp2pHost(td.host2)
+	td.blockStore1 = make(map[ipld.Link][]byte)
+	td.loader1, td.storer1 = testbridge.NewMockStore(td.blockStore1)
+	td.blockStore2 = make(map[ipld.Link][]byte)
+	td.loader2, td.storer2 = testbridge.NewMockStore(td.blockStore2)
+	td.bridge = ipldbridge.NewIPLDBridge()
+	// setup extension handlers
+	td.extensionData = testutil.RandomBytes(100)
+	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
+	td.extension = graphsync.ExtensionData{
+		Name: td.extensionName,
+		Data: td.extensionData,
+	}
+	td.extensionResponseData = testutil.RandomBytes(100)
+	td.extensionResponse = graphsync.ExtensionData{
+		Name: td.extensionName,
+		Data: td.extensionResponseData,
+	}
+
+	return td
+}
+
+func (td *gsTestData) GraphSyncHost1() graphsync.GraphExchange {
+	return New(td.ctx, td.gsnet1, td.bridge, td.loader1, td.storer1)
+}
+
+func (td *gsTestData) GraphSyncHost2() graphsync.GraphExchange {
+
+	return New(td.ctx, td.gsnet2, td.bridge, td.loader2, td.storer2)
+}
 
 type receivedMessage struct {
 	message gsmsg.GraphSyncMessage
@@ -138,435 +490,11 @@ func setupBlockChain(
 	return &blockChain{genisisNode, genesisLink, middleNodes, middleLinks, tipNode, tipLink}
 }
 
-func TestMakeRequestToNetwork(t *testing.T) {
-	// create network
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	mn := mocknet.New(ctx)
-
-	// setup network
-	host1, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
-	host2, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
-	err = mn.LinkAll()
-	if err != nil {
-		t.Fatal("error linking hosts")
-	}
-
-	gsnet1 := gsnet.NewFromLibp2pHost(host1)
-
-	// setup receiving peer to just record message coming in
-	gsnet2 := gsnet.NewFromLibp2pHost(host2)
-	r := &receiver{
-		messageReceived: make(chan receivedMessage),
-	}
-	gsnet2.SetDelegate(r)
-
-	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
-	bridge := ipldbridge.NewIPLDBridge()
-	graphSync := New(ctx, gsnet1, bridge, loader, storer)
-
-	blockChainLength := 100
-	blockChain := setupBlockChain(ctx, t, storer, bridge, 100, blockChainLength)
-
+func blockChainSelector(blockChainLength int) ipld.Node {
 	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
-	spec := ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
+	return ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
 		ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
 			efsb.Insert("Parents", ssb.ExploreAll(
 				ssb.ExploreRecursiveEdge()))
 		})).Node()
-
-	extensionData := testutil.RandomBytes(100)
-	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
-	extension := graphsync.ExtensionData{
-		Name: extensionName,
-		Data: extensionData,
-	}
-
-	requestCtx, requestCancel := context.WithCancel(ctx)
-	defer requestCancel()
-	graphSync.Request(requestCtx, host2.ID(), blockChain.tipLink, spec, extension)
-
-	var message receivedMessage
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not receive message sent")
-	case message = <-r.messageReceived:
-	}
-
-	sender := message.sender
-	if sender != host1.ID() {
-		t.Fatal("received message from wrong node")
-	}
-
-	received := message.message
-	receivedRequests := received.Requests()
-	if len(receivedRequests) != 1 {
-		t.Fatal("Did not add request to received message")
-	}
-	receivedRequest := receivedRequests[0]
-	receivedSpec, err := bridge.DecodeNode(receivedRequest.Selector())
-	if err != nil {
-		t.Fatal("unable to decode transmitted selector")
-	}
-	if !reflect.DeepEqual(spec, receivedSpec) {
-		t.Fatal("did not transmit selector spec correctly")
-	}
-	_, err = bridge.ParseSelector(receivedSpec)
-	if err != nil {
-		t.Fatal("did not receive parsible selector on other side")
-	}
-
-	returnedData, found := receivedRequest.Extension(extensionName)
-	if !found || !reflect.DeepEqual(extensionData, returnedData) {
-		t.Fatal("Failed to encode extension")
-	}
-}
-
-func TestSendResponseToIncomingRequest(t *testing.T) {
-	// create network
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
-	defer cancel()
-	mn := mocknet.New(ctx)
-
-	// setup network
-	host1, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
-	host2, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
-	err = mn.LinkAll()
-	if err != nil {
-		t.Fatal("error linking hosts")
-	}
-
-	gsnet1 := gsnet.NewFromLibp2pHost(host1)
-	r := &receiver{
-		messageReceived: make(chan receivedMessage),
-	}
-	gsnet1.SetDelegate(r)
-
-	// setup receiving peer to just record message coming in
-	gsnet2 := gsnet.NewFromLibp2pHost(host2)
-
-	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
-	bridge := ipldbridge.NewIPLDBridge()
-
-	extensionData := testutil.RandomBytes(100)
-	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
-	extension := graphsync.ExtensionData{
-		Name: extensionName,
-		Data: extensionData,
-	}
-	extensionResponseData := testutil.RandomBytes(100)
-	extensionResponse := graphsync.ExtensionData{
-		Name: extensionName,
-		Data: extensionResponseData,
-	}
-
-	var receivedRequestData []byte
-	// initialize graphsync on second node to response to requests
-	gsnet := New(ctx, gsnet2, bridge, loader, storer)
-	err = gsnet.RegisterRequestReceivedHook(
-		func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
-			var has bool
-			receivedRequestData, has = requestData.Extension(extensionName)
-			if !has {
-				t.Fatal("did not have expected extension")
-			}
-			hookActions.SendExtensionData(extensionResponse)
-		},
-	)
-	if err != nil {
-		t.Fatal("error registering extension")
-	}
-
-	blockChainLength := 100
-	blockChain := setupBlockChain(ctx, t, storer, bridge, 100, blockChainLength)
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
-	spec := ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
-		ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
-			efsb.Insert("Parents", ssb.ExploreAll(
-				ssb.ExploreRecursiveEdge()))
-		})).Node()
-
-	selectorData, err := bridge.EncodeNode(spec)
-	if err != nil {
-		t.Fatal("could not encode selector spec")
-	}
-	requestID := graphsync.RequestID(rand.Int31())
-
-	message := gsmsg.New()
-	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.tipLink.(cidlink.Link).Cid, selectorData, graphsync.Priority(math.MaxInt32), extension))
-	// send request across network
-	gsnet1.SendMessage(ctx, host2.ID(), message)
-	// read the values sent back to requestor
-	var received gsmsg.GraphSyncMessage
-	var receivedBlocks []blocks.Block
-	var receivedExtensions [][]byte
-readAllMessages:
-	for {
-		select {
-		case <-ctx.Done():
-			t.Fatal("did not receive complete response")
-		case message := <-r.messageReceived:
-			sender := message.sender
-			if sender != host2.ID() {
-				t.Fatal("received message from wrong node")
-			}
-
-			received = message.message
-			receivedBlocks = append(receivedBlocks, received.Blocks()...)
-			receivedResponses := received.Responses()
-			receivedExtension, found := receivedResponses[0].Extension(extensionName)
-			if found {
-				receivedExtensions = append(receivedExtensions, receivedExtension)
-			}
-			if len(receivedResponses) != 1 {
-				t.Fatal("Did not receive response")
-			}
-			if receivedResponses[0].RequestID() != requestID {
-				t.Fatal("Sent response for incorrect request id")
-			}
-			if receivedResponses[0].Status() != graphsync.PartialResponse {
-				break readAllMessages
-			}
-		}
-	}
-
-	if len(receivedBlocks) != blockChainLength {
-		t.Fatal("Send incorrect number of blocks or there were duplicate blocks")
-	}
-
-	if !reflect.DeepEqual(extensionData, receivedRequestData) {
-		t.Fatal("did not receive correct request extension data")
-	}
-
-	if len(receivedExtensions) != 1 {
-		t.Fatal("should have sent extension responses but didn't")
-	}
-
-	if !reflect.DeepEqual(receivedExtensions[0], extensionResponseData) {
-		t.Fatal("did not return correct extension data")
-	}
-}
-
-func TestGraphsyncRoundTrip(t *testing.T) {
-	// create network
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
-	defer cancel()
-	mn := mocknet.New(ctx)
-
-	// setup network
-	host1, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
-	host2, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
-	err = mn.LinkAll()
-	if err != nil {
-		t.Fatal("error linking hosts")
-	}
-
-	gsnet1 := gsnet.NewFromLibp2pHost(host1)
-
-	blockStore1 := make(map[ipld.Link][]byte)
-	loader1, storer1 := testbridge.NewMockStore(blockStore1)
-	bridge1 := ipldbridge.NewIPLDBridge()
-
-	// initialize graphsync on first node to make requests
-	requestor := New(ctx, gsnet1, bridge1, loader1, storer1)
-
-	// setup receiving peer to just record message coming in
-	gsnet2 := gsnet.NewFromLibp2pHost(host2)
-
-	blockStore2 := make(map[ipld.Link][]byte)
-	loader2, storer2 := testbridge.NewMockStore(blockStore2)
-	bridge2 := ipldbridge.NewIPLDBridge()
-
-	blockChainLength := 100
-	blockChain := setupBlockChain(ctx, t, storer2, bridge2, 100, blockChainLength)
-
-	// initialize graphsync on second node to response to requests
-	responder := New(ctx, gsnet2, bridge2, loader2, storer2)
-
-	// setup extension handlers
-	extensionData := testutil.RandomBytes(100)
-	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
-	extension := graphsync.ExtensionData{
-		Name: extensionName,
-		Data: extensionData,
-	}
-	extensionResponseData := testutil.RandomBytes(100)
-	extensionResponse := graphsync.ExtensionData{
-		Name: extensionName,
-		Data: extensionResponseData,
-	}
-
-	var receivedResponseData []byte
-	var receivedRequestData []byte
-
-	err = requestor.RegisterResponseReceivedHook(
-		func(p peer.ID, responseData graphsync.ResponseData) error {
-			data, has := responseData.Extension(extensionName)
-			if has {
-				receivedResponseData = data
-			}
-			return nil
-		})
-	if err != nil {
-		t.Fatal("Error setting up extension")
-	}
-
-	err = responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
-		var has bool
-		receivedRequestData, has = requestData.Extension(extensionName)
-		if !has {
-			hookActions.TerminateWithError(errors.New("Missing extension"))
-		} else {
-			hookActions.SendExtensionData(extensionResponse)
-		}
-	})
-
-	if err != nil {
-		t.Fatal("Error setting up extension")
-	}
-
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
-	spec := ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
-		ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
-			efsb.Insert("Parents", ssb.ExploreAll(
-				ssb.ExploreRecursiveEdge()))
-		})).Node()
-
-	progressChan, errChan := requestor.Request(ctx, host2.ID(), blockChain.tipLink, spec, extension)
-
-	responses := testutil.CollectResponses(ctx, t, progressChan)
-	errs := testutil.CollectErrors(ctx, t, errChan)
-
-	if len(responses) != blockChainLength*2 {
-		t.Fatal("did not traverse all nodes")
-	}
-	if len(errs) != 0 {
-		t.Fatal("errors during traverse")
-	}
-	if len(blockStore1) != blockChainLength {
-		t.Fatal("did not store all blocks")
-	}
-
-	expectedPath := ""
-	for i, response := range responses {
-		if response.Path.String() != expectedPath {
-			t.Fatal("incorrect path")
-		}
-		if i%2 == 0 {
-			if expectedPath == "" {
-				expectedPath = "Parents"
-			} else {
-				expectedPath = expectedPath + "/Parents"
-			}
-		} else {
-			expectedPath = expectedPath + "/0"
-		}
-	}
-
-	// verify extension roundtrip
-	if !reflect.DeepEqual(receivedRequestData, extensionData) {
-		t.Fatal("did not receive correct extension request data")
-	}
-
-	if !reflect.DeepEqual(receivedResponseData, extensionResponseData) {
-		t.Fatal("did not receive correct extension response data")
-	}
-}
-
-// TestRoundTripLargeBlocksSlowNetwork test verifies graphsync continues to work
-// under a specific of adverse conditions:
-// -- large blocks being returned by a query
-// -- slow network connection
-// It verifies that Graphsync will properly break up network message packets
-// so they can still be decoded on the client side, instead of building up a huge
-// backlog of blocks and then sending them in one giant network packet that can't
-// be decoded on the client side
-func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
-	// create network
-	if testing.Short() {
-		t.Skip()
-	}
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	mn := mocknet.New(ctx)
-
-	// setup network
-	host1, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
-	host2, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
-	mn.SetLinkDefaults(mocknet.LinkOptions{Latency: 100 * time.Millisecond, Bandwidth: 3000000})
-	err = mn.LinkAll()
-	if err != nil {
-		t.Fatal("error linking hosts")
-	}
-
-	gsnet1 := gsnet.NewFromLibp2pHost(host1)
-
-	blockStore1 := make(map[ipld.Link][]byte)
-	loader1, storer1 := testbridge.NewMockStore(blockStore1)
-	bridge1 := ipldbridge.NewIPLDBridge()
-
-	// initialize graphsync on first node to make requests
-	requestor := New(ctx, gsnet1, bridge1, loader1, storer1)
-
-	// setup receiving peer to just record message coming in
-	gsnet2 := gsnet.NewFromLibp2pHost(host2)
-
-	blockStore2 := make(map[ipld.Link][]byte)
-	loader2, storer2 := testbridge.NewMockStore(blockStore2)
-	bridge2 := ipldbridge.NewIPLDBridge()
-
-	blockChainLength := 40
-	blockChain := setupBlockChain(ctx, t, storer2, bridge2, 200000, blockChainLength)
-
-	// initialize graphsync on second node to response to requests
-	New(ctx, gsnet2, bridge2, loader2, storer2)
-
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
-	spec := ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
-		ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
-			efsb.Insert("Parents", ssb.ExploreAll(
-				ssb.ExploreRecursiveEdge()))
-		})).Node()
-
-	progressChan, errChan := requestor.Request(ctx, host2.ID(), blockChain.tipLink, spec)
-
-	responses := testutil.CollectResponses(ctx, t, progressChan)
-	errs := testutil.CollectErrors(ctx, t, errChan)
-
-	if len(responses) != blockChainLength*2 {
-		t.Fatal("did not traverse all nodes")
-	}
-	if len(errs) != 0 {
-		t.Fatal("errors during traverse")
-	}
 }
