@@ -14,7 +14,6 @@ import (
 	"github.com/ipld/go-ipld-prime/fluent"
 	free "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	selectorbuilder "github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	multihash "github.com/multiformats/go-multihash"
 )
 
@@ -45,18 +44,6 @@ func (mb *mockIPLDBridge) BuildNode(buildFn func(ipldbridge.NodeBuilder) ipld.No
 	err := fluent.Recover(func() {
 		nb := fluent.WrapNodeBuilder(free.NodeBuilder())
 		node = buildFn(nb)
-	})
-	if err != nil {
-		return nil, err
-	}
-	return node, nil
-}
-
-func (mb *mockIPLDBridge) BuildSelector(buildFn func(ipldbridge.SelectorSpecBuilder) ipldbridge.SelectorSpec) (ipld.Node, error) {
-	var node ipld.Node
-	err := fluent.Recover(func() {
-		ssb := selectorbuilder.NewSelectorSpecBuilder(free.NodeBuilder())
-		node = buildFn(ssb).Node()
 	})
 	if err != nil {
 		return nil, err
@@ -122,6 +109,10 @@ func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.Loader
 		default:
 		}
 	}
+	return nil
+}
+
+func (mb *mockIPLDBridge) WalkMatching(node ipld.Node, s ipldbridge.Selector, fn ipldbridge.VisitFn) error {
 	return nil
 }
 

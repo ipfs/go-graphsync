@@ -28,6 +28,9 @@ type Storer = ipld.Storer
 // StoreCommitter is an alias from ipld, in case it's renamed/moved.
 type StoreCommitter = ipld.StoreCommitter
 
+// VisitFn is an alias from ipld, in case it's renamed/moved
+type VisitFn = ipldtraversal.VisitFn
+
 // AdvVisitFn is an alias from ipld, in case it's renamed/moved.
 type AdvVisitFn = ipldtraversal.AdvVisitFn
 
@@ -77,10 +80,6 @@ type IPLDBridge interface {
 	// interface
 	BuildNode(func(NodeBuilder) ipld.Node) (ipld.Node, error)
 
-	// BuildSelector provides a mechanism to build selector nodes quickly with
-	// ipld's SelectorSpecBuilder
-	BuildSelector(func(SelectorSpecBuilder) SelectorSpec) (ipld.Node, error)
-
 	// EncodeNode encodes an IPLD Node to bytes for network transfer.
 	EncodeNode(ipld.Node) ([]byte, error)
 
@@ -95,4 +94,7 @@ type IPLDBridge interface {
 	// and the given link loader. The given visit function will be called for each node
 	// visited.
 	Traverse(ctx context.Context, loader Loader, root ipld.Link, s Selector, fn AdvVisitFn) error
+
+	// WalkMatching is a wrapper around direct selector traversal
+	WalkMatching(node ipld.Node, s Selector, fn VisitFn) error
 }

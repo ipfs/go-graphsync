@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -21,6 +23,7 @@ import (
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	mh "github.com/multiformats/go-multihash"
@@ -165,16 +168,12 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	blockChainLength := 100
 	blockChain := setupBlockChain(ctx, t, storer, bridge, 100, blockChainLength)
 
-	spec, err := bridge.BuildSelector(func(ssb ipldbridge.SelectorSpecBuilder) ipldbridge.SelectorSpec {
-		return ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
-			ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
-				efsb.Insert("Parents", ssb.ExploreAll(
-					ssb.ExploreRecursiveEdge()))
-			}))
-	})
-	if err != nil {
-		t.Fatal("Failed creating selector")
-	}
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	spec := ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
+		ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
+			efsb.Insert("Parents", ssb.ExploreAll(
+				ssb.ExploreRecursiveEdge()))
+		})).Node()
 
 	extensionData := testutil.RandomBytes(100)
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
@@ -262,16 +261,12 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 
 	blockChainLength := 100
 	blockChain := setupBlockChain(ctx, t, storer, bridge, 100, blockChainLength)
-	spec, err := bridge.BuildSelector(func(ssb ipldbridge.SelectorSpecBuilder) ipldbridge.SelectorSpec {
-		return ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
-			ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
-				efsb.Insert("Parents", ssb.ExploreAll(
-					ssb.ExploreRecursiveEdge()))
-			}))
-	})
-	if err != nil {
-		t.Fatal("Failed creating selector")
-	}
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	spec := ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
+		ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
+			efsb.Insert("Parents", ssb.ExploreAll(
+				ssb.ExploreRecursiveEdge()))
+		})).Node()
 
 	selectorData, err := bridge.EncodeNode(spec)
 	if err != nil {
@@ -360,16 +355,12 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	// initialize graphsync on second node to response to requests
 	New(ctx, gsnet2, bridge2, loader2, storer2)
 
-	spec, err := bridge1.BuildSelector(func(ssb ipldbridge.SelectorSpecBuilder) ipldbridge.SelectorSpec {
-		return ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
-			ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
-				efsb.Insert("Parents", ssb.ExploreAll(
-					ssb.ExploreRecursiveEdge()))
-			}))
-	})
-	if err != nil {
-		t.Fatal("Failed creating selector")
-	}
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	spec := ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
+		ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
+			efsb.Insert("Parents", ssb.ExploreAll(
+				ssb.ExploreRecursiveEdge()))
+		})).Node()
 
 	progressChan, errChan := requestor.Request(ctx, host2.ID(), blockChain.tipLink, spec)
 
@@ -458,16 +449,12 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 	// initialize graphsync on second node to response to requests
 	New(ctx, gsnet2, bridge2, loader2, storer2)
 
-	spec, err := bridge1.BuildSelector(func(ssb ipldbridge.SelectorSpecBuilder) ipldbridge.SelectorSpec {
-		return ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
-			ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
-				efsb.Insert("Parents", ssb.ExploreAll(
-					ssb.ExploreRecursiveEdge()))
-			}))
-	})
-	if err != nil {
-		t.Fatal("Failed creating selector")
-	}
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	spec := ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
+		ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
+			efsb.Insert("Parents", ssb.ExploreAll(
+				ssb.ExploreRecursiveEdge()))
+		})).Node()
 
 	progressChan, errChan := requestor.Request(ctx, host2.ID(), blockChain.tipLink, spec)
 
