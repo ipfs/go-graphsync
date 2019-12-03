@@ -38,6 +38,10 @@ type responseTaskData struct {
 	request gsmsg.GraphSyncRequest
 }
 
+type requestHook struct {
+	hook graphsync.OnRequestReceivedHook
+}
+
 // QueryQueue is an interface that can receive new selector query tasks
 // and prioritize them as needed, and pop them off later
 type QueryQueue interface {
@@ -70,6 +74,7 @@ type ResponseManager struct {
 	workSignal          chan struct{}
 	ticker              *time.Ticker
 	inProgressResponses map[responseKey]inProgressResponseStatus
+	requestHooks        []requestHook
 }
 
 // New creates a new response manager from the given context, loader,
@@ -105,6 +110,14 @@ func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, reque
 	case rm.messages <- &processRequestMessage{p, requests}:
 	case <-rm.ctx.Done():
 	case <-ctx.Done():
+	}
+}
+
+// RegisterHook registers an extension to process new incoming requests
+func (rm *ResponseManager) RegisterHook(hook graphsync.OnRequestReceivedHook) {
+	select {
+	case rm.messages <- &requestHook{hook}:
+	case <-rm.ctx.Done():
 	}
 }
 
@@ -178,6 +191,26 @@ func noopVisitor(tp ipldbridge.TraversalProgress, n ipld.Node, tr ipldbridge.Tra
 	return nil
 }
 
+type hookActions struct {
+	isValidated        bool
+	requestID          graphsync.RequestID
+	peerResponseSender peerresponsemanager.PeerResponseSender
+	err                error
+}
+
+func (ha *hookActions) SendExtensionData(ext graphsync.ExtensionData) {
+	ha.peerResponseSender.SendExtensionData(ha.requestID, ext)
+}
+
+func (ha *hookActions) TerminateWithError(err error) {
+	ha.err = err
+	ha.peerResponseSender.FinishWithError(ha.requestID, graphsync.RequestFailedUnknown)
+}
+
+func (ha *hookActions) ValidateRequest() {
+	ha.isValidated = true
+}
+
 func (rm *ResponseManager) executeQuery(ctx context.Context,
 	p peer.ID,
 	request gsmsg.GraphSyncRequest) {
@@ -187,17 +220,26 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return
 	}
-	err = selectorvalidator.ValidateSelector(rm.ipldBridge, selectorSpec, maxRecursionDepth)
-	if err != nil {
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return
+	ha := &hookActions{false, request.ID(), peerResponseSender, nil}
+	for _, requestHook := range rm.requestHooks {
+		requestHook.hook(p, request, ha)
+		if ha.err != nil {
+			return
+		}
 	}
-	rootLink := cidlink.Link{Cid: request.Root()}
+	if !ha.isValidated {
+		err = selectorvalidator.ValidateSelector(rm.ipldBridge, selectorSpec, maxRecursionDepth)
+		if err != nil {
+			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
+			return
+		}
+	}
 	selector, err := rm.ipldBridge.ParseSelector(selectorSpec)
 	if err != nil {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return
 	}
+	rootLink := cidlink.Link{Cid: request.Root()}
 	wrappedLoader := loader.WrapLoader(rm.loader, request.ID(), peerResponseSender)
 	err = rm.ipldBridge.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
 	if err != nil {
@@ -263,6 +305,10 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			}
 		}
 	}
+}
+
+func (rh *requestHook) handle(rm *ResponseManager) {
+	rm.requestHooks = append(rm.requestHooks, *rh)
 }
 
 func (rdr *responseDataRequest) handle(rm *ResponseManager) {

@@ -86,6 +86,16 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 	return gs.requestManager.SendRequest(ctx, p, root, selector, extensions...)
 }
 
+// RegisterRequestReceivedHook adds a hook that runs when a request is received
+// If overrideDefaultValidation is set to true, then if the hook does not error,
+// it is considered to have "validated" the request -- and that validation supersedes
+// the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
+func (gs *GraphSync) RegisterRequestReceivedHook(hook graphsync.OnRequestReceivedHook) error {
+	gs.responseManager.RegisterHook(hook)
+	// may be a need to return errors here in the future...
+	return nil
+}
+
 type graphSyncReceiver GraphSync
 
 func (gsr *graphSyncReceiver) graphSync() *GraphSync {

@@ -2,6 +2,7 @@ package responsemanager
 
 import (
 	"context"
+	"errors"
 	"math"
 	"math/rand"
 	"reflect"
@@ -87,9 +88,19 @@ type sentResponse struct {
 	data      []byte
 }
 
+type sentExtension struct {
+	requestID graphsync.RequestID
+	extension graphsync.ExtensionData
+}
+
+type completedRequest struct {
+	requestID graphsync.RequestID
+	result    graphsync.ResponseStatusCode
+}
 type fakePeerResponseSender struct {
 	sentResponses        chan sentResponse
-	lastCompletedRequest chan graphsync.RequestID
+	sentExtensions       chan sentExtension
+	lastCompletedRequest chan completedRequest
 }
 
 func (fprs *fakePeerResponseSender) Startup()  {}
@@ -103,12 +114,19 @@ func (fprs *fakePeerResponseSender) SendResponse(
 	fprs.sentResponses <- sentResponse{requestID, link, data}
 }
 
+func (fprs *fakePeerResponseSender) SendExtensionData(
+	requestID graphsync.RequestID,
+	extension graphsync.ExtensionData,
+) {
+	fprs.sentExtensions <- sentExtension{requestID, extension}
+}
+
 func (fprs *fakePeerResponseSender) FinishRequest(requestID graphsync.RequestID) {
-	fprs.lastCompletedRequest <- requestID
+	fprs.lastCompletedRequest <- completedRequest{requestID, graphsync.RequestCompletedFull}
 }
 
 func (fprs *fakePeerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
-	fprs.lastCompletedRequest <- requestID
+	fprs.lastCompletedRequest <- completedRequest{requestID, status}
 }
 
 func TestIncomingQuery(t *testing.T) {
@@ -118,9 +136,10 @@ func TestIncomingQuery(t *testing.T) {
 	blks := testutil.GenerateBlocksOfSize(5, 20)
 	loader := testbridge.NewMockLoader(blks)
 	ipldBridge := testbridge.NewMockIPLDBridge()
-	requestIDChan := make(chan graphsync.RequestID, 1)
+	requestIDChan := make(chan completedRequest, 1)
 	sentResponses := make(chan sentResponse, len(blks))
-	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses}
+	sentExtensions := make(chan sentExtension, 1)
+	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses, sentExtensions: sentExtensions}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
 	responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
@@ -173,9 +192,10 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	blks := testutil.GenerateBlocksOfSize(5, 20)
 	loader := testbridge.NewMockLoader(blks)
 	ipldBridge := testbridge.NewMockIPLDBridge()
-	requestIDChan := make(chan graphsync.RequestID)
+	requestIDChan := make(chan completedRequest)
 	sentResponses := make(chan sentResponse)
-	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses}
+	sentExtensions := make(chan sentExtension, 1)
+	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses, sentExtensions: sentExtensions}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
 	responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
@@ -260,9 +280,10 @@ func TestEarlyCancellation(t *testing.T) {
 	blks := testutil.GenerateBlocksOfSize(5, 20)
 	loader := testbridge.NewMockLoader(blks)
 	ipldBridge := testbridge.NewMockIPLDBridge()
-	requestIDChan := make(chan graphsync.RequestID)
+	requestIDChan := make(chan completedRequest)
 	sentResponses := make(chan sentResponse)
-	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses}
+	sentExtensions := make(chan sentExtension, 1)
+	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses, sentExtensions: sentExtensions}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
 	queryQueue.popWait.Add(1)
@@ -304,4 +325,167 @@ func TestEarlyCancellation(t *testing.T) {
 	case <-requestIDChan:
 		t.Fatal("should not send have completed response")
 	}
+}
+
+func TestValidationAndExtensions(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
+	defer cancel()
+	blks := testutil.GenerateBlocksOfSize(5, 20)
+	loader := testbridge.NewMockLoader(blks)
+	ipldBridge := testbridge.NewMockIPLDBridge()
+	completedRequestChan := make(chan completedRequest, 1)
+	sentResponses := make(chan sentResponse, 100)
+	sentExtensions := make(chan sentExtension, 1)
+	fprs := &fakePeerResponseSender{lastCompletedRequest: completedRequestChan, sentResponses: sentResponses, sentExtensions: sentExtensions}
+	peerManager := &fakePeerManager{peerResponseSender: fprs}
+	queryQueue := &fakeQueryQueue{}
+
+	cids := make([]cid.Cid, 0, 5)
+	for _, block := range blks {
+		cids = append(cids, block.Cid())
+	}
+
+	extensionData := testutil.RandomBytes(100)
+	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
+	extension := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionData,
+	}
+	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponse := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionResponseData,
+	}
+
+	t.Run("with invalid selector", func(t *testing.T) {
+		selectorSpec := testbridge.NewInvalidSelectorSpec(cids)
+		selector, err := ipldBridge.EncodeNode(selectorSpec)
+		if err != nil {
+			t.Fatal("error encoding selector")
+		}
+		requestID := graphsync.RequestID(rand.Int31())
+		requests := []gsmsg.GraphSyncRequest{
+			gsmsg.NewRequest(requestID, cids[0], selector, graphsync.Priority(math.MaxInt32), extension),
+		}
+		p := testutil.GeneratePeers(1)[0]
+
+		t.Run("on its own, should fail validation", func(t *testing.T) {
+			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager.Startup()
+			responseManager.ProcessRequests(ctx, p, requests)
+			select {
+			case <-ctx.Done():
+				t.Fatal("Should have completed request but didn't")
+			case lastRequest := <-completedRequestChan:
+				if !gsmsg.IsTerminalFailureCode(lastRequest.result) {
+					t.Fatal("Request should have failed but didn't")
+				}
+			}
+		})
+
+		t.Run("if non validating hook succeeds, does not pass validation", func(t *testing.T) {
+			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager.Startup()
+			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+				hookActions.SendExtensionData(extensionResponse)
+			})
+			responseManager.ProcessRequests(ctx, p, requests)
+			select {
+			case <-ctx.Done():
+				t.Fatal("Should have completed request but didn't")
+			case lastRequest := <-completedRequestChan:
+				if !gsmsg.IsTerminalFailureCode(lastRequest.result) {
+					t.Fatal("Request should have succeeded but didn't")
+				}
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal("Should have sent extension response but didn't")
+			case receivedExtension := <-sentExtensions:
+				if !reflect.DeepEqual(receivedExtension.extension, extensionResponse) {
+					t.Fatal("Proper Extension response should have been sent but wasn't")
+				}
+			}
+		})
+
+		t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
+			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager.Startup()
+			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+				hookActions.ValidateRequest()
+				hookActions.SendExtensionData(extensionResponse)
+			})
+			responseManager.ProcessRequests(ctx, p, requests)
+			select {
+			case <-ctx.Done():
+				t.Fatal("Should have completed request but didn't")
+			case lastRequest := <-completedRequestChan:
+				if !gsmsg.IsTerminalSuccessCode(lastRequest.result) {
+					t.Fatal("Request should have succeeded but didn't")
+				}
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal("Should have sent extension response but didn't")
+			case receivedExtension := <-sentExtensions:
+				if !reflect.DeepEqual(receivedExtension.extension, extensionResponse) {
+					t.Fatal("Proper Extension response should have been sent but wasn't")
+				}
+			}
+		})
+	})
+
+	t.Run("with valid selector", func(t *testing.T) {
+		selectorSpec := testbridge.NewMockSelectorSpec(cids)
+		selector, err := ipldBridge.EncodeNode(selectorSpec)
+		if err != nil {
+			t.Fatal("error encoding selector")
+		}
+		requestID := graphsync.RequestID(rand.Int31())
+		requests := []gsmsg.GraphSyncRequest{
+			gsmsg.NewRequest(requestID, cids[0], selector, graphsync.Priority(math.MaxInt32), extension),
+		}
+		p := testutil.GeneratePeers(1)[0]
+
+		t.Run("on its own, should pass validation", func(t *testing.T) {
+			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager.Startup()
+			responseManager.ProcessRequests(ctx, p, requests)
+			select {
+			case <-ctx.Done():
+				t.Fatal("Should have completed request but didn't")
+			case lastRequest := <-completedRequestChan:
+				if !gsmsg.IsTerminalSuccessCode(lastRequest.result) {
+					t.Fatal("Request should have failed but didn't")
+				}
+			}
+		})
+
+		t.Run("if any hook fails, should fail", func(t *testing.T) {
+			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager.Startup()
+			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+				hookActions.SendExtensionData(extensionResponse)
+				hookActions.TerminateWithError(errors.New("everything went to crap"))
+			})
+			responseManager.ProcessRequests(ctx, p, requests)
+			select {
+			case <-ctx.Done():
+				t.Fatal("Should have completed request but didn't")
+			case lastRequest := <-completedRequestChan:
+				if !gsmsg.IsTerminalFailureCode(lastRequest.result) {
+					t.Fatal("Request should have succeeded but didn't")
+				}
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal("Should have sent extension response but didn't")
+			case receivedExtension := <-sentExtensions:
+				if !reflect.DeepEqual(receivedExtension.extension, extensionResponse) {
+					t.Fatal("Proper Extension response should have been sent but wasn't")
+				}
+			}
+		})
+	})
 }
