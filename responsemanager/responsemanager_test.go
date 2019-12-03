@@ -2,7 +2,7 @@ package responsemanager
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"math"
 	"math/rand"
 	"reflect"
@@ -387,8 +387,8 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("if non validating hook succeeds, does not pass validation", func(t *testing.T) {
 			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
 			responseManager.Startup()
-			responseManager.RegisterHook(false, func(p peer.ID, requestData graphsync.RequestData) ([]graphsync.ExtensionData, error) {
-				return []graphsync.ExtensionData{extensionResponse}, nil
+			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+				hookActions.SendExtensionData(extensionResponse)
 			})
 			responseManager.ProcessRequests(ctx, p, requests)
 			select {
@@ -412,8 +412,9 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
 			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
 			responseManager.Startup()
-			responseManager.RegisterHook(true, func(p peer.ID, requestData graphsync.RequestData) ([]graphsync.ExtensionData, error) {
-				return []graphsync.ExtensionData{extensionResponse}, nil
+			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+				hookActions.ValidateRequest()
+				hookActions.SendExtensionData(extensionResponse)
 			})
 			responseManager.ProcessRequests(ctx, p, requests)
 			select {
@@ -464,8 +465,9 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("if any hook fails, should fail", func(t *testing.T) {
 			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
 			responseManager.Startup()
-			responseManager.RegisterHook(false, func(p peer.ID, requestData graphsync.RequestData) ([]graphsync.ExtensionData, error) {
-				return []graphsync.ExtensionData{extensionResponse}, fmt.Errorf("everything went to crap")
+			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+				hookActions.SendExtensionData(extensionResponse)
+				hookActions.TerminateWithError(errors.New("everything went to crap"))
 			})
 			responseManager.ProcessRequests(ctx, p, requests)
 			select {

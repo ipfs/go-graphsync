@@ -90,8 +90,8 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 // If overrideDefaultValidation is set to true, then if the hook does not error,
 // it is considered to have "validated" the request -- and that validation supersedes
 // the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
-func (gs *GraphSync) RegisterRequestReceivedHook(overrideDefaultValidation bool, hook graphsync.OnRequestReceivedHook) error {
-	gs.responseManager.RegisterHook(overrideDefaultValidation, hook)
+func (gs *GraphSync) RegisterRequestReceivedHook(hook graphsync.OnRequestReceivedHook) error {
+	gs.responseManager.RegisterHook(hook)
 	// may be a need to return errors here in the future...
 	return nil
 }

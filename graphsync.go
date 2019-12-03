@@ -115,12 +115,20 @@ type RequestData interface {
 	IsCancel() bool
 }
 
+// RequestReceivedHookActions are actions that a request hook can take to change
+// behavior for the response
+type RequestReceivedHookActions interface {
+	SendExtensionData(ExtensionData)
+	TerminateWithError(error)
+	ValidateRequest()
+}
+
 // OnRequestReceivedHook is a hook that runs each time a request is received.
 // It receives the peer that sent the request and all data about the request.
 // It should return:
 // extensionData - any extension data to add to the outgoing response
 // err - error - if not nil, halt request and return RequestRejected with the responseData
-type OnRequestReceivedHook func(p peer.ID, request RequestData) (extensionData []ExtensionData, err error)
+type OnRequestReceivedHook func(p peer.ID, request RequestData, hookActions RequestReceivedHookActions)
 
 // GraphExchange is a protocol that can exchange IPLD graphs based on a selector
 type GraphExchange interface {
@@ -131,5 +139,5 @@ type GraphExchange interface {
 	// If overrideDefaultValidation is set to true, then if the hook does not error,
 	// it is considered to have "validated" the request -- and that validation supersedes
 	// the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
-	RegisterRequestReceivedHook(overrideDefaultValidation bool, hook OnRequestReceivedHook) error
+	RegisterRequestReceivedHook(hook OnRequestReceivedHook) error
 }

@@ -278,14 +278,14 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	var receivedRequestData []byte
 	// initialize graphsync on second node to response to requests
 	gsnet := New(ctx, gsnet2, bridge, loader, storer)
-	err = gsnet.RegisterRequestReceivedHook(false,
-		func(p peer.ID, requestData graphsync.RequestData) ([]graphsync.ExtensionData, error) {
+	err = gsnet.RegisterRequestReceivedHook(
+		func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 			var has bool
 			receivedRequestData, has = requestData.Extension(extensionName)
 			if !has {
 				t.Fatal("did not have expected extension")
 			}
-			return []graphsync.ExtensionData{extensionResponse}, nil
+			hookActions.SendExtensionData(extensionResponse)
 		},
 	)
 	if err != nil {
