@@ -32,6 +32,10 @@ type inProgressRequestStatus struct {
 	networkError chan error
 }
 
+type responseHook struct {
+	hook graphsync.OnResponseReceivedHook
+}
+
 // PeerHandler is an interface that can send requests to peers
 type PeerHandler interface {
 	SendRequest(p peer.ID, graphSyncRequest gsmsg.GraphSyncRequest)
@@ -61,6 +65,7 @@ type RequestManager struct {
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
 	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
+	responseHooks             []responseHook
 }
 
 type requestManagerMessage interface {
@@ -197,6 +202,15 @@ func (rm *RequestManager) ProcessResponses(p peer.ID, responses []gsmsg.GraphSyn
 	}
 }
 
+// RegisterHook registers an extension to processincoming responses
+func (rm *RequestManager) RegisterHook(
+	hook graphsync.OnResponseReceivedHook) {
+	select {
+	case rm.messages <- &responseHook{hook}:
+	case <-rm.ctx.Done():
+	}
+}
+
 // Startup starts processing for the WantManager.
 func (rm *RequestManager) Startup() {
 	go rm.run()
@@ -266,9 +280,14 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 
 func (prm *processResponseMessage) handle(rm *RequestManager) {
 	filteredResponses := rm.filterResponsesForPeer(prm.responses, prm.p)
+	filteredResponses = rm.processExtensions(filteredResponses, prm.p)
 	responseMetadata := metadataForResponses(filteredResponses, rm.ipldBridge)
 	rm.asyncLoader.ProcessResponse(responseMetadata, prm.blks)
 	rm.processTerminations(filteredResponses)
+}
+
+func (rh *responseHook) handle(rm *RequestManager) {
+	rm.responseHooks = append(rm.responseHooks, *rh)
 }
 
 func (rm *RequestManager) filterResponsesForPeer(responses []gsmsg.GraphSyncResponse, p peer.ID) []gsmsg.GraphSyncResponse {
@@ -281,6 +300,34 @@ func (rm *RequestManager) filterResponsesForPeer(responses []gsmsg.GraphSyncResp
 		responsesForPeer = append(responsesForPeer, response)
 	}
 	return responsesForPeer
+}
+
+func (rm *RequestManager) processExtensions(responses []gsmsg.GraphSyncResponse, p peer.ID) []gsmsg.GraphSyncResponse {
+	remainingResponses := make([]gsmsg.GraphSyncResponse, 0, len(responses))
+	for _, response := range responses {
+		success := rm.processExtensionsForResponse(p, response)
+		if success {
+			remainingResponses = append(remainingResponses, response)
+		}
+	}
+	return remainingResponses
+}
+
+func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg.GraphSyncResponse) bool {
+	for _, responseHook := range rm.responseHooks {
+		err := responseHook.hook(p, response)
+		if err != nil {
+			requestStatus := rm.inProgressRequestStatuses[response.RequestID()]
+			responseError := rm.generateResponseErrorFromStatus(graphsync.RequestFailedUnknown)
+			select {
+			case requestStatus.networkError <- responseError:
+			case <-requestStatus.ctx.Done():
+			}
+			requestStatus.cancelFn()
+			return false
+		}
+	}
+	return true
 }
 
 func (rm *RequestManager) processTerminations(responses []gsmsg.GraphSyncResponse) {

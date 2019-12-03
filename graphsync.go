@@ -2,6 +2,7 @@ package graphsync
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -83,6 +84,11 @@ const (
 	RequestFailedContentNotFound = ResponseStatusCode(34)
 )
 
+var (
+	// ErrExtensionAlreadyRegistered means a user extension can be registered only once
+	ErrExtensionAlreadyRegistered = errors.New("extension already registered")
+)
+
 // ResponseProgress is the fundamental unit of responses making progress in Graphsync.
 type ResponseProgress struct {
 	Node      ipld.Node // a node which matched the graphsync query
@@ -115,6 +121,19 @@ type RequestData interface {
 	IsCancel() bool
 }
 
+// ResponseData describes a received Graphsync response
+type ResponseData interface {
+	// RequestID returns the request ID for this response
+	RequestID() RequestID
+
+	// Status returns the status for a response
+	Status() ResponseStatusCode
+
+	// Extension returns the content for an extension on a response, or errors
+	// if extension is not present
+	Extension(name ExtensionName) ([]byte, bool)
+}
+
 // RequestReceivedHookActions are actions that a request hook can take to change
 // behavior for the response
 type RequestReceivedHookActions interface {
@@ -130,6 +149,11 @@ type RequestReceivedHookActions interface {
 // err - error - if not nil, halt request and return RequestRejected with the responseData
 type OnRequestReceivedHook func(p peer.ID, request RequestData, hookActions RequestReceivedHookActions)
 
+// OnResponseReceivedHook is a hook that runs each time a response is received.
+// It receives the peer that sent the response and all data about the response.
+// If it returns an error processing is halted and the original request is cancelled.
+type OnResponseReceivedHook func(p peer.ID, responseData ResponseData) error
+
 // GraphExchange is a protocol that can exchange IPLD graphs based on a selector
 type GraphExchange interface {
 	// Request initiates a new GraphSync request to the given peer using the given selector spec.
@@ -140,4 +164,7 @@ type GraphExchange interface {
 	// it is considered to have "validated" the request -- and that validation supersedes
 	// the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
 	RegisterRequestReceivedHook(hook OnRequestReceivedHook) error
+
+	// RegisterResponseReceivedHook adds a hook that runs when a response is received
+	RegisterResponseReceivedHook(OnResponseReceivedHook) error
 }
