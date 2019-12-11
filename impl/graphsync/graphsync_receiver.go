@@ -140,13 +140,4 @@ func (receiver *graphsyncReceiver) ReceiveResponse(
 	receiver.impl.notifySubscribers(evt, chst)
 }
 
-func (receiver *graphsyncReceiver) notifySubscribersErr(err error) {
-	evt := datatransfer.Event{
-		Code:      datatransfer.Error,
-		Message:   err.Error(),
-		Timestamp: time.Now(),
-	}
-	receiver.impl.notifySubscribers(evt, datatransfer.ChannelState{})
-}
-
 func (receiver *graphsyncReceiver) ReceiveError(error) {}

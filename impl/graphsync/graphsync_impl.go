@@ -27,7 +27,7 @@ const (
 )
 
 // ExtensionDataTransferData is the extension data for
-// the graphsync extension. TODO: feel free to add to this
+// the graphsync extension.
 type ExtensionDataTransferData struct {
 	TransferID uint64
 	Initiator  peer.ID

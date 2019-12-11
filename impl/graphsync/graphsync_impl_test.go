@@ -167,7 +167,6 @@ func TestDataTransferOneWay(t *testing.T) {
 		require.Equal(t, receivedRequest.VoucherType(), voucher.Type())
 	})
 
-	// TODO: get passing to complete https://github.com/filecoin-project/go-data-transfer/issues/16
 	t.Run("OpenPullDataTransfer", func(t *testing.T) {
 		ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
 

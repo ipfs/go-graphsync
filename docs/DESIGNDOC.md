@@ -1,44 +1,47 @@
-# Go Data Transfer Design Doc
+# Data Transfer Module Design
+
+This module encapsulates protocols for exchanging piece data between storage clients and miners, both when consummating a storage deal and when retrieving the piece later. 
 
 ### Goals
 
-1. File Transfer Module should be nuetral to whether it's on a client or a miner
-2. File Transfer Module should be nuetral to the larger operations being performed (i.e. storage deal, retrieval deal, etc)
-3. File Transfer can be initiated by either the sender or the receiver
-4. The negotiation of the file transfer should be indepedent of the underlying transport protocol
-5. File transfers can happen for either all or part of a piece
+1. Abstraction of the underlying exchange protocols (e.g. bitswap, truck full of disks) from the rest of a Filecoin system.
+2. A common negotiation protocol independent of the underlying data exchange protocol.
+3. A single module that may be linked into both client and provider applications, producing and consuming an RPC-friendly API
+4. Neutral as to the context of the transfer operations being performed (storage deal, retrieval deal, etc).
+5. Data transfer can be initiated by either the sender or the receiver.
+6. Data transfer can happen for either all or part of a piece
 
 ### Concepts
 
-**Push Request** - A request to send data to the other party
+- **Push Request** - A request to send data to the other party
 
-**Pull Request** - A request to have the other party send data
+- **Pull Request** - A request to have the other party send data
 
-**Requestor** - The party that initiates the data transfer request (whether Push or Pull)
+- **Requestor** - The party that initiates the data transfer request (whether Push or Pull)
 
-**Responder** - The party that receives the data transfer request
+- **Responder** - The party that receives the data transfer request
 
-**Data Transfer Voucher** - A wrapper around information that can identify and verify the transfer request to the other party
+- **Data Transfer Voucher** - A wrapper around information that can identify and verify the transfer request to the other party
 
-**PullValidator** - When a pull request is received by a responder, looks at the
+- **PullValidator** - When a pull request is received by a responder, looks at the
 voucher sent with the request to verify if it's valid. Provided by the responder
 
-**PushValidator** - When a push request is received by a responder, looks at the
+- **PushValidator** - When a push request is received by a responder, looks at the
 data transfer voucher with the request to verify if it's valid. Provided by the
 responder
 
-**Scheduler** - Once a request is negotiated and verified, actually schedules and performs the transfer. The scheduler has access to an underlying verifiable protocol
+- **Scheduler** - Once a request is negotiated and verified, actually schedules and performs the transfer. The scheduler has access to an underlying verifiable protocol
 
-**Listener** - A callback that receives notifications when different data transfer events happen
+- **Listener** - A callback that receives notifications when different data transfer events happen
 
-**Graphsync** - The default transfer protocol used by the Scheduler is Graphsync. The full graphsync specification can be found at [https://github.com/ipld/specs/blob/master/block-layer/graphsync/graphsync.md](https://github.com/ipld/specs/blob/master/block-layer/graphsync/graphsync.md)
+- **Graphsync** - The default transfer protocol used by the Scheduler. The full graphsync specification can be found at [https://github.com/ipld/specs/blob/master/block-layer/graphsync/graphsync.md](https://github.com/ipld/specs/blob/master/block-layer/graphsync/graphsync.md)
 
 ### Basic Phases
 
 There are two basic phases to any data transfer:
 
 1. Negotiation - the requestor and responder agree to the transfer by validating with the data transfer voucher
-2. Transfer - The transfer is actually initiated by the party that will actually receive data. The default protocol used to do the transfer is Graphsync
+2. Transfer - The transfer is actually initiated by the party that will receive data. The default protocol used to do the transfer is Graphsync
 
 ### Push Flow
 
@@ -57,7 +60,7 @@ and begins sending data
 8. The responder completes receiving data, and notifies any listeners
 
 The push flow is ideal for storage deals, where the client initiates the push
-once it verifies the the deal is signed and on chain
+once it verifies the the deal is signed and on chain.
 
 ### Pull Flow
 
@@ -78,13 +81,13 @@ and begins sending data
 
 ### Protocol
 
-A data transfer is negotiated over the network via the data transfer protocol
+A data transfer is negotiated over the network via the data transfer protocol.
 
 A Pull request expects a response. The requestor does not initiate the transfer
 until they know the request is accepted.
 
-A Push request does expect a response. If the Responder accepts the request
-they initiate the transfer
+A Push request does expect a response. If the Responder accepts the request,
+they initiate the transfer.
 
 #### Format
 
@@ -274,5 +277,4 @@ type DataTransferStatus union {
 	ChannelNotFoundError
 }
 ```
-
 
