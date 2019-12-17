@@ -9,13 +9,13 @@ This module encapsulates protocols for exchanging piece data between storage cli
 
 
 ## Table of Contents
-* [Background](https://github.com/filecoin-project/go-fil-components#background)
-* [Usage](https://github.com/filecoin-project/go-fil-components#usage)
-    * [Initialize a data transfer module](https://github.com/filecoin-project/go-fil-components#initialize-a-data-transfer-module)
-    * [Register a validator](https://github.com/filecoin-project/go-fil-components#register-a-validator)
-    * [Open a Push or Pull Request](https://github.com/filecoin-project/go-fil-components#open-a-push-or-pull-request)
-    * [Subscribe to Events](https://github.com/filecoin-project/go-fil-components#subscribe-to-events)
-* [Contribute](https://github.com/filecoin-project/go-fil-components#contribute)
+* [Background](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#background)
+* [Usage](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#usage)
+    * [Initialize a data transfer module](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#initialize-a-data-transfer-module)
+    * [Register a validator](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#register-a-validator)
+    * [Open a Push or Pull Request](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#open-a-push-or-pull-request)
+    * [Subscribe to Events](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#subscribe-to-events)
+* [Contribute](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#contribute)
 
 ## Background
 
