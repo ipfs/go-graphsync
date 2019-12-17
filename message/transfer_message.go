@@ -6,6 +6,7 @@ import (
 	"github.com/filecoin-project/go-data-transfer"
 )
 
+//go:generate cbor-gen-for transferMessage
 type transferMessage struct {
 	IsRq bool
 

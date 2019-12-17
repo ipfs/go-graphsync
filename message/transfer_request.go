@@ -7,6 +7,8 @@ import (
 	"github.com/ipfs/go-cid"
 )
 
+//go:generate cbor-gen-for transferRequest
+
 // transferRequest is a struct that fulfills the DataTransferRequest interface.
 // its members are exported to be used by cbor-gen
 type transferRequest struct {

@@ -26,6 +26,8 @@ const (
 	ExtensionDataTransfer = graphsync.ExtensionName("fil/data-transfer")
 )
 
+//go:generate cbor-gen-for ExtensionDataTransferData
+
 // ExtensionDataTransferData is the extension data for
 // the graphsync extension.
 type ExtensionDataTransferData struct {

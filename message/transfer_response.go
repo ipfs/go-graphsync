@@ -6,6 +6,8 @@ import (
 	"github.com/filecoin-project/go-data-transfer"
 )
 
+//go:generate cbor-gen-for transferResponse
+
 // transferResponse is a private struct that satisfies the DataTransferResponse interface
 type transferResponse struct {
 	Acpt   bool
