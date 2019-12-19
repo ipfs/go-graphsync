@@ -1,32 +1,32 @@
-# go-fil-components/datatransfer
+# go-data-transfer
+[![](https://img.shields.io/badge/made%20by-Protocol%20Labs-blue.svg?style=flat-square)](http://ipn.io)
+[![CircleCI](https://circleci.com/gh/filecoin-project/go-data-transfer.svg?style=svg)](https://circleci.com/gh/filecoin-project/go-data-transfer)
+[![codecov](https://codecov.io/gh/filecoin-project/go-data-transfer/branch/master/graph/badge.svg)](https://codecov.io/gh/filecoin-project/go-data-transfer)
 
 A go module to perform data transfers over [ipfs/go-graphsync](https://github.com/ipfs/go-graphsync)
-
-[![](https://img.shields.io/badge/made%20by-Protocol%20Labs-blue.svg?style=flat-square)](http://ipn.io)
 
 ## Description
 This module encapsulates protocols for exchanging piece data between storage clients and miners, both when consummating a storage deal and when retrieving the piece later. 
 
-
 ## Table of Contents
-* [Background](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#background)
-* [Usage](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#usage)
-    * [Initialize a data transfer module](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#initialize-a-data-transfer-module)
-    * [Register a validator](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#register-a-validator)
-    * [Open a Push or Pull Request](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#open-a-push-or-pull-request)
-    * [Subscribe to Events](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#subscribe-to-events)
-* [Contribute](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer#contribute)
+* [Background](https://github.com/filecoin-project/go-data-transfer/tree/master#background)
+* [Usage](https://github.com/filecoin-project/go-data-transfer/tree/master#usage)
+    * [Initialize a data transfer module](https://github.com/filecoin-project/go-data-transfer/tree/master#initialize-a-data-transfer-module)
+    * [Register a validator](https://github.com/filecoin-project/go-data-transfer/tree/master#register-a-validator)
+    * [Open a Push or Pull Request](https://github.com/filecoin-project/go-data-transfer/tree/master#open-a-push-or-pull-request)
+    * [Subscribe to Events](https://github.com/filecoin-project/go-data-transfer/tree/master#subscribe-to-events)
+* [Contribute](https://github.com/filecoin-project/go-data-transfer/tree/master#contribute)
 
 ## Background
 
-Please see the [design documentation](https://github.com/filecoin-project/go-fil-components/tree/master/datatransfer/docs/DESIGNDOC)
+Please see the [design documentation](https://github.com/filecoin-project/go-data-transfer/tree/master/docs/DESIGNDOC)
 for this module for a high-level overview and and explanation of the terms and concepts.
 
 ## Usage
 
 **Requires go 1.13**
 
-Install the module in your package or app with `go get "github.com/filecoin-project/go-fil-components/datatransfer"`
+Install the module in your package or app with `go get "github.com/filecoin-project/go-data-transfer/datatransfer"`
 
 
 ### Initialize a data transfer module
@@ -36,7 +36,7 @@ Install the module in your package or app with `go get "github.com/filecoin-proj
 
     import (
         gsimpl "github.com/ipfs/go-graphsync/impl"
-        "github.com/filecoin-project/go-fil-components/datatransfer"
+        "github.com/filecoin-project/go-data-transfer/datatransfer"
         "github.com/libp2p/go-libp2p-core/host"
     )
             
@@ -55,8 +55,8 @@ Install the module in your package or app with `go get "github.com/filecoin-proj
     A push or pull request must include a voucher. The voucher's type must have been registered with 
     the node receiving the request before it's sent, otherwise the request will be rejected.  
 
-    [datatransfer.Voucher](https://github.com/filecoin-project/go-fil-components/blob/21dd66ba370176224114b13030ee68cb785fadb2/datatransfer/types.go#L17)
-    and [datatransfer.Validator](https://github.com/filecoin-project/go-fil-components/blob/21dd66ba370176224114b13030ee68cb785fadb2/datatransfer/types.go#L153)
+    [datatransfer.Voucher](https://github.com/filecoin-project/go-data-transfer/blob/21dd66ba370176224114b13030ee68cb785fadb2/datatransfer/types.go#L17)
+    and [datatransfer.Validator](https://github.com/filecoin-project/go-data-transfer/blob/21dd66ba370176224114b13030ee68cb785fadb2/datatransfer/types.go#L153)
     are the interfaces used for validation of graphsync datatransfer messages.  Voucher types plus a Validator for them must be registered
     with the peer to whom requests will be sent.  
 
@@ -116,7 +116,7 @@ func (vl *myValidator) ValidatePull(
 
 
 Please see 
-[go-fil-components/blob/master/datatransfer/types.go](https://github.com/filecoin-project/go-fil-components/blob/master/datatransfer/types.go) 
+[go-data-transfer/blob/master/types.go](https://github.com/filecoin-project/go-data-transfer/blob/master/types.go) 
 for more detail.
 
 
@@ -134,7 +134,7 @@ must be sent with the request.  Using the trivial examples above:
     }
 ```
     
-For more detail, please see the [unit tests](https://github.com/filecoin-project/go-fil-components/blob/master/datatransfer/impl/graphsync/graphsync_impl_test.go).
+For more detail, please see the [unit tests](https://github.com/filecoin-project/go-data-transfer/blob/master/impl/graphsync/graphsync_impl_test.go).
 
 ### Open a Push or Pull Request
 For a push or pull request, provide a context, a `datatransfer.Voucher`, a host recipient `peer.ID`, a baseCID `cid.CID` and a selector `ipld.Node`.  These
@@ -172,6 +172,9 @@ The module allows the consumer to be notified when a graphsync Request is sent o
 ## Contributing
 PRs are welcome!  Please first read the design docs and look over the current code.  PRs against 
 master require approval of at least two maintainers.  For the rest, please see our 
-[CONTRIBUTING](https://github.com/filecoin-project/go-fil-components/CONTRIBUTING.md) guide.
+[CONTRIBUTING](https://github.com/filecoin-project/go-data-transfer/CONTRIBUTING.md) guide.
+
+## License
+This repository is dual-licensed under Apache 2.0 and MIT terms.
 
 Copyright 2019. Protocol Labs, Inc.
