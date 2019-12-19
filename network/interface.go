@@ -6,7 +6,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 
-	"github.com/filecoin-project/lotus/datatransfer/message"
+	"github.com/filecoin-project/go-data-transfer/message"
 )
 
 var (

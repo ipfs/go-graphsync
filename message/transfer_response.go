@@ -3,7 +3,7 @@ package message
 import (
 	"io"
 
-	"github.com/filecoin-project/lotus/datatransfer"
+	"github.com/filecoin-project/go-data-transfer"
 )
 
 // transferResponse is a private struct that satisfies the DataTransferResponse interface

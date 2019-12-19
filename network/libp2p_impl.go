@@ -12,7 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 
-	"github.com/filecoin-project/lotus/datatransfer/message"
+	"github.com/filecoin-project/go-data-transfer/message"
 )
 
 var log = logging.Logger("data_transfer_network")

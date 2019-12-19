@@ -16,9 +16,9 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 
-	"github.com/filecoin-project/lotus/datatransfer"
-	"github.com/filecoin-project/lotus/datatransfer/message"
-	"github.com/filecoin-project/lotus/datatransfer/network"
+	"github.com/filecoin-project/go-data-transfer"
+	"github.com/filecoin-project/go-data-transfer/message"
+	"github.com/filecoin-project/go-data-transfer/network"
 )
 
 const (

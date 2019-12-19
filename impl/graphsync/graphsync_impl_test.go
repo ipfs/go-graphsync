@@ -44,11 +44,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/filecoin-project/lotus/datatransfer"
-	. "github.com/filecoin-project/lotus/datatransfer/impl/graphsync"
-	"github.com/filecoin-project/lotus/datatransfer/message"
-	"github.com/filecoin-project/lotus/datatransfer/network"
-	"github.com/filecoin-project/lotus/datatransfer/testutil"
+	"github.com/filecoin-project/go-data-transfer"
+	. "github.com/filecoin-project/go-data-transfer/impl/graphsync"
+	"github.com/filecoin-project/go-data-transfer/message"
+	"github.com/filecoin-project/go-data-transfer/network"
+	"github.com/filecoin-project/go-data-transfer/testutil"
 )
 
 type receivedMessage struct {

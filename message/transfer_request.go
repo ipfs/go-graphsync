@@ -3,7 +3,7 @@ package message
 import (
 	"io"
 
-	"github.com/filecoin-project/lotus/datatransfer"
+	"github.com/filecoin-project/go-data-transfer"
 	"github.com/ipfs/go-cid"
 )
 

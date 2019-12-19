@@ -12,7 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"golang.org/x/xerrors"
 
-	"github.com/filecoin-project/lotus/datatransfer"
+	"github.com/filecoin-project/go-data-transfer"
 )
 
 // This file implements a VERY simple, incomplete version of the data transfer

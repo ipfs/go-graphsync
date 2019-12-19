@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/filecoin-project/lotus/datatransfer"
+	"github.com/filecoin-project/go-data-transfer"
 )
 
 func TestGraphsyncImpl_SubscribeToEvents(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"github.com/ipfs/go-cid"
 	cborgen "github.com/whyrusleeping/cbor-gen"
 
-	"github.com/filecoin-project/lotus/datatransfer"
+	"github.com/filecoin-project/go-data-transfer"
 )
 
 // Reference file: https://github.com/ipfs/go-graphsync/blob/master/message/message.go
