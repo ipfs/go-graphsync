@@ -42,7 +42,7 @@ import (
   graphsync "github.com/ipfs/go-graphsync/impl"
   gsnet "github.com/ipfs/go-graphsync/network"
   gsbridge "github.com/ipfs/go-graphsync/ipldbridge"
-  ipld "github.com/ipfs/go-ipld-prime"
+  ipld "github.com/ipld/go-ipld-prime"
 )
 
 var ctx context.Context
@@ -63,6 +63,34 @@ of libp2p. This allows graphsync to be tested without the actual network
 3. `ipldBridge` is an IPLD abstraction provided to Graphsync on top of  go-ipld-prime. This makes the graphsync library testable in isolation
 4. `loader` is used to load blocks from content ids from the local block store. It's used when RESPONDING to requests from other clients. It should conform to the IPLD loader interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
 5. `storer` is used to store incoming blocks to the local block store. It's used when REQUESTING a graphsync query, to store blocks locally once they are validated as part of the correct response. It should conform to the IPLD storer interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
+
+### Using GraphSync With An IPFS BlockStore
+
+GraphSync provides two convenience functions in the `storeutil` package for
+integrating with BlockStore's from IPFS.
+
+```golang
+import (
+  graphsync "github.com/ipfs/go-graphsync/impl"
+  gsnet "github.com/ipfs/go-graphsync/network"
+  gsbridge "github.com/ipfs/go-graphsync/ipldbridge"
+  gsbridge "github.com/ipfs/go-graphsync/storeutil"
+  ipld "github.com/ipld/go-ipld-prime"
+  blockstore "github.com/ipfs/go-ipfs-blockstore"
+)
+
+var ctx context.Context
+var host libp2p.Host
+var bs blockstore.Blockstore
+var storer ipld.Storer
+
+network := gsnet.NewFromLibp2pHost(host)
+ipldBridge := gsbridge.NewIPLDBridge()
+loader := storeutil.LoaderForBlockstore(bs)
+storer := storeutil.StorerForBlockstore(bs)
+
+exchange := graphsync.New(ctx, network, ipldBridge, loader, storer)
+```
 
 ### Write A Loader An IPFS BlockStore
 
