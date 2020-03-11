@@ -45,9 +45,10 @@ type requestHook struct {
 // QueryQueue is an interface that can receive new selector query tasks
 // and prioritize them as needed, and pop them off later
 type QueryQueue interface {
-	PushBlock(to peer.ID, tasks ...peertask.Task)
-	PopBlock() *peertask.TaskBlock
-	Remove(identifier peertask.Identifier, p peer.ID)
+	PushTasks(to peer.ID, tasks ...peertask.Task)
+	PopTasks(targetMinWork int) (peer.ID, []*peertask.Task, int)
+	Remove(topic peertask.Topic, p peer.ID)
+	TasksDone(to peer.ID, tasks ...*peertask.Task)
 	ThawRound()
 }
 
@@ -148,23 +149,24 @@ type finishResponseRequest struct {
 }
 
 func (rm *ResponseManager) processQueriesWorker() {
+	const targetWork = 1
 	taskDataChan := make(chan *responseTaskData)
 	var taskData *responseTaskData
 	for {
-		nextTaskBlock := rm.queryQueue.PopBlock()
-		for nextTaskBlock == nil {
+		pid, tasks, _ := rm.queryQueue.PopTasks(targetWork)
+		for len(tasks) == 0 {
 			select {
 			case <-rm.ctx.Done():
 				return
 			case <-rm.workSignal:
-				nextTaskBlock = rm.queryQueue.PopBlock()
+				pid, tasks, _ = rm.queryQueue.PopTasks(targetWork)
 			case <-rm.ticker.C:
 				rm.queryQueue.ThawRound()
-				nextTaskBlock = rm.queryQueue.PopBlock()
+				pid, tasks, _ = rm.queryQueue.PopTasks(targetWork)
 			}
 		}
-		for _, task := range nextTaskBlock.Tasks {
-			key := task.Identifier.(responseKey)
+		for _, task := range tasks {
+			key := task.Topic.(responseKey)
 			select {
 			case rm.messages <- &responseDataRequest{key, taskDataChan}:
 			case <-rm.ctx.Done():
@@ -181,7 +183,7 @@ func (rm *ResponseManager) processQueriesWorker() {
 			case <-rm.ctx.Done():
 			}
 		}
-		nextTaskBlock.Done(nextTaskBlock.Tasks)
+		rm.queryQueue.TasksDone(pid, tasks...)
 
 	}
 
@@ -292,7 +294,8 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 					cancelFn: cancelFn,
 					request:  request,
 				}
-			rm.queryQueue.PushBlock(prm.p, peertask.Task{Identifier: key, Priority: int(request.Priority())})
+			// TODO: Use a better work estimation metric.
+			rm.queryQueue.PushTasks(prm.p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
 			select {
 			case rm.workSignal <- struct{}{}:
 			default:
