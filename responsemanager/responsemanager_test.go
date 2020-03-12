@@ -25,47 +25,45 @@ import (
 type fakeQueryQueue struct {
 	popWait   sync.WaitGroup
 	queriesLk sync.RWMutex
-	queries   []*peertask.TaskBlock
+	queries   []*peertask.QueueTask
 }
 
-func (fqq *fakeQueryQueue) PushBlock(to peer.ID, tasks ...peertask.Task) {
+func (fqq *fakeQueryQueue) PushTasks(to peer.ID, tasks ...peertask.Task) {
 	fqq.queriesLk.Lock()
-	fqq.queries = append(fqq.queries, &peertask.TaskBlock{
-		Tasks:    tasks,
-		Priority: tasks[0].Priority,
-		Target:   to,
-		Done:     func([]peertask.Task) {},
-	})
+
+	// This isn't quite right as the queue should deduplicate requests, but
+	// it's good enough.
+	for _, task := range tasks {
+		fqq.queries = append(fqq.queries, peertask.NewQueueTask(task, to, time.Now()))
+	}
 	fqq.queriesLk.Unlock()
 }
 
-func (fqq *fakeQueryQueue) PopBlock() *peertask.TaskBlock {
+func (fqq *fakeQueryQueue) PopTasks(targetWork int) (peer.ID, []*peertask.Task, int) {
 	fqq.popWait.Wait()
 	fqq.queriesLk.Lock()
 	defer fqq.queriesLk.Unlock()
 	if len(fqq.queries) == 0 {
-		return nil
+		return "", nil, -1
 	}
-	block := fqq.queries[0]
+	// We're not bothering to implement "work"
+	task := fqq.queries[0]
 	fqq.queries = fqq.queries[1:]
-	return block
+	return task.Target, []*peertask.Task{&task.Task}, 0
 }
 
-func (fqq *fakeQueryQueue) Remove(identifier peertask.Identifier, p peer.ID) {
+func (fqq *fakeQueryQueue) Remove(topic peertask.Topic, p peer.ID) {
 	fqq.queriesLk.Lock()
 	defer fqq.queriesLk.Unlock()
 	for i, query := range fqq.queries {
-		if query.Target == p {
-			for j, task := range query.Tasks {
-				if task.Identifier == identifier {
-					query.Tasks = append(query.Tasks[:j], query.Tasks[j+1:]...)
-				}
-			}
-			if len(query.Tasks) == 0 {
-				fqq.queries = append(fqq.queries[:i], fqq.queries[i+1:]...)
-			}
+		if query.Target == p && query.Topic == topic {
+			fqq.queries = append(fqq.queries[:i], fqq.queries[i+1:]...)
 		}
 	}
+}
+
+func (fqq *fakeQueryQueue) TasksDone(to peer.ID, tasks ...*peertask.Task) {
+	// We don't track active tasks so this is a no-op
 }
 
 func (fqq *fakeQueryQueue) ThawRound() {
