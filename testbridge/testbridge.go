@@ -10,9 +10,12 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ipldbridge "github.com/ipfs/go-graphsync/ipldbridge"
 	ipld "github.com/ipld/go-ipld-prime"
+	dagpb "github.com/ipld/go-ipld-prime-proto"
 	"github.com/ipld/go-ipld-prime/encoding/dagjson"
 	free "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	multihash "github.com/multiformats/go-multihash"
 )
 
@@ -56,16 +59,36 @@ func (mb *mockIPLDBridge) DecodeNode(data []byte) (ipld.Node, error) {
 
 func (mb *mockIPLDBridge) ParseSelector(selectorSpec ipld.Node) (ipldbridge.Selector, error) {
 	spec, ok := selectorSpec.(*mockSelectorSpec)
-	if !ok || spec.FalseParse {
+	if !ok {
+		return selector.ParseSelector(selectorSpec)
+	}
+	if spec.FalseParse {
 		return nil, fmt.Errorf("not a selector")
 	}
 	return newMockSelector(spec), nil
 }
 
+var (
+	defaultChooser traversal.NodeBuilderChooser = dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) ipld.NodeBuilder {
+		return free.NodeBuilder()
+	})
+)
+
 func (mb *mockIPLDBridge) Traverse(ctx context.Context, loader ipldbridge.Loader, root ipld.Link, s ipldbridge.Selector, fn ipldbridge.AdvVisitFn) error {
 	ms, ok := s.(*mockSelector)
 	if !ok {
-		return fmt.Errorf("not supported")
+		builder := defaultChooser(root, ipld.LinkContext{})
+		node, err := root.Load(ctx, ipld.LinkContext{}, builder, loader)
+		if err != nil {
+			return err
+		}
+		return traversal.Progress{
+			Cfg: &traversal.Config{
+				Ctx:                    ctx,
+				LinkLoader:             loader,
+				LinkNodeBuilderChooser: defaultChooser,
+			},
+		}.WalkAdv(node, s, fn)
 	}
 	for _, lnk := range ms.cidsVisited {
 

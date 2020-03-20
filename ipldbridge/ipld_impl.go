@@ -49,7 +49,7 @@ func (rb *ipldBridge) WalkMatching(node ipld.Node, s Selector, fn VisitFn) error
 	return ipldtraversal.WalkMatching(node, s, fn)
 }
 
-func (rb *ipldBridge) EncodeNode(node ipld.Node) ([]byte, error) {
+func EncodeNode(node ipld.Node) ([]byte, error) {
 	var buffer bytes.Buffer
 	err := dagcbor.Encoder(node, &buffer)
 	if err != nil {
@@ -58,7 +58,7 @@ func (rb *ipldBridge) EncodeNode(node ipld.Node) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-func (rb *ipldBridge) DecodeNode(encoded []byte) (ipld.Node, error) {
+func DecodeNode(encoded []byte) (ipld.Node, error) {
 	reader := bytes.NewReader(encoded)
 	return dagcbor.Decoder(free.NodeBuilder(), reader)
 }

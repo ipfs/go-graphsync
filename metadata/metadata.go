@@ -19,8 +19,8 @@ type Metadata []Item
 
 // DecodeMetadata assembles metadata from a raw byte array, first deserializing
 // as a node and then assembling into a metadata struct.
-func DecodeMetadata(data []byte, ipldBridge ipldbridge.IPLDBridge) (Metadata, error) {
-	node, err := ipldBridge.DecodeNode(data)
+func DecodeMetadata(data []byte) (Metadata, error) {
+	node, err := ipldbridge.DecodeNode(data)
 	if err != nil {
 		return nil, err
 	}
@@ -48,14 +48,14 @@ func DecodeMetadata(data []byte, ipldBridge ipldbridge.IPLDBridge) (Metadata, er
 }
 
 // EncodeMetadata encodes metadata to an IPLD node then serializes to raw bytes
-func EncodeMetadata(entries Metadata, ipldBridge ipldbridge.IPLDBridge) ([]byte, error) {
+func EncodeMetadata(entries Metadata) ([]byte, error) {
 	var node ipld.Node
 	err := fluent.Recover(func() {
 		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
-		node = nb.CreateList(func(lb ipldbridge.ListBuilder, nb ipldbridge.NodeBuilder) {
+		node = nb.CreateList(func(lb fluent.ListBuilder, nb fluent.NodeBuilder) {
 			for _, item := range entries {
 				lb.Append(
-					nb.CreateMap(func(mb ipldbridge.MapBuilder, knb ipldbridge.NodeBuilder, vnb ipldbridge.NodeBuilder) {
+					nb.CreateMap(func(mb fluent.MapBuilder, knb fluent.NodeBuilder, vnb fluent.NodeBuilder) {
 						mb.Insert(knb.CreateString("link"), vnb.CreateLink(item.Link))
 						mb.Insert(knb.CreateString("blockPresent"), vnb.CreateBool(item.BlockPresent))
 					}),
@@ -66,5 +66,5 @@ func EncodeMetadata(entries Metadata, ipldBridge ipldbridge.IPLDBridge) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	return ipldBridge.EncodeNode(node)
+	return ipldbridge.EncodeNode(node)
 }

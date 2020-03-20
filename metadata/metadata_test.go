@@ -5,9 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ipfs/go-graphsync/testbridge"
-
-	"github.com/ipld/go-ipld-prime/linking/cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -20,12 +18,11 @@ func TestDecodeEncodeMetadata(t *testing.T) {
 		blockPresent := rand.Int31()%2 == 0
 		initialMetadata = append(initialMetadata, Item{link, blockPresent})
 	}
-	bridge := testbridge.NewMockIPLDBridge()
-	encoded, err := EncodeMetadata(initialMetadata, bridge)
+	encoded, err := EncodeMetadata(initialMetadata)
 	if err != nil {
 		t.Fatal("Error encoding")
 	}
-	decodedMetadata, err := DecodeMetadata(encoded, bridge)
+	decodedMetadata, err := DecodeMetadata(encoded)
 	if err != nil {
 		t.Fatal("Error decoding")
 	}

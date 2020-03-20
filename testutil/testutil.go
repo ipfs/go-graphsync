@@ -9,6 +9,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
+	util "github.com/ipfs/go-ipfs-util"
 	random "github.com/jbenet/go-random"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
@@ -29,7 +30,10 @@ func RandomBytes(n int64) []byte {
 func GenerateBlocksOfSize(n int, size int64) []blocks.Block {
 	generatedBlocks := make([]blocks.Block, 0, n)
 	for i := 0; i < n; i++ {
-		b := blocks.NewBlock(RandomBytes(size))
+		data := RandomBytes(size)
+		mhash := util.Hash(data)
+		c := cid.NewCidV1(cid.Raw, mhash)
+		b, _ := blocks.NewBlockWithCid(data, c)
 		generatedBlocks = append(generatedBlocks, b)
 
 	}

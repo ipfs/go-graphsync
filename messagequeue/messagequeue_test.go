@@ -11,10 +11,11 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
-
+	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -68,7 +69,8 @@ func TestStartupAndShutdown(t *testing.T) {
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
 	waitGroup.Add(1)
@@ -112,7 +114,8 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
 	// setup a message and advance as far as beginning to send it
@@ -238,7 +241,8 @@ func TestDedupingMessages(t *testing.T) {
 	waitGroup.Add(1)
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
 	messageQueue.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
@@ -246,11 +250,11 @@ func TestDedupingMessages(t *testing.T) {
 	waitGroup.Wait()
 	id2 := graphsync.RequestID(rand.Int31())
 	priority2 := graphsync.Priority(rand.Int31())
-	selector2 := testutil.RandomBytes(100)
+	selector2 := ssb.ExploreAll(ssb.Matcher()).Node()
 	root2 := testutil.GenerateCids(1)[0]
 	id3 := graphsync.RequestID(rand.Int31())
 	priority3 := graphsync.Priority(rand.Int31())
-	selector3 := testutil.RandomBytes(100)
+	selector3 := ssb.ExploreIndex(0, ssb.Matcher()).Node()
 	root3 := testutil.GenerateCids(1)[0]
 
 	messageQueue.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))

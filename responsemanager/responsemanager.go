@@ -66,7 +66,7 @@ type responseManagerMessage interface {
 type ResponseManager struct {
 	ctx         context.Context
 	cancelFn    context.CancelFunc
-	loader      ipldbridge.Loader
+	loader      ipld.Loader
 	ipldBridge  ipldbridge.IPLDBridge
 	peerManager PeerManager
 	queryQueue  QueryQueue
@@ -217,11 +217,7 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 	p peer.ID,
 	request gsmsg.GraphSyncRequest) {
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
-	selectorSpec, err := rm.ipldBridge.DecodeNode(request.Selector())
-	if err != nil {
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return
-	}
+	selectorSpec := request.Selector()
 	ha := &hookActions{false, request.ID(), peerResponseSender, nil}
 	for _, requestHook := range rm.requestHooks {
 		requestHook.hook(p, request, ha)
@@ -230,7 +226,7 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 		}
 	}
 	if !ha.isValidated {
-		err = selectorvalidator.ValidateSelector(rm.ipldBridge, selectorSpec, maxRecursionDepth)
+		err := selectorvalidator.ValidateSelector(selectorSpec, maxRecursionDepth)
 		if err != nil {
 			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 			return

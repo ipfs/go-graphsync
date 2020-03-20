@@ -54,7 +54,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	requestManager := requestmanager.New(ctx, asyncLoader, ipldBridge)
 	peerTaskQueue := peertaskqueue.New()
 	createdResponseQueue := func(ctx context.Context, p peer.ID) peerresponsemanager.PeerResponseSender {
-		return peerresponsemanager.NewResponseSender(ctx, p, peerManager, ipldBridge)
+		return peerresponsemanager.NewResponseSender(ctx, p, peerManager)
 	}
 	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
 	responseManager := responsemanager.New(ctx, loader, ipldBridge, peerResponseManager, peerTaskQueue)

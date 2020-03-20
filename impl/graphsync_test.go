@@ -89,14 +89,11 @@ func TestMakeRequestToNetwork(t *testing.T) {
 		t.Fatal("Did not add request to received message")
 	}
 	receivedRequest := receivedRequests[0]
-	receivedSpec, err := td.bridge.DecodeNode(receivedRequest.Selector())
-	if err != nil {
-		t.Fatal("unable to decode transmitted selector")
-	}
+	receivedSpec := receivedRequest.Selector()
 	if !reflect.DeepEqual(spec, receivedSpec) {
 		t.Fatal("did not transmit selector spec correctly")
 	}
-	_, err = td.bridge.ParseSelector(receivedSpec)
+	_, err := td.bridge.ParseSelector(receivedSpec)
 	if err != nil {
 		t.Fatal("did not receive parsible selector on other side")
 	}
@@ -140,14 +137,10 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 
 	spec := blockChainSelector(blockChainLength)
 
-	selectorData, err := td.bridge.EncodeNode(spec)
-	if err != nil {
-		t.Fatal("could not encode selector spec")
-	}
 	requestID := graphsync.RequestID(rand.Int31())
 
 	message := gsmsg.New()
-	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.tipLink.(cidlink.Link).Cid, selectorData, graphsync.Priority(math.MaxInt32), td.extension))
+	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.tipLink.(cidlink.Link).Cid, spec, graphsync.Priority(math.MaxInt32), td.extension))
 	// send request across network
 	td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
 	// read the values sent back to requestor

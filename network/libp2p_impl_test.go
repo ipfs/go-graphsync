@@ -10,6 +10,8 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
+	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 )
@@ -73,7 +75,8 @@ func TestMessageSendAndReceive(t *testing.T) {
 	gsnet2.SetDelegate(r)
 
 	root := testutil.GenerateCids(1)[0]
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	selector := ssb.Matcher().Node()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,

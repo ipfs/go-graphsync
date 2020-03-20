@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"reflect"
 	"testing"
 
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -60,31 +59,6 @@ func TestSelectorTraversal(t *testing.T) {
 	}
 }
 
-func TestEncodeParseSelector(t *testing.T) {
-	cids := testutil.GenerateCids(5)
-	spec := NewMockSelectorSpec(cids)
-	bridge := NewMockIPLDBridge()
-	data, err := bridge.EncodeNode(spec)
-	fmt.Println(string(data))
-	if err != nil {
-		t.Fatal("error encoding selector spec")
-	}
-	node, err := bridge.DecodeNode(data)
-	if err != nil {
-		t.Fatal("error decoding data")
-	}
-	returnedSpec, ok := node.(*mockSelectorSpec)
-	if !ok {
-		t.Fatal("did not decode a selector")
-	}
-	if len(returnedSpec.CidsVisited) != 5 {
-		t.Fatal("did not decode enough cids")
-	}
-	if !reflect.DeepEqual(cids, returnedSpec.CidsVisited) {
-		t.Fatal("did not decode correct cids")
-	}
-}
-
 func TestFailParseSelectorSpec(t *testing.T) {
 	cids := testutil.GenerateCids(5)
 	spec := NewUnparsableSelectorSpec(cids)
@@ -98,8 +72,7 @@ func TestFailParseSelectorSpec(t *testing.T) {
 func TestFailEncodingSelectorSpec(t *testing.T) {
 	cids := testutil.GenerateCids(5)
 	spec := NewUnencodableSelectorSpec(cids)
-	bridge := NewMockIPLDBridge()
-	_, err := bridge.EncodeNode(spec)
+	_, err := ipldbridge.EncodeNode(spec)
 	if err == nil {
 		t.Fatal("Spec should not be encodable")
 	}

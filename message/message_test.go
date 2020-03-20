@@ -8,8 +8,11 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
+	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync/ipldbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -20,7 +23,8 @@ func TestAppendingRequests(t *testing.T) {
 		Data: testutil.RandomBytes(100),
 	}
 	root := testutil.GenerateCids(1)[0]
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	selector := ssb.Matcher().Node()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
 
@@ -42,13 +46,20 @@ func TestAppendingRequests(t *testing.T) {
 		t.Fatal("Did not properly add request to message")
 	}
 
-	pbMessage := gsm.ToProto()
+	pbMessage, err := gsm.ToProto()
+	if err != nil {
+		t.Fatal("Did not serialize to protobuf correctly")
+	}
+	selectorEncoded, err := ipldbridge.EncodeNode(selector)
+	if err != nil {
+		t.Fatal("selector did not encode")
+	}
 	pbRequest := pbMessage.Requests[0]
 	if pbRequest.Id != int32(id) ||
 		pbRequest.Priority != int32(priority) ||
 		pbRequest.Cancel != false ||
 		!reflect.DeepEqual(pbRequest.Root, root.Bytes()) ||
-		!reflect.DeepEqual(pbRequest.Selector, selector) ||
+		!reflect.DeepEqual(pbRequest.Selector, selectorEncoded) ||
 		!reflect.DeepEqual(pbRequest.Extensions, map[string][]byte{"graphsync/awesome": extension.Data}) {
 		t.Fatal("Did not properly serialize message to protobuf")
 	}
@@ -98,7 +109,10 @@ func TestAppendingResponses(t *testing.T) {
 		t.Fatal("Did not properly add response to message")
 	}
 
-	pbMessage := gsm.ToProto()
+	pbMessage, err := gsm.ToProto()
+	if err != nil {
+		t.Fatal("Did not serialize to protobuf correctly")
+	}
 	pbResponse := pbMessage.Responses[0]
 	if pbResponse.Id != int32(requestID) ||
 		pbResponse.Status != int32(status) ||
@@ -136,8 +150,13 @@ func TestAppendBlock(t *testing.T) {
 		m.AddBlock(block)
 	}
 
+	pbMessage, err := m.ToProto()
+	if err != nil {
+		t.Fatal("Did not serialize to protobuf correctly")
+	}
+
 	// assert strings are in proto message
-	for _, block := range m.ToProto().GetData() {
+	for _, block := range pbMessage.GetData() {
 		s := bytes.NewBuffer(block.GetData()).String()
 		if !contains(strs, s) {
 			t.Fail()
@@ -155,7 +174,8 @@ func contains(strs []string, x string) bool {
 }
 
 func TestRequestCancel(t *testing.T) {
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	selector := ssb.Matcher().Node()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
 	root := testutil.GenerateCids(1)[0]
@@ -178,7 +198,8 @@ func TestRequestCancel(t *testing.T) {
 
 func TestToNetFromNetEquivalency(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	selector := ssb.Matcher().Node()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,

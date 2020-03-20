@@ -5,6 +5,9 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipld/go-ipld-prime"
+	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 )
 
 type mockSelectorSpec struct {
@@ -23,21 +26,25 @@ func NewMockSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
 // NewUnparsableSelectorSpec returns a spec that will fail when you attempt to
 // validate it or decompose to a node + selector.
 func NewUnparsableSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
-	return &mockSelectorSpec{cidsVisited, true, false, false}
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	return ssb.ExploreRecursiveEdge().Node()
 }
 
 // NewInvalidSelectorSpec returns a spec that will fail when you attempt to
-// encode it.
-func NewInvalidSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
-	return &mockSelectorSpec{cidsVisited, false, false, true}
+// validate it on the responder side
+func NewInvalidSelectorSpec() ipld.Node {
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	return ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
 }
 
 // NewUnencodableSelectorSpec returns a spec that will fail when you attempt to
 // encode it.
 func NewUnencodableSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
-	return &mockSelectorSpec{cidsVisited, false, true, false}
+	return &ipldfree.Node{}
 }
+
 func (mss *mockSelectorSpec) ReprKind() ipld.ReprKind { return ipld.ReprKind_Null }
+
 func (mss *mockSelectorSpec) Lookup(key ipld.Node) (ipld.Node, error) {
 	return nil, fmt.Errorf("404")
 }

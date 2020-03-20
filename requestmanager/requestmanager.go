@@ -15,6 +15,7 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -281,7 +282,7 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 func (prm *processResponseMessage) handle(rm *RequestManager) {
 	filteredResponses := rm.filterResponsesForPeer(prm.responses, prm.p)
 	filteredResponses = rm.processExtensions(filteredResponses, prm.p)
-	responseMetadata := metadataForResponses(filteredResponses, rm.ipldBridge)
+	responseMetadata := metadataForResponses(filteredResponses)
 	rm.asyncLoader.ProcessResponse(responseMetadata, prm.blks)
 	rm.processTerminations(filteredResponses)
 }
@@ -364,7 +365,7 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.Respo
 }
 
 func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (chan graphsync.ResponseProgress, chan error) {
-	selectorBytes, err := rm.ipldBridge.EncodeNode(selectorSpec)
+	_, err := ipldbridge.EncodeNode(selectorSpec)
 	if err != nil {
 		return rm.singleErrorResponse(err)
 	}
@@ -382,7 +383,7 @@ func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID,
 		ctx, cancel, p, networkErrorChan,
 	}
 	rm.asyncLoader.StartRequest(requestID)
-	rm.peerHandler.SendRequest(p, gsmsg.NewRequest(requestID, asCidLink.Cid, selectorBytes, maxPriority, extensions...))
+	rm.peerHandler.SendRequest(p, gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, maxPriority, extensions...))
 	return rm.executeTraversal(ctx, requestID, root, selector, networkErrorChan)
 }
 
@@ -390,7 +391,7 @@ func (rm *RequestManager) executeTraversal(
 	ctx context.Context,
 	requestID graphsync.RequestID,
 	root ipld.Link,
-	selector ipldbridge.Selector,
+	selector selector.Selector,
 	networkErrorChan chan error,
 ) (chan graphsync.ResponseProgress, chan error) {
 	inProgressChan := make(chan graphsync.ResponseProgress)

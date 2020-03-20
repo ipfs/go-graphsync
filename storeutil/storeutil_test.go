@@ -30,8 +30,8 @@ func TestLoader(t *testing.T) {
 	if err != nil {
 		t.Fatal("Unable to read bytes from reader returned by loader")
 	}
-	returnedBlock := blocks.NewBlock(bytes)
-	if returnedBlock.Cid() != blk.Cid() {
+	_, err = blocks.NewBlockWithCid(bytes, blk.Cid())
+	if err != nil {
 		t.Fatal("Did not return correct block with loader")
 	}
 }

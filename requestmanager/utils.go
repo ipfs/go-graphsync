@@ -4,14 +4,14 @@ import (
 	"context"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/traversal"
 )
 
-func visitToChannel(ctx context.Context, inProgressChan chan graphsync.ResponseProgress) ipldbridge.AdvVisitFn {
-	return func(tp ipldbridge.TraversalProgress, node ipld.Node, tr ipldbridge.TraversalReason) error {
+func visitToChannel(ctx context.Context, inProgressChan chan graphsync.ResponseProgress) traversal.AdvVisitFn {
+	return func(tp traversal.Progress, node ipld.Node, tr traversal.VisitReason) error {
 		select {
 		case <-ctx.Done():
 		case inProgressChan <- graphsync.ResponseProgress{
@@ -24,7 +24,7 @@ func visitToChannel(ctx context.Context, inProgressChan chan graphsync.ResponseP
 	}
 }
 
-func metadataForResponses(responses []gsmsg.GraphSyncResponse, ipldBridge ipldbridge.IPLDBridge) map[graphsync.RequestID]metadata.Metadata {
+func metadataForResponses(responses []gsmsg.GraphSyncResponse) map[graphsync.RequestID]metadata.Metadata {
 	responseMetadata := make(map[graphsync.RequestID]metadata.Metadata, len(responses))
 	for _, response := range responses {
 		mdRaw, found := response.Extension(graphsync.ExtensionMetadata)
@@ -32,7 +32,7 @@ func metadataForResponses(responses []gsmsg.GraphSyncResponse, ipldBridge ipldbr
 			log.Warningf("Unable to decode metadata in response for request id: %d", response.RequestID())
 			continue
 		}
-		md, err := metadata.DecodeMetadata(mdRaw, ipldBridge)
+		md, err := metadata.DecodeMetadata(mdRaw)
 		if err != nil {
 			log.Warningf("Unable to decode metadata in response for request id: %d", response.RequestID())
 			continue

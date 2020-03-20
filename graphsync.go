@@ -108,7 +108,7 @@ type RequestData interface {
 	Root() cid.Cid
 
 	// Selector returns the byte representation of the selector for this request
-	Selector() []byte
+	Selector() ipld.Node
 
 	// Priority returns the priority of this request
 	Priority() Priority

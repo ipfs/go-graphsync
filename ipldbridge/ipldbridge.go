@@ -72,12 +72,6 @@ type SimpleNode = fluent.Node
 // replaced with alternative implementations
 type IPLDBridge interface {
 
-	// EncodeNode encodes an IPLD Node to bytes for network transfer.
-	EncodeNode(ipld.Node) ([]byte, error)
-
-	// DecodeNode decodes bytes crossing a network to an IPLD Node.
-	DecodeNode([]byte) (ipld.Node, error)
-
 	// ParseSelector checks if a generic IPLD node is a selector spec,
 	// and if so, a go-ipld-prime Selector.
 	ParseSelector(selector ipld.Node) (Selector, error)
