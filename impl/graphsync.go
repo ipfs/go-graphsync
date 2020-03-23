@@ -38,7 +38,7 @@ type GraphSync struct {
 }
 
 // New creates a new GraphSync Exchange on the given network,
-// using the given bridge to IPLD and the given link loader.
+// and the given link loader+storer.
 func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	loader ipld.Loader, storer ipld.Storer) graphsync.GraphExchange {
 	ctx, cancel := context.WithCancel(parent)

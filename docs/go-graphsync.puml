@@ -14,19 +14,16 @@ package "go-ipld-prime" {
     package selector {
       interface Selector {
       }
-      object "PackagePublicFunctions" as goSelectorPF {
-        ReifySelector(cidRootedSelector Node) (Selector, error)
-      }
     }
     interface AdvVisitFn {
     }
-    class TraversalConfig {
+    class Config {
     }
-    class TraversalProgress {
-      TraverseInformatively(Node, Selector, AdvVisitFn)
+    class Progress {
+      WalkAdv(Node, Selector, AdvVisitFn)
     }
 
-    TraversalProgress *-- TraversalConfig
+    Progress *-- Config
   }
 
   interface Storer {
@@ -40,7 +37,6 @@ package "go-ipld-prime" {
 package "go-graphsync" {
     
     interface Cid2BlockFn {
-
     }
     class GraphSync {
       Request(ctx context.Context, p peer.ID, rootedSelector Node) (chan ResponseProgress, chan error)
@@ -219,7 +215,7 @@ package "go-graphsync" {
       ProcessResponses(peer.ID, []GraphSyncResponse, []blocks.Block)
     }
     object "Package Public Functions" as goRequestManagerPF {
-      New(ctx context.Context, asyncLoader AsyncLoader, ipldBridge ipldbridge.IPLDBridge) *RequestManager
+      New(ctx context.Context, asyncLoader AsyncLoader) *RequestManager
     }
     RequestManager *-- AsyncLoader
     RequestManager *-- PeerManager
@@ -301,7 +297,7 @@ package "go-graphsync" {
         AddLink(GraphSyncRequestID, Link, bool)
         AddCompletedRequest(GraphSyncRequestID, graphsync.ResponseStatusCode)
         Empty() bool
-        Build(IPLDBridge) ([]GraphSyncResponse, []Block, error)    
+        Build() ([]GraphSyncResponse, []Block, error)    
       }
       object "Package Public Functions" as goResponseBuilderPF {
         New() *ResponseBuilder
@@ -322,7 +318,7 @@ package "go-graphsync" {
 
       object "Package Public Functions" as goPeerResponseManagerPF {
         New(Context, func(Context, peer.ID) PeerResponseSender) *PeerResponseManager
-        NewResponseSender(Context, peer.ID, PeerMessageManager, IPLDBridge) PeerResponseSender  
+        NewResponseSender(Context, peer.ID, PeerMessageManager) PeerResponseSender  
       }
 
       PeerResponseManager *-- PeerResponseSender
@@ -339,7 +335,7 @@ package "go-graphsync" {
     }
 
     object "Package Public Functions" as goResponseManagerPF {
-      New(Context, Loader, IPLDBridge, PeerResponseManager, PeerTaskQueue) *ResponseManager
+      New(Context, Loader, PeerResponseManager, PeerTaskQueue) *ResponseManager
     }
     GraphSync *-- ResponseManager
     ResponseManager *-- Loader
@@ -393,38 +389,18 @@ package "go-graphsync" {
     
   }
 
-  package ipldbridge {
-    interface IPLDBridge {
-	    EncodeNode(ipld.Node) ([]byte, error)
-	    DecodeNode([]byte) (ipld.Node, error)
-	    ParseSelector(selector ipld.Node) (Selector, error)
-	    Traverse(ctx context.Context, loader Loader, root ipld.Node, s Selector, fn AdvVisitFn) error
+  package ipldutil {
+    object "Package Public Functions" as goIpldutilPF {
+
+	  EncodeNode(ipld.Node) ([]byte, error)
+	  DecodeNode([]byte) (ipld.Node, error)
+	  ParseSelector(selector ipld.Node) (Selector, error)
+	  Traverse(ctx context.Context, loader Loader, root ipld.Node, s Selector, fn AdvVisitFn) error
     }
-
-    GraphSync *-- IPLDBridge
-    RequestManager *-- IPLDBridge
-    ResponseManager *-- IPLDBridge
-    PeerResponseSender *-- IPLDBridge
-
-    class ipldBridge {
-    }
-
-    object "PackagePublicFunctions" as goIPLDBridge {
-      NewIPLDBridge() IPLDBridge
-    }
-
-    IPLDBridge <|-- ipldBridge
-    goIPLDBridge .. ipldBridge 
-    ipldBridge *-- MulticodecDecodeTable
-    ipldBridge *-- NodeBuilderChooser
-    ipldBridge .. TraversalProgress
-    ipldBridge .. goSelectorPF
-    ipldBridge .. goIPLDReposePf
   }
+
   object "PackagePublicFunctions" as goGraphsyncPf {
-    New(ctx context.Context, network GraphSyncNetwork, ipldBridge IPLDBridge, loader Loader) GraphSync
-    LoaderFromCid2BlockFn(cid2BlockFn Cid2BlockFn) Loader
-    SelectorSpecFromCidAndPath(lnk cid.Cid, pathSegments []string) (ipld.Node, error) 
+    New(ctx context.Context, network GraphSyncNetwork, loader Loader, storer Storer) GraphSync
   }
 }
 
@@ -435,7 +411,6 @@ package "go-filecoin" {
   "go-filecoin" *-- GraphSync
   "go-filecoin" .. goGraphsyncPf
   "go-filecoin" .. goGraphSyncNetworkPF
-  "go-filecoin" .. goIPLDBridge
   "go-filecoin" *-- RawLoader
   "go-filecoin" *-- MulticodecDecodeTable
   "go-filecoin" *-- NodeBuilderChooser

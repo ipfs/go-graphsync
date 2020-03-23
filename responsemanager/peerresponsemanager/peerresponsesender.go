@@ -60,7 +60,7 @@ type PeerResponseSender interface {
 }
 
 // NewResponseSender generates a new PeerResponseSender for the given context, peer ID,
-// using the given peer message handler and bridge to IPLD.
+// using the given peer message handler.
 func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHandler) PeerResponseSender {
 	ctx, cancel := context.WithCancel(ctx)
 	return &peerResponseSender{
