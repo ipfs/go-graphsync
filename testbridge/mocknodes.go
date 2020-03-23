@@ -17,12 +17,6 @@ type mockSelectorSpec struct {
 	FailValidation bool
 }
 
-// NewMockSelectorSpec returns a new mock selector that will visit the given
-// cids.
-func NewMockSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
-	return &mockSelectorSpec{cidsVisited, false, false, false}
-}
-
 // NewUnparsableSelectorSpec returns a spec that will fail when you attempt to
 // validate it or decompose to a node + selector.
 func NewUnparsableSelectorSpec(cidsVisited []cid.Cid) ipld.Node {

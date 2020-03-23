@@ -238,7 +238,7 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 		return
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
-	wrappedLoader := loader.WrapLoader(rm.loader, request.ID(), peerResponseSender)
+	wrappedLoader := loader.WrapLoader(ctx, rm.loader, request.ID(), peerResponseSender)
 	err = rm.ipldBridge.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
 	if err != nil {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)

@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
@@ -131,8 +130,12 @@ func TestIncomingQuery(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
 	defer cancel()
-	blks := testutil.GenerateBlocksOfSize(5, 20)
-	loader := testbridge.NewMockLoader(blks)
+
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	blks := blockChain.AllBlocks()
+
 	ipldBridge := testbridge.NewMockIPLDBridge()
 	requestIDChan := make(chan completedRequest, 1)
 	sentResponses := make(chan sentResponse, len(blks))
@@ -143,14 +146,9 @@ func TestIncomingQuery(t *testing.T) {
 	responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
 	responseManager.Startup()
 
-	cids := make([]cid.Cid, 0, 5)
-	for _, block := range blks {
-		cids = append(cids, block.Cid())
-	}
-	selectorSpec := testbridge.NewMockSelectorSpec(cids)
 	requestID := graphsync.RequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, cids[0], selectorSpec, graphsync.Priority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)
@@ -183,8 +181,12 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
 	defer cancel()
-	blks := testutil.GenerateBlocksOfSize(5, 20)
-	loader := testbridge.NewMockLoader(blks)
+
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	blks := blockChain.AllBlocks()
+
 	ipldBridge := testbridge.NewMockIPLDBridge()
 	requestIDChan := make(chan completedRequest)
 	sentResponses := make(chan sentResponse)
@@ -195,14 +197,9 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
 	responseManager.Startup()
 
-	cids := make([]cid.Cid, 0, 5)
-	for _, block := range blks {
-		cids = append(cids, block.Cid())
-	}
-	selectorSpec := testbridge.NewMockSelectorSpec(cids)
 	requestID := graphsync.RequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, cids[0], selectorSpec, graphsync.Priority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)
@@ -267,8 +264,11 @@ func TestEarlyCancellation(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
 	defer cancel()
-	blks := testutil.GenerateBlocksOfSize(5, 20)
-	loader := testbridge.NewMockLoader(blks)
+
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+
 	ipldBridge := testbridge.NewMockIPLDBridge()
 	requestIDChan := make(chan completedRequest)
 	sentResponses := make(chan sentResponse)
@@ -280,14 +280,9 @@ func TestEarlyCancellation(t *testing.T) {
 	responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
 	responseManager.Startup()
 
-	cids := make([]cid.Cid, 0, 5)
-	for _, block := range blks {
-		cids = append(cids, block.Cid())
-	}
-	selectorSpec := testbridge.NewMockSelectorSpec(cids)
 	requestID := graphsync.RequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, cids[0], selectorSpec, graphsync.Priority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)
@@ -317,8 +312,11 @@ func TestValidationAndExtensions(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
 	defer cancel()
-	blks := testutil.GenerateBlocksOfSize(5, 20)
-	loader := testbridge.NewMockLoader(blks)
+
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+
 	ipldBridge := testbridge.NewMockIPLDBridge()
 	completedRequestChan := make(chan completedRequest, 1)
 	sentResponses := make(chan sentResponse, 100)
@@ -326,11 +324,6 @@ func TestValidationAndExtensions(t *testing.T) {
 	fprs := &fakePeerResponseSender{lastCompletedRequest: completedRequestChan, sentResponses: sentResponses, sentExtensions: sentExtensions}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
-
-	cids := make([]cid.Cid, 0, 5)
-	for _, block := range blks {
-		cids = append(cids, block.Cid())
-	}
 
 	extensionData := testutil.RandomBytes(100)
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
@@ -348,7 +341,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		selectorSpec := testbridge.NewInvalidSelectorSpec()
 		requestID := graphsync.RequestID(rand.Int31())
 		requests := []gsmsg.GraphSyncRequest{
-			gsmsg.NewRequest(requestID, cids[0], selectorSpec, graphsync.Priority(math.MaxInt32), extension),
+			gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, selectorSpec, graphsync.Priority(math.MaxInt32), extension),
 		}
 		p := testutil.GeneratePeers(1)[0]
 
@@ -419,10 +412,9 @@ func TestValidationAndExtensions(t *testing.T) {
 	})
 
 	t.Run("with valid selector", func(t *testing.T) {
-		selectorSpec := testbridge.NewMockSelectorSpec(cids)
 		requestID := graphsync.RequestID(rand.Int31())
 		requests := []gsmsg.GraphSyncRequest{
-			gsmsg.NewRequest(requestID, cids[0], selectorSpec, graphsync.Priority(math.MaxInt32), extension),
+			gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), extension),
 		}
 		p := testutil.GeneratePeers(1)[0]
 

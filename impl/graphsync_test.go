@@ -14,14 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipld/go-ipld-prime/fluent"
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-blockservice"
-	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
@@ -47,7 +45,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
-	mh "github.com/multiformats/go-multihash"
 )
 
 func TestMakeRequestToNetwork(t *testing.T) {
@@ -63,13 +60,11 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	graphSync := td.GraphSyncHost1()
 
 	blockChainLength := 100
-	blockChain := setupBlockChain(ctx, t, td.storer1, td.bridge, 100, blockChainLength)
-
-	spec := blockChainSelector(blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader1, td.storer1, 100, blockChainLength)
 
 	requestCtx, requestCancel := context.WithCancel(ctx)
 	defer requestCancel()
-	graphSync.Request(requestCtx, td.host2.ID(), blockChain.tipLink, spec, td.extension)
+	graphSync.Request(requestCtx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
 	var message receivedMessage
 	select {
@@ -90,7 +85,7 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	}
 	receivedRequest := receivedRequests[0]
 	receivedSpec := receivedRequest.Selector()
-	if !reflect.DeepEqual(spec, receivedSpec) {
+	if !reflect.DeepEqual(blockChain.Selector(), receivedSpec) {
 		t.Fatal("did not transmit selector spec correctly")
 	}
 	_, err := td.bridge.ParseSelector(receivedSpec)
@@ -133,14 +128,12 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	}
 
 	blockChainLength := 100
-	blockChain := setupBlockChain(ctx, t, td.storer2, td.bridge, 100, blockChainLength)
-
-	spec := blockChainSelector(blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
 
 	requestID := graphsync.RequestID(rand.Int31())
 
 	message := gsmsg.New()
-	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.tipLink.(cidlink.Link).Cid, spec, graphsync.Priority(math.MaxInt32), td.extension))
+	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), td.extension))
 	// send request across network
 	td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
 	// read the values sent back to requestor
@@ -206,7 +199,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
-	blockChain := setupBlockChain(ctx, t, td.storer2, td.bridge, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
@@ -240,9 +233,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 		t.Fatal("Error setting up extension")
 	}
 
-	spec := blockChainSelector(blockChainLength)
-
-	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.tipLink, spec, td.extension)
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
 	responses := testutil.CollectResponses(ctx, t, progressChan)
 	errs := testutil.CollectErrors(ctx, t, errChan)
@@ -307,13 +298,12 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 40
-	blockChain := setupBlockChain(ctx, t, td.storer2, td.bridge, 200000, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader1, td.storer2, 200000, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
 	td.GraphSyncHost2()
 
-	spec := blockChainSelector(blockChainLength)
-	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.tipLink, spec)
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector())
 
 	responses := testutil.CollectResponses(ctx, t, progressChan)
 	errs := testutil.CollectErrors(ctx, t, errChan)
@@ -598,90 +588,4 @@ func (r *receiver) Connected(p peer.ID) {
 }
 
 func (r *receiver) Disconnected(p peer.ID) {
-}
-
-type blockChain struct {
-	genisisNode ipld.Node
-	genisisLink ipld.Link
-	middleNodes []ipld.Node
-	middleLinks []ipld.Link
-	tipNode     ipld.Node
-	tipLink     ipld.Link
-}
-
-func createBlock(nb ipldbridge.NodeBuilder, parents []ipld.Link, size int64) ipld.Node {
-	return nb.CreateMap(func(mb ipldbridge.MapBuilder, knb ipldbridge.NodeBuilder, vnb ipldbridge.NodeBuilder) {
-		mb.Insert(knb.CreateString("Parents"), vnb.CreateList(func(lb ipldbridge.ListBuilder, vnb ipldbridge.NodeBuilder) {
-			for _, parent := range parents {
-				lb.Append(vnb.CreateLink(parent))
-			}
-		}))
-		mb.Insert(knb.CreateString("Messages"), vnb.CreateList(func(lb ipldbridge.ListBuilder, vnb ipldbridge.NodeBuilder) {
-			lb.Append(vnb.CreateBytes(testutil.RandomBytes(size)))
-		}))
-	})
-}
-
-func setupBlockChain(
-	ctx context.Context,
-	t *testing.T,
-	storer ipldbridge.Storer,
-	bridge ipldbridge.IPLDBridge,
-	size int64,
-	blockChainLength int) *blockChain {
-	linkBuilder := cidlink.LinkBuilder{Prefix: cid.NewPrefixV1(cid.DagCBOR, mh.SHA2_256)}
-	var genisisNode ipld.Node
-	err := fluent.Recover(func() {
-		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
-		genisisNode = createBlock(nb, []ipld.Link{}, size)
-	})
-	if err != nil {
-		t.Fatal("Error creating genesis block")
-	}
-	genesisLink, err := linkBuilder.Build(ctx, ipldbridge.LinkContext{}, genisisNode, storer)
-	if err != nil {
-		t.Fatal("Error creating link to genesis block")
-	}
-	parent := genesisLink
-	middleNodes := make([]ipld.Node, 0, blockChainLength-2)
-	middleLinks := make([]ipld.Link, 0, blockChainLength-2)
-	for i := 0; i < blockChainLength-2; i++ {
-		var node ipld.Node
-		err := fluent.Recover(func() {
-			nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
-			node = createBlock(nb, []ipld.Link{parent}, size)
-		})
-		if err != nil {
-			t.Fatal("Error creating middle block")
-		}
-		middleNodes = append(middleNodes, node)
-		link, err := linkBuilder.Build(ctx, ipldbridge.LinkContext{}, node, storer)
-		if err != nil {
-			t.Fatal("Error creating link to middle block")
-		}
-		middleLinks = append(middleLinks, link)
-		parent = link
-	}
-	var tipNode ipld.Node
-	err = fluent.Recover(func() {
-		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
-		tipNode = createBlock(nb, []ipld.Link{parent}, size)
-	})
-	if err != nil {
-		t.Fatal("Error creating tip block")
-	}
-	tipLink, err := linkBuilder.Build(ctx, ipldbridge.LinkContext{}, tipNode, storer)
-	if err != nil {
-		t.Fatal("Error creating link to tip block")
-	}
-	return &blockChain{genisisNode, genesisLink, middleNodes, middleLinks, tipNode, tipLink}
-}
-
-func blockChainSelector(blockChainLength int) ipld.Node {
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
-	return ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(blockChainLength),
-		ssb.ExploreFields(func(efsb ipldbridge.ExploreFieldsSpecBuilder) {
-			efsb.Insert("Parents", ssb.ExploreAll(
-				ssb.ExploreRecursiveEdge()))
-		})).Node()
 }

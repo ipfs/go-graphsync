@@ -2,6 +2,7 @@ package loader
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -34,6 +35,7 @@ func (frs *fakeResponseSender) SendResponse(
 }
 
 func TestWrappedLoaderSendsResponses(t *testing.T) {
+	ctx := context.Background()
 	frs := &fakeResponseSender{}
 	link1 := testbridge.NewMockLink()
 	link2 := testbridge.NewMockLink()
@@ -47,7 +49,7 @@ func TestWrappedLoaderSendsResponses(t *testing.T) {
 		return nil, fmt.Errorf("unable to load block")
 	}
 	requestID := graphsync.RequestID(rand.Int31())
-	wrappedLoader := WrapLoader(loader, requestID, frs)
+	wrappedLoader := WrapLoader(ctx, loader, requestID, frs)
 
 	reader, err := wrappedLoader(link1, ipldbridge.LinkContext{})
 	if err != nil {

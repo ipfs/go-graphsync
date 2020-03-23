@@ -162,25 +162,6 @@ func readNNetworkRequests(ctx context.Context,
 	return requestRecords
 }
 
-func verifyMatchedResponses(t *testing.T, actualResponse []graphsync.ResponseProgress, expectedBlocks []blocks.Block) {
-	if len(actualResponse) != len(expectedBlocks) {
-		t.Fatal("wrong number of responses sent")
-	}
-	for _, responseProgress := range actualResponse {
-		data, err := responseProgress.Node.AsBytes()
-		if err != nil {
-			t.Fatal("Node was not a block")
-		}
-		blk, err := blocks.NewBlockWithCid(data, responseProgress.LastBlock.Link.(cidlink.Link).Cid)
-		if err != nil {
-			t.Fatal("block did not verify")
-		}
-		if !testutil.ContainsBlock(expectedBlocks, blk) {
-			t.Fatal("wrong block sent")
-		}
-	}
-}
-
 func metadataForBlocks(blks []blocks.Block, present bool) metadata.Metadata {
 	md := make(metadata.Metadata, 0, len(blks))
 	for _, block := range blks {
@@ -218,15 +199,13 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blocks1 := testutil.GenerateBlocksOfSize(5, 100)
-	blocks2 := testutil.GenerateBlocksOfSize(5, 100)
-	r1 := cidlink.Link{Cid: blocks1[0].Cid()}
-	r2 := cidlink.Link{Cid: blocks2[0].Cid()}
-	s1 := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks1))
-	s2 := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks2))
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain1 := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	blockChain2 := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
-	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx, peers[0], r1, s1)
-	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx, peers[0], r2, s2)
+	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx, peers[0], blockChain1.TipLink, blockChain1.Selector())
+	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx, peers[0], blockChain2.TipLink, blockChain2.Selector())
 
 	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
 
@@ -237,22 +216,20 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 		t.Fatal("did not send correct requests")
 	}
 
-	returnedS1 := requestRecords[0].gsr.Selector()
-	if !reflect.DeepEqual(s1, returnedS1) {
+	if !reflect.DeepEqual(blockChain1.Selector(), requestRecords[0].gsr.Selector()) {
 		t.Fatal("did not encode selector properly")
 	}
-	returnedS2 := requestRecords[1].gsr.Selector()
-	if !reflect.DeepEqual(s2, returnedS2) {
+	if !reflect.DeepEqual(blockChain2.Selector(), requestRecords[1].gsr.Selector()) {
 		t.Fatal("did not encode selector properly")
 	}
 
-	firstBlocks := append(blocks1, blocks2[:3]...)
-	firstMetadata1 := metadataForBlocks(blocks1, true)
+	firstBlocks := append(blockChain1.AllBlocks(), blockChain2.Blocks(0, 3)...)
+	firstMetadata1 := metadataForBlocks(blockChain1.AllBlocks(), true)
 	firstMetadataEncoded1, err := metadata.EncodeMetadata(firstMetadata1)
 	if err != nil {
 		t.Fatal("did not encode metadata")
 	}
-	firstMetadata2 := metadataForBlocks(blocks2[:3], true)
+	firstMetadata2 := metadataForBlocks(blockChain2.Blocks(0, 3), true)
 	firstMetadataEncoded2, err := metadata.EncodeMetadata(firstMetadata2)
 	if err != nil {
 		t.Fatal("did not encode metadata")
@@ -274,15 +251,13 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 		requestRecords[0].gsr.ID(): firstMetadata1,
 		requestRecords[1].gsr.ID(): firstMetadata2,
 	})
-	fal.successResponseOn(requestRecords[0].gsr.ID(), blocks1)
-	fal.successResponseOn(requestRecords[1].gsr.ID(), blocks2[:3])
+	fal.successResponseOn(requestRecords[0].gsr.ID(), blockChain1.AllBlocks())
+	fal.successResponseOn(requestRecords[1].gsr.ID(), blockChain2.Blocks(0, 3))
 
-	responses1 := testutil.CollectResponses(requestCtx, t, returnedResponseChan1)
-	verifyMatchedResponses(t, responses1, blocks1)
-	responses2 := testutil.ReadNResponses(requestCtx, t, returnedResponseChan2, 3)
-	verifyMatchedResponses(t, responses2, blocks2[:3])
+	blockChain1.VerifyWholeChain(requestCtx, returnedResponseChan1)
+	blockChain2.VerifyResponseRange(requestCtx, returnedResponseChan2, 0, 3)
 
-	moreBlocks := blocks2[3:]
+	moreBlocks := blockChain2.RemainderBlocks(3)
 	moreMetadata := metadataForBlocks(moreBlocks, true)
 	moreMetadataEncoded, err := metadata.EncodeMetadata(moreMetadata)
 	if err != nil {
@@ -303,8 +278,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 
 	fal.successResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
 
-	responses2 = testutil.CollectResponses(requestCtx, t, returnedResponseChan2)
-	verifyMatchedResponses(t, responses2, moreBlocks)
+	blockChain2.VerifyRemainder(requestCtx, returnedResponseChan2, 3)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan2)
 }
@@ -325,17 +299,17 @@ func TestCancelRequestInProgress(t *testing.T) {
 	defer cancel2()
 	peers := testutil.GeneratePeers(1)
 
-	blocks1 := testutil.GenerateBlocksOfSize(5, 100)
-	s1 := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks1))
-	r1 := cidlink.Link{Cid: blocks1[0].Cid()}
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
-	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx1, peers[0], r1, s1)
-	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx2, peers[0], r1, s1)
+	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx1, peers[0], blockChain.TipLink, blockChain.Selector())
+	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx2, peers[0], blockChain.TipLink, blockChain.Selector())
 
 	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
 
-	firstBlocks := blocks1[:3]
-	firstMetadata := encodedMetadataForBlocks(t, blocks1[:3], true)
+	firstBlocks := blockChain.Blocks(0, 3)
+	firstMetadata := encodedMetadataForBlocks(t, firstBlocks, true)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.PartialResponse, firstMetadata),
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.PartialResponse, firstMetadata),
@@ -343,30 +317,27 @@ func TestCancelRequestInProgress(t *testing.T) {
 
 	requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
 
-	fal.successResponseOn(requestRecords[0].gsr.ID(), blocks1[:3])
-	fal.successResponseOn(requestRecords[1].gsr.ID(), blocks1[:3])
-	responses1 := testutil.ReadNResponses(requestCtx, t, returnedResponseChan1, 3)
-
+	fal.successResponseOn(requestRecords[0].gsr.ID(), firstBlocks)
+	fal.successResponseOn(requestRecords[1].gsr.ID(), firstBlocks)
+	blockChain.VerifyResponseRange(requestCtx1, returnedResponseChan1, 0, 3)
 	cancel1()
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 	if rr.gsr.IsCancel() != true || rr.gsr.ID() != requestRecords[0].gsr.ID() {
 		t.Fatal("did not send correct cancel message over network")
 	}
 
-	moreBlocks := blocks1[3:]
-	moreMetadata := encodedMetadataForBlocks(t, blocks1[3:], true)
+	moreBlocks := blockChain.RemainderBlocks(3)
+	moreMetadata := encodedMetadataForBlocks(t, moreBlocks, true)
 	moreResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
 	requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	fal.successResponseOn(requestRecords[0].gsr.ID(), blocks1[3:])
-	fal.successResponseOn(requestRecords[1].gsr.ID(), blocks1[3:])
+	fal.successResponseOn(requestRecords[0].gsr.ID(), moreBlocks)
+	fal.successResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
 
-	responses1 = append(responses1, testutil.CollectResponses(requestCtx, t, returnedResponseChan1)...)
-	verifyMatchedResponses(t, responses1, blocks1[:3])
-	responses2 := testutil.CollectResponses(requestCtx, t, returnedResponseChan2)
-	verifyMatchedResponses(t, responses2, blocks1)
+	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan1)
+	blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan2)
 }
@@ -385,33 +356,32 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blocks := testutil.GenerateBlocksOfSize(5, 100)
-	s := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks))
-	r := cidlink.Link{Cid: blocks[0].Cid()}
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 
-	firstBlocks := blocks[:3]
+	firstBlocks := blockChain.Blocks(0, 3)
 	firstMetadata := encodedMetadataForBlocks(t, firstBlocks, true)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.PartialResponse, firstMetadata),
 	}
 	requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
 	fal.successResponseOn(rr.gsr.ID(), firstBlocks)
-	responses := testutil.ReadNResponses(requestCtx, t, returnedResponseChan, 3)
+	blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, 3)
 	managerCancel()
 
-	moreBlocks := blocks[3:]
+	moreBlocks := blockChain.RemainderBlocks(3)
 	moreMetadata := encodedMetadataForBlocks(t, moreBlocks, true)
 	moreResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
 	requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
 	fal.successResponseOn(rr.gsr.ID(), moreBlocks)
-	responses = append(responses, testutil.CollectResponses(requestCtx, t, returnedResponseChan)...)
-	verifyMatchedResponses(t, responses, firstBlocks)
+	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan)
 }
 
@@ -475,10 +445,11 @@ func TestFailedRequest(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blocks := testutil.GenerateBlocksOfSize(5, 100)
-	s := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks))
-	r := cidlink.Link{Cid: blocks[0].Cid()}
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 	failedResponses := []gsmsg.GraphSyncResponse{
@@ -504,18 +475,18 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blocks := testutil.GenerateBlocksOfSize(5, 100)
-	s := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks))
-	r := cidlink.Link{Cid: blocks[0].Cid()}
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 
 	// async loaded response responds immediately
-	fal.successResponseOn(rr.gsr.ID(), blocks)
+	fal.successResponseOn(rr.gsr.ID(), blockChain.AllBlocks())
 
-	responses := testutil.CollectResponses(requestCtx, t, returnedResponseChan)
-	verifyMatchedResponses(t, responses, blocks)
+	blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
 	// failure comes in later over network
 	failedResponses := []gsmsg.GraphSyncResponse{
@@ -541,24 +512,23 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blocks := testutil.GenerateBlocksOfSize(5, 100)
-	s := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks))
-	r := cidlink.Link{Cid: blocks[0].Cid()}
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 
 	// async loaded response responds immediately
-	fal.successResponseOn(rr.gsr.ID(), blocks)
+	fal.successResponseOn(rr.gsr.ID(), blockChain.AllBlocks())
 
-	responses := testutil.CollectResponses(requestCtx, t, returnedResponseChan)
-	verifyMatchedResponses(t, responses, blocks)
+	blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
-	md := encodedMetadataForBlocks(t, blocks, true)
+	md := encodedMetadataForBlocks(t, blockChain.AllBlocks(), true)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
-	requestManager.ProcessResponses(peers[0], firstResponses, blocks)
+	requestManager.ProcessResponses(peers[0], firstResponses, blockChain.AllBlocks())
 
 	fal.verifyNoRemainingData(t, rr.gsr.ID())
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
@@ -578,25 +548,25 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blocks := testutil.GenerateBlocksOfSize(5, 100)
-	s := testbridge.NewMockSelectorSpec(cidsForBlocks(blocks))
-	r := cidlink.Link{Cid: blocks[0].Cid()}
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 
-	md := encodedMetadataForBlocks(t, blocks, false)
+	md := encodedMetadataForBlocks(t, blockChain.AllBlocks(), false)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedPartial, md),
 	}
 	requestManager.ProcessResponses(peers[0], firstResponses, nil)
-	for _, block := range blocks {
+	for _, block := range blockChain.AllBlocks() {
 		fal.responseOn(rr.gsr.ID(), cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: nil, Err: fmt.Errorf("Terrible Thing")})
 	}
 	testutil.VerifyEmptyResponse(ctx, t, returnedResponseChan)
 	errs := testutil.CollectErrors(ctx, t, returnedErrorChan)
-	if len(errs) != len(blocks) {
-		t.Fatal("did not send all errors")
+	if len(errs) == 0 {
+		t.Fatal("did not send  errors")
 	}
 
 }
@@ -615,9 +585,9 @@ func TestEncodingExtensions(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	cids := testutil.GenerateCids(1)
-	root := cidlink.Link{Cid: cids[0]}
-	selector := testbridge.NewMockSelectorSpec(cids)
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
 	extensionData1 := testutil.RandomBytes(100)
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
@@ -643,7 +613,7 @@ func TestEncodingExtensions(t *testing.T) {
 		return <-expectedError
 	}
 	requestManager.RegisterHook(hook)
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], root, selector, extension1, extension2)
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector(), extension1, extension2)
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 
