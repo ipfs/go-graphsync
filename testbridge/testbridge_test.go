@@ -10,8 +10,7 @@ import (
 func TestFailParseSelectorSpec(t *testing.T) {
 	cids := testutil.GenerateCids(5)
 	spec := NewUnparsableSelectorSpec(cids)
-	bridge := ipldbridge.NewIPLDBridge()
-	_, err := bridge.ParseSelector(spec)
+	_, err := ipldbridge.ParseSelector(spec)
 	if err == nil {
 		t.Fatal("Spec should not decompose to node and selector")
 	}

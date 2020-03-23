@@ -59,7 +59,6 @@ type RequestManager struct {
 	ctx         context.Context
 	cancel      func()
 	messages    chan requestManagerMessage
-	ipldBridge  ipldbridge.IPLDBridge
 	peerHandler PeerHandler
 	rc          *responseCollector
 	asyncLoader AsyncLoader
@@ -74,12 +73,11 @@ type requestManagerMessage interface {
 }
 
 // New generates a new request manager from a context, network, and selectorQuerier
-func New(ctx context.Context, asyncLoader AsyncLoader, ipldBridge ipldbridge.IPLDBridge) *RequestManager {
+func New(ctx context.Context, asyncLoader AsyncLoader) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
 		ctx:                       ctx,
 		cancel:                    cancel,
-		ipldBridge:                ipldBridge,
 		asyncLoader:               asyncLoader,
 		rc:                        newResponseCollector(ctx),
 		messages:                  make(chan requestManagerMessage, 16),
@@ -112,7 +110,7 @@ func (rm *RequestManager) SendRequest(ctx context.Context,
 	root ipld.Link,
 	selector ipld.Node,
 	extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
-	if _, err := rm.ipldBridge.ParseSelector(selector); err != nil {
+	if _, err := ipldbridge.ParseSelector(selector); err != nil {
 		return rm.singleErrorResponse(fmt.Errorf("Invalid Selector Spec"))
 	}
 
@@ -369,7 +367,7 @@ func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID,
 	if err != nil {
 		return rm.singleErrorResponse(err)
 	}
-	selector, err := rm.ipldBridge.ParseSelector(selectorSpec)
+	selector, err := ipldbridge.ParseSelector(selectorSpec)
 	if err != nil {
 		return rm.singleErrorResponse(err)
 	}
@@ -399,7 +397,7 @@ func (rm *RequestManager) executeTraversal(
 	loaderFn := loader.WrapAsyncLoader(ctx, rm.asyncLoader.AsyncLoad, requestID, inProgressErr)
 	visitor := visitToChannel(ctx, inProgressChan)
 	go func() {
-		rm.ipldBridge.Traverse(ctx, loaderFn, root, selector, visitor)
+		ipldbridge.Traverse(ctx, loaderFn, root, selector, visitor)
 		select {
 		case networkError := <-networkErrorChan:
 			select {

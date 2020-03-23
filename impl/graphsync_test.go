@@ -88,7 +88,7 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	if !reflect.DeepEqual(blockChain.Selector(), receivedSpec) {
 		t.Fatal("did not transmit selector spec correctly")
 	}
-	_, err := td.bridge.ParseSelector(receivedSpec)
+	_, err := ipldbridge.ParseSelector(receivedSpec)
 	if err != nil {
 		t.Fatal("did not receive parsible selector on other side")
 	}

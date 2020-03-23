@@ -1,7 +1,6 @@
 package ipldbridge
 
 import (
-	"context"
 	"errors"
 
 	"github.com/ipld/go-ipld-prime/fluent"
@@ -71,16 +70,4 @@ type SimpleNode = fluent.Node
 // IPLDBridge is an interface for making calls to IPLD, which can be
 // replaced with alternative implementations
 type IPLDBridge interface {
-
-	// ParseSelector checks if a generic IPLD node is a selector spec,
-	// and if so, a go-ipld-prime Selector.
-	ParseSelector(selector ipld.Node) (Selector, error)
-
-	// Traverse performs a selector traversal, starting at a given root, using the given selector,
-	// and the given link loader. The given visit function will be called for each node
-	// visited.
-	Traverse(ctx context.Context, loader Loader, root ipld.Link, s Selector, fn AdvVisitFn) error
-
-	// WalkMatching is a wrapper around direct selector traversal
-	WalkMatching(node ipld.Node, s Selector, fn VisitFn) error
 }

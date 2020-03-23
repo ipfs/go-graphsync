@@ -67,7 +67,6 @@ type ResponseManager struct {
 	ctx         context.Context
 	cancelFn    context.CancelFunc
 	loader      ipld.Loader
-	ipldBridge  ipldbridge.IPLDBridge
 	peerManager PeerManager
 	queryQueue  QueryQueue
 
@@ -82,7 +81,6 @@ type ResponseManager struct {
 // bridge to IPLD interface, peerManager, and queryQueue.
 func New(ctx context.Context,
 	loader ipldbridge.Loader,
-	ipldBridge ipldbridge.IPLDBridge,
 	peerManager PeerManager,
 	queryQueue QueryQueue) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
@@ -90,7 +88,6 @@ func New(ctx context.Context,
 		ctx:                 ctx,
 		cancelFn:            cancelFn,
 		loader:              loader,
-		ipldBridge:          ipldBridge,
 		peerManager:         peerManager,
 		queryQueue:          queryQueue,
 		messages:            make(chan responseManagerMessage, 16),
@@ -232,14 +229,14 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 			return
 		}
 	}
-	selector, err := rm.ipldBridge.ParseSelector(selectorSpec)
+	selector, err := ipldbridge.ParseSelector(selectorSpec)
 	if err != nil {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
 	wrappedLoader := loader.WrapLoader(ctx, rm.loader, request.ID(), peerResponseSender)
-	err = rm.ipldBridge.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
+	err = ipldbridge.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
 	if err != nil {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return

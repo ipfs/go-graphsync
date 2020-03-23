@@ -136,14 +136,13 @@ func TestIncomingQuery(t *testing.T) {
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 	blks := blockChain.AllBlocks()
 
-	ipldBridge := testbridge.NewMockIPLDBridge()
 	requestIDChan := make(chan completedRequest, 1)
 	sentResponses := make(chan sentResponse, len(blks))
 	sentExtensions := make(chan sentExtension, 1)
 	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses, sentExtensions: sentExtensions}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
-	responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+	responseManager := New(ctx, loader, peerManager, queryQueue)
 	responseManager.Startup()
 
 	requestID := graphsync.RequestID(rand.Int31())
@@ -187,14 +186,13 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 	blks := blockChain.AllBlocks()
 
-	ipldBridge := testbridge.NewMockIPLDBridge()
 	requestIDChan := make(chan completedRequest)
 	sentResponses := make(chan sentResponse)
 	sentExtensions := make(chan sentExtension, 1)
 	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses, sentExtensions: sentExtensions}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
-	responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+	responseManager := New(ctx, loader, peerManager, queryQueue)
 	responseManager.Startup()
 
 	requestID := graphsync.RequestID(rand.Int31())
@@ -269,7 +267,6 @@ func TestEarlyCancellation(t *testing.T) {
 	loader, storer := testbridge.NewMockStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
-	ipldBridge := testbridge.NewMockIPLDBridge()
 	requestIDChan := make(chan completedRequest)
 	sentResponses := make(chan sentResponse)
 	sentExtensions := make(chan sentExtension, 1)
@@ -277,7 +274,7 @@ func TestEarlyCancellation(t *testing.T) {
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
 	queryQueue.popWait.Add(1)
-	responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+	responseManager := New(ctx, loader, peerManager, queryQueue)
 	responseManager.Startup()
 
 	requestID := graphsync.RequestID(rand.Int31())
@@ -317,7 +314,6 @@ func TestValidationAndExtensions(t *testing.T) {
 	loader, storer := testbridge.NewMockStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
-	ipldBridge := testbridge.NewMockIPLDBridge()
 	completedRequestChan := make(chan completedRequest, 1)
 	sentResponses := make(chan sentResponse, 100)
 	sentExtensions := make(chan sentExtension, 1)
@@ -346,7 +342,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		p := testutil.GeneratePeers(1)[0]
 
 		t.Run("on its own, should fail validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.ProcessRequests(ctx, p, requests)
 			select {
@@ -360,7 +356,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 		t.Run("if non validating hook succeeds, does not pass validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 				hookActions.SendExtensionData(extensionResponse)
@@ -385,7 +381,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 		t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 				hookActions.ValidateRequest()
@@ -419,7 +415,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		p := testutil.GeneratePeers(1)[0]
 
 		t.Run("on its own, should pass validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.ProcessRequests(ctx, p, requests)
 			select {
@@ -433,7 +429,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 		t.Run("if any hook fails, should fail", func(t *testing.T) {
-			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 				hookActions.SendExtensionData(extensionResponse)

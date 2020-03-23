@@ -188,10 +188,9 @@ func encodedMetadataForBlocks(t *testing.T, blks []blocks.Block, present bool) g
 func TestNormalSimultaneousFetch(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
-	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal, fakeIPLDBridge)
+	requestManager := New(ctx, fal)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -286,10 +285,9 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 func TestCancelRequestInProgress(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
-	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal, fakeIPLDBridge)
+	requestManager := New(ctx, fal)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
@@ -345,11 +343,10 @@ func TestCancelRequestInProgress(t *testing.T) {
 func TestCancelManagerExitsGracefully(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
-	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
 	ctx := context.Background()
 	managerCtx, managerCancel := context.WithCancel(ctx)
 	fal := newFakeAsyncLoader()
-	requestManager := New(managerCtx, fal, fakeIPLDBridge)
+	requestManager := New(managerCtx, fal)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
@@ -411,10 +408,9 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 func TestUnencodableSelector(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
-	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal, fakeIPLDBridge)
+	requestManager := New(ctx, fal)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -434,10 +430,9 @@ func TestUnencodableSelector(t *testing.T) {
 func TestFailedRequest(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
-	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal, fakeIPLDBridge)
+	requestManager := New(ctx, fal)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -464,10 +459,9 @@ func TestFailedRequest(t *testing.T) {
 func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
-	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal, fakeIPLDBridge)
+	requestManager := New(ctx, fal)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -501,10 +495,9 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
-	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal, fakeIPLDBridge)
+	requestManager := New(ctx, fal)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -537,10 +530,9 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 func TestRequestReturnsMissingBlocks(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
-	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal, fakeIPLDBridge)
+	requestManager := New(ctx, fal)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -574,10 +566,9 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 func TestEncodingExtensions(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
-	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal, fakeIPLDBridge)
+	requestManager := New(ctx, fal)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 

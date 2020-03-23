@@ -30,7 +30,7 @@ var (
 	})
 )
 
-func (rb *ipldBridge) Traverse(ctx context.Context, loader Loader, root ipld.Link, s Selector, fn AdvVisitFn) error {
+func Traverse(ctx context.Context, loader Loader, root ipld.Link, s Selector, fn AdvVisitFn) error {
 	builder := defaultChooser(root, LinkContext{})
 	node, err := root.Load(ctx, LinkContext{}, builder, loader)
 	if err != nil {
@@ -45,7 +45,7 @@ func (rb *ipldBridge) Traverse(ctx context.Context, loader Loader, root ipld.Lin
 	}.WalkAdv(node, s, fn)
 }
 
-func (rb *ipldBridge) WalkMatching(node ipld.Node, s Selector, fn VisitFn) error {
+func WalkMatching(node ipld.Node, s Selector, fn VisitFn) error {
 	return ipldtraversal.WalkMatching(node, s, fn)
 }
 
@@ -63,6 +63,6 @@ func DecodeNode(encoded []byte) (ipld.Node, error) {
 	return dagcbor.Decoder(free.NodeBuilder(), reader)
 }
 
-func (rb *ipldBridge) ParseSelector(selector ipld.Node) (Selector, error) {
+func ParseSelector(selector ipld.Node) (Selector, error) {
 	return ipldselector.ParseSelector(selector)
 }
