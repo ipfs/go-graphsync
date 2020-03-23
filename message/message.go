@@ -259,9 +259,13 @@ func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 	pbm := new(pb.Message)
 	pbm.Requests = make([]pb.Message_Request, 0, len(gsm.requests))
 	for _, request := range gsm.requests {
-		selector, err := ipldutil.EncodeNode(request.selector)
-		if err != nil {
-			return nil, err
+		var selector []byte
+		var err error
+		if request.selector != nil {
+			selector, err = ipldutil.EncodeNode(request.selector)
+			if err != nil {
+				return nil, err
+			}
 		}
 		pbm.Requests = append(pbm.Requests, pb.Message_Request{
 			Id:         int32(request.id),
