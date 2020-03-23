@@ -5,7 +5,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ipfs/go-bitswap/testutil"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
@@ -195,5 +194,5 @@ func VerifyEmptyResponse(ctx context.Context, t *testing.T, responseChan <-chan 
 
 // NewTestLink returns a randomly generated IPLD Link
 func NewTestLink() ipld.Link {
-	return cidlink.Link{Cid: testutil.GenerateCids(1)[0]}
+	return cidlink.Link{Cid: GenerateCids(1)[0]}
 }

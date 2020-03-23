@@ -3,9 +3,7 @@ module github.com/ipfs/go-graphsync
 go 1.12
 
 require (
-	github.com/filecoin-project/go-data-transfer v0.0.0-20191219005021-4accf56bd2ce
 	github.com/gogo/protobuf v1.3.1
-	github.com/ipfs/go-bitswap v0.1.8
 	github.com/ipfs/go-block-format v0.0.2
 	github.com/ipfs/go-blockservice v0.1.3-0.20190908200855-f22eea50656c
 	github.com/ipfs/go-cid v0.0.4-0.20191112011718-79e75dffeb10
@@ -26,7 +24,6 @@ require (
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-libp2p v0.3.0
 	github.com/libp2p/go-libp2p-core v0.2.4
-	github.com/libp2p/go-libp2p-peer v0.2.0
 	github.com/multiformats/go-multiaddr v0.1.1
 	github.com/multiformats/go-multihash v0.0.9
 )
