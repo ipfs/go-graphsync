@@ -1,7 +1,7 @@
 package metadata
 
 import (
-	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/fluent"
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
@@ -20,7 +20,7 @@ type Metadata []Item
 // DecodeMetadata assembles metadata from a raw byte array, first deserializing
 // as a node and then assembling into a metadata struct.
 func DecodeMetadata(data []byte) (Metadata, error) {
-	node, err := ipldbridge.DecodeNode(data)
+	node, err := ipldutil.DecodeNode(data)
 	if err != nil {
 		return nil, err
 	}
@@ -66,5 +66,5 @@ func EncodeMetadata(entries Metadata) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ipldbridge.EncodeNode(node)
+	return ipldutil.EncodeNode(node)
 }

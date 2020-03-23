@@ -10,7 +10,7 @@ import (
 
 	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	pb "github.com/ipfs/go-graphsync/message/pb"
 	"github.com/libp2p/go-libp2p-core/network"
 )
@@ -166,7 +166,7 @@ func newMessageFromProto(pbm pb.Message) (GraphSyncMessage, error) {
 		if err != nil {
 			return nil, err
 		}
-		selector, err := ipldbridge.DecodeNode(req.Selector)
+		selector, err := ipldutil.DecodeNode(req.Selector)
 		if err != nil {
 			return nil, err
 		}
@@ -259,7 +259,7 @@ func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 	pbm := new(pb.Message)
 	pbm.Requests = make([]pb.Message_Request, 0, len(gsm.requests))
 	for _, request := range gsm.requests {
-		selector, err := ipldbridge.EncodeNode(request.selector)
+		selector, err := ipldutil.EncodeNode(request.selector)
 		if err != nil {
 			return nil, err
 		}

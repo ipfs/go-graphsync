@@ -34,10 +34,9 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 
-	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
-	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
@@ -88,7 +87,7 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	if !reflect.DeepEqual(blockChain.Selector(), receivedSpec) {
 		t.Fatal("did not transmit selector spec correctly")
 	}
-	_, err := ipldbridge.ParseSelector(receivedSpec)
+	_, err := ipldutil.ParseSelector(receivedSpec)
 	if err != nil {
 		t.Fatal("did not receive parsible selector on other side")
 	}
@@ -530,9 +529,9 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 	td.gsnet1 = gsnet.NewFromLibp2pHost(td.host1)
 	td.gsnet2 = gsnet.NewFromLibp2pHost(td.host2)
 	td.blockStore1 = make(map[ipld.Link][]byte)
-	td.loader1, td.storer1 = testbridge.NewMockStore(td.blockStore1)
+	td.loader1, td.storer1 = testutil.NewTestStore(td.blockStore1)
 	td.blockStore2 = make(map[ipld.Link][]byte)
-	td.loader2, td.storer2 = testbridge.NewMockStore(td.blockStore2)
+	td.loader2, td.storer2 = testutil.NewTestStore(td.blockStore2)
 	// setup extension handlers
 	td.extensionData = testutil.RandomBytes(100)
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")

@@ -12,7 +12,7 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -50,7 +50,7 @@ func TestAppendingRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal("Did not serialize to protobuf correctly")
 	}
-	selectorEncoded, err := ipldbridge.EncodeNode(selector)
+	selectorEncoded, err := ipldutil.EncodeNode(selector)
 	if err != nil {
 		t.Fatal("selector did not encode")
 	}

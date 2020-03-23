@@ -1,4 +1,4 @@
-package testbridge
+package testutil
 
 import (
 	"bytes"
@@ -9,8 +9,8 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
-// NewMockStore provides a loader and storer for the given in memory link -> byte data map
-func NewMockStore(blocksWritten map[ipld.Link][]byte) (ipld.Loader, ipld.Storer) {
+// NewTestStore provides a loader and storer for the given in memory link -> byte data map
+func NewTestStore(blocksWritten map[ipld.Link][]byte) (ipld.Loader, ipld.Storer) {
 	var storeLk sync.RWMutex
 	storer := func(lnkCtx ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
 		var buffer bytes.Buffer

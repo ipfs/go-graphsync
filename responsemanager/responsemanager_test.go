@@ -13,7 +13,6 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
-	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
@@ -132,7 +131,7 @@ func TestIncomingQuery(t *testing.T) {
 	defer cancel()
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 	blks := blockChain.AllBlocks()
 
@@ -182,7 +181,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	defer cancel()
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 	blks := blockChain.AllBlocks()
 
@@ -264,7 +263,7 @@ func TestEarlyCancellation(t *testing.T) {
 	defer cancel()
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
 	requestIDChan := make(chan completedRequest)
@@ -311,7 +310,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	defer cancel()
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
 	completedRequestChan := make(chan completedRequest, 1)
@@ -334,7 +333,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	}
 
 	t.Run("with invalid selector", func(t *testing.T) {
-		selectorSpec := testbridge.NewInvalidSelectorSpec()
+		selectorSpec := testutil.NewInvalidSelectorSpec()
 		requestID := graphsync.RequestID(rand.Int31())
 		requests := []gsmsg.GraphSyncRequest{
 			gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, selectorSpec, graphsync.Priority(math.MaxInt32), extension),

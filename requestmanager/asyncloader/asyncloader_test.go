@@ -12,7 +12,6 @@ import (
 	"github.com/ipfs/go-graphsync/metadata"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
-	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
 )
@@ -23,7 +22,7 @@ func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	block := testutil.GenerateBlocksOfSize(1, 100)[0]
 	writer, commit, err := storer(ipld.LinkContext{})
 	_, err = writer.Write(block.RawData())
@@ -70,7 +69,7 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blocks := testutil.GenerateBlocksOfSize(1, 100)
 	block := blocks[0]
 
@@ -123,7 +122,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 
 	wrappedLoader := func(link ipld.Link, linkContext ipld.LinkContext) (io.Reader, error) {
 		callCount++
@@ -171,7 +170,7 @@ func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T)
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 
 	wrappedLoader := func(link ipld.Link, linkContext ipld.LinkContext) (io.Reader, error) {
 		callCount++
@@ -208,7 +207,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blocks := testutil.GenerateBlocksOfSize(1, 100)
 	block := blocks[0]
 
@@ -272,7 +271,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 
 	link := testutil.NewTestLink()
 	called := make(chan struct{}, 2)
@@ -329,7 +328,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 
 	link := testutil.NewTestLink()
 	called := make(chan struct{}, 2)
@@ -378,7 +377,7 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blocks := testutil.GenerateBlocksOfSize(1, 100)
 	block := blocks[0]
 

@@ -22,7 +22,6 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -199,7 +198,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain1 := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 	blockChain2 := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
@@ -298,7 +297,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
 	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx1, peers[0], blockChain.TipLink, blockChain.Selector())
@@ -354,7 +353,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
 	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
@@ -382,29 +381,6 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan)
 }
 
-/*func TestInvalidSelector(t *testing.T) {
-	requestRecordChan := make(chan requestRecord, 2)
-	fph := &fakePeerHandler{requestRecordChan}
-	fakeIPLDBridge := testbridge.NewMockIPLDBridge()
-	ctx := context.Background()
-	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal, fakeIPLDBridge)
-	requestManager.SetDelegate(fph)
-	requestManager.Startup()
-
-	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	peers := testutil.GeneratePeers(1)
-
-	cids := testutil.GenerateCids(5)
-	s := testbridge.NewUnencodableSelectorSpec(cids)
-	r := cidlink.Link{Cid: cids[0]}
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
-
-	testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
-	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
-}*/
-
 func TestUnencodableSelector(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
@@ -418,9 +394,8 @@ func TestUnencodableSelector(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	cids := testutil.GenerateCids(5)
-	s := testbridge.NewUnencodableSelectorSpec(cids)
-	r := cidlink.Link{Cid: cids[0]}
+	s := testutil.NewUnencodableSelectorSpec()
+	r := cidlink.Link{Cid: testutil.GenerateCids(1)[0]}
 	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
 
 	testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
@@ -441,7 +416,7 @@ func TestFailedRequest(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
 	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
@@ -470,7 +445,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
 	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
@@ -506,7 +481,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
 
@@ -541,7 +516,7 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
 
@@ -577,7 +552,7 @@ func TestEncodingExtensions(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blockStore)
+	loader, storer := testutil.NewTestStore(blockStore)
 	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
 	extensionData1 := testutil.RandomBytes(100)

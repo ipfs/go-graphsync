@@ -1,7 +1,6 @@
-package testbridge
+package testutil
 
 import (
-	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipld/go-ipld-prime"
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -10,7 +9,7 @@ import (
 
 // NewUnparsableSelectorSpec returns a spec that will fail when you attempt to
 // validate it or decompose to a node + selector.
-func NewUnparsableSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
+func NewUnparsableSelectorSpec() ipld.Node {
 	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
 	return ssb.ExploreRecursiveEdge().Node()
 }
@@ -24,6 +23,6 @@ func NewInvalidSelectorSpec() ipld.Node {
 
 // NewUnencodableSelectorSpec returns a spec that will fail when you attempt to
 // encode it.
-func NewUnencodableSelectorSpec(cidsVisited []cid.Cid) ipld.Node {
+func NewUnencodableSelectorSpec() ipld.Node {
 	return &ipldfree.Node{}
 }

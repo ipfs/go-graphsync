@@ -8,7 +8,6 @@ import (
 
 	"github.com/ipld/go-ipld-prime"
 
-	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -16,7 +15,7 @@ import (
 
 func TestVerifyBlockPresent(t *testing.T) {
 	blocksWritten := make(map[ipld.Link][]byte)
-	loader, storer := testbridge.NewMockStore(blocksWritten)
+	loader, storer := testutil.NewTestStore(blocksWritten)
 	unverifiedBlockStore := New(storer)
 	block := testutil.GenerateBlocksOfSize(1, 100)[0]
 	reader, err := loader(cidlink.Link{Cid: block.Cid()}, ipld.LinkContext{})

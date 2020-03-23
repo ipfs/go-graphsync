@@ -7,7 +7,7 @@ import (
 	"io"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
@@ -39,7 +39,7 @@ func WrapLoader(ctx context.Context,
 		}
 		responseSender.SendResponse(requestID, lnk, data)
 		if data == nil {
-			err = ipldbridge.ErrDoNotFollow()
+			err = ipldutil.ErrDoNotFollow()
 		}
 		select {
 		case <-ctx.Done():

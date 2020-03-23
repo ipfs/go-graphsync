@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/loader"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
@@ -230,14 +230,14 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 			return
 		}
 	}
-	selector, err := ipldbridge.ParseSelector(selectorSpec)
+	selector, err := ipldutil.ParseSelector(selectorSpec)
 	if err != nil {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
 	wrappedLoader := loader.WrapLoader(ctx, rm.loader, request.ID(), peerResponseSender)
-	err = ipldbridge.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
+	err = ipldutil.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
 	if err != nil {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return

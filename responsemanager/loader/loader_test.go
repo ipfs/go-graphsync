@@ -11,9 +11,9 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/testutil"
 
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
@@ -70,7 +70,7 @@ func TestWrappedLoaderSendsResponses(t *testing.T) {
 		t.Fatal("Should return an error and empty reader if underlying loader does")
 	}
 
-	if err != ipldbridge.ErrDoNotFollow() {
+	if err != ipldutil.ErrDoNotFollow() {
 		t.Fatal("Should convert error to a do not follow error")
 	}
 

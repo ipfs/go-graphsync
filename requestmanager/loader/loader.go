@@ -7,7 +7,7 @@ import (
 	"io"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	ipld "github.com/ipld/go-ipld-prime"
 )
@@ -35,7 +35,7 @@ func WrapAsyncLoader(
 				case <-ctx.Done():
 					return nil, fmt.Errorf("request finished")
 				case errorChan <- result.Err:
-					return nil, ipldbridge.ErrDoNotFollow()
+					return nil, ipldutil.ErrDoNotFollow()
 				}
 			}
 			return bytes.NewReader(result.Data), nil

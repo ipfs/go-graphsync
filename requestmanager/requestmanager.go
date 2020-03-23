@@ -7,7 +7,7 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
-	ipldbridge "github.com/ipfs/go-graphsync/ipldbridge"
+	ipldutil "github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/requestmanager/loader"
@@ -110,7 +110,7 @@ func (rm *RequestManager) SendRequest(ctx context.Context,
 	root ipld.Link,
 	selector ipld.Node,
 	extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
-	if _, err := ipldbridge.ParseSelector(selector); err != nil {
+	if _, err := ipldutil.ParseSelector(selector); err != nil {
 		return rm.singleErrorResponse(fmt.Errorf("Invalid Selector Spec"))
 	}
 
@@ -363,11 +363,11 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.Respo
 }
 
 func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (chan graphsync.ResponseProgress, chan error) {
-	_, err := ipldbridge.EncodeNode(selectorSpec)
+	_, err := ipldutil.EncodeNode(selectorSpec)
 	if err != nil {
 		return rm.singleErrorResponse(err)
 	}
-	selector, err := ipldbridge.ParseSelector(selectorSpec)
+	selector, err := ipldutil.ParseSelector(selectorSpec)
 	if err != nil {
 		return rm.singleErrorResponse(err)
 	}
@@ -397,7 +397,7 @@ func (rm *RequestManager) executeTraversal(
 	loaderFn := loader.WrapAsyncLoader(ctx, rm.asyncLoader.AsyncLoad, requestID, inProgressErr)
 	visitor := visitToChannel(ctx, inProgressChan)
 	go func() {
-		ipldbridge.Traverse(ctx, loaderFn, root, selector, visitor)
+		ipldutil.Traverse(ctx, loaderFn, root, selector, visitor)
 		select {
 		case networkError := <-networkErrorChan:
 			select {

@@ -1,4 +1,4 @@
-package ipldbridge
+package ipldutil
 
 import (
 	"bytes"

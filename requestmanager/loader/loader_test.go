@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 
 	"github.com/ipfs/go-graphsync/testutil"
@@ -73,7 +73,7 @@ func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
 	err := errors.New("something went wrong")
 	responseChan <- types.AsyncLoadResult{Data: nil, Err: err}
 	stream, loadErr := loader(link, ipld.LinkContext{})
-	if stream != nil || loadErr != ipldbridge.ErrDoNotFollow() {
+	if stream != nil || loadErr != ipldutil.ErrDoNotFollow() {
 		t.Fatal("Should have errored on load")
 	}
 	select {
