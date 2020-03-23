@@ -5,6 +5,7 @@ go 1.12
 require (
 	github.com/filecoin-project/go-data-transfer v0.0.0-20191219005021-4accf56bd2ce
 	github.com/gogo/protobuf v1.3.1
+	github.com/ipfs/go-bitswap v0.1.8
 	github.com/ipfs/go-block-format v0.0.2
 	github.com/ipfs/go-blockservice v0.1.3-0.20190908200855-f22eea50656c
 	github.com/ipfs/go-cid v0.0.4-0.20191112011718-79e75dffeb10

@@ -9,7 +9,6 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
-	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
 )
@@ -25,7 +24,7 @@ func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
 	}
 	loadAttemptQueue := New(loadAttempter)
 
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
 
 	resultChan := make(chan types.AsyncLoadResult, 1)
@@ -60,7 +59,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	}
 	loadAttemptQueue := New(loadAttempter)
 
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	lr := NewLoadRequest(requestID, link, resultChan)
@@ -100,7 +99,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 
 	loadAttemptQueue := New(loadAttempter)
 
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	lr := NewLoadRequest(requestID, link, resultChan)
@@ -141,7 +140,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing
 	}
 	loadAttemptQueue := New(loadAttempter)
 
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	lr := NewLoadRequest(requestID, link, resultChan)
@@ -190,7 +189,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	}
 	loadAttemptQueue := New(loadAttempter)
 
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	lr := NewLoadRequest(requestID, link, resultChan)

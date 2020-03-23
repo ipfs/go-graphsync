@@ -8,7 +8,6 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
 
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/loadattemptqueue"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/responsecache"
@@ -44,7 +43,7 @@ func New(ctx context.Context, loader ipld.Loader, storer ipld.Storer) *AsyncLoad
 		data, err := responseCache.AttemptLoad(requestID, link)
 		if data == nil && err == nil {
 			// fall back to local store
-			stream, loadErr := loader(link, ipldbridge.LinkContext{})
+			stream, loadErr := loader(link, ipld.LinkContext{})
 			if stream != nil && loadErr == nil {
 				localData, loadErr := ioutil.ReadAll(stream)
 				if loadErr == nil && localData != nil {

@@ -112,7 +112,8 @@ func (tbc *TestBlockChain) Selector() ipld.Node {
 		})).Node()
 }
 
-func (tbc *TestBlockChain) linkTipIndex(fromTip int) ipld.Link {
+// LinkTipIndex returns a link to the block at the given index from the tip
+func (tbc *TestBlockChain) LinkTipIndex(fromTip int) ipld.Link {
 	switch height := tbc.blockChainLength - 1 - fromTip; {
 	case height == 0:
 		return tbc.GenisisLink
@@ -123,6 +124,17 @@ func (tbc *TestBlockChain) linkTipIndex(fromTip int) ipld.Link {
 	}
 }
 
+// NodeTipIndex returns the node to the block at the given index from the tip
+func (tbc *TestBlockChain) NodeTipIndex(fromTip int) ipld.Node {
+	switch height := tbc.blockChainLength - 1 - fromTip; {
+	case height == 0:
+		return tbc.GenisisNode
+	case height == tbc.blockChainLength-1:
+		return tbc.TipNode
+	default:
+		return tbc.MiddleNodes[height-1]
+	}
+}
 func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress, start int, end int) {
 	if len(responses) != (end-start)*blockChainTraversedNodesPerBlock {
 		tbc.t.Fatal("did not traverse all nodes")
@@ -154,7 +166,7 @@ func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress
 		if response.LastBlock.Link == nil {
 			continue
 		}
-		expectedLink := tbc.linkTipIndex((i / 2) + start)
+		expectedLink := tbc.LinkTipIndex((i / 2) + start)
 		if expectedLink != response.LastBlock.Link {
 			tbc.t.Fatal("Unexpected link in response")
 		}
@@ -183,7 +195,7 @@ func (tbc *TestBlockChain) VerifyResponseRange(ctx context.Context, responseChan
 func (tbc *TestBlockChain) Blocks(from int, to int) []blocks.Block {
 	var blks []blocks.Block
 	for i := from; i < to; i++ {
-		link := tbc.linkTipIndex(i)
+		link := tbc.LinkTipIndex(i)
 		reader, err := tbc.loader(link, ipld.LinkContext{})
 		if err != nil {
 			tbc.t.Fatal("Unable to load link")

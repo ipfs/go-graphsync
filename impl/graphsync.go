@@ -6,7 +6,6 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
 
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
@@ -25,10 +24,9 @@ var log = logging.Logger("graphsync")
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
 type GraphSync struct {
-	ipldBridge          ipldbridge.IPLDBridge
 	network             gsnet.GraphSyncNetwork
-	loader              ipldbridge.Loader
-	storer              ipldbridge.Storer
+	loader              ipld.Loader
+	storer              ipld.Storer
 	requestManager      *requestmanager.RequestManager
 	responseManager     *responsemanager.ResponseManager
 	asyncLoader         *asyncloader.AsyncLoader
@@ -42,8 +40,7 @@ type GraphSync struct {
 // New creates a new GraphSync Exchange on the given network,
 // using the given bridge to IPLD and the given link loader.
 func New(parent context.Context, network gsnet.GraphSyncNetwork,
-	ipldBridge ipldbridge.IPLDBridge, loader ipldbridge.Loader,
-	storer ipldbridge.Storer) graphsync.GraphExchange {
+	loader ipld.Loader, storer ipld.Storer) graphsync.GraphExchange {
 	ctx, cancel := context.WithCancel(parent)
 
 	createMessageQueue := func(ctx context.Context, p peer.ID) peermanager.PeerQueue {
@@ -59,7 +56,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
 	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue)
 	graphSync := &GraphSync{
-		ipldBridge:          ipldBridge,
 		network:             network,
 		loader:              loader,
 		storer:              storer,

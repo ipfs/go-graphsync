@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -80,7 +81,7 @@ type ResponseManager struct {
 // New creates a new response manager from the given context, loader,
 // bridge to IPLD interface, peerManager, and queryQueue.
 func New(ctx context.Context,
-	loader ipldbridge.Loader,
+	loader ipld.Loader,
 	peerManager PeerManager,
 	queryQueue QueryQueue) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
@@ -186,7 +187,7 @@ func (rm *ResponseManager) processQueriesWorker() {
 
 }
 
-func noopVisitor(tp ipldbridge.TraversalProgress, n ipld.Node, tr ipldbridge.TraversalReason) error {
+func noopVisitor(tp traversal.Progress, n ipld.Node, tr traversal.VisitReason) error {
 	return nil
 }
 

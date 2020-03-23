@@ -3,6 +3,7 @@ package ipldbridge
 import (
 	"bytes"
 	"context"
+	"errors"
 
 	ipld "github.com/ipld/go-ipld-prime"
 	dagpb "github.com/ipld/go-ipld-prime-proto"
@@ -10,18 +11,15 @@ import (
 	free "github.com/ipld/go-ipld-prime/impl/free"
 	"github.com/ipld/go-ipld-prime/traversal"
 	ipldtraversal "github.com/ipld/go-ipld-prime/traversal"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 )
 
-// TraversalConfig is an alias from ipld, in case it's renamed/moved.
-type TraversalConfig = ipldtraversal.Config
+var errDoNotFollow = errors.New("Dont Follow Me")
 
-type ipldBridge struct {
-}
-
-// NewIPLDBridge returns an IPLD Bridge.
-func NewIPLDBridge() IPLDBridge {
-	return &ipldBridge{}
+// ErrDoNotFollow is just a wrapper for whatever IPLD's ErrDoNotFollow ends up looking like
+func ErrDoNotFollow() error {
+	return errDoNotFollow
 }
 
 var (
@@ -30,14 +28,14 @@ var (
 	})
 )
 
-func Traverse(ctx context.Context, loader Loader, root ipld.Link, s Selector, fn AdvVisitFn) error {
-	builder := defaultChooser(root, LinkContext{})
-	node, err := root.Load(ctx, LinkContext{}, builder, loader)
+func Traverse(ctx context.Context, loader ipld.Loader, root ipld.Link, s selector.Selector, fn traversal.AdvVisitFn) error {
+	builder := defaultChooser(root, ipld.LinkContext{})
+	node, err := root.Load(ctx, ipld.LinkContext{}, builder, loader)
 	if err != nil {
 		return err
 	}
-	return TraversalProgress{
-		Cfg: &TraversalConfig{
+	return traversal.Progress{
+		Cfg: &traversal.Config{
 			Ctx:                    ctx,
 			LinkLoader:             loader,
 			LinkNodeBuilderChooser: defaultChooser,
@@ -45,7 +43,7 @@ func Traverse(ctx context.Context, loader Loader, root ipld.Link, s Selector, fn
 	}.WalkAdv(node, s, fn)
 }
 
-func WalkMatching(node ipld.Node, s Selector, fn VisitFn) error {
+func WalkMatching(node ipld.Node, s selector.Selector, fn traversal.VisitFn) error {
 	return ipldtraversal.WalkMatching(node, s, fn)
 }
 
@@ -63,6 +61,6 @@ func DecodeNode(encoded []byte) (ipld.Node, error) {
 	return dagcbor.Decoder(free.NodeBuilder(), reader)
 }
 
-func ParseSelector(selector ipld.Node) (Selector, error) {
+func ParseSelector(selector ipld.Node) (selector.Selector, error) {
 	return ipldselector.ParseSelector(selector)
 }

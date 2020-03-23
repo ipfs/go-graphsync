@@ -5,13 +5,13 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testbridge"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestBlockRefCount(t *testing.T) {
 	linkTracker := New()
-	link1 := testbridge.NewMockLink()
-	link2 := testbridge.NewMockLink()
+	link1 := testutil.NewTestLink()
+	link2 := testutil.NewTestLink()
 	if linkTracker.BlockRefCount(link1) != 0 || linkTracker.BlockRefCount(link2) != 0 {
 		t.Fatal("Links not traversed should have refcount 0")
 	}
@@ -34,8 +34,8 @@ func TestBlockRefCount(t *testing.T) {
 
 func TestHasAllBlocks(t *testing.T) {
 	linkTracker := New()
-	link1 := testbridge.NewMockLink()
-	link2 := testbridge.NewMockLink()
+	link1 := testutil.NewTestLink()
+	link2 := testutil.NewTestLink()
 	requestID1 := graphsync.RequestID(rand.Int31())
 	requestID2 := graphsync.RequestID(rand.Int31())
 
@@ -52,7 +52,7 @@ func TestHasAllBlocks(t *testing.T) {
 
 func TestBlockBecomesAvailable(t *testing.T) {
 	linkTracker := New()
-	link1 := testbridge.NewMockLink()
+	link1 := testutil.NewTestLink()
 	if linkTracker.BlockRefCount(link1) != 0 {
 		t.Fatal("Links not traversed should send blocks")
 	}
@@ -83,8 +83,8 @@ func TestBlockBecomesAvailable(t *testing.T) {
 
 func TestMissingLink(t *testing.T) {
 	linkTracker := New()
-	link1 := testbridge.NewMockLink()
-	link2 := testbridge.NewMockLink()
+	link1 := testutil.NewTestLink()
+	link2 := testutil.NewTestLink()
 	requestID1 := graphsync.RequestID(rand.Int31())
 	requestID2 := graphsync.RequestID(rand.Int31())
 

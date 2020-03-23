@@ -24,7 +24,7 @@ func WrapAsyncLoader(
 	asyncLoadFn AsyncLoadFn,
 	requestID graphsync.RequestID,
 	errorChan chan error) ipld.Loader {
-	return func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+	return func(link ipld.Link, linkContext ipld.LinkContext) (io.Reader, error) {
 		resultChan := asyncLoadFn(requestID, link)
 		select {
 		case <-ctx.Done():

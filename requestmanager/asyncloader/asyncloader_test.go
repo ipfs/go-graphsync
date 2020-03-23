@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	"github.com/ipfs/go-graphsync/metadata"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
@@ -26,7 +25,7 @@ func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
 	blockStore := make(map[ipld.Link][]byte)
 	loader, storer := testbridge.NewMockStore(blockStore)
 	block := testutil.GenerateBlocksOfSize(1, 100)[0]
-	writer, commit, err := storer(ipldbridge.LinkContext{})
+	writer, commit, err := storer(ipld.LinkContext{})
 	_, err = writer.Write(block.RawData())
 	if err != nil {
 		t.Fatal("could not seed block store")
@@ -37,7 +36,7 @@ func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
 		t.Fatal("could not seed block store")
 	}
 
-	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+	wrappedLoader := func(link ipld.Link, linkContext ipld.LinkContext) (io.Reader, error) {
 		callCount++
 		return loader(link, linkContext)
 	}
@@ -77,7 +76,7 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 
 	link := cidlink.Link{Cid: block.Cid()}
 
-	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+	wrappedLoader := func(link ipld.Link, linkContext ipld.LinkContext) (io.Reader, error) {
 		callCount++
 		return loader(link, linkContext)
 	}
@@ -126,7 +125,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	blockStore := make(map[ipld.Link][]byte)
 	loader, storer := testbridge.NewMockStore(blockStore)
 
-	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+	wrappedLoader := func(link ipld.Link, linkContext ipld.LinkContext) (io.Reader, error) {
 		callCount++
 		return loader(link, linkContext)
 	}
@@ -134,7 +133,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	asyncLoader := New(ctx, wrappedLoader, storer)
 	asyncLoader.Startup()
 
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
 
 	responses := map[graphsync.RequestID]metadata.Metadata{
@@ -174,7 +173,7 @@ func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T)
 	blockStore := make(map[ipld.Link][]byte)
 	loader, storer := testbridge.NewMockStore(blockStore)
 
-	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+	wrappedLoader := func(link ipld.Link, linkContext ipld.LinkContext) (io.Reader, error) {
 		callCount++
 		return loader(link, linkContext)
 	}
@@ -182,7 +181,7 @@ func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T)
 	asyncLoader := New(ctx, wrappedLoader, storer)
 	asyncLoader.Startup()
 
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
@@ -215,7 +214,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 
 	link := cidlink.Link{Cid: block.Cid()}
 	called := make(chan struct{}, 2)
-	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+	wrappedLoader := func(link ipld.Link, linkContext ipld.LinkContext) (io.Reader, error) {
 		called <- struct{}{}
 		callCount++
 		return loader(link, linkContext)
@@ -275,9 +274,9 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 	blockStore := make(map[ipld.Link][]byte)
 	loader, storer := testbridge.NewMockStore(blockStore)
 
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
 	called := make(chan struct{}, 2)
-	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+	wrappedLoader := func(link ipld.Link, linkContext ipld.LinkContext) (io.Reader, error) {
 		called <- struct{}{}
 		callCount++
 		return loader(link, linkContext)
@@ -332,9 +331,9 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	blockStore := make(map[ipld.Link][]byte)
 	loader, storer := testbridge.NewMockStore(blockStore)
 
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
 	called := make(chan struct{}, 2)
-	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+	wrappedLoader := func(link ipld.Link, linkContext ipld.LinkContext) (io.Reader, error) {
 		called <- struct{}{}
 		callCount++
 		return loader(link, linkContext)
@@ -385,7 +384,7 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 
 	link := cidlink.Link{Cid: block.Cid()}
 
-	wrappedLoader := func(link ipld.Link, linkContext ipldbridge.LinkContext) (io.Reader, error) {
+	wrappedLoader := func(link ipld.Link, linkContext ipld.LinkContext) (io.Reader, error) {
 		callCount++
 		return loader(link, linkContext)
 	}

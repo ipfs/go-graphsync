@@ -425,8 +425,8 @@ func TestUnixFSFetch(t *testing.T) {
 	storer2 := makeStorer(bs2)
 
 	td := newGsTestData(ctx, t)
-	requestor := New(ctx, td.gsnet1, td.bridge, loader1, storer1)
-	responder := New(ctx, td.gsnet2, td.bridge, loader2, storer2)
+	requestor := New(ctx, td.gsnet1, loader1, storer1)
+	responder := New(ctx, td.gsnet2, loader2, storer2)
 	extensionName := graphsync.ExtensionName("Free for all")
 	responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 		hookActions.ValidateRequest()
@@ -502,7 +502,6 @@ type gsTestData struct {
 	blockStore1, blockStore2 map[ipld.Link][]byte
 	loader1, loader2         ipld.Loader
 	storer1, storer2         ipld.Storer
-	bridge                   ipldbridge.IPLDBridge
 	extensionData            []byte
 	extensionName            graphsync.ExtensionName
 	extension                graphsync.ExtensionData
@@ -534,7 +533,6 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 	td.loader1, td.storer1 = testbridge.NewMockStore(td.blockStore1)
 	td.blockStore2 = make(map[ipld.Link][]byte)
 	td.loader2, td.storer2 = testbridge.NewMockStore(td.blockStore2)
-	td.bridge = ipldbridge.NewIPLDBridge()
 	// setup extension handlers
 	td.extensionData = testutil.RandomBytes(100)
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
@@ -552,12 +550,12 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 }
 
 func (td *gsTestData) GraphSyncHost1() graphsync.GraphExchange {
-	return New(td.ctx, td.gsnet1, td.bridge, td.loader1, td.storer1)
+	return New(td.ctx, td.gsnet1, td.loader1, td.storer1)
 }
 
 func (td *gsTestData) GraphSyncHost2() graphsync.GraphExchange {
 
-	return New(td.ctx, td.gsnet2, td.bridge, td.loader2, td.storer2)
+	return New(td.ctx, td.gsnet2, td.loader2, td.storer2)
 }
 
 type receivedMessage struct {

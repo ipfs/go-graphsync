@@ -29,14 +29,17 @@ func TestBufferingResponseProgress(t *testing.T) {
 	outgoingResponses, outgoingErrors := rc.collectResponses(
 		requestCtx, incomingResponses, incomingErrors, cancelRequest)
 
-	blocks := testutil.GenerateBlocksOfSize(10, 100)
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testbridge.NewMockStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 10)
+	blocks := blockChain.AllBlocks()
 
-	for _, block := range blocks {
+	for i, block := range blocks {
 		select {
 		case <-ctx.Done():
 			t.Fatal("should have written to channel but couldn't")
 		case incomingResponses <- graphsync.ResponseProgress{
-			Node: testbridge.NewMockBlockNode(block.RawData()),
+			Node: blockChain.NodeTipIndex(i),
 			LastBlock: struct {
 				Path ipld.Path
 				Link ipld.Link

@@ -23,10 +23,10 @@ type ResponseSender interface {
 // WrapLoader wraps a given loader with an interceptor that sends loaded
 // blocks out to the network with the given response sender.
 func WrapLoader(ctx context.Context,
-	loader ipldbridge.Loader,
+	loader ipld.Loader,
 	requestID graphsync.RequestID,
-	responseSender ResponseSender) ipldbridge.Loader {
-	return func(lnk ipld.Link, lnkCtx ipldbridge.LinkContext) (io.Reader, error) {
+	responseSender ResponseSender) ipld.Loader {
+	return func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
 		result, err := loader(lnk, lnkCtx)
 		var data []byte
 		var blockBuffer bytes.Buffer
