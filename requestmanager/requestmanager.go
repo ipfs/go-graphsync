@@ -7,7 +7,7 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
-	ipldbridge "github.com/ipfs/go-graphsync/ipldbridge"
+	ipldutil "github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/requestmanager/loader"
@@ -15,6 +15,7 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -58,7 +59,6 @@ type RequestManager struct {
 	ctx         context.Context
 	cancel      func()
 	messages    chan requestManagerMessage
-	ipldBridge  ipldbridge.IPLDBridge
 	peerHandler PeerHandler
 	rc          *responseCollector
 	asyncLoader AsyncLoader
@@ -73,12 +73,11 @@ type requestManagerMessage interface {
 }
 
 // New generates a new request manager from a context, network, and selectorQuerier
-func New(ctx context.Context, asyncLoader AsyncLoader, ipldBridge ipldbridge.IPLDBridge) *RequestManager {
+func New(ctx context.Context, asyncLoader AsyncLoader) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
 		ctx:                       ctx,
 		cancel:                    cancel,
-		ipldBridge:                ipldBridge,
 		asyncLoader:               asyncLoader,
 		rc:                        newResponseCollector(ctx),
 		messages:                  make(chan requestManagerMessage, 16),
@@ -111,7 +110,7 @@ func (rm *RequestManager) SendRequest(ctx context.Context,
 	root ipld.Link,
 	selector ipld.Node,
 	extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
-	if _, err := rm.ipldBridge.ParseSelector(selector); err != nil {
+	if _, err := ipldutil.ParseSelector(selector); err != nil {
 		return rm.singleErrorResponse(fmt.Errorf("Invalid Selector Spec"))
 	}
 
@@ -281,7 +280,7 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 func (prm *processResponseMessage) handle(rm *RequestManager) {
 	filteredResponses := rm.filterResponsesForPeer(prm.responses, prm.p)
 	filteredResponses = rm.processExtensions(filteredResponses, prm.p)
-	responseMetadata := metadataForResponses(filteredResponses, rm.ipldBridge)
+	responseMetadata := metadataForResponses(filteredResponses)
 	rm.asyncLoader.ProcessResponse(responseMetadata, prm.blks)
 	rm.processTerminations(filteredResponses)
 }
@@ -364,11 +363,11 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.Respo
 }
 
 func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (chan graphsync.ResponseProgress, chan error) {
-	selectorBytes, err := rm.ipldBridge.EncodeNode(selectorSpec)
+	_, err := ipldutil.EncodeNode(selectorSpec)
 	if err != nil {
 		return rm.singleErrorResponse(err)
 	}
-	selector, err := rm.ipldBridge.ParseSelector(selectorSpec)
+	selector, err := ipldutil.ParseSelector(selectorSpec)
 	if err != nil {
 		return rm.singleErrorResponse(err)
 	}
@@ -382,7 +381,7 @@ func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID,
 		ctx, cancel, p, networkErrorChan,
 	}
 	rm.asyncLoader.StartRequest(requestID)
-	rm.peerHandler.SendRequest(p, gsmsg.NewRequest(requestID, asCidLink.Cid, selectorBytes, maxPriority, extensions...))
+	rm.peerHandler.SendRequest(p, gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, maxPriority, extensions...))
 	return rm.executeTraversal(ctx, requestID, root, selector, networkErrorChan)
 }
 
@@ -390,7 +389,7 @@ func (rm *RequestManager) executeTraversal(
 	ctx context.Context,
 	requestID graphsync.RequestID,
 	root ipld.Link,
-	selector ipldbridge.Selector,
+	selector selector.Selector,
 	networkErrorChan chan error,
 ) (chan graphsync.ResponseProgress, chan error) {
 	inProgressChan := make(chan graphsync.ResponseProgress)
@@ -398,7 +397,7 @@ func (rm *RequestManager) executeTraversal(
 	loaderFn := loader.WrapAsyncLoader(ctx, rm.asyncLoader.AsyncLoad, requestID, inProgressErr)
 	visitor := visitToChannel(ctx, inProgressChan)
 	go func() {
-		rm.ipldBridge.Traverse(ctx, loaderFn, root, selector, visitor)
+		ipldutil.Traverse(ctx, loaderFn, root, selector, visitor)
 		select {
 		case networkError := <-networkErrorChan:
 			select {

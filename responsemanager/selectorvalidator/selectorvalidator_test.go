@@ -6,13 +6,11 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 )
 
 func TestValidateSelector(t *testing.T) {
-	bridge := ipldbridge.NewIPLDBridge()
 	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
 
 	successBase := ssb.ExploreRecursive(selector.RecursionLimitDepth(80), ssb.ExploreRecursiveEdge())
@@ -20,15 +18,15 @@ func TestValidateSelector(t *testing.T) {
 	failNoneBase := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreRecursiveEdge())
 
 	verifyOutcomes := func(t *testing.T, success ipld.Node, fail ipld.Node, failNone ipld.Node) {
-		err := ValidateSelector(bridge, success, 100)
+		err := ValidateSelector(success, 100)
 		if err != nil {
 			t.Fatal("valid selector returned error")
 		}
-		err = ValidateSelector(bridge, fail, 100)
+		err = ValidateSelector(fail, 100)
 		if err != ErrInvalidLimit {
 			t.Fatal("selector should have failed on invalid limit")
 		}
-		err = ValidateSelector(bridge, failNone, 100)
+		err = ValidateSelector(failNone, 100)
 		if err != ErrInvalidLimit {
 			t.Fatal("selector should have failed on invalid limit")
 		}

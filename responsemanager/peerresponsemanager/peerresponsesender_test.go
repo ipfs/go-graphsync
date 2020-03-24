@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testbridge"
 
 	blocks "github.com/ipfs/go-block-format"
 	gsmsg "github.com/ipfs/go-graphsync/message"
@@ -52,8 +51,7 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 		done: done,
 		sent: sent,
 	}
-	ipldBridge := testbridge.NewMockIPLDBridge()
-	peerResponseManager := NewResponseSender(ctx, p, fph, ipldBridge)
+	peerResponseManager := NewResponseSender(ctx, p, fph)
 	peerResponseManager.Startup()
 
 	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())
@@ -187,8 +185,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 		done: done,
 		sent: sent,
 	}
-	ipldBridge := testbridge.NewMockIPLDBridge()
-	peerResponseManager := NewResponseSender(ctx, p, fph, ipldBridge)
+	peerResponseManager := NewResponseSender(ctx, p, fph)
 	peerResponseManager.Startup()
 
 	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())
@@ -312,8 +309,7 @@ func TestPeerResponseManagerSendsExtensionData(t *testing.T) {
 		done: done,
 		sent: sent,
 	}
-	ipldBridge := testbridge.NewMockIPLDBridge()
-	peerResponseManager := NewResponseSender(ctx, p, fph, ipldBridge)
+	peerResponseManager := NewResponseSender(ctx, p, fph)
 	peerResponseManager.Startup()
 
 	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())

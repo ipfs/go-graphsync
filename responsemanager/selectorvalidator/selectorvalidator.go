@@ -3,7 +3,6 @@ package selectorvalidator
 import (
 	"errors"
 
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	ipld "github.com/ipld/go-ipld-prime"
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	"github.com/ipld/go-ipld-prime/traversal"
@@ -20,7 +19,7 @@ var (
 // ValidateSelector applies the default selector validation policy to a selector
 // on an incoming request -- which by default is to limit recursive selectors
 // to a fixed depth
-func ValidateSelector(bridge ipldbridge.IPLDBridge, node ipld.Node, maxAcceptedDepth int) error {
+func ValidateSelector(node ipld.Node, maxAcceptedDepth int) error {
 	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
 
 	// this selector is a selector for traversing selectors...
@@ -53,7 +52,7 @@ func ValidateSelector(bridge ipldbridge.IPLDBridge, node ipld.Node, maxAcceptedD
 		return err
 	}
 
-	return bridge.WalkMatching(node, s, func(progress traversal.Progress, visited ipld.Node) error {
+	return traversal.WalkMatching(node, s, func(progress traversal.Progress, visited ipld.Node) error {
 		if visited.ReprKind() != ipld.ReprKind_Map || visited.Length() != 1 {
 			return ErrInvalidLimit
 		}

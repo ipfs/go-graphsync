@@ -3,7 +3,6 @@ package responsebuilder
 import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipld/go-ipld-prime"
@@ -69,10 +68,10 @@ func (rb *ResponseBuilder) Empty() bool {
 }
 
 // Build assembles and encodes response data from the added requests, links, and blocks.
-func (rb *ResponseBuilder) Build(ipldBridge ipldbridge.IPLDBridge) ([]gsmsg.GraphSyncResponse, []blocks.Block, error) {
+func (rb *ResponseBuilder) Build() ([]gsmsg.GraphSyncResponse, []blocks.Block, error) {
 	responses := make([]gsmsg.GraphSyncResponse, 0, len(rb.outgoingResponses))
 	for requestID, linkMap := range rb.outgoingResponses {
-		mdRaw, err := metadata.EncodeMetadata(linkMap, ipldBridge)
+		mdRaw, err := metadata.EncodeMetadata(linkMap)
 		if err != nil {
 			return nil, nil, err
 		}

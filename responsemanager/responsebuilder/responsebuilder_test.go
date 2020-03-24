@@ -9,14 +9,12 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
-	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
 func TestMessageBuilding(t *testing.T) {
-	ipldBridge := testbridge.NewMockIPLDBridge()
 	rb := New()
 	blocks := testutil.GenerateBlocksOfSize(3, 100)
 	links := make([]ipld.Link, 0, len(blocks))
@@ -68,7 +66,7 @@ func TestMessageBuilding(t *testing.T) {
 	rb.AddExtensionData(requestID1, extension1)
 	rb.AddExtensionData(requestID3, extension2)
 
-	responses, sentBlocks, err := rb.Build(ipldBridge)
+	responses, sentBlocks, err := rb.Build()
 
 	if err != nil {
 		t.Fatal("Error building responses")
@@ -87,7 +85,7 @@ func TestMessageBuilding(t *testing.T) {
 	if !found {
 		t.Fatal("Metadata not included in response")
 	}
-	response1Metadata, err := metadata.DecodeMetadata(response1MetadataRaw, ipldBridge)
+	response1Metadata, err := metadata.DecodeMetadata(response1MetadataRaw)
 	if err != nil || !reflect.DeepEqual(response1Metadata, metadata.Metadata{
 		metadata.Item{Link: links[0], BlockPresent: true},
 		metadata.Item{Link: links[1], BlockPresent: false},
@@ -109,7 +107,7 @@ func TestMessageBuilding(t *testing.T) {
 	if !found {
 		t.Fatal("Metadata not included in response")
 	}
-	response2Metadata, err := metadata.DecodeMetadata(response2MetadataRaw, ipldBridge)
+	response2Metadata, err := metadata.DecodeMetadata(response2MetadataRaw)
 	if err != nil || !reflect.DeepEqual(response2Metadata, metadata.Metadata{
 		metadata.Item{Link: links[1], BlockPresent: true},
 		metadata.Item{Link: links[2], BlockPresent: true},
@@ -126,7 +124,7 @@ func TestMessageBuilding(t *testing.T) {
 	if !found {
 		t.Fatal("Metadata not included in response")
 	}
-	response3Metadata, err := metadata.DecodeMetadata(response3MetadataRaw, ipldBridge)
+	response3Metadata, err := metadata.DecodeMetadata(response3MetadataRaw)
 	if err != nil || !reflect.DeepEqual(response3Metadata, metadata.Metadata{
 		metadata.Item{Link: links[0], BlockPresent: true},
 		metadata.Item{Link: links[1], BlockPresent: true},

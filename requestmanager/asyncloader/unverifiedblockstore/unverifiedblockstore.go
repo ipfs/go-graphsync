@@ -3,7 +3,6 @@ package unverifiedblockstore
 import (
 	"fmt"
 
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
@@ -11,12 +10,12 @@ import (
 // that have not been verified to be part of a traversal
 type UnverifiedBlockStore struct {
 	inMemoryBlocks map[ipld.Link][]byte
-	storer         ipldbridge.Storer
+	storer         ipld.Storer
 }
 
 // New initializes a new unverified store with the given storer function for writing
 // to permaneant storage if the block is verified
-func New(storer ipldbridge.Storer) *UnverifiedBlockStore {
+func New(storer ipld.Storer) *UnverifiedBlockStore {
 	return &UnverifiedBlockStore{
 		inMemoryBlocks: make(map[ipld.Link][]byte),
 		storer:         storer,
@@ -47,7 +46,7 @@ func (ubs *UnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
 		return nil, fmt.Errorf("Block not found")
 	}
 	delete(ubs.inMemoryBlocks, lnk)
-	buffer, committer, err := ubs.storer(ipldbridge.LinkContext{})
+	buffer, committer, err := ubs.storer(ipld.LinkContext{})
 	if err != nil {
 		return nil, err
 	}

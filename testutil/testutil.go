@@ -5,10 +5,15 @@ import (
 	"context"
 	"testing"
 
+	"github.com/ipfs/go-bitswap/testutil"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
+	util "github.com/ipfs/go-ipfs-util"
+	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+
 	random "github.com/jbenet/go-random"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
@@ -29,7 +34,10 @@ func RandomBytes(n int64) []byte {
 func GenerateBlocksOfSize(n int, size int64) []blocks.Block {
 	generatedBlocks := make([]blocks.Block, 0, n)
 	for i := 0; i < n; i++ {
-		b := blocks.NewBlock(RandomBytes(size))
+		data := RandomBytes(size)
+		mhash := util.Hash(data)
+		c := cid.NewCidV1(cid.Raw, mhash)
+		b, _ := blocks.NewBlockWithCid(data, c)
 		generatedBlocks = append(generatedBlocks, b)
 
 	}
@@ -183,4 +191,9 @@ func VerifyEmptyResponse(ctx context.Context, t *testing.T, responseChan <-chan 
 			t.Fatal("response channel never closed")
 		}
 	}
+}
+
+// NewTestLink returns a randomly generated IPLD Link
+func NewTestLink() ipld.Link {
+	return cidlink.Link{Cid: testutil.GenerateCids(1)[0]}
 }

@@ -2,6 +2,7 @@ package loader
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -10,10 +11,9 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testbridge"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/testutil"
 
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
@@ -34,22 +34,23 @@ func (frs *fakeResponseSender) SendResponse(
 }
 
 func TestWrappedLoaderSendsResponses(t *testing.T) {
+	ctx := context.Background()
 	frs := &fakeResponseSender{}
-	link1 := testbridge.NewMockLink()
-	link2 := testbridge.NewMockLink()
+	link1 := testutil.NewTestLink()
+	link2 := testutil.NewTestLink()
 	sourceBytes := testutil.RandomBytes(100)
 	byteBuffer := bytes.NewReader(sourceBytes)
 
-	loader := func(ipldLink ipld.Link, lnkCtx ipldbridge.LinkContext) (io.Reader, error) {
+	loader := func(ipldLink ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
 		if ipldLink == link1 {
 			return byteBuffer, nil
 		}
 		return nil, fmt.Errorf("unable to load block")
 	}
 	requestID := graphsync.RequestID(rand.Int31())
-	wrappedLoader := WrapLoader(loader, requestID, frs)
+	wrappedLoader := WrapLoader(ctx, loader, requestID, frs)
 
-	reader, err := wrappedLoader(link1, ipldbridge.LinkContext{})
+	reader, err := wrappedLoader(link1, ipld.LinkContext{})
 	if err != nil {
 		t.Fatal("Should not have error if underlying loader returns valid buffer and no error")
 	}
@@ -63,13 +64,13 @@ func TestWrappedLoaderSendsResponses(t *testing.T) {
 		t.Fatal("Should have sent block to response sender with correct params but did not")
 	}
 
-	reader, err = wrappedLoader(link2, ipldbridge.LinkContext{})
+	reader, err = wrappedLoader(link2, ipld.LinkContext{})
 
 	if reader != nil || err == nil {
 		t.Fatal("Should return an error and empty reader if underlying loader does")
 	}
 
-	if err != ipldbridge.ErrDoNotFollow() {
+	if err != ipldutil.ErrDoNotFollow() {
 		t.Fatal("Should convert error to a do not follow error")
 	}
 

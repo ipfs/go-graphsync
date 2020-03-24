@@ -11,10 +11,9 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 
-	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
 )
@@ -42,10 +41,11 @@ func TestWrappedAsyncLoaderReturnsValues(t *testing.T) {
 	requestID := graphsync.RequestID(rand.Int31())
 	loader := WrapAsyncLoader(ctx, asyncLoadFn, requestID, errChan)
 
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
+
 	data := testutil.RandomBytes(100)
 	responseChan <- types.AsyncLoadResult{Data: data, Err: nil}
-	stream, err := loader(link, ipldbridge.LinkContext{})
+	stream, err := loader(link, ipld.LinkContext{})
 	if err != nil {
 		t.Fatal("Should not have errored on load")
 	}
@@ -69,11 +69,11 @@ func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
 	requestID := graphsync.RequestID(rand.Int31())
 	loader := WrapAsyncLoader(ctx, asyncLoadFn, requestID, errChan)
 
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
 	err := errors.New("something went wrong")
 	responseChan <- types.AsyncLoadResult{Data: nil, Err: err}
-	stream, loadErr := loader(link, ipldbridge.LinkContext{})
-	if stream != nil || loadErr != ipldbridge.ErrDoNotFollow() {
+	stream, loadErr := loader(link, ipld.LinkContext{})
+	if stream != nil || loadErr != ipldutil.ErrDoNotFollow() {
 		t.Fatal("Should have errored on load")
 	}
 	select {
@@ -97,13 +97,13 @@ func TestWrappedAsyncLoaderContextCancels(t *testing.T) {
 	errChan := make(chan error, 1)
 	requestID := graphsync.RequestID(rand.Int31())
 	loader := WrapAsyncLoader(subCtx, asyncLoadFn, requestID, errChan)
-	link := testbridge.NewMockLink()
+	link := testutil.NewTestLink()
 	resultsChan := make(chan struct {
 		io.Reader
 		error
 	})
 	go func() {
-		stream, err := loader(link, ipldbridge.LinkContext{})
+		stream, err := loader(link, ipld.LinkContext{})
 		resultsChan <- struct {
 			io.Reader
 			error

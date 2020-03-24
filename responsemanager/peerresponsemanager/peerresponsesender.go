@@ -9,8 +9,6 @@ import (
 
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
-	"github.com/ipfs/go-graphsync/ipldbridge"
-
 	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
 
@@ -39,7 +37,6 @@ type peerResponseSender struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	peerHandler  PeerMessageHandler
-	ipldBridge   ipldbridge.IPLDBridge
 	outgoingWork chan struct{}
 
 	linkTrackerLk      sync.RWMutex
@@ -63,15 +60,14 @@ type PeerResponseSender interface {
 }
 
 // NewResponseSender generates a new PeerResponseSender for the given context, peer ID,
-// using the given peer message handler and bridge to IPLD.
-func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHandler, ipldBridge ipldbridge.IPLDBridge) PeerResponseSender {
+// using the given peer message handler.
+func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHandler) PeerResponseSender {
 	ctx, cancel := context.WithCancel(ctx)
 	return &peerResponseSender{
 		p:            p,
 		ctx:          ctx,
 		cancel:       cancel,
 		peerHandler:  peerHandler,
-		ipldBridge:   ipldBridge,
 		outgoingWork: make(chan struct{}, 1),
 		linkTracker:  linktracker.New(),
 	}
@@ -207,7 +203,7 @@ func (prm *peerResponseSender) sendResponseMessages() {
 		if builder.Empty() {
 			continue
 		}
-		responses, blks, err := builder.Build(prm.ipldBridge)
+		responses, blks, err := builder.Build()
 		if err != nil {
 			log.Errorf("Unable to assemble GraphSync response: %s", err.Error())
 		}

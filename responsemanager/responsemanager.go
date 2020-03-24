@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldbridge"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/loader"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -66,8 +67,7 @@ type responseManagerMessage interface {
 type ResponseManager struct {
 	ctx         context.Context
 	cancelFn    context.CancelFunc
-	loader      ipldbridge.Loader
-	ipldBridge  ipldbridge.IPLDBridge
+	loader      ipld.Loader
 	peerManager PeerManager
 	queryQueue  QueryQueue
 
@@ -81,8 +81,7 @@ type ResponseManager struct {
 // New creates a new response manager from the given context, loader,
 // bridge to IPLD interface, peerManager, and queryQueue.
 func New(ctx context.Context,
-	loader ipldbridge.Loader,
-	ipldBridge ipldbridge.IPLDBridge,
+	loader ipld.Loader,
 	peerManager PeerManager,
 	queryQueue QueryQueue) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
@@ -90,7 +89,6 @@ func New(ctx context.Context,
 		ctx:                 ctx,
 		cancelFn:            cancelFn,
 		loader:              loader,
-		ipldBridge:          ipldBridge,
 		peerManager:         peerManager,
 		queryQueue:          queryQueue,
 		messages:            make(chan responseManagerMessage, 16),
@@ -189,7 +187,7 @@ func (rm *ResponseManager) processQueriesWorker() {
 
 }
 
-func noopVisitor(tp ipldbridge.TraversalProgress, n ipld.Node, tr ipldbridge.TraversalReason) error {
+func noopVisitor(tp traversal.Progress, n ipld.Node, tr traversal.VisitReason) error {
 	return nil
 }
 
@@ -217,11 +215,7 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 	p peer.ID,
 	request gsmsg.GraphSyncRequest) {
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
-	selectorSpec, err := rm.ipldBridge.DecodeNode(request.Selector())
-	if err != nil {
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return
-	}
+	selectorSpec := request.Selector()
 	ha := &hookActions{false, request.ID(), peerResponseSender, nil}
 	for _, requestHook := range rm.requestHooks {
 		requestHook.hook(p, request, ha)
@@ -230,20 +224,20 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 		}
 	}
 	if !ha.isValidated {
-		err = selectorvalidator.ValidateSelector(rm.ipldBridge, selectorSpec, maxRecursionDepth)
+		err := selectorvalidator.ValidateSelector(selectorSpec, maxRecursionDepth)
 		if err != nil {
 			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 			return
 		}
 	}
-	selector, err := rm.ipldBridge.ParseSelector(selectorSpec)
+	selector, err := ipldutil.ParseSelector(selectorSpec)
 	if err != nil {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
-	wrappedLoader := loader.WrapLoader(rm.loader, request.ID(), peerResponseSender)
-	err = rm.ipldBridge.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
+	wrappedLoader := loader.WrapLoader(ctx, rm.loader, request.ID(), peerResponseSender)
+	err = ipldutil.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
 	if err != nil {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return

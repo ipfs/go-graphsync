@@ -10,11 +10,9 @@ import (
 	"testing"
 	"time"
 
-	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
-	"github.com/ipfs/go-graphsync/testbridge"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
@@ -131,30 +129,24 @@ func TestIncomingQuery(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
 	defer cancel()
-	blks := testutil.GenerateBlocksOfSize(5, 20)
-	loader := testbridge.NewMockLoader(blks)
-	ipldBridge := testbridge.NewMockIPLDBridge()
+
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testutil.NewTestStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	blks := blockChain.AllBlocks()
+
 	requestIDChan := make(chan completedRequest, 1)
 	sentResponses := make(chan sentResponse, len(blks))
 	sentExtensions := make(chan sentExtension, 1)
 	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses, sentExtensions: sentExtensions}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
-	responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+	responseManager := New(ctx, loader, peerManager, queryQueue)
 	responseManager.Startup()
 
-	cids := make([]cid.Cid, 0, 5)
-	for _, block := range blks {
-		cids = append(cids, block.Cid())
-	}
-	selectorSpec := testbridge.NewMockSelectorSpec(cids)
-	selector, err := ipldBridge.EncodeNode(selectorSpec)
-	if err != nil {
-		t.Fatal("error encoding selector")
-	}
 	requestID := graphsync.RequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, cids[0], selector, graphsync.Priority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)
@@ -187,30 +179,24 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
 	defer cancel()
-	blks := testutil.GenerateBlocksOfSize(5, 20)
-	loader := testbridge.NewMockLoader(blks)
-	ipldBridge := testbridge.NewMockIPLDBridge()
+
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testutil.NewTestStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	blks := blockChain.AllBlocks()
+
 	requestIDChan := make(chan completedRequest)
 	sentResponses := make(chan sentResponse)
 	sentExtensions := make(chan sentExtension, 1)
 	fprs := &fakePeerResponseSender{lastCompletedRequest: requestIDChan, sentResponses: sentResponses, sentExtensions: sentExtensions}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
-	responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+	responseManager := New(ctx, loader, peerManager, queryQueue)
 	responseManager.Startup()
 
-	cids := make([]cid.Cid, 0, 5)
-	for _, block := range blks {
-		cids = append(cids, block.Cid())
-	}
-	selectorSpec := testbridge.NewMockSelectorSpec(cids)
-	selector, err := ipldBridge.EncodeNode(selectorSpec)
-	if err != nil {
-		t.Fatal("error encoding selector")
-	}
 	requestID := graphsync.RequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, cids[0], selector, graphsync.Priority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)
@@ -275,9 +261,11 @@ func TestEarlyCancellation(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
 	defer cancel()
-	blks := testutil.GenerateBlocksOfSize(5, 20)
-	loader := testbridge.NewMockLoader(blks)
-	ipldBridge := testbridge.NewMockIPLDBridge()
+
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testutil.NewTestStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+
 	requestIDChan := make(chan completedRequest)
 	sentResponses := make(chan sentResponse)
 	sentExtensions := make(chan sentExtension, 1)
@@ -285,21 +273,12 @@ func TestEarlyCancellation(t *testing.T) {
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
 	queryQueue.popWait.Add(1)
-	responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+	responseManager := New(ctx, loader, peerManager, queryQueue)
 	responseManager.Startup()
 
-	cids := make([]cid.Cid, 0, 5)
-	for _, block := range blks {
-		cids = append(cids, block.Cid())
-	}
-	selectorSpec := testbridge.NewMockSelectorSpec(cids)
-	selector, err := ipldBridge.EncodeNode(selectorSpec)
-	if err != nil {
-		t.Fatal("error encoding selector")
-	}
 	requestID := graphsync.RequestID(rand.Int31())
 	requests := []gsmsg.GraphSyncRequest{
-		gsmsg.NewRequest(requestID, cids[0], selector, graphsync.Priority(math.MaxInt32)),
+		gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32)),
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)
@@ -329,20 +308,17 @@ func TestValidationAndExtensions(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
 	defer cancel()
-	blks := testutil.GenerateBlocksOfSize(5, 20)
-	loader := testbridge.NewMockLoader(blks)
-	ipldBridge := testbridge.NewMockIPLDBridge()
+
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testutil.NewTestStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+
 	completedRequestChan := make(chan completedRequest, 1)
 	sentResponses := make(chan sentResponse, 100)
 	sentExtensions := make(chan sentExtension, 1)
 	fprs := &fakePeerResponseSender{lastCompletedRequest: completedRequestChan, sentResponses: sentResponses, sentExtensions: sentExtensions}
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
-
-	cids := make([]cid.Cid, 0, 5)
-	for _, block := range blks {
-		cids = append(cids, block.Cid())
-	}
 
 	extensionData := testutil.RandomBytes(100)
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
@@ -357,19 +333,15 @@ func TestValidationAndExtensions(t *testing.T) {
 	}
 
 	t.Run("with invalid selector", func(t *testing.T) {
-		selectorSpec := testbridge.NewInvalidSelectorSpec(cids)
-		selector, err := ipldBridge.EncodeNode(selectorSpec)
-		if err != nil {
-			t.Fatal("error encoding selector")
-		}
+		selectorSpec := testutil.NewInvalidSelectorSpec()
 		requestID := graphsync.RequestID(rand.Int31())
 		requests := []gsmsg.GraphSyncRequest{
-			gsmsg.NewRequest(requestID, cids[0], selector, graphsync.Priority(math.MaxInt32), extension),
+			gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, selectorSpec, graphsync.Priority(math.MaxInt32), extension),
 		}
 		p := testutil.GeneratePeers(1)[0]
 
 		t.Run("on its own, should fail validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.ProcessRequests(ctx, p, requests)
 			select {
@@ -383,7 +355,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 		t.Run("if non validating hook succeeds, does not pass validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 				hookActions.SendExtensionData(extensionResponse)
@@ -408,7 +380,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 		t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 				hookActions.ValidateRequest()
@@ -435,19 +407,14 @@ func TestValidationAndExtensions(t *testing.T) {
 	})
 
 	t.Run("with valid selector", func(t *testing.T) {
-		selectorSpec := testbridge.NewMockSelectorSpec(cids)
-		selector, err := ipldBridge.EncodeNode(selectorSpec)
-		if err != nil {
-			t.Fatal("error encoding selector")
-		}
 		requestID := graphsync.RequestID(rand.Int31())
 		requests := []gsmsg.GraphSyncRequest{
-			gsmsg.NewRequest(requestID, cids[0], selector, graphsync.Priority(math.MaxInt32), extension),
+			gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), extension),
 		}
 		p := testutil.GeneratePeers(1)[0]
 
 		t.Run("on its own, should pass validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.ProcessRequests(ctx, p, requests)
 			select {
@@ -461,7 +428,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 		t.Run("if any hook fails, should fail", func(t *testing.T) {
-			responseManager := New(ctx, loader, ipldBridge, peerManager, queryQueue)
+			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 				hookActions.SendExtensionData(extensionResponse)
