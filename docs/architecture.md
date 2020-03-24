@@ -28,9 +28,7 @@ go-graphsync also depends on the following external dependencies:
 
 1. A network implementation, which provides basic functions for sending and receiving messages on a network.
 
-2. A bridge interface to `go-ipld-prime`, the library used to interact with IPLD data structures and perform selector queries. 
-
-3. A local blockstore implementation, expressed by a `loader` function and a `storer` function. 
+2. A local blockstore implementation, expressed by a `loader` function and a `storer` function. 
 
 ## Request Lifecycle
 
@@ -92,10 +90,6 @@ The remaining sections of this document outline internal workings of major graph
 ### Network Implementation
 
 The network implementation needs to provide basic lower level utilities for sending and receiving messages. A default implementation using `libp2p` is included in the package, and a mock version is provided for testing. 
-
-### Bridge To IPLD
-
-Rather than interact with `go-ipld-prime` directly, `go-graphsync` makes calls via a bridge interface provided as a dependency. During the initial development of `go-graphsync`, key components of `go-ipld-prime` were not finished or changing rapidly. The bridge provides a way to keep the interfaces somewhat stable from `go-graphsyncs` standpoint, and a mechanism to provide a mock version of go-ipld-prime for testing. This allowed `go-graphsync` to be written at the same time as `go-ipld-prime`. As `go-ipld-prime` stabilizes, it might make sense to remove this interface, though it is still useful for test isolation. The library provides a default bridge as well as a mock bridge.
 
 ### Local Blockstore Implementation
 
