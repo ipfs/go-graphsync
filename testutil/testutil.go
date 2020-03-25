@@ -5,7 +5,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ipfs/go-bitswap/testutil"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
@@ -79,12 +78,12 @@ func ContainsPeer(peers []peer.ID, p peer.ID) bool {
 
 // AssertContainsPeer will fail a test if the peer is not in the given peer list
 func AssertContainsPeer(t *testing.T, peers []peer.ID, p peer.ID) {
-	require.True(t, testutil.ContainsPeer(peers, p), "given peer should be in list")
+	require.True(t, ContainsPeer(peers, p), "given peer should be in list")
 }
 
 // RefuteContainsPeer will fail a test if the peer is in the given peer list
 func RefuteContainsPeer(t *testing.T, peers []peer.ID, p peer.ID) {
-	require.False(t, testutil.ContainsPeer(peers, p), "given peer should not be in list")
+	require.False(t, ContainsPeer(peers, p), "given peer should not be in list")
 }
 
 // IndexOf returns the index of a given cid in an array of blocks
@@ -104,12 +103,12 @@ func ContainsBlock(blks []blocks.Block, block blocks.Block) bool {
 
 // AssertContainsBlock will fail a test if the block is not in the given block list
 func AssertContainsBlock(t *testing.T, blks []blocks.Block, block blocks.Block) {
-	require.True(t, testutil.ContainsBlock(blks, block), "given block should be in list")
+	require.True(t, ContainsBlock(blks, block), "given block should be in list")
 }
 
 // RefuteContainsBlock will fail a test if the block is in the given block list
 func RefuteContainsBlock(t *testing.T, blks []blocks.Block, block blocks.Block) {
-	require.False(t, testutil.ContainsBlock(blks, block), "given block should not be in list")
+	require.False(t, ContainsBlock(blks, block), "given block should not be in list")
 }
 
 // CollectResponses is just a utility to convert a graphsync response progress

@@ -4,7 +4,6 @@ go 1.12
 
 require (
 	github.com/gogo/protobuf v1.3.1
-	github.com/ipfs/go-bitswap v0.1.8
 	github.com/ipfs/go-block-format v0.0.2
 	github.com/ipfs/go-blockservice v0.1.3
 	github.com/ipfs/go-cid v0.0.5
