@@ -36,6 +36,9 @@ func TestVerifyBlockPresent(t *testing.T) {
 		t.Fatal("block should be returned on verification if added")
 	}
 	reader, err = loader(cidlink.Link{Cid: block.Cid()}, ipld.LinkContext{})
+	if err != nil {
+		t.Fatal("error loading block")
+	}
 	var buffer bytes.Buffer
 	_, err = io.Copy(&buffer, reader)
 	if err != nil {

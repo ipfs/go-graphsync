@@ -110,8 +110,8 @@ func (gsnet *libp2pGraphSyncNetwork) SendMessage(
 	}
 
 	// TODO(https://github.com/libp2p/go-libp2p-net/issues/28): Avoid this goroutine.
-	go helpers.AwaitEOF(s)
 	//nolint
+	go helpers.AwaitEOF(s)
 	return s.Close()
 
 }
