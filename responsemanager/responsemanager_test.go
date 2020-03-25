@@ -127,7 +127,7 @@ func (fprs *fakePeerResponseSender) FinishWithError(requestID graphsync.RequestI
 
 func TestIncomingQuery(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	blockStore := make(map[ipld.Link][]byte)
@@ -177,7 +177,7 @@ func TestIncomingQuery(t *testing.T) {
 
 func TestCancellationQueryInProgress(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	blockStore := make(map[ipld.Link][]byte)
@@ -259,7 +259,7 @@ drainqueue:
 
 func TestEarlyCancellation(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	blockStore := make(map[ipld.Link][]byte)
@@ -306,7 +306,7 @@ func TestEarlyCancellation(t *testing.T) {
 
 func TestValidationAndExtensions(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	blockStore := make(map[ipld.Link][]byte)
