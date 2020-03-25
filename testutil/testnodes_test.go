@@ -10,11 +10,11 @@ import (
 func TestFailParseSelectorSpec(t *testing.T) {
 	spec := NewUnparsableSelectorSpec()
 	_, err := ipldutil.ParseSelector(spec)
-	require.NotNil(t, err, "Spec should not decompose to node and selector")
+	require.Error(t, err, "unparsable selector should not parse")
 }
 
 func TestFailEncodingSelectorSpec(t *testing.T) {
 	spec := NewUnencodableSelectorSpec()
 	_, err := ipldutil.EncodeNode(spec)
-	require.NotNil(t, err, "Spec should not be encodable")
+	require.Error(t, err, "unencodable selector should not encode")
 }

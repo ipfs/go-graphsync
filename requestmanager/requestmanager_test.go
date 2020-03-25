@@ -69,21 +69,21 @@ func (fal *fakeAsyncLoader) ProcessResponse(responses map[graphsync.RequestID]me
 }
 func (fal *fakeAsyncLoader) verifyLastProcessedBlocks(ctx context.Context, t *testing.T, expectedBlocks []blocks.Block) {
 	var processedBlocks []blocks.Block
-	testutil.AssertReceive(ctx, t, fal.blks, &processedBlocks, "should process blocks")
-	require.Equal(t, processedBlocks, expectedBlocks, "should process correct blocks")
+	testutil.AssertReceive(ctx, t, fal.blks, &processedBlocks, "did not process blocks")
+	require.Equal(t, processedBlocks, expectedBlocks, "did not process correct blocks")
 }
 
 func (fal *fakeAsyncLoader) verifyLastProcessedResponses(ctx context.Context, t *testing.T,
 	expectedResponses map[graphsync.RequestID]metadata.Metadata) {
 	var responses map[graphsync.RequestID]metadata.Metadata
-	testutil.AssertReceive(ctx, t, fal.responses, &responses, "processes responses")
-	require.Equal(t, responses, expectedResponses, "processes correct responses")
+	testutil.AssertReceive(ctx, t, fal.responses, &responses, "did not process responses")
+	require.Equal(t, responses, expectedResponses, "did not process correct responses")
 }
 
 func (fal *fakeAsyncLoader) verifyNoRemainingData(t *testing.T, requestID graphsync.RequestID) {
 	fal.responseChannelsLk.Lock()
 	for key := range fal.responseChannels {
-		require.NotEqual(t, key.requestID, requestID, "request properly cleaned up")
+		require.NotEqual(t, key.requestID, requestID, "did not clean up request properly")
 	}
 	fal.responseChannelsLk.Unlock()
 }
@@ -132,7 +132,7 @@ func readNNetworkRequests(ctx context.Context,
 	requestRecords := make([]requestRecord, 0, count)
 	for i := 0; i < count; i++ {
 		var rr requestRecord
-		testutil.AssertReceive(ctx, t, requestRecordChan, &rr, fmt.Sprintf("receives request %d", i))
+		testutil.AssertReceive(ctx, t, requestRecordChan, &rr, fmt.Sprintf("did not receive request %d", i))
 		requestRecords = append(requestRecords, rr)
 	}
 	return requestRecords
@@ -189,8 +189,8 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	require.Equal(t, requestRecords[0].gsr.Priority(), maxPriority)
 	require.Equal(t, requestRecords[1].gsr.Priority(), maxPriority)
 
-	require.Equal(t, blockChain1.Selector(), requestRecords[0].gsr.Selector(), "encodes selector properly")
-	require.Equal(t, blockChain2.Selector(), requestRecords[1].gsr.Selector(), "encode selector properly")
+	require.Equal(t, blockChain1.Selector(), requestRecords[0].gsr.Selector(), "did not encode selector properly")
+	require.Equal(t, blockChain2.Selector(), requestRecords[1].gsr.Selector(), "did not encode selector properly")
 
 	firstBlocks := append(blockChain1.AllBlocks(), blockChain2.Blocks(0, 3)...)
 	firstMetadata1 := metadataForBlocks(blockChain1.AllBlocks(), true)
@@ -497,7 +497,7 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	}
 	testutil.VerifyEmptyResponse(ctx, t, returnedResponseChan)
 	errs := testutil.CollectErrors(ctx, t, returnedErrorChan)
-	require.NotEqual(t, len(errs), 0, "sends errors")
+	require.NotEqual(t, len(errs), 0, "did not send errors")
 }
 
 func TestEncodingExtensions(t *testing.T) {
@@ -534,7 +534,7 @@ func TestEncodingExtensions(t *testing.T) {
 	receivedExtensionData := make(chan []byte, 2)
 	hook := func(p peer.ID, responseData graphsync.ResponseData) error {
 		data, has := responseData.Extension(extensionName1)
-		require.True(t, has, "receives extension data in response")
+		require.True(t, has, "did not receive extension data in response")
 		receivedExtensionData <- data
 		return <-expectedError
 	}
@@ -546,11 +546,11 @@ func TestEncodingExtensions(t *testing.T) {
 	gsr := rr.gsr
 	returnedData1, found := gsr.Extension(extensionName1)
 	require.True(t, found)
-	require.Equal(t, extensionData1, returnedData1, "encodes first extension correctly")
+	require.Equal(t, extensionData1, returnedData1, "did not encode first extension correctly")
 
 	returnedData2, found := gsr.Extension(extensionName2)
 	require.True(t, found)
-	require.Equal(t, extensionData2, returnedData2, "encodes second extension correctly")
+	require.Equal(t, extensionData2, returnedData2, "did not encode second extension correctly")
 
 	t.Run("responding to extensions", func(t *testing.T) {
 		expectedData := testutil.RandomBytes(100)
@@ -569,8 +569,8 @@ func TestEncodingExtensions(t *testing.T) {
 		expectedError <- nil
 		requestManager.ProcessResponses(peers[0], firstResponses, nil)
 		var received []byte
-		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "receives extension data")
-		require.Equal(t, received, expectedData, "receives correct extension data from resposne")
+		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "did not receive extension data")
+		require.Equal(t, received, expectedData, "did not receive correct extension data from resposne")
 		nextExpectedData := testutil.RandomBytes(100)
 
 		secondResponses := []gsmsg.GraphSyncResponse{
@@ -587,8 +587,8 @@ func TestEncodingExtensions(t *testing.T) {
 		}
 		expectedError <- errors.New("a terrible thing happened")
 		requestManager.ProcessResponses(peers[0], secondResponses, nil)
-		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "receives extension data")
-		require.Equal(t, received, nextExpectedData, "receives correct extension data from resposne")
+		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "did not receive extension data")
+		require.Equal(t, received, nextExpectedData, "did not receive correct extension data from resposne")
 		testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
 		testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 	})

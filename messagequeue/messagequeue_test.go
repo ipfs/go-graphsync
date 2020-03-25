@@ -121,7 +121,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	testutil.AssertDoesReceive(ctx, t, messagesSent, "message send not attempted")
 
 	// verify the connection is reset after a failed send attempt
-	testutil.AssertDoesReceiveFirst(t, resetChan, "message sender should be reset", fullClosedChan, ctx.Done())
+	testutil.AssertDoesReceiveFirst(t, resetChan, "message sender was not reset", fullClosedChan, ctx.Done())
 
 	// now verify after it's reset, no further retries, connection
 	// resets, or attempts to close the connection, cause the queue
@@ -129,7 +129,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	// FIXME: this relies on time passing -- 100 ms to be exact
 	// and we should instead mock out time as a dependency
 	waitGroup.Add(1)
-	testutil.AssertDoesReceiveFirst(t, ctx.Done(), "no further message operations occur", messagesSent, resetChan, fullClosedChan)
+	testutil.AssertDoesReceiveFirst(t, ctx.Done(), "further message operations should not occur", messagesSent, resetChan, fullClosedChan)
 }
 
 func TestProcessingNotification(t *testing.T) {
@@ -159,15 +159,15 @@ func TestProcessingNotification(t *testing.T) {
 	status := graphsync.RequestCompletedFull
 	newMessage.AddResponse(gsmsg.NewResponse(responseID, status, extension))
 	processing := messageQueue.AddResponses(newMessage.Responses(), blks)
-	testutil.AssertChannelEmpty(t, processing, "no processing notification while queue is shutdown")
+	testutil.AssertChannelEmpty(t, processing, "processing notification sent while queue is shutdown")
 
 	// wait for send attempt
 	messageQueue.Startup()
 	waitGroup.Wait()
-	testutil.AssertDoesReceive(ctx, t, processing, "Message should be processed")
+	testutil.AssertDoesReceive(ctx, t, processing, "message was not processed")
 
 	var message gsmsg.GraphSyncMessage
-	testutil.AssertReceive(ctx, t, messagesSent, &message, "message is sent")
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
 	receivedBlocks := message.Blocks()
 	for _, block := range receivedBlocks {
 		testutil.AssertContainsBlock(t, blks, block)
@@ -218,20 +218,20 @@ func TestDedupingMessages(t *testing.T) {
 	messageQueue.AddRequest(gsmsg.NewRequest(id3, root3, selector3, priority3))
 
 	var message gsmsg.GraphSyncMessage
-	testutil.AssertReceive(ctx, t, messagesSent, &message, "message is sent")
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
 
 	requests := message.Requests()
-	require.Len(t, requests, 1, "number of requests in first message is 1")
+	require.Len(t, requests, 1, "number of requests in first message was not 1")
 	request := requests[0]
 	require.Equal(t, request.ID(), id)
 	require.False(t, request.IsCancel())
 	require.Equal(t, request.Priority(), priority)
 	require.Equal(t, request.Selector(), selector)
 
-	testutil.AssertReceive(ctx, t, messagesSent, &message, "message is sent")
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not senf")
 
 	requests = message.Requests()
-	require.Len(t, requests, 2, "number of requests in second message is 2")
+	require.Len(t, requests, 2, "number of requests in second message was not 2")
 	for _, request := range requests {
 		if request.ID() == id2 {
 			require.False(t, request.IsCancel())

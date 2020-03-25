@@ -56,10 +56,10 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 
 	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())
 
-	testutil.AssertDoesReceive(ctx, t, sent, "sends first message")
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send first message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[0].Cid(), "sends correct blocks for first message")
+	require.Equal(t, fph.lastBlocks[0].Cid(), blks[0].Cid(), "did not send correct blocks for first message")
 
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, fph.lastResponses[0].RequestID(), requestID1)
@@ -73,18 +73,18 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	// let peer reponse manager know last message was sent so message sending can continue
 	done <- struct{}{}
 
-	testutil.AssertDoesReceive(ctx, t, sent, "sends second message")
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[1].Cid(), "dedups blocks correctly on second message")
+	require.Equal(t, fph.lastBlocks[0].Cid(), blks[1].Cid(), "did not dedup blocks correctly on second message")
 
-	require.Len(t, fph.lastResponses, 2, "sends correct number of responses")
+	require.Len(t, fph.lastResponses, 2, "did not send correct number of responses")
 	response1, err := findResponseForRequestID(fph.lastResponses, requestID1)
 	require.NoError(t, err)
-	require.Equal(t, response1.Status(), graphsync.RequestCompletedPartial, "send correct response code in second message")
+	require.Equal(t, response1.Status(), graphsync.RequestCompletedPartial, "did not send correct response code in second message")
 	response2, err := findResponseForRequestID(fph.lastResponses, requestID2)
 	require.NoError(t, err)
-	require.Equal(t, response2.Status(), graphsync.PartialResponse, "sends corrent response code in second message")
+	require.Equal(t, response2.Status(), graphsync.PartialResponse, "did not send corrent response code in second message")
 
 	peerResponseManager.SendResponse(requestID2, links[3], blks[3].RawData())
 	peerResponseManager.SendResponse(requestID3, links[4], blks[4].RawData())
@@ -93,19 +93,19 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	// let peer reponse manager know last message was sent so message sending can continue
 	done <- struct{}{}
 
-	testutil.AssertDoesReceive(ctx, t, sent, "sends third message")
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
 	require.Equal(t, len(fph.lastBlocks), 2)
 	testutil.AssertContainsBlock(t, fph.lastBlocks, blks[3])
 	testutil.AssertContainsBlock(t, fph.lastBlocks, blks[4])
 
-	require.Len(t, fph.lastResponses, 2, "sends correct number of responses")
+	require.Len(t, fph.lastResponses, 2, "did not send correct number of responses")
 	response2, err = findResponseForRequestID(fph.lastResponses, requestID2)
 	require.NoError(t, err)
-	require.Equal(t, response2.Status(), graphsync.RequestCompletedFull, "sends correct response code in third message")
+	require.Equal(t, response2.Status(), graphsync.RequestCompletedFull, "did not send correct response code in third message")
 	response3, err := findResponseForRequestID(fph.lastResponses, requestID3)
 	require.NoError(t, err)
-	require.Equal(t, response3.Status(), graphsync.PartialResponse, "sends correct response code in third message")
+	require.Equal(t, response3.Status(), graphsync.PartialResponse, "did not send correct response code in third message")
 
 	peerResponseManager.SendResponse(requestID3, links[0], blks[0].RawData())
 	peerResponseManager.SendResponse(requestID3, links[4], blks[4].RawData())
@@ -113,7 +113,7 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	// let peer reponse manager know last message was sent so message sending can continue
 	done <- struct{}{}
 
-	testutil.AssertDoesReceive(ctx, t, sent, "sends fourth message")
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send fourth message")
 
 	require.Len(t, fph.lastBlocks, 1)
 	require.Equal(t, fph.lastBlocks[0].Cid(), blks[0].Cid(), "Should resend block cause there were no in progress requests")
@@ -147,10 +147,10 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 
 	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())
 
-	testutil.AssertDoesReceive(ctx, t, sent, "sends first message")
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send first message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[0].Cid(), "sends correct blocks for first message")
+	require.Equal(t, fph.lastBlocks[0].Cid(), blks[0].Cid(), "did not send correct blocks for first message")
 
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, fph.lastResponses[0].RequestID(), requestID1)
@@ -164,7 +164,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	// let peer reponse manager know last message was sent so message sending can continue
 	done <- struct{}{}
 
-	testutil.AssertDoesReceive(ctx, t, sent, "sends second message ")
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message ")
 
 	require.Len(t, fph.lastBlocks, 1)
 	require.Equal(t, fph.lastBlocks[0].Cid(), blks[1].Cid(), "Should break up message")
@@ -178,7 +178,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	// let peer reponse manager know last message was sent so message sending can continue
 	done <- struct{}{}
 
-	testutil.AssertDoesReceive(ctx, t, sent, "sends third message")
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
 	require.Len(t, fph.lastBlocks, 1)
 	require.Equal(t, fph.lastBlocks[0].Cid(), blks[2].Cid(), "should break up message")
@@ -188,7 +188,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	// let peer reponse manager know last message was sent so message sending can continue
 	done <- struct{}{}
 
-	testutil.AssertDoesReceive(ctx, t, sent, "sends fourth message")
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send fourth message")
 
 	require.Len(t, fph.lastBlocks, 1)
 	require.Equal(t, fph.lastBlocks[0].Cid(), blks[3].Cid(), "should break up message")
@@ -198,7 +198,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	// let peer reponse manager know last message was sent so message sending can continue
 	done <- struct{}{}
 
-	testutil.AssertDoesReceive(ctx, t, sent, "sends fifth message")
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send fifth message")
 
 	require.Len(t, fph.lastBlocks, 1)
 	require.Equal(t, fph.lastBlocks[0].Cid(), blks[4].Cid(), "should break up message")
@@ -207,7 +207,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 
 	response, err := findResponseForRequestID(fph.lastResponses, requestID1)
 	require.NoError(t, err)
-	require.Equal(t, response.Status(), graphsync.RequestCompletedFull, "sends corrent response code in fifth message")
+	require.Equal(t, response.Status(), graphsync.RequestCompletedFull, "did not send corrent response code in fifth message")
 
 }
 
@@ -233,10 +233,10 @@ func TestPeerResponseManagerSendsExtensionData(t *testing.T) {
 
 	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())
 
-	testutil.AssertDoesReceive(ctx, t, sent, "sends first message")
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send first message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[0].Cid(), "sends correct blocks for first message")
+	require.Equal(t, fph.lastBlocks[0].Cid(), blks[0].Cid(), "did not send correct blocks for first message")
 
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, fph.lastResponses[0].RequestID(), requestID1)
@@ -260,18 +260,18 @@ func TestPeerResponseManagerSendsExtensionData(t *testing.T) {
 	// let peer reponse manager know last message was sent so message sending can continue
 	done <- struct{}{}
 
-	testutil.AssertDoesReceive(ctx, t, sent, "sends second message")
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message")
 
-	require.Len(t, fph.lastResponses, 1, "sends correct number of responses for second message")
+	require.Len(t, fph.lastResponses, 1, "did not send correct number of responses for second message")
 
 	lastResponse := fph.lastResponses[0]
 	returnedData1, found := lastResponse.Extension(extensionName1)
 	require.True(t, found)
-	require.Equal(t, extensionData1, returnedData1, "encodes first extension")
+	require.Equal(t, extensionData1, returnedData1, "did not encode first extension")
 
 	returnedData2, found := lastResponse.Extension(extensionName2)
 	require.True(t, found)
-	require.Equal(t, extensionData2, returnedData2, "encoded first extension")
+	require.Equal(t, extensionData2, returnedData2, "did not encode first extension")
 }
 
 func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID graphsync.RequestID) (gsmsg.GraphSyncResponse, error) {

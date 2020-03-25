@@ -66,64 +66,64 @@ func TestMessageBuilding(t *testing.T) {
 
 	responses, sentBlocks, err := rb.Build()
 
-	require.NoError(t, err, "builds responses without error")
+	require.NoError(t, err, "build responses errored")
 
-	require.Len(t, responses, 4, "assembles correct number of responses")
+	require.Len(t, responses, 4, "did not assemble correct number of responses")
 
 	response1, err := findResponseForRequestID(responses, requestID1)
 	require.NoError(t, err)
-	require.Equal(t, response1.Status(), graphsync.RequestCompletedPartial, "generates completed partial response")
+	require.Equal(t, response1.Status(), graphsync.RequestCompletedPartial, "did not generate completed partial response")
 
 	response1MetadataRaw, found := response1.Extension(graphsync.ExtensionMetadata)
-	require.True(t, found, "Metadata included in response")
+	require.True(t, found, "Metadata should be included in response")
 	response1Metadata, err := metadata.DecodeMetadata(response1MetadataRaw)
 	require.NoError(t, err)
 	require.Equal(t, response1Metadata, metadata.Metadata{
 		metadata.Item{Link: links[0], BlockPresent: true},
 		metadata.Item{Link: links[1], BlockPresent: false},
 		metadata.Item{Link: links[2], BlockPresent: true},
-	}, "correct metadata include in response")
+	}, "incorrect metadata included in response")
 
 	response1ReturnedExtensionData, found := response1.Extension(extensionName1)
 	require.True(t, found)
-	require.Equal(t, extensionData1, response1ReturnedExtensionData, "encoded first extension")
+	require.Equal(t, extensionData1, response1ReturnedExtensionData, "did not encode first extension")
 
 	response2, err := findResponseForRequestID(responses, requestID2)
 	require.NoError(t, err)
-	require.Equal(t, response2.Status(), graphsync.RequestCompletedFull, "generates completed full response")
+	require.Equal(t, response2.Status(), graphsync.RequestCompletedFull, "did not generate completed full response")
 
 	response2MetadataRaw, found := response2.Extension(graphsync.ExtensionMetadata)
-	require.True(t, found, "Metadata included in response")
+	require.True(t, found, "Metadata should be included in response")
 	response2Metadata, err := metadata.DecodeMetadata(response2MetadataRaw)
 	require.NoError(t, err)
 	require.Equal(t, response2Metadata, metadata.Metadata{
 		metadata.Item{Link: links[1], BlockPresent: true},
 		metadata.Item{Link: links[2], BlockPresent: true},
 		metadata.Item{Link: links[1], BlockPresent: true},
-	}, "correct metadata include in response")
+	}, "incorrect metadata included in response")
 
 	response3, err := findResponseForRequestID(responses, requestID3)
 	require.NoError(t, err)
-	require.Equal(t, response3.Status(), graphsync.PartialResponse, "generates partial response")
+	require.Equal(t, response3.Status(), graphsync.PartialResponse, "did not generate partial response")
 
 	response3MetadataRaw, found := response3.Extension(graphsync.ExtensionMetadata)
-	require.True(t, found, "Metadata included in response")
+	require.True(t, found, "Metadata should be included in response")
 	response3Metadata, err := metadata.DecodeMetadata(response3MetadataRaw)
 	require.NoError(t, err)
 	require.Equal(t, response3Metadata, metadata.Metadata{
 		metadata.Item{Link: links[0], BlockPresent: true},
 		metadata.Item{Link: links[1], BlockPresent: true},
-	}, "correct metadata include in response")
+	}, "incorrect metadata included in response")
 
 	response3ReturnedExtensionData, found := response3.Extension(extensionName2)
 	require.True(t, found)
-	require.Equal(t, extensionData2, response3ReturnedExtensionData, "encoded second extension")
+	require.Equal(t, extensionData2, response3ReturnedExtensionData, "did not encode second extension")
 
 	response4, err := findResponseForRequestID(responses, requestID4)
 	require.NoError(t, err)
-	require.Equal(t, response4.Status(), graphsync.RequestCompletedFull, "generates completed full response")
+	require.Equal(t, response4.Status(), graphsync.RequestCompletedFull, "did not generate completed full response")
 
-	require.Equal(t, len(sentBlocks), len(blocks), "sends all blocks")
+	require.Equal(t, len(sentBlocks), len(blocks), "did not send all blocks")
 
 	for _, block := range sentBlocks {
 		testutil.AssertContainsBlock(t, blocks, block)

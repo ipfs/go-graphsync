@@ -126,8 +126,8 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 
 	var result types.AsyncLoadResult
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
-	require.Nil(t, result.Data, "should not have sent responses")
-	require.NotNil(t, result.Err, "should have sent an error")
+	require.Nil(t, result.Data, "should not send responses")
+	require.NotNil(t, result.Err, "should send an error")
 	require.Zero(t, callCount, "should not attempt to load link from local store")
 }
 
@@ -153,8 +153,8 @@ func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T)
 
 	var result types.AsyncLoadResult
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
-	require.Nil(t, result.Data, "should not have sent responses")
-	require.NotNil(t, result.Err, "should have sent an error")
+	require.Nil(t, result.Data, "should not send responses")
+	require.NotNil(t, result.Err, "should send an error")
 	require.NotZero(t, callCount, "should attempt to load link from local store")
 }
 
@@ -183,7 +183,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 	asyncLoader.StartRequest(requestID)
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
-	testutil.AssertDoesReceiveFirst(t, called, "attemps load with no result", resultChan, ctx.Done())
+	testutil.AssertDoesReceiveFirst(t, called, "should attempt load with no result", resultChan, ctx.Done())
 
 	responses := map[graphsync.RequestID]metadata.Metadata{
 		requestID: metadata.Metadata{
@@ -228,7 +228,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 	asyncLoader.StartRequest(requestID)
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
-	testutil.AssertDoesReceiveFirst(t, called, "attemps load with no result", resultChan, ctx.Done())
+	testutil.AssertDoesReceiveFirst(t, called, "should attempt load with no result", resultChan, ctx.Done())
 	responses := map[graphsync.RequestID]metadata.Metadata{
 		requestID: metadata.Metadata{
 			metadata.Item{
@@ -241,8 +241,8 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 
 	var result types.AsyncLoadResult
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
-	require.Nil(t, result.Data, "should not have sent responses")
-	require.NotNil(t, result.Err, "should have sent an error")
+	require.Nil(t, result.Data, "should not send responses")
+	require.NotNil(t, result.Err, "should send an error")
 	require.Equal(t, callCount, 1, "should attempt to load from local store exactly once")
 }
 
@@ -269,13 +269,13 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	asyncLoader.StartRequest(requestID)
 	resultChan := asyncLoader.AsyncLoad(requestID, link)
 
-	testutil.AssertDoesReceiveFirst(t, called, "attemps load with no result", resultChan, ctx.Done())
+	testutil.AssertDoesReceiveFirst(t, called, "should attempt load with no result", resultChan, ctx.Done())
 	asyncLoader.CompleteResponsesFor(requestID)
 
 	var result types.AsyncLoadResult
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
-	require.Nil(t, result.Data, "should not have sent responses")
-	require.NotNil(t, result.Err, "should have sent an error")
+	require.Nil(t, result.Data, "should not send responses")
+	require.NotNil(t, result.Err, "should send an error")
 	require.Equal(t, callCount, 1, "should attempt to load from local store exactly once")
 }
 

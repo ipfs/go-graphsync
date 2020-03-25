@@ -54,11 +54,11 @@ func TestMessageSendAndReceive(t *testing.T) {
 	mn := mocknet.New(ctx)
 
 	host1, err := mn.GenPeer()
-	require.NoError(t, err, "error generating host")
+	require.NoError(t, err)
 	host2, err := mn.GenPeer()
-	require.NoError(t, err, "error generating host")
+	require.NoError(t, err)
 	err = mn.LinkAll()
-	require.NoError(t, err, "error linking hosts")
+	require.NoError(t, err)
 	gsnet1 := NewFromLibp2pHost(host1)
 	gsnet2 := NewFromLibp2pHost(host2)
 	r := &receiver{
@@ -85,22 +85,22 @@ func TestMessageSendAndReceive(t *testing.T) {
 	sent.AddResponse(gsmsg.NewResponse(id, status, extension))
 
 	err = gsnet1.ConnectTo(ctx, host2.ID())
-	require.NoError(t, err, "Unable to connect peers")
+	require.NoError(t, err, "did not connect peers")
 
 	err = gsnet1.SendMessage(ctx, host2.ID(), sent)
 	require.NoError(t, err)
 
-	testutil.AssertDoesReceive(ctx, t, r.messageReceived, "message is sent")
+	testutil.AssertDoesReceive(ctx, t, r.messageReceived, "message did not send")
 
-	require.Equal(t, r.lastSender, host1.ID(), "corrent host sent message")
+	require.Equal(t, r.lastSender, host1.ID(), "incorrect host sent message")
 
 	received := r.lastMessage
 
 	sentRequests := sent.Requests()
-	require.Len(t, sentRequests, 1, "Did not add request to sent message")
+	require.Len(t, sentRequests, 1, "did not add request to sent message")
 	sentRequest := sentRequests[0]
 	receivedRequests := received.Requests()
-	require.Len(t, receivedRequests, 1, "Did not add request to received message")
+	require.Len(t, receivedRequests, 1, "did not add request to received message")
 	receivedRequest := receivedRequests[0]
 	require.Equal(t, receivedRequest.ID(), sentRequest.ID())
 	require.Equal(t, receivedRequest.IsCancel(), sentRequest.IsCancel())
@@ -109,10 +109,10 @@ func TestMessageSendAndReceive(t *testing.T) {
 	require.Equal(t, receivedRequest.Selector(), sentRequest.Selector())
 
 	sentResponses := sent.Responses()
-	require.Len(t, sentResponses, 1, "Did not add response to sent message")
+	require.Len(t, sentResponses, 1, "did not add response to sent message")
 	sentResponse := sentResponses[0]
 	receivedResponses := received.Responses()
-	require.Len(t, receivedResponses, 1, "Did not add response to received message")
+	require.Len(t, receivedResponses, 1, "did not add response to received message")
 	receivedResponse := receivedResponses[0]
 	extensionData, found := receivedResponse.Extension(extensionName)
 	require.Equal(t, receivedResponse.RequestID(), sentResponse.RequestID())
@@ -121,7 +121,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	require.Equal(t, extension.Data, extensionData)
 
 	for i := 0; i < 2; i++ {
-		testutil.AssertDoesReceive(ctx, t, r.connectedPeers, "peers notified")
+		testutil.AssertDoesReceive(ctx, t, r.connectedPeers, "peers were not notified")
 	}
 
 }

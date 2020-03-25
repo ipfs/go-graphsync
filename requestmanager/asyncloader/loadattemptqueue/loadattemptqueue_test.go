@@ -59,8 +59,8 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 
 	var result types.AsyncLoadResult
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
-	require.Nil(t, result.Data, "should not have sent responses")
-	require.NotNil(t, result.Err, "should have sent an error")
+	require.Nil(t, result.Data, "should not send responses")
+	require.NotNil(t, result.Err, "should send an error")
 	require.NotZero(t, callCount, "should attempt to load link from local store")
 }
 
@@ -88,8 +88,8 @@ func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 
 	var result types.AsyncLoadResult
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
-	require.Nil(t, result.Data, "should not have sent responses")
-	require.NotNil(t, result.Err, "should have sent an error")
+	require.Nil(t, result.Data, "should not send responses")
+	require.NotNil(t, result.Err, "should send an error")
 	require.Equal(t, callCount, 1, "should attempt to load once and then not retry")
 }
 
@@ -116,7 +116,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing
 	lr := NewLoadRequest(requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, true)
 
-	testutil.AssertDoesReceiveFirst(t, called, "attemps load with no result", resultChan, ctx.Done())
+	testutil.AssertDoesReceiveFirst(t, called, "should attempt load with no result", resultChan, ctx.Done())
 	loadAttemptQueue.RetryLoads()
 
 	var result types.AsyncLoadResult
@@ -149,13 +149,13 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	lr := NewLoadRequest(requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, true)
 
-	testutil.AssertDoesReceiveFirst(t, called, "attemps load with no result", resultChan, ctx.Done())
+	testutil.AssertDoesReceiveFirst(t, called, "should attempt load with no result", resultChan, ctx.Done())
 	loadAttemptQueue.ClearRequest(requestID)
 	loadAttemptQueue.RetryLoads()
 
 	var result types.AsyncLoadResult
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
-	require.Nil(t, result.Data, "should not have sent responses")
-	require.NotNil(t, result.Err, "should have sent an error")
+	require.Nil(t, result.Data, "should not send responses")
+	require.NotNil(t, result.Err, "should send an error")
 	require.Equal(t, callCount, 1, "should attempt to load only once because request is finised")
 }

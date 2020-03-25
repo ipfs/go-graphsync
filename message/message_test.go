@@ -31,7 +31,7 @@ func TestAppendingRequests(t *testing.T) {
 	gsm := New()
 	gsm.AddRequest(NewRequest(id, root, selector, priority, extension))
 	requests := gsm.Requests()
-	require.Len(t, requests, 1, "request added to message")
+	require.Len(t, requests, 1, "did not add request to message")
 	request := requests[0]
 	extensionData, found := request.Extension(extensionName)
 	require.Equal(t, request.ID(), id)
@@ -43,7 +43,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.Equal(t, extension.Data, extensionData)
 
 	pbMessage, err := gsm.ToProto()
-	require.NoError(t, err, "serialize to protobuf does not error")
+	require.NoError(t, err, "serialize to protobuf errored")
 	selectorEncoded, err := ipldutil.EncodeNode(selector)
 	require.NoError(t, err)
 
@@ -56,9 +56,9 @@ func TestAppendingRequests(t *testing.T) {
 	require.Equal(t, pbRequest.Extensions, map[string][]byte{"graphsync/awesome": extension.Data})
 
 	deserialized, err := newMessageFromProto(*pbMessage)
-	require.NoError(t, err, "deserializing protobuf message does not error")
+	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedRequests := deserialized.Requests()
-	require.Len(t, deserializedRequests, 1, "request added to deserialized message")
+	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
 
 	deserializedRequest := deserializedRequests[0]
 	extensionData, found = deserializedRequest.Extension(extensionName)
@@ -83,7 +83,7 @@ func TestAppendingResponses(t *testing.T) {
 	gsm := New()
 	gsm.AddResponse(NewResponse(requestID, status, extension))
 	responses := gsm.Responses()
-	require.Len(t, responses, 1, "response added to message")
+	require.Len(t, responses, 1, "did not add response to message")
 	response := responses[0]
 	extensionData, found := response.Extension(extensionName)
 	require.Equal(t, response.RequestID(), requestID)
@@ -92,16 +92,16 @@ func TestAppendingResponses(t *testing.T) {
 	require.Equal(t, extension.Data, extensionData)
 
 	pbMessage, err := gsm.ToProto()
-	require.NoError(t, err, "serialize to protobuf does not error")
+	require.NoError(t, err, "serialize to protobuf errored")
 	pbResponse := pbMessage.Responses[0]
 	require.Equal(t, pbResponse.Id, int32(requestID))
 	require.Equal(t, pbResponse.Status, int32(status))
 	require.Equal(t, pbResponse.Extensions, map[string][]byte{"graphsync/awesome": extension.Data})
 
 	deserialized, err := newMessageFromProto(*pbMessage)
-	require.NoError(t, err, "deserializing protobuf message does not error")
+	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedResponses := deserialized.Responses()
-	require.Len(t, deserializedResponses, 1, "response added to deserialized message")
+	require.Len(t, deserializedResponses, 1, "did not add response to deserialized message")
 	deserializedResponse := deserializedResponses[0]
 	extensionData, found = deserializedResponse.Extension(extensionName)
 	require.Equal(t, deserializedResponse.RequestID(), response.RequestID())
@@ -123,7 +123,7 @@ func TestAppendBlock(t *testing.T) {
 	}
 
 	pbMessage, err := m.ToProto()
-	require.NoError(t, err, "Did not serialize to protobuf correctly")
+	require.NoError(t, err, "serializing to protobuf errored")
 
 	// assert strings are in proto message
 	for _, block := range pbMessage.GetData() {
@@ -154,7 +154,7 @@ func TestRequestCancel(t *testing.T) {
 	gsm.AddRequest(CancelRequest(id))
 
 	requests := gsm.Requests()
-	require.Len(t, requests, 1, "added cancel request")
+	require.Len(t, requests, 1, "did not add cancel request")
 	request := requests[0]
 	require.Equal(t, request.ID(), id)
 	require.True(t, request.IsCancel())
@@ -184,15 +184,15 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 
 	buf := new(bytes.Buffer)
 	err := gsm.ToNet(buf)
-	require.NoError(t, err, "Unable to serialize GraphSyncMessage")
+	require.NoError(t, err, "did not serialize protobuf message")
 	deserialized, err := FromNet(buf)
-	require.NoError(t, err, "Error deserializing protobuf message")
+	require.NoError(t, err, "did not deserialize protobuf message")
 
 	requests := gsm.Requests()
-	require.Len(t, requests, 1, "Did not add request to message")
+	require.Len(t, requests, 1, "did not add request to message")
 	request := requests[0]
 	deserializedRequests := deserialized.Requests()
-	require.Len(t, deserializedRequests, 1, "Did not add request to deserialized message")
+	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
 	deserializedRequest := deserializedRequests[0]
 	extensionData, found := deserializedRequest.Extension(extensionName)
 	require.Equal(t, deserializedRequest.ID(), request.ID())
@@ -204,10 +204,10 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	require.Equal(t, extension.Data, extensionData)
 
 	responses := gsm.Responses()
-	require.Len(t, responses, 1, "Did not add response to message")
+	require.Len(t, responses, 1, "did not add response to message")
 	response := responses[0]
 	deserializedResponses := deserialized.Responses()
-	require.Len(t, deserializedResponses, 1, "Did not add response to message")
+	require.Len(t, deserializedResponses, 1, "did not add response to message")
 	deserializedResponse := deserializedResponses[0]
 	extensionData, found = deserializedResponse.Extension(extensionName)
 	require.Equal(t, deserializedResponse.RequestID(), response.RequestID())

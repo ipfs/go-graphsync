@@ -48,7 +48,7 @@ func TestWrappedAsyncLoaderReturnsValues(t *testing.T) {
 	stream, err := loader(link, ipld.LinkContext{})
 	require.NoError(t, err, "should load")
 	returnedData, err := ioutil.ReadAll(stream)
-	require.NoError(t, err, "stream reads")
+	require.NoError(t, err, "stream did not read")
 	require.Equal(t, data, returnedData, "should return correct data")
 }
 
@@ -67,7 +67,7 @@ func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
 	err := errors.New("something went wrong")
 	responseChan <- types.AsyncLoadResult{Data: nil, Err: err}
 	stream, loadErr := loader(link, ipld.LinkContext{})
-	require.Nil(t, stream, "return reader is nil")
+	require.Nil(t, stream, "should return nil reader")
 	require.EqualError(t, loadErr, ipldutil.ErrDoNotFollow().Error())
 	var returnedErr error
 	testutil.AssertReceive(ctx, t, errChan, &returnedErr, "should return an error on side channel")

@@ -19,8 +19,8 @@ func TestDecodeEncodeMetadata(t *testing.T) {
 		initialMetadata = append(initialMetadata, Item{link, blockPresent})
 	}
 	encoded, err := EncodeMetadata(initialMetadata)
-	require.NoError(t, err, "Error encoding")
+	require.NoError(t, err, "encode errored")
 	decodedMetadata, err := DecodeMetadata(encoded)
-	require.NoError(t, err, "Error decoding")
-	require.Equal(t, initialMetadata, decodedMetadata, "Metadata changed during encoding and decoding")
+	require.NoError(t, err, "decode errored")
+	require.Equal(t, initialMetadata, decodedMetadata, "metadata changed during encoding and decoding")
 }

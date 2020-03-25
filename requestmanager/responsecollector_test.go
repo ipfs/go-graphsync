@@ -39,27 +39,27 @@ func TestBufferingResponseProgress(t *testing.T) {
 				Path ipld.Path
 				Link ipld.Link
 			}{ipld.Path{}, cidlink.Link{Cid: block.Cid()}},
-		}, "writes block to channel")
+		}, "did not write block to channel")
 	}
 
 	interimError := fmt.Errorf("A block was missing")
 	terminalError := fmt.Errorf("Something terrible happened")
-	testutil.AssertSends(ctx, t, incomingErrors, interimError, "writes error to channel")
-	testutil.AssertSends(ctx, t, incomingErrors, terminalError, "writes error to channel")
+	testutil.AssertSends(ctx, t, incomingErrors, interimError, "did not write error to channel")
+	testutil.AssertSends(ctx, t, incomingErrors, terminalError, "did not write error to channel")
 
 	for _, block := range blocks {
 		var testResponse graphsync.ResponseProgress
 		testutil.AssertReceive(ctx, t, outgoingResponses, &testResponse, "should read from outgoing responses")
-		require.Equal(t, testResponse.LastBlock.Link.(cidlink.Link).Cid, block.Cid(), "stores blocks correctly")
+		require.Equal(t, testResponse.LastBlock.Link.(cidlink.Link).Cid, block.Cid(), "did not store block correctly")
 	}
 
 	for i := 0; i < 2; i++ {
 		var testErr error
 		testutil.AssertReceive(ctx, t, outgoingErrors, &testErr, "should have read from channel but couldn't")
 		if i == 0 {
-			require.Equal(t, testErr, interimError, "correct error message sent")
+			require.Equal(t, testErr, interimError, "incorrect error message sent")
 		} else {
-			require.Equal(t, testErr, terminalError, "correct error message sent")
+			require.Equal(t, testErr, terminalError, "incorrect error message sent")
 		}
 	}
 }

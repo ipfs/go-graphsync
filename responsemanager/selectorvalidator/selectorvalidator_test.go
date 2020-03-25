@@ -20,11 +20,11 @@ func TestValidateSelector(t *testing.T) {
 
 	verifyOutcomes := func(t *testing.T, success ipld.Node, fail ipld.Node, failNone ipld.Node) {
 		err := ValidateSelector(success, 100)
-		require.NoError(t, err, "valid selector returned error")
+		require.NoError(t, err, "valid selector should validate")
 		err = ValidateSelector(fail, 100)
-		require.Equal(t, err, ErrInvalidLimit, "selector should have failed on invalid limit")
+		require.Equal(t, err, ErrInvalidLimit, "selector should fail on invalid limit")
 		err = ValidateSelector(failNone, 100)
-		require.Equal(t, err, ErrInvalidLimit, "selector should have failed on invalid limit")
+		require.Equal(t, err, ErrInvalidLimit, "selector should fail on no limit")
 	}
 
 	t.Run("ExploreRecursive", func(t *testing.T) {
