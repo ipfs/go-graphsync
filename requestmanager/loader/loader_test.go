@@ -32,7 +32,7 @@ func makeAsyncLoadFn(responseChan chan types.AsyncLoadResult, calls chan callPar
 
 func TestWrappedAsyncLoaderReturnsValues(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	responseChan := make(chan types.AsyncLoadResult, 1)
 	calls := make(chan callParams, 1)
@@ -60,7 +60,7 @@ func TestWrappedAsyncLoaderReturnsValues(t *testing.T) {
 
 func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	responseChan := make(chan types.AsyncLoadResult, 1)
 	calls := make(chan callParams, 1)
@@ -88,7 +88,7 @@ func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
 
 func TestWrappedAsyncLoaderContextCancels(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	subCtx, subCancel := context.WithCancel(ctx)
 	responseChan := make(chan types.AsyncLoadResult, 1)

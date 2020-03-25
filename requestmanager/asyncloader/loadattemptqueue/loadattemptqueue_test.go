@@ -15,7 +15,7 @@ import (
 
 func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
@@ -50,7 +50,7 @@ func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
 
 func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
@@ -85,7 +85,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 
 func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
@@ -125,7 +125,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 
 func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	called := make(chan struct{}, 2)
@@ -174,7 +174,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing
 
 func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	called := make(chan struct{}, 2)
