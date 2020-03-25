@@ -259,7 +259,7 @@ drainqueue:
 
 func TestEarlyCancellation(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
 	blockStore := make(map[ipld.Link][]byte)
