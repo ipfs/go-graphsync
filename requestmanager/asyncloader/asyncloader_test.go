@@ -25,6 +25,9 @@ func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
 	loader, storer := testutil.NewTestStore(blockStore)
 	block := testutil.GenerateBlocksOfSize(1, 100)[0]
 	writer, commit, err := storer(ipld.LinkContext{})
+	if err != nil {
+		t.Fatal("should be able to store")
+	}
 	_, err = writer.Write(block.RawData())
 	if err != nil {
 		t.Fatal("could not seed block store")

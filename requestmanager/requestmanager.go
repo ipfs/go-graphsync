@@ -397,7 +397,7 @@ func (rm *RequestManager) executeTraversal(
 	loaderFn := loader.WrapAsyncLoader(ctx, rm.asyncLoader.AsyncLoad, requestID, inProgressErr)
 	visitor := visitToChannel(ctx, inProgressChan)
 	go func() {
-		ipldutil.Traverse(ctx, loaderFn, root, selector, visitor)
+		_ = ipldutil.Traverse(ctx, loaderFn, root, selector, visitor)
 		select {
 		case networkError := <-networkErrorChan:
 			select {

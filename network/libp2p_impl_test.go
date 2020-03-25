@@ -95,7 +95,10 @@ func TestMessageSendAndReceive(t *testing.T) {
 		t.Fatal("Unable to connect peers")
 	}
 
-	gsnet1.SendMessage(ctx, host2.ID(), sent)
+	err = gsnet1.SendMessage(ctx, host2.ID(), sent)
+	if err != nil {
+		t.Fatal("Unable to send message")
+	}
 
 	select {
 	case <-ctx.Done():

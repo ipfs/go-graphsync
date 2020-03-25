@@ -16,10 +16,6 @@ import (
 
 var log = logging.Logger("graphsync")
 
-type responseCacheMessage interface {
-	handle(rc *ResponseCache)
-}
-
 // UnverifiedBlockStore is an interface for storing blocks
 // as they come in and removing them as they are verified
 type UnverifiedBlockStore interface {

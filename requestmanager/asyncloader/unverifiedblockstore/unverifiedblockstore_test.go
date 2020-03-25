@@ -37,7 +37,10 @@ func TestVerifyBlockPresent(t *testing.T) {
 	}
 	reader, err = loader(cidlink.Link{Cid: block.Cid()}, ipld.LinkContext{})
 	var buffer bytes.Buffer
-	io.Copy(&buffer, reader)
+	err := io.Copy(&buffer, reader)
+	if err != nil {
+		t.Fatal("error occurred copying data")
+	}
 	if !reflect.DeepEqual(buffer.Bytes(), block.RawData()) || err != nil {
 		t.Fatal("block should be stored after verification and therefore loadable")
 	}
