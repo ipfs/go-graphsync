@@ -6,96 +6,155 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipld/go-ipld-prime"
+	"github.com/stretchr/testify/require"
 )
 
+type request struct {
+	traversals []bool
+	finished   bool
+}
+
 func TestBlockRefCount(t *testing.T) {
-	linkTracker := New()
-	link1 := testutil.NewTestLink()
-	link2 := testutil.NewTestLink()
-	if linkTracker.BlockRefCount(link1) != 0 || linkTracker.BlockRefCount(link2) != 0 {
-		t.Fatal("Links not traversed should have refcount 0")
-	}
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
-
-	linkTracker.RecordLinkTraversal(requestID1, link1, true)
-	linkTracker.RecordLinkTraversal(requestID1, link2, true)
-	linkTracker.RecordLinkTraversal(requestID2, link1, true)
-
-	if linkTracker.BlockRefCount(link1) == 0 || linkTracker.BlockRefCount(link2) == 0 {
-		t.Fatal("Links already traversed with blocks should not have ref count 0")
-	}
-
-	linkTracker.FinishRequest(requestID1)
-	if linkTracker.BlockRefCount(link1) == 0 || linkTracker.BlockRefCount(link2) != 0 {
-		t.Fatal("Finishing request decrement refcount for block traversed by request")
-	}
-}
-
-func TestHasAllBlocks(t *testing.T) {
-	linkTracker := New()
-	link1 := testutil.NewTestLink()
-	link2 := testutil.NewTestLink()
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
-
-	linkTracker.RecordLinkTraversal(requestID1, link1, true)
-	linkTracker.RecordLinkTraversal(requestID1, link2, false)
-	linkTracker.RecordLinkTraversal(requestID2, link1, true)
-
-	hasAllBlocksRequest1 := linkTracker.FinishRequest(requestID1)
-	hasAllBlocksRequest2 := linkTracker.FinishRequest(requestID2)
-	if hasAllBlocksRequest1 || !hasAllBlocksRequest2 {
-		t.Fatal("A request has all blocks if and only if all link traversals occurred with blocks present")
-	}
-}
-
-func TestBlockBecomesAvailable(t *testing.T) {
-	linkTracker := New()
-	link1 := testutil.NewTestLink()
-	if linkTracker.BlockRefCount(link1) != 0 {
-		t.Fatal("Links not traversed should send blocks")
-	}
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
-
-	linkTracker.RecordLinkTraversal(requestID1, link1, false)
-	linkTracker.RecordLinkTraversal(requestID2, link1, false)
-
-	if linkTracker.BlockRefCount(link1) != 0 {
-		t.Fatal("Links traversed without blocks should still send them if they become availabe")
+	testCases := map[string]struct {
+		requests         []request
+		expectedRefCount int
+	}{
+		"not traversed": {
+			requests:         []request{},
+			expectedRefCount: 0,
+		},
+		"traversed once, block present": {
+			requests:         []request{{traversals: []bool{true}, finished: false}},
+			expectedRefCount: 1,
+		},
+		"traversed once, block missing": {
+			requests:         []request{{traversals: []bool{false}, finished: false}},
+			expectedRefCount: 0,
+		},
+		"traversed twice, different requests": {
+			requests: []request{
+				{traversals: []bool{true}, finished: false},
+				{traversals: []bool{true}, finished: false},
+			},
+			expectedRefCount: 2,
+		},
+		"traversed twice, same request": {
+			requests:         []request{{traversals: []bool{true, true}, finished: false}},
+			expectedRefCount: 2,
+		},
+		"traversed twice, same request, block available after missing": {
+			requests:         []request{{traversals: []bool{false, true}, finished: false}},
+			expectedRefCount: 1,
+		},
+		"traversed once, block present, request finished": {
+			requests:         []request{{traversals: []bool{true}, finished: true}},
+			expectedRefCount: 0,
+		},
+		"traversed twice, different requests, one request finished": {
+			requests: []request{
+				{traversals: []bool{true}, finished: true},
+				{traversals: []bool{true}, finished: false},
+			},
+			expectedRefCount: 1,
+		},
+		"traversed twice, same request, request finished": {
+			requests:         []request{{traversals: []bool{true, true}, finished: true}},
+			expectedRefCount: 0,
+		},
+		"traversed twice, same request, block available after missing, request finished": {
+			requests:         []request{{traversals: []bool{false, true}, finished: true}},
+			expectedRefCount: 0,
+		},
 	}
 
-	linkTracker.RecordLinkTraversal(requestID1, link1, true)
-	if linkTracker.BlockRefCount(link1) == 0 {
-		t.Fatal("Links traversed with blocks should no longer send")
-	}
-
-	hasAllBlocks := linkTracker.FinishRequest(requestID1)
-	if hasAllBlocks {
-		t.Fatal("Even if block becomes available, traversal may be incomplete, request still should not be considered to have all blocks")
-	}
-
-	if linkTracker.BlockRefCount(link1) != 0 {
-		t.Fatal("Block traversals should resend for requests that never traversed while block was present")
+	for testCase, data := range testCases {
+		t.Run(testCase, func(t *testing.T) {
+			linkTracker := New()
+			link := testutil.NewTestLink()
+			for _, rq := range data.requests {
+				requestID := graphsync.RequestID(rand.Int31())
+				for _, present := range rq.traversals {
+					linkTracker.RecordLinkTraversal(requestID, link, present)
+				}
+				if rq.finished {
+					linkTracker.FinishRequest(requestID)
+				}
+			}
+			require.Equal(t, linkTracker.BlockRefCount(link), data.expectedRefCount)
+		})
 	}
 }
 
-func TestMissingLink(t *testing.T) {
-	linkTracker := New()
+type linkTraversed struct {
+	link         ipld.Link
+	blockPresent bool
+}
+
+func TestFinishRequest(t *testing.T) {
 	link1 := testutil.NewTestLink()
 	link2 := testutil.NewTestLink()
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
+	testCases := map[string]struct {
+		linksTraversed   []linkTraversed
+		allBlocksPresent bool
+	}{
+		"when links with blocks that are missing are traversed": {
+			linksTraversed:   []linkTraversed{{link1, true}, {link2, false}},
+			allBlocksPresent: false,
+		},
+		"when all blocks present": {
+			linksTraversed:   []linkTraversed{{link1, true}},
+			allBlocksPresent: true,
+		},
+		"when block becomes availabler after being missing": {
+			linksTraversed:   []linkTraversed{{link1, false}, {link1, true}},
+			allBlocksPresent: false,
+		},
+	}
 
-	linkTracker.RecordLinkTraversal(requestID1, link1, true)
-	linkTracker.RecordLinkTraversal(requestID1, link2, false)
-	linkTracker.RecordLinkTraversal(requestID2, link1, true)
+	for testCase, data := range testCases {
+		t.Run(testCase, func(t *testing.T) {
+			linkTracker := New()
+			requestID := graphsync.RequestID(rand.Int31())
+			for _, lt := range data.linksTraversed {
+				linkTracker.RecordLinkTraversal(requestID, lt.link, lt.blockPresent)
+			}
+			require.Equal(t, linkTracker.FinishRequest(requestID), data.allBlocksPresent)
+		})
+	}
+}
 
-	if linkTracker.IsKnownMissingLink(requestID1, link1) ||
-		!linkTracker.IsKnownMissingLink(requestID1, link2) ||
-		linkTracker.IsKnownMissingLink(requestID2, link1) ||
-		linkTracker.IsKnownMissingLink(requestID2, link2) {
-		t.Fatal("Did not record which links are known missing correctly")
+func TestIsKnownMissingLink(t *testing.T) {
+	testCases := map[string]struct {
+		traversals         []bool
+		isKnownMissingLink bool
+	}{
+		"no traversals": {
+			isKnownMissingLink: false,
+		},
+		"traversed once, block present": {
+			traversals:         []bool{true},
+			isKnownMissingLink: false,
+		},
+		"traversed once, block missing": {
+			traversals:         []bool{false},
+			isKnownMissingLink: true,
+		},
+		"traversed twice, missing then found": {
+			traversals:         []bool{false, true},
+			isKnownMissingLink: true,
+		},
+	}
+
+	for testCase, data := range testCases {
+		t.Run(testCase, func(t *testing.T) {
+			linkTracker := New()
+			link := testutil.NewTestLink()
+			requestID := graphsync.RequestID(rand.Int31())
+			for _, present := range data.traversals {
+				linkTracker.RecordLinkTraversal(requestID, link, present)
+			}
+			require.Equal(t, linkTracker.IsKnownMissingLink(requestID, link), data.isKnownMissingLink)
+		})
 	}
 }

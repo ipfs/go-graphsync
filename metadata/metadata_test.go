@@ -2,10 +2,10 @@ package metadata
 
 import (
 	"math/rand"
-	"reflect"
 	"testing"
 
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -19,14 +19,8 @@ func TestDecodeEncodeMetadata(t *testing.T) {
 		initialMetadata = append(initialMetadata, Item{link, blockPresent})
 	}
 	encoded, err := EncodeMetadata(initialMetadata)
-	if err != nil {
-		t.Fatal("Error encoding")
-	}
+	require.NoError(t, err, "Error encoding")
 	decodedMetadata, err := DecodeMetadata(encoded)
-	if err != nil {
-		t.Fatal("Error decoding")
-	}
-	if !reflect.DeepEqual(initialMetadata, decodedMetadata) {
-		t.Fatal("Metadata changed during encoding and decoding")
-	}
+	require.NoError(t, err, "Error decoding")
+	require.Equal(t, initialMetadata, decodedMetadata, "Metadata changed during encoding and decoding")
 }

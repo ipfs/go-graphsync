@@ -15,6 +15,7 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	mh "github.com/multiformats/go-multihash"
+	"github.com/stretchr/testify/require"
 )
 
 const blockChainTraversedNodesPerBlock = 2
@@ -60,13 +61,9 @@ func SetupBlockChain(
 		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
 		genisisNode = createBlock(nb, []ipld.Link{}, size)
 	})
-	if err != nil {
-		t.Fatal("Error creating genesis block")
-	}
+	require.NoError(t, err, "Error creating genesis block")
 	genesisLink, err := linkBuilder.Build(ctx, ipld.LinkContext{}, genisisNode, storer)
-	if err != nil {
-		t.Fatal("Error creating link to genesis block")
-	}
+	require.NoError(t, err, "Error creating link to genesis block")
 	parent := genesisLink
 	middleNodes := make([]ipld.Node, 0, blockChainLength-2)
 	middleLinks := make([]ipld.Link, 0, blockChainLength-2)
@@ -76,14 +73,10 @@ func SetupBlockChain(
 			nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
 			node = createBlock(nb, []ipld.Link{parent}, size)
 		})
-		if err != nil {
-			t.Fatal("Error creating middle block")
-		}
+		require.NoError(t, err, "Error creating middle block")
 		middleNodes = append(middleNodes, node)
 		link, err := linkBuilder.Build(ctx, ipld.LinkContext{}, node, storer)
-		if err != nil {
-			t.Fatal("Error creating link to middle block")
-		}
+		require.NoError(t, err, "Error creating link to middle block")
 		middleLinks = append(middleLinks, link)
 		parent = link
 	}
@@ -92,13 +85,9 @@ func SetupBlockChain(
 		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
 		tipNode = createBlock(nb, []ipld.Link{parent}, size)
 	})
-	if err != nil {
-		t.Fatal("Error creating tip block")
-	}
+	require.NoError(t, err, "Error creating tip block")
 	tipLink, err := linkBuilder.Build(ctx, ipld.LinkContext{}, tipNode, storer)
-	if err != nil {
-		t.Fatal("Error creating link to tip block")
-	}
+	require.NoError(t, err, "Error creating link to tip block")
 	return &TestBlockChain{t, blockChainLength, loader, genisisNode, genesisLink, middleNodes, middleLinks, tipNode, tipLink}
 }
 
@@ -136,9 +125,7 @@ func (tbc *TestBlockChain) NodeTipIndex(fromTip int) ipld.Node {
 	}
 }
 func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress, start int, end int) {
-	if len(responses) != (end-start)*blockChainTraversedNodesPerBlock {
-		tbc.t.Fatal("did not traverse all nodes")
-	}
+	require.Len(tbc.t, responses, (end-start)*blockChainTraversedNodesPerBlock, "traverses all nodes")
 	expectedPath := ""
 	for i := 0; i < start; i++ {
 		if expectedPath == "" {
@@ -148,9 +135,7 @@ func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress
 		}
 	}
 	for i, response := range responses {
-		if response.Path.String() != expectedPath {
-			tbc.t.Fatal("incorrect path")
-		}
+		require.Equal(tbc.t, response.Path.String(), expectedPath, "response has correct path")
 		if i%2 == 0 {
 			if expectedPath == "" {
 				expectedPath = "Parents"
@@ -167,9 +152,7 @@ func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress
 			continue
 		}
 		expectedLink := tbc.LinkTipIndex((i / 2) + start)
-		if expectedLink != response.LastBlock.Link {
-			tbc.t.Fatal("Unexpected link in response")
-		}
+		require.Equal(tbc.t, expectedLink, response.LastBlock.Link, "response has correct link")
 	}
 }
 
@@ -197,17 +180,11 @@ func (tbc *TestBlockChain) Blocks(from int, to int) []blocks.Block {
 	for i := from; i < to; i++ {
 		link := tbc.LinkTipIndex(i)
 		reader, err := tbc.loader(link, ipld.LinkContext{})
-		if err != nil {
-			tbc.t.Fatal("Unable to load link")
-		}
+		require.NoError(tbc.t, err)
 		data, err := ioutil.ReadAll(reader)
-		if err != nil {
-			tbc.t.Fatal("Unable to read link data")
-		}
+		require.NoError(tbc.t, err)
 		blk, err := blocks.NewBlockWithCid(data, link.(cidlink.Link).Cid)
-		if err != nil {
-			tbc.t.Fatal("Could not construct block")
-		}
+		require.NoError(tbc.t, err)
 		blks = append(blks, blk)
 	}
 	return blks

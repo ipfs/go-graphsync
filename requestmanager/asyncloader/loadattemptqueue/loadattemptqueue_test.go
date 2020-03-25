@@ -11,6 +11,7 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
@@ -31,21 +32,12 @@ func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
 	lr := NewLoadRequest(requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, false)
 
-	select {
-	case result := <-resultChan:
-		if result.Data == nil {
-			t.Fatal("should have sent a response")
-		}
-		if result.Err != nil {
-			t.Fatal("should not have sent an error")
-		}
-	case <-ctx.Done():
-		t.Fatal("should have closed response channel")
-	}
+	var result types.AsyncLoadResult
+	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
+	require.NotNil(t, result.Data, "should send response")
+	require.Nil(t, result.Err, "should not send error")
 
-	if callCount == 0 {
-		t.Fatal("should have attempted to load link but did not")
-	}
+	require.NotZero(t, callCount, "should attempt to load link from local store")
 }
 
 func TestAsyncLoadInitialLoadFails(t *testing.T) {
@@ -65,22 +57,11 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	lr := NewLoadRequest(requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, false)
 
-	select {
-	case result := <-resultChan:
-		if result.Data != nil {
-			t.Fatal("should not have sent responses")
-		}
-		if result.Err == nil {
-			t.Fatal("should have sent an error")
-		}
-	case <-ctx.Done():
-		t.Fatal("should have closed response channel")
-	}
-
-	if callCount == 0 {
-		t.Fatal("should have attempted to load link but did not")
-	}
-
+	var result types.AsyncLoadResult
+	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
+	require.Nil(t, result.Data, "should not have sent responses")
+	require.NotNil(t, result.Err, "should have sent an error")
+	require.NotZero(t, callCount, "should attempt to load link from local store")
 }
 
 func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
@@ -105,22 +86,11 @@ func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 	lr := NewLoadRequest(requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, false)
 
-	select {
-	case result := <-resultChan:
-		if result.Data != nil {
-			t.Fatal("should not have sent responses")
-		}
-		if result.Err == nil {
-			t.Fatal("should have sent an error")
-
-		}
-	case <-ctx.Done():
-		t.Fatal("should have produced result")
-	}
-
-	if callCount > 1 {
-		t.Fatal("should have failed after load with indeterminate result")
-	}
+	var result types.AsyncLoadResult
+	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
+	require.Nil(t, result.Data, "should not have sent responses")
+	require.NotNil(t, result.Err, "should have sent an error")
+	require.Equal(t, callCount, 1, "should attempt to load once and then not retry")
 }
 
 func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing.T) {
@@ -146,30 +116,14 @@ func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing
 	lr := NewLoadRequest(requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, true)
 
-	select {
-	case <-called:
-	case <-resultChan:
-		t.Fatal("Should not have sent message on response chan")
-	case <-ctx.Done():
-		t.Fatal("should have attempted load once")
-	}
+	testutil.AssertDoesReceiveFirst(t, called, "attemps load with no result", resultChan, ctx.Done())
 	loadAttemptQueue.RetryLoads()
 
-	select {
-	case result := <-resultChan:
-		if result.Data == nil {
-			t.Fatal("should have sent a response")
-		}
-		if result.Err != nil {
-			t.Fatal("should not have sent an error")
-		}
-	case <-ctx.Done():
-		t.Fatal("should have closed response channel")
-	}
-
-	if callCount < 2 {
-		t.Fatal("should have attempted to load multiple times till success but did not")
-	}
+	var result types.AsyncLoadResult
+	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
+	require.NotNil(t, result.Data, "should send response")
+	require.Nil(t, result.Err, "should not send error")
+	require.Equal(t, callCount, 2, "should attempt to load multiple times till success")
 }
 
 func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
@@ -195,29 +149,13 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	lr := NewLoadRequest(requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, true)
 
-	select {
-	case <-called:
-	case <-resultChan:
-		t.Fatal("Should not have sent message on response chan")
-	case <-ctx.Done():
-		t.Fatal("should have attempted load once")
-	}
+	testutil.AssertDoesReceiveFirst(t, called, "attemps load with no result", resultChan, ctx.Done())
 	loadAttemptQueue.ClearRequest(requestID)
 	loadAttemptQueue.RetryLoads()
 
-	select {
-	case result := <-resultChan:
-		if result.Data != nil {
-			t.Fatal("should not have sent responses")
-		}
-		if result.Err == nil {
-			t.Fatal("should have sent an error")
-		}
-	case <-ctx.Done():
-		t.Fatal("should have closed response channel")
-	}
-
-	if callCount > 1 {
-		t.Fatal("should only have attempted one call but attempted multiple")
-	}
+	var result types.AsyncLoadResult
+	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
+	require.Nil(t, result.Data, "should not have sent responses")
+	require.NotNil(t, result.Err, "should have sent an error")
+	require.Equal(t, callCount, 1, "should attempt to load only once because request is finised")
 }

@@ -3,7 +3,6 @@ package responsebuilder
 import (
 	"fmt"
 	"math/rand"
-	"reflect"
 	"testing"
 
 	"github.com/ipfs/go-graphsync"
@@ -12,6 +11,7 @@ import (
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMessageBuilding(t *testing.T) {
@@ -47,9 +47,7 @@ func TestMessageBuilding(t *testing.T) {
 		rb.AddBlock(block)
 	}
 
-	if rb.BlockSize() != 300 {
-		t.Fatal("did not calculate block size correctly")
-	}
+	require.Equal(t, rb.BlockSize(), 300, "did not calculate block size correctly")
 
 	extensionData1 := testutil.RandomBytes(100)
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
@@ -68,88 +66,67 @@ func TestMessageBuilding(t *testing.T) {
 
 	responses, sentBlocks, err := rb.Build()
 
-	if err != nil {
-		t.Fatal("Error building responses")
-	}
+	require.NoError(t, err, "builds responses without error")
 
-	if len(responses) != 4 {
-		t.Fatal("Assembled wrong number of responses")
-	}
+	require.Len(t, responses, 4, "assembles correct number of responses")
 
 	response1, err := findResponseForRequestID(responses, requestID1)
-	if err != nil || response1.Status() != graphsync.RequestCompletedPartial {
-		t.Fatal("did not generate completed partial response")
-	}
+	require.NoError(t, err)
+	require.Equal(t, response1.Status(), graphsync.RequestCompletedPartial, "generates completed partial response")
 
 	response1MetadataRaw, found := response1.Extension(graphsync.ExtensionMetadata)
-	if !found {
-		t.Fatal("Metadata not included in response")
-	}
+	require.True(t, found, "Metadata included in response")
 	response1Metadata, err := metadata.DecodeMetadata(response1MetadataRaw)
-	if err != nil || !reflect.DeepEqual(response1Metadata, metadata.Metadata{
+	require.NoError(t, err)
+	require.Equal(t, response1Metadata, metadata.Metadata{
 		metadata.Item{Link: links[0], BlockPresent: true},
 		metadata.Item{Link: links[1], BlockPresent: false},
 		metadata.Item{Link: links[2], BlockPresent: true},
-	}) {
-		t.Fatal("Metadata did not match expected")
-	}
+	}, "correct metadata include in response")
 
 	response1ReturnedExtensionData, found := response1.Extension(extensionName1)
-	if !found || !reflect.DeepEqual(extensionData1, response1ReturnedExtensionData) {
-		t.Fatal("Failed to encode first extension")
-	}
+	require.True(t, found)
+	require.Equal(t, extensionData1, response1ReturnedExtensionData, "encoded first extension")
 
 	response2, err := findResponseForRequestID(responses, requestID2)
-	if err != nil || response2.Status() != graphsync.RequestCompletedFull {
-		t.Fatal("did not generate completed partial response")
-	}
+	require.NoError(t, err)
+	require.Equal(t, response2.Status(), graphsync.RequestCompletedFull, "generates completed full response")
+
 	response2MetadataRaw, found := response2.Extension(graphsync.ExtensionMetadata)
-	if !found {
-		t.Fatal("Metadata not included in response")
-	}
+	require.True(t, found, "Metadata included in response")
 	response2Metadata, err := metadata.DecodeMetadata(response2MetadataRaw)
-	if err != nil || !reflect.DeepEqual(response2Metadata, metadata.Metadata{
+	require.NoError(t, err)
+	require.Equal(t, response2Metadata, metadata.Metadata{
 		metadata.Item{Link: links[1], BlockPresent: true},
 		metadata.Item{Link: links[2], BlockPresent: true},
 		metadata.Item{Link: links[1], BlockPresent: true},
-	}) {
-		t.Fatal("Metadata did not match expected")
-	}
+	}, "correct metadata include in response")
 
 	response3, err := findResponseForRequestID(responses, requestID3)
-	if err != nil || response3.Status() != graphsync.PartialResponse {
-		t.Fatal("did not generate completed partial response")
-	}
+	require.NoError(t, err)
+	require.Equal(t, response3.Status(), graphsync.PartialResponse, "generates partial response")
+
 	response3MetadataRaw, found := response3.Extension(graphsync.ExtensionMetadata)
-	if !found {
-		t.Fatal("Metadata not included in response")
-	}
+	require.True(t, found, "Metadata included in response")
 	response3Metadata, err := metadata.DecodeMetadata(response3MetadataRaw)
-	if err != nil || !reflect.DeepEqual(response3Metadata, metadata.Metadata{
+	require.NoError(t, err)
+	require.Equal(t, response3Metadata, metadata.Metadata{
 		metadata.Item{Link: links[0], BlockPresent: true},
 		metadata.Item{Link: links[1], BlockPresent: true},
-	}) {
-		t.Fatal("Metadata did not match expected")
-	}
+	}, "correct metadata include in response")
 
 	response3ReturnedExtensionData, found := response3.Extension(extensionName2)
-	if !found || !reflect.DeepEqual(extensionData2, response3ReturnedExtensionData) {
-		t.Fatal("Failed to encode second extension")
-	}
+	require.True(t, found)
+	require.Equal(t, extensionData2, response3ReturnedExtensionData, "encoded second extension")
 
 	response4, err := findResponseForRequestID(responses, requestID4)
-	if err != nil || response4.Status() != graphsync.RequestCompletedFull {
-		t.Fatal("did not generate completed partial response")
-	}
+	require.NoError(t, err)
+	require.Equal(t, response4.Status(), graphsync.RequestCompletedFull, "generates completed full response")
 
-	if len(sentBlocks) != len(blocks) {
-		t.Fatal("Did not send all blocks")
-	}
+	require.Equal(t, len(sentBlocks), len(blocks), "sends all blocks")
 
 	for _, block := range sentBlocks {
-		if !testutil.ContainsBlock(blocks, block) {
-			t.Fatal("Sent incorrect block")
-		}
+		testutil.AssertContainsBlock(t, blocks, block)
 	}
 }
 

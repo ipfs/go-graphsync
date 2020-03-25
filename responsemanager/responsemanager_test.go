@@ -5,7 +5,6 @@ import (
 	"errors"
 	"math"
 	"math/rand"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +17,7 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeQueryQueue struct {
@@ -150,28 +150,15 @@ func TestIncomingQuery(t *testing.T) {
 	}
 	p := testutil.GeneratePeers(1)[0]
 	responseManager.ProcessRequests(ctx, p, requests)
-	select {
-	case <-ctx.Done():
-		t.Fatal("Should have completed request but didn't")
-	case <-requestIDChan:
-	}
+	testutil.AssertDoesReceive(ctx, t, requestIDChan, "Should have completed request but didn't")
 	for i := 0; i < len(blks); i++ {
-		select {
-		case sentResponse := <-sentResponses:
-			k := sentResponse.link.(cidlink.Link)
-			blockIndex := testutil.IndexOf(blks, k.Cid)
-			if blockIndex == -1 {
-				t.Fatal("sent incorrect link")
-			}
-			if !reflect.DeepEqual(sentResponse.data, blks[blockIndex].RawData()) {
-				t.Fatal("sent incorrect data")
-			}
-			if sentResponse.requestID != requestID {
-				t.Fatal("incorrect response id")
-			}
-		case <-ctx.Done():
-			t.Fatal("did not send enough responses")
-		}
+		var sentResponse sentResponse
+		testutil.AssertReceive(ctx, t, sentResponses, &sentResponse, "sends responses")
+		k := sentResponse.link.(cidlink.Link)
+		blockIndex := testutil.IndexOf(blks, k.Cid)
+		require.NotEqual(t, blockIndex, -1, "sends correct link")
+		require.Equal(t, sentResponse.data, blks[blockIndex].RawData(), "sends correct data")
+		require.Equal(t, sentResponse.requestID, requestID, "has correct response id")
 	}
 }
 
@@ -202,22 +189,13 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	responseManager.ProcessRequests(ctx, p, requests)
 
 	// read one block
-	select {
-	case sentResponse := <-sentResponses:
-		k := sentResponse.link.(cidlink.Link)
-		blockIndex := testutil.IndexOf(blks, k.Cid)
-		if blockIndex == -1 {
-			t.Fatal("sent incorrect link")
-		}
-		if !reflect.DeepEqual(sentResponse.data, blks[blockIndex].RawData()) {
-			t.Fatal("sent incorrect data")
-		}
-		if sentResponse.requestID != requestID {
-			t.Fatal("incorrect response id")
-		}
-	case <-ctx.Done():
-		t.Fatal("did not send responses")
-	}
+	var sentResponse sentResponse
+	testutil.AssertReceive(ctx, t, sentResponses, &sentResponse, "sends response")
+	k := sentResponse.link.(cidlink.Link)
+	blockIndex := testutil.IndexOf(blks, k.Cid)
+	require.NotEqual(t, blockIndex, -1, "sents correct link")
+	require.Equal(t, sentResponse.data, blks[blockIndex].RawData(), "sends correct data")
+	require.Equal(t, sentResponse.requestID, requestID, "has correct response id")
 
 	// send a cancellation
 	requests = []gsmsg.GraphSyncRequest{
@@ -229,32 +207,15 @@ func TestCancellationQueryInProgress(t *testing.T) {
 
 	// at this point we should receive at most one more block, then traversal
 	// should complete
-	additionalMessageCount := 0
-drainqueue:
-	for {
-		select {
-		case <-ctx.Done():
-			t.Fatal("Should have completed request but didn't")
-		case sentResponse := <-sentResponses:
-			if additionalMessageCount > 0 {
-				t.Fatal("should not send any more responses")
-			}
-			k := sentResponse.link.(cidlink.Link)
-			blockIndex := testutil.IndexOf(blks, k.Cid)
-			if blockIndex == -1 {
-				t.Fatal("sent incorrect link")
-			}
-			if !reflect.DeepEqual(sentResponse.data, blks[blockIndex].RawData()) {
-				t.Fatal("sent incorrect data")
-			}
-			if sentResponse.requestID != requestID {
-				t.Fatal("incorrect response id")
-			}
-			additionalMessageCount++
-		case <-requestIDChan:
-			break drainqueue
-		}
-	}
+	testutil.AssertReceiveFirst(t, sentResponses, &sentResponse, "should send one additional response", ctx.Done(), requestIDChan)
+	k = sentResponse.link.(cidlink.Link)
+	blockIndex = testutil.IndexOf(blks, k.Cid)
+	require.NotEqual(t, blockIndex, -1, "sends correct link")
+	require.Equal(t, sentResponse.data, blks[blockIndex].RawData(), "sends correct data")
+	require.Equal(t, sentResponse.requestID, requestID, "correct response id")
+
+	// We should now be done
+	testutil.AssertDoesReceiveFirst(t, requestIDChan, "should complete", ctx.Done(), sentResponses)
 }
 
 func TestEarlyCancellation(t *testing.T) {
@@ -295,13 +256,7 @@ func TestEarlyCancellation(t *testing.T) {
 	queryQueue.popWait.Done()
 
 	// verify no responses processed
-	select {
-	case <-ctx.Done():
-	case <-sentResponses:
-		t.Fatal("should not send any more responses")
-	case <-requestIDChan:
-		t.Fatal("should not send have completed response")
-	}
+	testutil.AssertDoesReceiveFirst(t, ctx.Done(), "no more responses processed", sentResponses, requestIDChan)
 }
 
 func TestValidationAndExtensions(t *testing.T) {
@@ -344,14 +299,9 @@ func TestValidationAndExtensions(t *testing.T) {
 			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.ProcessRequests(ctx, p, requests)
-			select {
-			case <-ctx.Done():
-				t.Fatal("Should have completed request but didn't")
-			case lastRequest := <-completedRequestChan:
-				if !gsmsg.IsTerminalFailureCode(lastRequest.result) {
-					t.Fatal("Request should have failed but didn't")
-				}
-			}
+			var lastRequest completedRequest
+			testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "Should complete request")
+			require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
 		})
 
 		t.Run("if non validating hook succeeds, does not pass validation", func(t *testing.T) {
@@ -361,22 +311,12 @@ func TestValidationAndExtensions(t *testing.T) {
 				hookActions.SendExtensionData(extensionResponse)
 			})
 			responseManager.ProcessRequests(ctx, p, requests)
-			select {
-			case <-ctx.Done():
-				t.Fatal("Should have completed request but didn't")
-			case lastRequest := <-completedRequestChan:
-				if !gsmsg.IsTerminalFailureCode(lastRequest.result) {
-					t.Fatal("Request should have succeeded but didn't")
-				}
-			}
-			select {
-			case <-ctx.Done():
-				t.Fatal("Should have sent extension response but didn't")
-			case receivedExtension := <-sentExtensions:
-				if !reflect.DeepEqual(receivedExtension.extension, extensionResponse) {
-					t.Fatal("Proper Extension response should have been sent but wasn't")
-				}
-			}
+			var lastRequest completedRequest
+			testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "Should complete request")
+			require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
+			var receivedExtension sentExtension
+			testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "Should send extension response")
+			require.Equal(t, receivedExtension.extension, extensionResponse, "corrent extension response should be sent")
 		})
 
 		t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
@@ -387,22 +327,12 @@ func TestValidationAndExtensions(t *testing.T) {
 				hookActions.SendExtensionData(extensionResponse)
 			})
 			responseManager.ProcessRequests(ctx, p, requests)
-			select {
-			case <-ctx.Done():
-				t.Fatal("Should have completed request but didn't")
-			case lastRequest := <-completedRequestChan:
-				if !gsmsg.IsTerminalSuccessCode(lastRequest.result) {
-					t.Fatal("Request should have succeeded but didn't")
-				}
-			}
-			select {
-			case <-ctx.Done():
-				t.Fatal("Should have sent extension response but didn't")
-			case receivedExtension := <-sentExtensions:
-				if !reflect.DeepEqual(receivedExtension.extension, extensionResponse) {
-					t.Fatal("Proper Extension response should have been sent but wasn't")
-				}
-			}
+			var lastRequest completedRequest
+			testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "Should complete request")
+			require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+			var receivedExtension sentExtension
+			testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "Should send extension response")
+			require.Equal(t, receivedExtension.extension, extensionResponse, "corrent extension response should be sent")
 		})
 	})
 
@@ -417,14 +347,9 @@ func TestValidationAndExtensions(t *testing.T) {
 			responseManager := New(ctx, loader, peerManager, queryQueue)
 			responseManager.Startup()
 			responseManager.ProcessRequests(ctx, p, requests)
-			select {
-			case <-ctx.Done():
-				t.Fatal("Should have completed request but didn't")
-			case lastRequest := <-completedRequestChan:
-				if !gsmsg.IsTerminalSuccessCode(lastRequest.result) {
-					t.Fatal("Request should have failed but didn't")
-				}
-			}
+			var lastRequest completedRequest
+			testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "Should complete request")
+			require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
 		})
 
 		t.Run("if any hook fails, should fail", func(t *testing.T) {
@@ -435,22 +360,12 @@ func TestValidationAndExtensions(t *testing.T) {
 				hookActions.TerminateWithError(errors.New("everything went to crap"))
 			})
 			responseManager.ProcessRequests(ctx, p, requests)
-			select {
-			case <-ctx.Done():
-				t.Fatal("Should have completed request but didn't")
-			case lastRequest := <-completedRequestChan:
-				if !gsmsg.IsTerminalFailureCode(lastRequest.result) {
-					t.Fatal("Request should have succeeded but didn't")
-				}
-			}
-			select {
-			case <-ctx.Done():
-				t.Fatal("Should have sent extension response but didn't")
-			case receivedExtension := <-sentExtensions:
-				if !reflect.DeepEqual(receivedExtension.extension, extensionResponse) {
-					t.Fatal("Proper Extension response should have been sent but wasn't")
-				}
-			}
+			var lastRequest completedRequest
+			testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "Should complete request")
+			require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
+			var receivedExtension sentExtension
+			testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "Should send extension response")
+			require.Equal(t, receivedExtension.extension, extensionResponse, "corrent extension response should be sent")
 		})
 	})
 }

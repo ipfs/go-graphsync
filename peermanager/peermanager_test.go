@@ -30,31 +30,23 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 
 	connectedPeers := peerManager.ConnectedPeers()
 
-	if !testutil.ContainsPeer(connectedPeers, peer1) ||
-		!testutil.ContainsPeer(connectedPeers, peer2) ||
-		!testutil.ContainsPeer(connectedPeers, peer3) {
-		t.Fatal("Peers not connected that should be connected")
-	}
+	testutil.AssertContainsPeer(t, connectedPeers, peer1)
+	testutil.AssertContainsPeer(t, connectedPeers, peer2)
+	testutil.AssertContainsPeer(t, connectedPeers, peer3)
 
-	if testutil.ContainsPeer(connectedPeers, peer4) ||
-		testutil.ContainsPeer(connectedPeers, peer5) {
-		t.Fatal("Peers connected that shouldn't be connected")
-	}
+	testutil.RefuteContainsPeer(t, connectedPeers, peer4)
+	testutil.RefuteContainsPeer(t, connectedPeers, peer5)
 
 	// removing a peer with only one reference
 	peerManager.Disconnected(peer1)
 	connectedPeers = peerManager.ConnectedPeers()
 
-	if testutil.ContainsPeer(connectedPeers, peer1) {
-		t.Fatal("Peer should have been disconnected but was not")
-	}
+	testutil.RefuteContainsPeer(t, connectedPeers, peer1)
 
 	// connecting a peer twice, then disconnecting once, should stay in queue
 	peerManager.Connected(peer2)
 	peerManager.Disconnected(peer2)
 	connectedPeers = peerManager.ConnectedPeers()
 
-	if !testutil.ContainsPeer(connectedPeers, peer2) {
-		t.Fatal("Peer was disconnected but should not have been")
-	}
+	testutil.AssertContainsPeer(t, connectedPeers, peer2)
 }

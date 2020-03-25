@@ -3,11 +3,11 @@ package responsecache
 import (
 	"fmt"
 	"math/rand"
-	"reflect"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/testutil"
@@ -99,51 +99,45 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 
 	responseCache.ProcessResponse(responses, blks)
 
-	if len(fubs.blocks()) != len(blks)-1 || testutil.ContainsBlock(fubs.blocks(), blks[2]) {
-		t.Fatal("should have prune block not referred to but didn't")
-	}
+	require.Len(t, fubs.blocks(), len(blks)-1, "should prune block with no references")
+	testutil.RefuteContainsBlock(t, fubs.blocks(), blks[2])
 
 	// should load block from unverified block store
 	data, err := responseCache.AttemptLoad(requestID2, cidlink.Link{Cid: blks[4].Cid()})
-	if err != nil || !reflect.DeepEqual(data, blks[4].RawData()) {
-		t.Fatal("did not load correct block")
-	}
+	require.NoError(t, err)
+	require.Equal(t, data, blks[4].RawData(), "load correct block")
+
 	// which will remove block
-	if len(fubs.blocks()) != len(blks)-2 || testutil.ContainsBlock(fubs.blocks(), blks[4]) {
-		t.Fatal("should have removed block on verify but didn't")
-	}
+	require.Len(t, fubs.blocks(), len(blks)-2, "should prune block once verified")
+	testutil.RefuteContainsBlock(t, fubs.blocks(), blks[4])
 
 	// fails as it is a known missing block
 	data, err = responseCache.AttemptLoad(requestID1, cidlink.Link{Cid: blks[1].Cid()})
-	if err == nil || data != nil {
-		t.Fatal("found block that should not have been found")
-	}
+	require.Error(t, err)
+	require.Nil(t, data, "no data should be returned for missing block")
 
 	// should succeed for request 2 where it's not a missing block
 	data, err = responseCache.AttemptLoad(requestID2, cidlink.Link{Cid: blks[1].Cid()})
-	if err != nil || !reflect.DeepEqual(data, blks[1].RawData()) {
-		t.Fatal("did not load correct block")
-	}
+	require.NoError(t, err)
+	require.Equal(t, data, blks[1].RawData())
+
 	// which will remove block
-	if len(fubs.blocks()) != len(blks)-3 || testutil.ContainsBlock(fubs.blocks(), blks[1]) {
-		t.Fatal("should have removed block on verify but didn't")
-	}
+	require.Len(t, fubs.blocks(), len(blks)-3, "should prune block once verified")
+	testutil.RefuteContainsBlock(t, fubs.blocks(), blks[1])
 
 	// should be unknown result as block is not known missing or present in block store
 	data, err = responseCache.AttemptLoad(requestID1, cidlink.Link{Cid: blks[2].Cid()})
-	if err != nil || data != nil {
-		t.Fatal("should have produced unknown result but didn't")
-	}
+	require.NoError(t, err)
+	require.Nil(t, data, "no data should be returned for unknown block")
 
 	responseCache.FinishRequest(requestID1)
 	// should remove only block 0, since it now has no refering outstanding requests
-	if len(fubs.blocks()) != len(blks)-4 || testutil.ContainsBlock(fubs.blocks(), blks[0]) {
-		t.Fatal("should have removed block on verify but didn't")
-	}
+	require.Len(t, fubs.blocks(), len(blks)-4, "should prune block when it is orphaned")
+	testutil.RefuteContainsBlock(t, fubs.blocks(), blks[0])
 
 	responseCache.FinishRequest(requestID2)
 	// should remove last block since are no remaining references
-	if len(fubs.blocks()) != 0 || testutil.ContainsBlock(fubs.blocks(), blks[3]) {
-		t.Fatal("should have removed block on verify but didn't")
-	}
+	require.Len(t, fubs.blocks(), 0, "should prune block when it is orphaned")
+	testutil.RefuteContainsBlock(t, fubs.blocks(), blks[3])
+
 }

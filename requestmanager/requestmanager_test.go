@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync/metadata"
 
@@ -68,33 +68,22 @@ func (fal *fakeAsyncLoader) ProcessResponse(responses map[graphsync.RequestID]me
 	fal.blks <- blks
 }
 func (fal *fakeAsyncLoader) verifyLastProcessedBlocks(ctx context.Context, t *testing.T, expectedBlocks []blocks.Block) {
-	select {
-	case <-ctx.Done():
-		t.Fatal("should have processed blocks but didn't")
-	case processedBlocks := <-fal.blks:
-		if !reflect.DeepEqual(processedBlocks, expectedBlocks) {
-			t.Fatal("Did not process correct blocks")
-		}
-	}
+	var processedBlocks []blocks.Block
+	testutil.AssertReceive(ctx, t, fal.blks, &processedBlocks, "should process blocks")
+	require.Equal(t, processedBlocks, expectedBlocks, "should process correct blocks")
 }
+
 func (fal *fakeAsyncLoader) verifyLastProcessedResponses(ctx context.Context, t *testing.T,
 	expectedResponses map[graphsync.RequestID]metadata.Metadata) {
-	select {
-	case <-ctx.Done():
-		t.Fatal("should have processed responses but didn't")
-	case responses := <-fal.responses:
-		if !reflect.DeepEqual(responses, expectedResponses) {
-			t.Fatal("Did not send proper metadata")
-		}
-	}
+	var responses map[graphsync.RequestID]metadata.Metadata
+	testutil.AssertReceive(ctx, t, fal.responses, &responses, "processes responses")
+	require.Equal(t, responses, expectedResponses, "processes correct responses")
 }
 
 func (fal *fakeAsyncLoader) verifyNoRemainingData(t *testing.T, requestID graphsync.RequestID) {
 	fal.responseChannelsLk.Lock()
 	for key := range fal.responseChannels {
-		if key.requestID == requestID {
-			t.Fatal("request not properly cleaned up")
-		}
+		require.NotEqual(t, key.requestID, requestID, "request properly cleaned up")
 	}
 	fal.responseChannelsLk.Unlock()
 }
@@ -142,12 +131,9 @@ func readNNetworkRequests(ctx context.Context,
 	count int) []requestRecord {
 	requestRecords := make([]requestRecord, 0, count)
 	for i := 0; i < count; i++ {
-		select {
-		case rr := <-requestRecordChan:
-			requestRecords = append(requestRecords, rr)
-		case <-ctx.Done():
-			t.Fatal("should have sent two requests to the network but did not")
-		}
+		var rr requestRecord
+		testutil.AssertReceive(ctx, t, requestRecordChan, &rr, fmt.Sprintf("receives request %d", i))
+		requestRecords = append(requestRecords, rr)
 	}
 	return requestRecords
 }
@@ -166,9 +152,7 @@ func metadataForBlocks(blks []blocks.Block, present bool) metadata.Metadata {
 func encodedMetadataForBlocks(t *testing.T, blks []blocks.Block, present bool) graphsync.ExtensionData {
 	md := metadataForBlocks(blks, present)
 	metadataEncoded, err := metadata.EncodeMetadata(md)
-	if err != nil {
-		t.Fatal("did not encode metadata")
-	}
+	require.NoError(t, err, "did not encode metadata")
 	return graphsync.ExtensionData{
 		Name: graphsync.ExtensionMetadata,
 		Data: metadataEncoded,
@@ -198,31 +182,23 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 
 	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
 
-	if requestRecords[0].p != peers[0] || requestRecords[1].p != peers[0] ||
-		requestRecords[0].gsr.IsCancel() != false || requestRecords[1].gsr.IsCancel() != false ||
-		requestRecords[0].gsr.Priority() != maxPriority ||
-		requestRecords[1].gsr.Priority() != maxPriority {
-		t.Fatal("did not send correct requests")
-	}
+	require.Equal(t, requestRecords[0].p, peers[0])
+	require.Equal(t, requestRecords[1].p, peers[0])
+	require.False(t, requestRecords[0].gsr.IsCancel())
+	require.False(t, requestRecords[1].gsr.IsCancel())
+	require.Equal(t, requestRecords[0].gsr.Priority(), maxPriority)
+	require.Equal(t, requestRecords[1].gsr.Priority(), maxPriority)
 
-	if !reflect.DeepEqual(blockChain1.Selector(), requestRecords[0].gsr.Selector()) {
-		t.Fatal("did not encode selector properly")
-	}
-	if !reflect.DeepEqual(blockChain2.Selector(), requestRecords[1].gsr.Selector()) {
-		t.Fatal("did not encode selector properly")
-	}
+	require.Equal(t, blockChain1.Selector(), requestRecords[0].gsr.Selector(), "encodes selector properly")
+	require.Equal(t, blockChain2.Selector(), requestRecords[1].gsr.Selector(), "encode selector properly")
 
 	firstBlocks := append(blockChain1.AllBlocks(), blockChain2.Blocks(0, 3)...)
 	firstMetadata1 := metadataForBlocks(blockChain1.AllBlocks(), true)
 	firstMetadataEncoded1, err := metadata.EncodeMetadata(firstMetadata1)
-	if err != nil {
-		t.Fatal("did not encode metadata")
-	}
+	require.NoError(t, err, "did not encode metadata")
 	firstMetadata2 := metadataForBlocks(blockChain2.Blocks(0, 3), true)
 	firstMetadataEncoded2, err := metadata.EncodeMetadata(firstMetadata2)
-	if err != nil {
-		t.Fatal("did not encode metadata")
-	}
+	require.NoError(t, err, "did not encode metadata")
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
 			Name: graphsync.ExtensionMetadata,
@@ -249,9 +225,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	moreBlocks := blockChain2.RemainderBlocks(3)
 	moreMetadata := metadataForBlocks(moreBlocks, true)
 	moreMetadataEncoded, err := metadata.EncodeMetadata(moreMetadata)
-	if err != nil {
-		t.Fatal("did not encode metadata")
-	}
+	require.NoError(t, err, "did not encode metadata")
 	moreResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
 			Name: graphsync.ExtensionMetadata,
@@ -310,9 +284,9 @@ func TestCancelRequestInProgress(t *testing.T) {
 	blockChain.VerifyResponseRange(requestCtx1, returnedResponseChan1, 0, 3)
 	cancel1()
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
-	if rr.gsr.IsCancel() != true || rr.gsr.ID() != requestRecords[0].gsr.ID() {
-		t.Fatal("did not send correct cancel message over network")
-	}
+
+	require.True(t, rr.gsr.IsCancel())
+	require.Equal(t, rr.gsr.ID(), requestRecords[0].gsr.ID())
 
 	moreBlocks := blockChain.RemainderBlocks(3)
 	moreMetadata := encodedMetadataForBlocks(t, moreBlocks, true)
@@ -523,10 +497,7 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	}
 	testutil.VerifyEmptyResponse(ctx, t, returnedResponseChan)
 	errs := testutil.CollectErrors(ctx, t, returnedErrorChan)
-	if len(errs) == 0 {
-		t.Fatal("did not send  errors")
-	}
-
+	require.NotEqual(t, len(errs), 0, "sends errors")
 }
 
 func TestEncodingExtensions(t *testing.T) {
@@ -563,9 +534,7 @@ func TestEncodingExtensions(t *testing.T) {
 	receivedExtensionData := make(chan []byte, 2)
 	hook := func(p peer.ID, responseData graphsync.ResponseData) error {
 		data, has := responseData.Extension(extensionName1)
-		if !has {
-			t.Fatal("Did not receive extension data in response")
-		}
+		require.True(t, has, "receives extension data in response")
 		receivedExtensionData <- data
 		return <-expectedError
 	}
@@ -576,14 +545,12 @@ func TestEncodingExtensions(t *testing.T) {
 
 	gsr := rr.gsr
 	returnedData1, found := gsr.Extension(extensionName1)
-	if !found || !reflect.DeepEqual(extensionData1, returnedData1) {
-		t.Fatal("Failed to encode first extension")
-	}
+	require.True(t, found)
+	require.Equal(t, extensionData1, returnedData1, "encodes first extension correctly")
 
 	returnedData2, found := gsr.Extension(extensionName2)
-	if !found || !reflect.DeepEqual(extensionData2, returnedData2) {
-		t.Fatal("Failed to encode first extension")
-	}
+	require.True(t, found)
+	require.Equal(t, extensionData2, returnedData2, "encodes second extension correctly")
 
 	t.Run("responding to extensions", func(t *testing.T) {
 		expectedData := testutil.RandomBytes(100)
@@ -601,14 +568,9 @@ func TestEncodingExtensions(t *testing.T) {
 		}
 		expectedError <- nil
 		requestManager.ProcessResponses(peers[0], firstResponses, nil)
-		select {
-		case <-requestCtx.Done():
-			t.Fatal("Should have checked extension but didn't")
-		case received := <-receivedExtensionData:
-			if !reflect.DeepEqual(received, expectedData) {
-				t.Fatal("Did not receive correct extension data from resposne")
-			}
-		}
+		var received []byte
+		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "receives extension data")
+		require.Equal(t, received, expectedData, "receives correct extension data from resposne")
 		nextExpectedData := testutil.RandomBytes(100)
 
 		secondResponses := []gsmsg.GraphSyncResponse{
@@ -625,14 +587,8 @@ func TestEncodingExtensions(t *testing.T) {
 		}
 		expectedError <- errors.New("a terrible thing happened")
 		requestManager.ProcessResponses(peers[0], secondResponses, nil)
-		select {
-		case <-requestCtx.Done():
-			t.Fatal("Should have checked extension but didn't")
-		case received := <-receivedExtensionData:
-			if !reflect.DeepEqual(received, nextExpectedData) {
-				t.Fatal("Did not receive correct extension data from resposne")
-			}
-		}
+		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "receives extension data")
+		require.Equal(t, received, nextExpectedData, "receives correct extension data from resposne")
 		testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
 		testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 	})
