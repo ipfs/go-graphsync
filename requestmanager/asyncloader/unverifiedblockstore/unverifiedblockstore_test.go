@@ -37,7 +37,7 @@ func TestVerifyBlockPresent(t *testing.T) {
 	}
 	reader, err = loader(cidlink.Link{Cid: block.Cid()}, ipld.LinkContext{})
 	var buffer bytes.Buffer
-	err := io.Copy(&buffer, reader)
+	_, err = io.Copy(&buffer, reader)
 	if err != nil {
 		t.Fatal("error occurred copying data")
 	}
