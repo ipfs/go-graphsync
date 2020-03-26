@@ -59,11 +59,11 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send first message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[0].Cid(), "did not send correct blocks for first message")
+	require.Equal(t, blks[0].Cid(), fph.lastBlocks[0].Cid(), "did not send correct blocks for first message")
 
 	require.Len(t, fph.lastResponses, 1)
-	require.Equal(t, fph.lastResponses[0].RequestID(), requestID1)
-	require.Equal(t, fph.lastResponses[0].Status(), graphsync.PartialResponse)
+	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
+	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
 
 	peerResponseManager.SendResponse(requestID2, links[0], blks[0].RawData())
 	peerResponseManager.SendResponse(requestID1, links[1], blks[1].RawData())
@@ -76,15 +76,15 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[1].Cid(), "did not dedup blocks correctly on second message")
+	require.Equal(t, blks[1].Cid(), fph.lastBlocks[0].Cid(), "did not dedup blocks correctly on second message")
 
 	require.Len(t, fph.lastResponses, 2, "did not send correct number of responses")
 	response1, err := findResponseForRequestID(fph.lastResponses, requestID1)
 	require.NoError(t, err)
-	require.Equal(t, response1.Status(), graphsync.RequestCompletedPartial, "did not send correct response code in second message")
+	require.Equal(t, graphsync.RequestCompletedPartial, response1.Status(), "did not send correct response code in second message")
 	response2, err := findResponseForRequestID(fph.lastResponses, requestID2)
 	require.NoError(t, err)
-	require.Equal(t, response2.Status(), graphsync.PartialResponse, "did not send corrent response code in second message")
+	require.Equal(t, graphsync.PartialResponse, response2.Status(), "did not send corrent response code in second message")
 
 	peerResponseManager.SendResponse(requestID2, links[3], blks[3].RawData())
 	peerResponseManager.SendResponse(requestID3, links[4], blks[4].RawData())
@@ -95,17 +95,17 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
-	require.Equal(t, len(fph.lastBlocks), 2)
+	require.Equal(t, 2, len(fph.lastBlocks))
 	testutil.AssertContainsBlock(t, fph.lastBlocks, blks[3])
 	testutil.AssertContainsBlock(t, fph.lastBlocks, blks[4])
 
 	require.Len(t, fph.lastResponses, 2, "did not send correct number of responses")
 	response2, err = findResponseForRequestID(fph.lastResponses, requestID2)
 	require.NoError(t, err)
-	require.Equal(t, response2.Status(), graphsync.RequestCompletedFull, "did not send correct response code in third message")
+	require.Equal(t, graphsync.RequestCompletedFull, response2.Status(), "did not send correct response code in third message")
 	response3, err := findResponseForRequestID(fph.lastResponses, requestID3)
 	require.NoError(t, err)
-	require.Equal(t, response3.Status(), graphsync.PartialResponse, "did not send correct response code in third message")
+	require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not send correct response code in third message")
 
 	peerResponseManager.SendResponse(requestID3, links[0], blks[0].RawData())
 	peerResponseManager.SendResponse(requestID3, links[4], blks[4].RawData())
@@ -116,11 +116,11 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send fourth message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[0].Cid(), "Should resend block cause there were no in progress requests")
+	require.Equal(t, blks[0].Cid(), fph.lastBlocks[0].Cid(), "Should resend block cause there were no in progress requests")
 
 	require.Len(t, fph.lastResponses, 1)
-	require.Equal(t, fph.lastResponses[0].RequestID(), requestID3)
-	require.Equal(t, fph.lastResponses[0].Status(), graphsync.PartialResponse)
+	require.Equal(t, requestID3, fph.lastResponses[0].RequestID())
+	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
 }
 
 func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
@@ -150,11 +150,11 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send first message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[0].Cid(), "did not send correct blocks for first message")
+	require.Equal(t, blks[0].Cid(), fph.lastBlocks[0].Cid(), "did not send correct blocks for first message")
 
 	require.Len(t, fph.lastResponses, 1)
-	require.Equal(t, fph.lastResponses[0].RequestID(), requestID1)
-	require.Equal(t, fph.lastResponses[0].Status(), graphsync.PartialResponse)
+	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
+	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
 
 	// Send 3 very large blocks
 	peerResponseManager.SendResponse(requestID1, links[1], blks[1].RawData())
@@ -167,7 +167,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message ")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[1].Cid(), "Should break up message")
+	require.Equal(t, blks[1].Cid(), fph.lastBlocks[0].Cid(), "Should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "Should break up message")
 
@@ -181,7 +181,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[2].Cid(), "should break up message")
+	require.Equal(t, blks[2].Cid(), fph.lastBlocks[0].Cid(), "should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "should break up message")
 
@@ -191,7 +191,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send fourth message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[3].Cid(), "should break up message")
+	require.Equal(t, blks[3].Cid(), fph.lastBlocks[0].Cid(), "should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "should break up message")
 
@@ -201,13 +201,13 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send fifth message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[4].Cid(), "should break up message")
+	require.Equal(t, blks[4].Cid(), fph.lastBlocks[0].Cid(), "should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "should break up message")
 
 	response, err := findResponseForRequestID(fph.lastResponses, requestID1)
 	require.NoError(t, err)
-	require.Equal(t, response.Status(), graphsync.RequestCompletedFull, "did not send corrent response code in fifth message")
+	require.Equal(t, graphsync.RequestCompletedFull, response.Status(), "did not send corrent response code in fifth message")
 
 }
 
@@ -236,11 +236,11 @@ func TestPeerResponseManagerSendsExtensionData(t *testing.T) {
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send first message")
 
 	require.Len(t, fph.lastBlocks, 1)
-	require.Equal(t, fph.lastBlocks[0].Cid(), blks[0].Cid(), "did not send correct blocks for first message")
+	require.Equal(t, blks[0].Cid(), fph.lastBlocks[0].Cid(), "did not send correct blocks for first message")
 
 	require.Len(t, fph.lastResponses, 1)
-	require.Equal(t, fph.lastResponses[0].RequestID(), requestID1)
-	require.Equal(t, fph.lastResponses[0].Status(), graphsync.PartialResponse)
+	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
+	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
 
 	extensionData1 := testutil.RandomBytes(100)
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")

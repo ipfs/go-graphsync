@@ -81,7 +81,7 @@ func TestBlockRefCount(t *testing.T) {
 					linkTracker.FinishRequest(requestID)
 				}
 			}
-			require.Equal(t, linkTracker.BlockRefCount(link), data.expectedRefCount)
+			require.Equal(t, data.expectedRefCount, linkTracker.BlockRefCount(link))
 		})
 	}
 }
@@ -119,7 +119,7 @@ func TestFinishRequest(t *testing.T) {
 			for _, lt := range data.linksTraversed {
 				linkTracker.RecordLinkTraversal(requestID, lt.link, lt.blockPresent)
 			}
-			require.Equal(t, linkTracker.FinishRequest(requestID), data.allBlocksPresent)
+			require.Equal(t, data.allBlocksPresent, linkTracker.FinishRequest(requestID))
 		})
 	}
 }
@@ -154,7 +154,7 @@ func TestIsKnownMissingLink(t *testing.T) {
 			for _, present := range data.traversals {
 				linkTracker.RecordLinkTraversal(requestID, link, present)
 			}
-			require.Equal(t, linkTracker.IsKnownMissingLink(requestID, link), data.isKnownMissingLink)
+			require.Equal(t, data.isKnownMissingLink, linkTracker.IsKnownMissingLink(requestID, link))
 		})
 	}
 }

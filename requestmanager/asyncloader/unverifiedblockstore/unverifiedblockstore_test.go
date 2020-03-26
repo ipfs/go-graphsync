@@ -33,14 +33,14 @@ func TestVerifyBlockPresent(t *testing.T) {
 
 	data, err = unverifiedBlockStore.VerifyBlock(cidlink.Link{Cid: block.Cid()})
 	require.NoError(t, err)
-	require.Equal(t, data, block.RawData(), "block should be returned on verification if added")
+	require.Equal(t, block.RawData(), data, "block should be returned on verification if added")
 
 	reader, err = loader(cidlink.Link{Cid: block.Cid()}, ipld.LinkContext{})
 	require.NoError(t, err)
 	var buffer bytes.Buffer
 	_, err = io.Copy(&buffer, reader)
 	require.NoError(t, err)
-	require.Equal(t, buffer.Bytes(), block.RawData(), "block should be stored and loadable after verification")
+	require.Equal(t, block.RawData(), buffer.Bytes(), "block should be stored and loadable after verification")
 	data, err = unverifiedBlockStore.VerifyBlock(cidlink.Link{Cid: block.Cid()})
 	require.Nil(t, data)
 	require.Error(t, err, "block cannot be verified twice")

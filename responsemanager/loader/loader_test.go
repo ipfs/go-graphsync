@@ -54,18 +54,18 @@ func TestWrappedLoaderSendsResponses(t *testing.T) {
 	require.NoError(t, err, "Should not have error if underlying loader returns valid buffer and no error")
 	result, err := ioutil.ReadAll(reader)
 	require.NoError(t, err)
-	require.Equal(t, result, sourceBytes, "Should return reader that functions identical to source reader")
-	require.Equal(t, frs.lastRequestID, requestID, "should send block to response sender with correct params")
-	require.Equal(t, frs.lastLink, link1, "should send block to response sender with correct params")
-	require.Equal(t, frs.lastData, sourceBytes, "should send block to response sender with correct params")
+	require.Equal(t, sourceBytes, result, "Should return reader that functions identical to source reader")
+	require.Equal(t, requestID, frs.lastRequestID, "should send block to response sender with correct params")
+	require.Equal(t, link1, frs.lastLink, "should send block to response sender with correct params")
+	require.Equal(t, sourceBytes, frs.lastData, "should send block to response sender with correct params")
 
 	reader, err = wrappedLoader(link2, ipld.LinkContext{})
 
 	require.Nil(t, reader, "should return empty reader")
 	require.Error(t, err, "should return an error")
 
-	require.Equal(t, err, ipldutil.ErrDoNotFollow(), "Should convert error to a do not follow error")
-	require.Equal(t, frs.lastRequestID, requestID)
-	require.Equal(t, frs.lastLink, link2, "Should send metadata")
+	require.Equal(t, ipldutil.ErrDoNotFollow(), err, "Should convert error to a do not follow error")
+	require.Equal(t, requestID, frs.lastRequestID)
+	require.Equal(t, link2, frs.lastLink, "Should send metadata")
 	require.Nil(t, frs.lastData, "Should not send block")
 }

@@ -90,7 +90,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
 	require.Nil(t, result.Data, "should not send responses")
 	require.NotNil(t, result.Err, "should send an error")
-	require.Equal(t, callCount, 1, "should attempt to load once and then not retry")
+	require.Equal(t, 1, callCount, "should attempt to load once and then not retry")
 }
 
 func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing.T) {
@@ -123,7 +123,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
 	require.NotNil(t, result.Data, "should send response")
 	require.Nil(t, result.Err, "should not send error")
-	require.Equal(t, callCount, 2, "should attempt to load multiple times till success")
+	require.Equal(t, 2, callCount, "should attempt to load multiple times till success")
 }
 
 func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
@@ -157,5 +157,5 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
 	require.Nil(t, result.Data, "should not send responses")
 	require.NotNil(t, result.Err, "should send an error")
-	require.Equal(t, callCount, 1, "should attempt to load only once because request is finised")
+	require.Equal(t, 1, callCount, "should attempt to load only once because request is finised")
 }

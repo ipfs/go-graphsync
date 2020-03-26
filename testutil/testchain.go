@@ -135,7 +135,7 @@ func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress
 		}
 	}
 	for i, response := range responses {
-		require.Equal(tbc.t, response.Path.String(), expectedPath, "response has correct path")
+		require.Equal(tbc.t, expectedPath, response.Path.String(), "response has correct path")
 		if i%2 == 0 {
 			if expectedPath == "" {
 				expectedPath = "Parents"

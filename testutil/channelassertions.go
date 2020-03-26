@@ -19,14 +19,14 @@ func AssertReceive(ctx context.Context, t *testing.T, channel interface{}, out i
 func AssertReceiveFirst(t *testing.T, channel interface{}, out interface{}, errorMessage string, incorrectChannels ...interface{}) {
 	chanValue := reflect.ValueOf(channel)
 	outValue := reflect.ValueOf(out)
-	require.Equal(t, chanValue.Kind(), reflect.Chan, "incorrect argument: should pass channel to read from")
+	require.Equal(t, reflect.Chan, chanValue.Kind(), "incorrect argument: should pass channel to read from")
 	require.Contains(t, []reflect.ChanDir{reflect.BothDir, reflect.RecvDir}, chanValue.Type().ChanDir(), "incorrect argument: should pass a receiving channel")
-	require.Equal(t, outValue.Kind(), reflect.Ptr, "incorrect argument: should pass a pointer for out value")
+	require.Equal(t, reflect.Ptr, outValue.Kind(), "incorrect argument: should pass a pointer for out value")
 	require.True(t, chanValue.Type().Elem().AssignableTo(outValue.Elem().Type()), "incorrect argument: out value is incorrect type")
 	var incorrectSelectCases []reflect.SelectCase
 	for _, incorrectChannel := range incorrectChannels {
 		incorrectChanValue := reflect.ValueOf(incorrectChannel)
-		require.Equal(t, incorrectChanValue.Kind(), reflect.Chan, "incorrect argument: should pass channel to read from")
+		require.Equal(t, reflect.Chan, incorrectChanValue.Kind(), "incorrect argument: should pass channel to read from")
 		require.Contains(t, []reflect.ChanDir{reflect.BothDir, reflect.RecvDir}, incorrectChanValue.Type().ChanDir(), "incorrect argument: should pass a receiving channel")
 		incorrectSelectCases = append(incorrectSelectCases, reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
@@ -39,7 +39,7 @@ func AssertReceiveFirst(t *testing.T, channel interface{}, out interface{}, erro
 			Chan: chanValue,
 		},
 	}, incorrectSelectCases...))
-	require.Equal(t, chosen, 0, errorMessage)
+	require.Equal(t, 0, chosen, errorMessage)
 	require.True(t, recvOk, errorMessage)
 	outValue.Elem().Set(recv)
 }
@@ -52,12 +52,12 @@ func AssertDoesReceive(ctx context.Context, t *testing.T, channel interface{}, e
 // AssertDoesReceiveFirst asserts that the given channel receives a value before any of the other channels specified
 func AssertDoesReceiveFirst(t *testing.T, channel interface{}, errorMessage string, incorrectChannels ...interface{}) {
 	chanValue := reflect.ValueOf(channel)
-	require.Equal(t, chanValue.Kind(), reflect.Chan, "incorrect argument: should pass channel to read from")
+	require.Equal(t, reflect.Chan, chanValue.Kind(), "incorrect argument: should pass channel to read from")
 	require.Contains(t, []reflect.ChanDir{reflect.BothDir, reflect.RecvDir}, chanValue.Type().ChanDir(), "incorrect argument: should pass a receiving channel")
 	var incorrectSelectCases []reflect.SelectCase
 	for _, incorrectChannel := range incorrectChannels {
 		incorrectChanValue := reflect.ValueOf(incorrectChannel)
-		require.Equal(t, incorrectChanValue.Kind(), reflect.Chan, "incorrect argument: should pass channel to read from")
+		require.Equal(t, reflect.Chan, incorrectChanValue.Kind(), "incorrect argument: should pass channel to read from")
 		require.Contains(t, []reflect.ChanDir{reflect.BothDir, reflect.RecvDir}, incorrectChanValue.Type().ChanDir(), "incorrect argument: should pass a receiving channel")
 		incorrectSelectCases = append(incorrectSelectCases, reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
@@ -70,13 +70,13 @@ func AssertDoesReceiveFirst(t *testing.T, channel interface{}, errorMessage stri
 			Chan: chanValue,
 		},
 	}, incorrectSelectCases...))
-	require.Equal(t, chosen, 0, errorMessage)
+	require.Equal(t, 0, chosen, errorMessage)
 }
 
 // AssertChannelEmpty verifies that a channel has no value currently
 func AssertChannelEmpty(t *testing.T, channel interface{}, errorMessage string) {
 	chanValue := reflect.ValueOf(channel)
-	require.Equal(t, chanValue.Kind(), reflect.Chan, "incorrect argument: should pass channel to read from")
+	require.Equal(t, reflect.Chan, chanValue.Kind(), "incorrect argument: should pass channel to read from")
 	require.Contains(t, []reflect.ChanDir{reflect.BothDir, reflect.RecvDir}, chanValue.Type().ChanDir(), "incorrect argument: should pass a receiving channel")
 	chosen, _, _ := reflect.Select([]reflect.SelectCase{
 		{
@@ -94,7 +94,7 @@ func AssertChannelEmpty(t *testing.T, channel interface{}, errorMessage string) 
 func AssertSends(ctx context.Context, t *testing.T, channel interface{}, in interface{}, errorMessage string) {
 	chanValue := reflect.ValueOf(channel)
 	inValue := reflect.ValueOf(in)
-	require.Equal(t, chanValue.Kind(), reflect.Chan, "incorrect argument: should pass channel to send to")
+	require.Equal(t, reflect.Chan, chanValue.Kind(), "incorrect argument: should pass channel to send to")
 	require.Contains(t, []reflect.ChanDir{reflect.BothDir, reflect.SendDir}, chanValue.Type().ChanDir(), "incorrect argument: should pass a sending channel")
 	require.True(t, inValue.Type().AssignableTo(chanValue.Type().Elem()), "incorrect argument: in value is incorrect type")
 	chosen, _, _ := reflect.Select([]reflect.SelectCase{
@@ -108,5 +108,5 @@ func AssertSends(ctx context.Context, t *testing.T, channel interface{}, in inte
 			Chan: reflect.ValueOf(ctx.Done()),
 		},
 	})
-	require.Equal(t, chosen, 0, errorMessage)
+	require.Equal(t, 0, chosen, errorMessage)
 }

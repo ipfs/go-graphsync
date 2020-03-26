@@ -37,7 +37,6 @@ import (
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
-	"github.com/ipfs/go-graphsync/storeutil"
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
@@ -67,14 +66,14 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	graphSync.Request(requestCtx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
 	var message receivedMessage
-	testutil.AssertReceive(ctx, t, r.messageReceived, &message, "did not receive message")
+	testutil.AssertReceive(ctx, t, r.messageReceived, &message, "did not receive message sent")
 
 	sender := message.sender
-	require.Equal(t, sender, td.host1.ID(), "did not receive message from correct node")
+	require.Equal(t, td.host1.ID(), sender, "received message from wrong node")
 
 	received := message.message
 	receivedRequests := received.Requests()
-	require.Len(t, receivedRequests, 1, "did not add request to received message")
+	require.Len(t, receivedRequests, 1, "Did not add request to received message")
 	receivedRequest := receivedRequests[0]
 	receivedSpec := receivedRequest.Selector()
 	require.Equal(t, blockChain.Selector(), receivedSpec, "did not transmit selector spec correctly")
@@ -83,7 +82,7 @@ func TestMakeRequestToNetwork(t *testing.T) {
 
 	returnedData, found := receivedRequest.Extension(td.extensionName)
 	require.True(t, found)
-	require.Equal(t, td.extensionData, returnedData, "did not encode extension")
+	require.Equal(t, td.extensionData, returnedData, "Failed to encode extension")
 }
 
 func TestSendResponseToIncomingRequest(t *testing.T) {
@@ -108,7 +107,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 			hookActions.SendExtensionData(td.extensionResponse)
 		},
 	)
-	require.NoError(t, err, "did not register extension")
+	require.NoError(t, err, "error registering extension")
 
 	blockChainLength := 100
 	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
@@ -129,7 +128,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 		testutil.AssertReceive(ctx, t, r.messageReceived, &message, "did not receive complete response")
 
 		sender := message.sender
-		require.Equal(t, sender, td.host2.ID(), "did not receive message from correct node")
+		require.Equal(t, td.host2.ID(), sender, "received message from wrong node")
 
 		received = message.message
 		receivedBlocks = append(receivedBlocks, received.Blocks()...)
@@ -138,17 +137,17 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 		if found {
 			receivedExtensions = append(receivedExtensions, receivedExtension)
 		}
-		require.Len(t, receivedResponses, 1, "did not receive sresponse")
-		require.Equal(t, receivedResponses[0].RequestID(), requestID, "did not receive response for correct request id")
+		require.Len(t, receivedResponses, 1, "Did not receive response")
+		require.Equal(t, requestID, receivedResponses[0].RequestID(), "Sent response for incorrect request id")
 		if receivedResponses[0].Status() != graphsync.PartialResponse {
 			break
 		}
 	}
 
-	require.Len(t, receivedBlocks, blockChainLength, "did not receive correct number of blocks")
+	require.Len(t, receivedBlocks, blockChainLength, "Send incorrect number of blocks or there were duplicate blocks")
 	require.Equal(t, td.extensionData, receivedRequestData, "did not receive correct request extension data")
-	require.Len(t, receivedExtensions, 1, "did not receive extension responses")
-	require.Equal(t, receivedExtensions[0], td.extensionResponseData, "did not receive correct response extension data")
+	require.Len(t, receivedExtensions, 1, "should have sent extension responses but didn't")
+	require.Equal(t, td.extensionResponseData, receivedExtensions[0], "did not return correct extension data")
 }
 
 func TestGraphsyncRoundTrip(t *testing.T) {
@@ -179,7 +178,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 			}
 			return nil
 		})
-	require.NoError(t, err)
+	require.NoError(t, err, "Error setting up extension")
 
 	err = responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 		var has bool
@@ -190,7 +189,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 			hookActions.SendExtensionData(td.extensionResponse)
 		}
 	})
-	require.NoError(t, err)
+	require.NoError(t, err, "Error setting up extension")
 
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
@@ -199,8 +198,8 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
 
 	// verify extension roundtrip
-	require.Equal(t, receivedRequestData, td.extensionData, "did not receive correct extension request data")
-	require.Equal(t, receivedResponseData, td.extensionResponseData, "did not receive correct extension response data")
+	require.Equal(t, td.extensionData, receivedRequestData, "did not receive correct extension request data")
+	require.Equal(t, td.extensionResponseData, receivedResponseData, "did not receive correct extension response data")
 }
 
 // TestRoundTripLargeBlocksSlowNetwork test verifies graphsync continues to work
@@ -259,6 +258,38 @@ func TestUnixFSFetch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
+	makeLoader := func(bs bstore.Blockstore) ipld.Loader {
+		return func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
+			c, ok := lnk.(cidlink.Link)
+			if !ok {
+				return nil, errors.New("Incorrect Link Type")
+			}
+			// read block from one store
+			block, err := bs.Get(c.Cid)
+			if err != nil {
+				return nil, err
+			}
+			return bytes.NewReader(block.RawData()), nil
+		}
+	}
+
+	makeStorer := func(bs bstore.Blockstore) ipld.Storer {
+		return func(lnkCtx ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
+			var buf bytes.Buffer
+			var committer ipld.StoreCommitter = func(lnk ipld.Link) error {
+				c, ok := lnk.(cidlink.Link)
+				if !ok {
+					return errors.New("Incorrect Link Type")
+				}
+				block, err := blocks.NewBlockWithCid(buf.Bytes(), c.Cid)
+				if err != nil {
+					return err
+				}
+				return bs.Put(block)
+			}
+			return &buf, committer, nil
+		}
+	}
 	// make a blockstore and dag service
 	bs1 := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
 
@@ -268,10 +299,10 @@ func TestUnixFSFetch(t *testing.T) {
 
 	// read in a fixture file
 	path, err := filepath.Abs(filepath.Join("fixtures", "lorem.txt"))
-	require.NoError(t, err)
+	require.NoError(t, err, "unable to create path for fixture file")
 
 	f, err := os.Open(path)
-	require.NoError(t, err)
+	require.NoError(t, err, "unable to open fixture file")
 
 	var buf bytes.Buffer
 	tr := io.TeeReader(f, &buf)
@@ -288,24 +319,24 @@ func TestUnixFSFetch(t *testing.T) {
 	}
 
 	db, err := params.New(chunker.NewSizeSplitter(file, int64(unixfsChunkSize)))
-	require.NoError(t, err)
+	require.NoError(t, err, "unable to setup dag builder")
 
 	nd, err := balanced.Layout(db)
-	require.NoError(t, err)
+	require.NoError(t, err, "unable to create unix fs node")
 
 	err = bufferedDS.Commit()
-	require.NoError(t, err)
+	require.NoError(t, err, "unable to commit unix fs node")
 
 	// save the original files bytes
 	origBytes := buf.Bytes()
 
 	// setup an IPLD loader/storer for blockstore 1
-	loader1 := storeutil.LoaderForBlockstore(bs1)
-	storer1 := storeutil.StorerForBlockstore(bs1)
+	loader1 := makeLoader(bs1)
+	storer1 := makeStorer(bs1)
 
 	// setup an IPLD loader/storer for blockstore 2
-	loader2 := storeutil.LoaderForBlockstore(bs2)
-	storer2 := storeutil.StorerForBlockstore(bs2)
+	loader2 := makeLoader(bs2)
+	storer2 := makeStorer(bs2)
 
 	td := newGsTestData(ctx, t)
 	requestor := New(ctx, td.gsnet1, loader1, storer1)
@@ -344,21 +375,21 @@ func TestUnixFSFetch(t *testing.T) {
 
 	// load the root of the UnixFS DAG from the new blockstore
 	otherNode, err := dagService1.Get(ctx, nd.Cid())
-	require.NoError(t, err)
+	require.NoError(t, err, "should have been able to read received root node but didn't")
 
 	// Setup a UnixFS file reader
 	n, err := unixfile.NewUnixfsFile(ctx, dagService1, otherNode)
-	require.NoError(t, err)
+	require.NoError(t, err, "should have been able to setup UnixFS file but wasn't")
 
 	fn, ok := n.(files.File)
-	require.True(t, ok)
+	require.True(t, ok, "file should be a regular file, but wasn't")
 
 	// Read the bytes for the UnixFS File
 	finalBytes, err := ioutil.ReadAll(fn)
-	require.NoError(t, err, "not able to read all of Unix file")
+	require.NoError(t, err, "should have been able to read all of unix FS file but wasn't")
 
 	// verify original bytes match final bytes!
-	require.Equal(t, origBytes, finalBytes, "same bytes were not written to destination as read from source")
+	require.Equal(t, origBytes, finalBytes, "should have gotten same bytes written as read but didn't")
 }
 
 type gsTestData struct {
@@ -384,11 +415,11 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 	var err error
 	// setup network
 	td.host1, err = td.mn.GenPeer()
-	require.NoError(t, err)
+	require.NoError(t, err, "error generating host")
 	td.host2, err = td.mn.GenPeer()
-	require.NoError(t, err)
+	require.NoError(t, err, "error generating host")
 	err = td.mn.LinkAll()
-	require.NoError(t, err)
+	require.NoError(t, err, "error linking hosts")
 
 	td.gsnet1 = gsnet.NewFromLibp2pHost(td.host1)
 	td.gsnet2 = gsnet.NewFromLibp2pHost(td.host2)

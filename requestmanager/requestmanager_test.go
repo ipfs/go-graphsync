@@ -70,14 +70,14 @@ func (fal *fakeAsyncLoader) ProcessResponse(responses map[graphsync.RequestID]me
 func (fal *fakeAsyncLoader) verifyLastProcessedBlocks(ctx context.Context, t *testing.T, expectedBlocks []blocks.Block) {
 	var processedBlocks []blocks.Block
 	testutil.AssertReceive(ctx, t, fal.blks, &processedBlocks, "did not process blocks")
-	require.Equal(t, processedBlocks, expectedBlocks, "did not process correct blocks")
+	require.Equal(t, expectedBlocks, processedBlocks, "did not process correct blocks")
 }
 
 func (fal *fakeAsyncLoader) verifyLastProcessedResponses(ctx context.Context, t *testing.T,
 	expectedResponses map[graphsync.RequestID]metadata.Metadata) {
 	var responses map[graphsync.RequestID]metadata.Metadata
 	testutil.AssertReceive(ctx, t, fal.responses, &responses, "did not process responses")
-	require.Equal(t, responses, expectedResponses, "did not process correct responses")
+	require.Equal(t, expectedResponses, responses, "did not process correct responses")
 }
 
 func (fal *fakeAsyncLoader) verifyNoRemainingData(t *testing.T, requestID graphsync.RequestID) {
@@ -182,12 +182,12 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 
 	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
 
-	require.Equal(t, requestRecords[0].p, peers[0])
-	require.Equal(t, requestRecords[1].p, peers[0])
+	require.Equal(t, peers[0], requestRecords[0].p)
+	require.Equal(t, peers[0], requestRecords[1].p)
 	require.False(t, requestRecords[0].gsr.IsCancel())
 	require.False(t, requestRecords[1].gsr.IsCancel())
-	require.Equal(t, requestRecords[0].gsr.Priority(), maxPriority)
-	require.Equal(t, requestRecords[1].gsr.Priority(), maxPriority)
+	require.Equal(t, maxPriority, requestRecords[0].gsr.Priority())
+	require.Equal(t, maxPriority, requestRecords[1].gsr.Priority())
 
 	require.Equal(t, blockChain1.Selector(), requestRecords[0].gsr.Selector(), "did not encode selector properly")
 	require.Equal(t, blockChain2.Selector(), requestRecords[1].gsr.Selector(), "did not encode selector properly")
@@ -286,7 +286,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
 
 	require.True(t, rr.gsr.IsCancel())
-	require.Equal(t, rr.gsr.ID(), requestRecords[0].gsr.ID())
+	require.Equal(t, requestRecords[0].gsr.ID(), rr.gsr.ID())
 
 	moreBlocks := blockChain.RemainderBlocks(3)
 	moreMetadata := encodedMetadataForBlocks(t, moreBlocks, true)
@@ -570,7 +570,7 @@ func TestEncodingExtensions(t *testing.T) {
 		requestManager.ProcessResponses(peers[0], firstResponses, nil)
 		var received []byte
 		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "did not receive extension data")
-		require.Equal(t, received, expectedData, "did not receive correct extension data from resposne")
+		require.Equal(t, expectedData, received, "did not receive correct extension data from resposne")
 		nextExpectedData := testutil.RandomBytes(100)
 
 		secondResponses := []gsmsg.GraphSyncResponse{
@@ -588,7 +588,7 @@ func TestEncodingExtensions(t *testing.T) {
 		expectedError <- errors.New("a terrible thing happened")
 		requestManager.ProcessResponses(peers[0], secondResponses, nil)
 		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "did not receive extension data")
-		require.Equal(t, received, nextExpectedData, "did not receive correct extension data from resposne")
+		require.Equal(t, nextExpectedData, received, "did not receive correct extension data from resposne")
 		testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
 		testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 	})

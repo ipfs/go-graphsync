@@ -47,7 +47,7 @@ func TestMessageBuilding(t *testing.T) {
 		rb.AddBlock(block)
 	}
 
-	require.Equal(t, rb.BlockSize(), 300, "did not calculate block size correctly")
+	require.Equal(t, 300, rb.BlockSize(), "did not calculate block size correctly")
 
 	extensionData1 := testutil.RandomBytes(100)
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
@@ -72,7 +72,7 @@ func TestMessageBuilding(t *testing.T) {
 
 	response1, err := findResponseForRequestID(responses, requestID1)
 	require.NoError(t, err)
-	require.Equal(t, response1.Status(), graphsync.RequestCompletedPartial, "did not generate completed partial response")
+	require.Equal(t, graphsync.RequestCompletedPartial, response1.Status(), "did not generate completed partial response")
 
 	response1MetadataRaw, found := response1.Extension(graphsync.ExtensionMetadata)
 	require.True(t, found, "Metadata should be included in response")
@@ -90,7 +90,7 @@ func TestMessageBuilding(t *testing.T) {
 
 	response2, err := findResponseForRequestID(responses, requestID2)
 	require.NoError(t, err)
-	require.Equal(t, response2.Status(), graphsync.RequestCompletedFull, "did not generate completed full response")
+	require.Equal(t, graphsync.RequestCompletedFull, response2.Status(), "did not generate completed full response")
 
 	response2MetadataRaw, found := response2.Extension(graphsync.ExtensionMetadata)
 	require.True(t, found, "Metadata should be included in response")
@@ -104,7 +104,7 @@ func TestMessageBuilding(t *testing.T) {
 
 	response3, err := findResponseForRequestID(responses, requestID3)
 	require.NoError(t, err)
-	require.Equal(t, response3.Status(), graphsync.PartialResponse, "did not generate partial response")
+	require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
 
 	response3MetadataRaw, found := response3.Extension(graphsync.ExtensionMetadata)
 	require.True(t, found, "Metadata should be included in response")
@@ -121,9 +121,9 @@ func TestMessageBuilding(t *testing.T) {
 
 	response4, err := findResponseForRequestID(responses, requestID4)
 	require.NoError(t, err)
-	require.Equal(t, response4.Status(), graphsync.RequestCompletedFull, "did not generate completed full response")
+	require.Equal(t, graphsync.RequestCompletedFull, response4.Status(), "did not generate completed full response")
 
-	require.Equal(t, len(sentBlocks), len(blocks), "did not send all blocks")
+	require.Equal(t, len(blocks), len(sentBlocks), "did not send all blocks")
 
 	for _, block := range sentBlocks {
 		testutil.AssertContainsBlock(t, blocks, block)

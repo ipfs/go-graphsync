@@ -157,8 +157,8 @@ func TestIncomingQuery(t *testing.T) {
 		k := sentResponse.link.(cidlink.Link)
 		blockIndex := testutil.IndexOf(blks, k.Cid)
 		require.NotEqual(t, blockIndex, -1, "sent incorrect link")
-		require.Equal(t, sentResponse.data, blks[blockIndex].RawData(), "sent incorrect data")
-		require.Equal(t, sentResponse.requestID, requestID, "has incorrect response id")
+		require.Equal(t, blks[blockIndex].RawData(), sentResponse.data, "sent incorrect data")
+		require.Equal(t, requestID, sentResponse.requestID, "has incorrect response id")
 	}
 }
 
@@ -194,8 +194,8 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	k := sentResponse.link.(cidlink.Link)
 	blockIndex := testutil.IndexOf(blks, k.Cid)
 	require.NotEqual(t, blockIndex, -1, "sent incorrect link")
-	require.Equal(t, sentResponse.data, blks[blockIndex].RawData(), "sent incorrect data")
-	require.Equal(t, sentResponse.requestID, requestID, "has incorrect response id")
+	require.Equal(t, blks[blockIndex].RawData(), sentResponse.data, "sent incorrect data")
+	require.Equal(t, requestID, sentResponse.requestID, "has incorrect response id")
 
 	// send a cancellation
 	requests = []gsmsg.GraphSyncRequest{
@@ -211,8 +211,8 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	k = sentResponse.link.(cidlink.Link)
 	blockIndex = testutil.IndexOf(blks, k.Cid)
 	require.NotEqual(t, blockIndex, -1, "did not send correct link")
-	require.Equal(t, sentResponse.data, blks[blockIndex].RawData(), "sent incorrect data")
-	require.Equal(t, sentResponse.requestID, requestID, "incorrect response id")
+	require.Equal(t, blks[blockIndex].RawData(), sentResponse.data, "sent incorrect data")
+	require.Equal(t, requestID, sentResponse.requestID, "incorrect response id")
 
 	// We should now be done
 	testutil.AssertDoesReceiveFirst(t, requestIDChan, "should complete request", ctx.Done(), sentResponses)
@@ -316,7 +316,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
 			var receivedExtension sentExtension
 			testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
-			require.Equal(t, receivedExtension.extension, extensionResponse, "incorrect extension response sent")
+			require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
 		})
 
 		t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
@@ -332,7 +332,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
 			var receivedExtension sentExtension
 			testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
-			require.Equal(t, receivedExtension.extension, extensionResponse, "incorrect extension response sent")
+			require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
 		})
 	})
 
@@ -365,7 +365,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
 			var receivedExtension sentExtension
 			testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
-			require.Equal(t, receivedExtension.extension, extensionResponse, "incorrect extension response sent")
+			require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
 		})
 	})
 }

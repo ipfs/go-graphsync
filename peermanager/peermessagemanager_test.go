@@ -73,28 +73,28 @@ func TestSendingMessagesToPeers(t *testing.T) {
 
 	var firstMessage messageSent
 	testutil.AssertReceive(ctx, t, messagesSent, &firstMessage, "first message did not send")
-	require.Equal(t, firstMessage.p, tp[0], "first message sent to incorrect peer")
+	require.Equal(t, tp[0], firstMessage.p, "first message sent to incorrect peer")
 	request = firstMessage.message.Requests()[0]
-	require.Equal(t, request.ID(), id)
+	require.Equal(t, id, request.ID())
 	require.False(t, request.IsCancel())
-	require.Equal(t, request.Priority(), priority)
-	require.Equal(t, request.Selector(), selector)
+	require.Equal(t, priority, request.Priority())
+	require.Equal(t, selector, request.Selector())
 
 	var secondMessage messageSent
 	testutil.AssertReceive(ctx, t, messagesSent, &secondMessage, "second message did not send")
-	require.Equal(t, secondMessage.p, tp[1], "second message sent to incorrect peer")
+	require.Equal(t, tp[1], secondMessage.p, "second message sent to incorrect peer")
 	request = secondMessage.message.Requests()[0]
-	require.Equal(t, request.ID(), id)
+	require.Equal(t, id, request.ID())
 	require.False(t, request.IsCancel())
-	require.Equal(t, request.Priority(), priority)
-	require.Equal(t, request.Selector(), selector)
+	require.Equal(t, priority, request.Priority())
+	require.Equal(t, selector, request.Selector())
 
 	var thirdMessage messageSent
 	testutil.AssertReceive(ctx, t, messagesSent, &thirdMessage, "third message did not send")
 
-	require.Equal(t, thirdMessage.p, tp[0], "third message sent to incorrect peer")
+	require.Equal(t, tp[0], thirdMessage.p, "third message sent to incorrect peer")
 	request = thirdMessage.message.Requests()[0]
-	require.Equal(t, request.ID(), id)
+	require.Equal(t, id, request.ID())
 	require.True(t, request.IsCancel())
 
 	connectedPeers := peerManager.ConnectedPeers()

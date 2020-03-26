@@ -90,7 +90,7 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 	require.Nil(t, result.Err, "should not send error")
 
 	require.Zero(t, callCount, "should not attempt to load link from local store")
-	require.Equal(t, blockStore[link], block.RawData(), "should store block")
+	require.Equal(t, block.RawData(), blockStore[link], "should store block")
 }
 
 func TestAsyncLoadInitialLoadFails(t *testing.T) {
@@ -200,9 +200,9 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 	require.NotNil(t, result.Data, "should send response")
 	require.Nil(t, result.Err, "should not send error")
 
-	require.Equal(t, callCount, 1, "should attempt to load from local store exactly once")
+	require.Equal(t, 1, callCount, "should attempt to load from local store exactly once")
 
-	require.Equal(t, blockStore[link], block.RawData(), "should store block")
+	require.Equal(t, block.RawData(), blockStore[link], "should store block")
 }
 
 func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
@@ -243,7 +243,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
 	require.Nil(t, result.Data, "should not send responses")
 	require.NotNil(t, result.Err, "should send an error")
-	require.Equal(t, callCount, 1, "should attempt to load from local store exactly once")
+	require.Equal(t, 1, callCount, "should attempt to load from local store exactly once")
 }
 
 func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
@@ -276,7 +276,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
 	require.Nil(t, result.Data, "should not send responses")
 	require.NotNil(t, result.Err, "should send an error")
-	require.Equal(t, callCount, 1, "should attempt to load from local store exactly once")
+	require.Equal(t, 1, callCount, "should attempt to load from local store exactly once")
 }
 
 func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
@@ -317,7 +317,7 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 	require.Nil(t, result.Err, "should not send error")
 
 	require.Zero(t, callCount, "should not attempt to load link from local store")
-	require.Equal(t, blockStore[link], block.RawData(), "should store block")
+	require.Equal(t, block.RawData(), blockStore[link], "should store block")
 
 	resultChan = asyncLoader.AsyncLoad(requestID, link)
 
@@ -325,5 +325,5 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 	require.NotNil(t, result.Data, "should send response")
 	require.Nil(t, result.Err, "should not send error")
 	require.NotZero(t, callCount, "should attempt to load link from local store")
-	require.Equal(t, blockStore[link], block.RawData(), "should store block")
+	require.Equal(t, block.RawData(), blockStore[link], "should store block")
 }

@@ -105,7 +105,7 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 	// should load block from unverified block store
 	data, err := responseCache.AttemptLoad(requestID2, cidlink.Link{Cid: blks[4].Cid()})
 	require.NoError(t, err)
-	require.Equal(t, data, blks[4].RawData(), "did not load correct block")
+	require.Equal(t, blks[4].RawData(), data, "did not load correct block")
 
 	// which will remove block
 	require.Len(t, fubs.blocks(), len(blks)-2, "should prune block once verified")
@@ -119,7 +119,7 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 	// should succeed for request 2 where it's not a missing block
 	data, err = responseCache.AttemptLoad(requestID2, cidlink.Link{Cid: blks[1].Cid()})
 	require.NoError(t, err)
-	require.Equal(t, data, blks[1].RawData())
+	require.Equal(t, blks[1].RawData(), data)
 
 	// which will remove block
 	require.Len(t, fubs.blocks(), len(blks)-3, "should prune block once verified")

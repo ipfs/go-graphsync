@@ -92,7 +92,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 
 	testutil.AssertDoesReceive(ctx, t, r.messageReceived, "message did not send")
 
-	require.Equal(t, r.lastSender, host1.ID(), "incorrect host sent message")
+	require.Equal(t, host1.ID(), r.lastSender, "incorrect host sent message")
 
 	received := r.lastMessage
 
@@ -102,11 +102,11 @@ func TestMessageSendAndReceive(t *testing.T) {
 	receivedRequests := received.Requests()
 	require.Len(t, receivedRequests, 1, "did not add request to received message")
 	receivedRequest := receivedRequests[0]
-	require.Equal(t, receivedRequest.ID(), sentRequest.ID())
-	require.Equal(t, receivedRequest.IsCancel(), sentRequest.IsCancel())
-	require.Equal(t, receivedRequest.Priority(), sentRequest.Priority())
-	require.Equal(t, receivedRequest.Root().String(), sentRequest.Root().String())
-	require.Equal(t, receivedRequest.Selector(), sentRequest.Selector())
+	require.Equal(t, sentRequest.ID(), receivedRequest.ID())
+	require.Equal(t, sentRequest.IsCancel(), receivedRequest.IsCancel())
+	require.Equal(t, sentRequest.Priority(), receivedRequest.Priority())
+	require.Equal(t, sentRequest.Root().String(), receivedRequest.Root().String())
+	require.Equal(t, sentRequest.Selector(), receivedRequest.Selector())
 
 	sentResponses := sent.Responses()
 	require.Len(t, sentResponses, 1, "did not add response to sent message")
@@ -115,8 +115,8 @@ func TestMessageSendAndReceive(t *testing.T) {
 	require.Len(t, receivedResponses, 1, "did not add response to received message")
 	receivedResponse := receivedResponses[0]
 	extensionData, found := receivedResponse.Extension(extensionName)
-	require.Equal(t, receivedResponse.RequestID(), sentResponse.RequestID())
-	require.Equal(t, receivedResponse.Status(), sentResponse.Status())
+	require.Equal(t, sentResponse.RequestID(), receivedResponse.RequestID())
+	require.Equal(t, sentResponse.Status(), receivedResponse.Status())
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 

@@ -50,16 +50,16 @@ func TestBufferingResponseProgress(t *testing.T) {
 	for _, block := range blocks {
 		var testResponse graphsync.ResponseProgress
 		testutil.AssertReceive(ctx, t, outgoingResponses, &testResponse, "should read from outgoing responses")
-		require.Equal(t, testResponse.LastBlock.Link.(cidlink.Link).Cid, block.Cid(), "did not store block correctly")
+		require.Equal(t, block.Cid(), testResponse.LastBlock.Link.(cidlink.Link).Cid, "did not store block correctly")
 	}
 
 	for i := 0; i < 2; i++ {
 		var testErr error
 		testutil.AssertReceive(ctx, t, outgoingErrors, &testErr, "should have read from channel but couldn't")
 		if i == 0 {
-			require.Equal(t, testErr, interimError, "incorrect error message sent")
+			require.Equal(t, interimError, testErr, "incorrect error message sent")
 		} else {
-			require.Equal(t, testErr, terminalError, "incorrect error message sent")
+			require.Equal(t, terminalError, testErr, "incorrect error message sent")
 		}
 	}
 }
