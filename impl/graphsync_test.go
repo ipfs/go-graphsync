@@ -149,6 +149,27 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	require.Equal(t, td.extensionResponseData, receivedExtensions[0], "did not return correct extension data")
 }
 
+func TestRejectRequestsByDefault(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	requestor := td.GraphSyncHost1()
+	// setup responder to disable default validation, meaning all requests are rejected
+	_ = td.GraphSyncHost2(RejectAllRequestsByDefault())
+
+	blockChainLength := 5
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 5, blockChainLength)
+
+	// send request across network
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	testutil.VerifyEmptyResponse(ctx, t, progressChan)
+	testutil.VerifySingleTerminalError(ctx, t, errChan)
+}
+
 func TestGraphsyncRoundTrip(t *testing.T) {
 	// create network
 	ctx := context.Background()
@@ -439,13 +460,13 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 	return td
 }
 
-func (td *gsTestData) GraphSyncHost1() graphsync.GraphExchange {
-	return New(td.ctx, td.gsnet1, td.loader1, td.storer1)
+func (td *gsTestData) GraphSyncHost1(options ...Option) graphsync.GraphExchange {
+	return New(td.ctx, td.gsnet1, td.loader1, td.storer1, options...)
 }
 
-func (td *gsTestData) GraphSyncHost2() graphsync.GraphExchange {
+func (td *gsTestData) GraphSyncHost2(options ...Option) graphsync.GraphExchange {
 
-	return New(td.ctx, td.gsnet2, td.loader2, td.storer2)
+	return New(td.ctx, td.gsnet2, td.loader2, td.storer2, options...)
 }
 
 type receivedMessage struct {
