@@ -34,6 +34,7 @@ type inProgressRequestStatus struct {
 }
 
 type responseHook struct {
+	key  uint64
 	hook graphsync.OnResponseReceivedHook
 }
 
@@ -65,6 +66,7 @@ type RequestManager struct {
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
 	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
+	responseHookNextKey       uint64
 	responseHooks             []responseHook
 }
 
@@ -201,12 +203,25 @@ func (rm *RequestManager) ProcessResponses(p peer.ID, responses []gsmsg.GraphSyn
 	}
 }
 
+type registerHookMessage struct {
+	hook               graphsync.OnResponseReceivedHook
+	unregisterHookChan chan graphsync.UnregisterHookFunc
+}
+
 // RegisterHook registers an extension to processincoming responses
 func (rm *RequestManager) RegisterHook(
-	hook graphsync.OnResponseReceivedHook) {
+	hook graphsync.OnResponseReceivedHook) graphsync.UnregisterHookFunc {
+	response := make(chan graphsync.UnregisterHookFunc)
 	select {
-	case rm.messages <- &responseHook{hook}:
+	case rm.messages <- &registerHookMessage{hook, response}:
 	case <-rm.ctx.Done():
+		return nil
+	}
+	select {
+	case unregister := <-response:
+		return unregister
+	case <-rm.ctx.Done():
+		return nil
 	}
 }
 
@@ -285,8 +300,21 @@ func (prm *processResponseMessage) handle(rm *RequestManager) {
 	rm.processTerminations(filteredResponses)
 }
 
-func (rh *responseHook) handle(rm *RequestManager) {
-	rm.responseHooks = append(rm.responseHooks, *rh)
+func (rhm *registerHookMessage) handle(rm *RequestManager) {
+	rh := responseHook{rm.responseHookNextKey, rhm.hook}
+	rm.responseHookNextKey++
+	rm.responseHooks = append(rm.responseHooks, rh)
+	select {
+	case rhm.unregisterHookChan <- func() {
+		for i, matchHook := range rm.responseHooks {
+			if rh.key == matchHook.key {
+				rm.responseHooks = append(rm.responseHooks[:i], rm.responseHooks[i+1:]...)
+				return
+			}
+		}
+	}:
+	case <-rm.ctx.Done():
+	}
 }
 
 func (rm *RequestManager) filterResponsesForPeer(responses []gsmsg.GraphSyncResponse, p peer.ID) []gsmsg.GraphSyncResponse {

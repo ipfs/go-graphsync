@@ -4,15 +4,15 @@ import (
 	"context"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
-
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/requestmanager"
+	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
 	"github.com/ipfs/go-graphsync/responsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
+	"github.com/ipfs/go-graphsync/selectorvalidator"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue"
 	ipld "github.com/ipld/go-ipld-prime"
@@ -20,6 +20,8 @@ import (
 )
 
 var log = logging.Logger("graphsync")
+
+const maxRecursionDepth = 100
 
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
@@ -55,6 +57,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
 	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue)
+	responseManager.RegisterHook(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
 		network:             network,
 		loader:              loader,
@@ -86,15 +89,13 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 // If overrideDefaultValidation is set to true, then if the hook does not error,
 // it is considered to have "validated" the request -- and that validation supersedes
 // the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
-func (gs *GraphSync) RegisterRequestReceivedHook(hook graphsync.OnRequestReceivedHook) error {
-	gs.responseManager.RegisterHook(hook)
-	return nil
+func (gs *GraphSync) RegisterRequestReceivedHook(hook graphsync.OnRequestReceivedHook) graphsync.UnregisterHookFunc {
+	return gs.responseManager.RegisterHook(hook)
 }
 
 // RegisterResponseReceivedHook adds a hook that runs when a response is received
-func (gs *GraphSync) RegisterResponseReceivedHook(hook graphsync.OnResponseReceivedHook) error {
-	gs.requestManager.RegisterHook(hook)
-	return nil
+func (gs *GraphSync) RegisterResponseReceivedHook(hook graphsync.OnResponseReceivedHook) graphsync.UnregisterHookFunc {
+	return gs.requestManager.RegisterHook(hook)
 }
 
 type graphSyncReceiver GraphSync

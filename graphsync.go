@@ -154,6 +154,9 @@ type OnRequestReceivedHook func(p peer.ID, request RequestData, hookActions Requ
 // If it returns an error processing is halted and the original request is cancelled.
 type OnResponseReceivedHook func(p peer.ID, responseData ResponseData) error
 
+// UnregisterHookFunc is a function call to unregister a hook that was previously registered
+type UnregisterHookFunc func()
+
 // GraphExchange is a protocol that can exchange IPLD graphs based on a selector
 type GraphExchange interface {
 	// Request initiates a new GraphSync request to the given peer using the given selector spec.
@@ -163,8 +166,8 @@ type GraphExchange interface {
 	// If overrideDefaultValidation is set to true, then if the hook does not error,
 	// it is considered to have "validated" the request -- and that validation supersedes
 	// the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
-	RegisterRequestReceivedHook(hook OnRequestReceivedHook) error
+	RegisterRequestReceivedHook(hook OnRequestReceivedHook) UnregisterHookFunc
 
 	// RegisterResponseReceivedHook adds a hook that runs when a response is received
-	RegisterResponseReceivedHook(OnResponseReceivedHook) error
+	RegisterResponseReceivedHook(OnResponseReceivedHook) UnregisterHookFunc
 }
