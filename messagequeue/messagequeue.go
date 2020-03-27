@@ -102,7 +102,7 @@ func (mq *MessageQueue) runQueue() {
 			return
 		case <-mq.ctx.Done():
 			if mq.sender != nil {
-				mq.sender.Reset()
+				_ = mq.sender.Reset()
 			}
 			return
 		}
@@ -185,7 +185,7 @@ func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage) b
 	}
 
 	log.Infof("graphsync send error: %s", err)
-	mq.sender.Reset()
+	_ = mq.sender.Reset()
 	mq.sender = nil
 
 	select {
@@ -195,7 +195,7 @@ func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage) b
 		return true
 	case <-time.After(time.Millisecond * 100):
 		// wait 100ms in case disconnect notifications are still propogating
-		log.Warning("SendMsg errored but neither 'done' nor context.Done() were set")
+		log.Warn("SendMsg errored but neither 'done' nor context.Done() were set")
 	}
 
 	err = mq.initializeSender()

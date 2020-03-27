@@ -34,7 +34,7 @@ func (fph *fakePeerHandler) SendResponse(p peer.ID, responses []gsmsg.GraphSyncR
 
 func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
 	requestID1 := graphsync.RequestID(rand.Int31())
@@ -173,7 +173,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 	// generate large blocks before proceeding
 	blks := testutil.GenerateBlocksOfSize(5, 1000000)
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -294,7 +294,7 @@ func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
 
 func TestPeerResponseManagerSendsExtensionData(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
 	requestID1 := graphsync.RequestID(rand.Int31())

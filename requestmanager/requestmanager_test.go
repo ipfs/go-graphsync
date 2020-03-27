@@ -20,7 +20,6 @@ import (
 	"github.com/ipld/go-ipld-prime"
 
 	blocks "github.com/ipfs/go-block-format"
-	cid "github.com/ipfs/go-cid"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -98,14 +97,6 @@ func (fal *fakeAsyncLoader) verifyNoRemainingData(t *testing.T, requestID graphs
 		}
 	}
 	fal.responseChannelsLk.Unlock()
-}
-
-func cidsForBlocks(blks []blocks.Block) []cid.Cid {
-	cids := make([]cid.Cid, 0, 5)
-	for _, block := range blks {
-		cids = append(cids, block.Cid())
-	}
-	return cids
 }
 
 func (fal *fakeAsyncLoader) asyncLoad(requestID graphsync.RequestID, link ipld.Link) chan types.AsyncLoadResult {

@@ -62,7 +62,7 @@ func msgToStream(ctx context.Context, s network.Stream, msg gsmsg.GraphSyncMessa
 		deadline = dl
 	}
 	if err := s.SetWriteDeadline(deadline); err != nil {
-		log.Warningf("error setting deadline: %s", err)
+		log.Warnf("error setting deadline: %s", err)
 	}
 
 	switch s.Protocol() {
@@ -76,7 +76,7 @@ func msgToStream(ctx context.Context, s network.Stream, msg gsmsg.GraphSyncMessa
 	}
 
 	if err := s.SetWriteDeadline(time.Time{}); err != nil {
-		log.Warningf("error resetting deadline: %s", err)
+		log.Warnf("error resetting deadline: %s", err)
 	}
 	return nil
 }
@@ -105,11 +105,12 @@ func (gsnet *libp2pGraphSyncNetwork) SendMessage(
 	}
 
 	if err = msgToStream(ctx, s, outgoing); err != nil {
-		s.Reset()
+		_ = s.Reset()
 		return err
 	}
 
 	// TODO(https://github.com/libp2p/go-libp2p-net/issues/28): Avoid this goroutine.
+	//nolint
 	go helpers.AwaitEOF(s)
 	return s.Close()
 
@@ -130,7 +131,7 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 	defer s.Close()
 
 	if gsnet.receiver == nil {
-		s.Reset()
+		_ = s.Reset()
 		return
 	}
 
@@ -139,7 +140,7 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 		received, err := gsmsg.FromPBReader(reader)
 		if err != nil {
 			if err != io.EOF {
-				s.Reset()
+				_ = s.Reset()
 				go gsnet.receiver.ReceiveError(err)
 				log.Debugf("graphsync net handleNewStream from %s error: %s", s.Conn().RemotePeer(), err)
 			}

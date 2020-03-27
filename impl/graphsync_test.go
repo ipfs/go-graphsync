@@ -134,7 +134,10 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	message := gsmsg.New()
 	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), td.extension))
 	// send request across network
-	td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
+	err = td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
+	if err != nil {
+		t.Fatal("Unable to send message")
+	}
 	// read the values sent back to requestor
 	var received gsmsg.GraphSyncMessage
 	var receivedBlocks []blocks.Block
@@ -427,13 +430,17 @@ func TestUnixFSFetch(t *testing.T) {
 	requestor := New(ctx, td.gsnet1, loader1, storer1)
 	responder := New(ctx, td.gsnet2, loader2, storer2)
 	extensionName := graphsync.ExtensionName("Free for all")
-	responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+	err = responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 		hookActions.ValidateRequest()
 		hookActions.SendExtensionData(graphsync.ExtensionData{
 			Name: extensionName,
 			Data: nil,
 		})
 	})
+	if err != nil {
+		t.Fatal("unable to register extension")
+	}
+	
 	// make a go-ipld-prime link for the root UnixFS node
 	clink := cidlink.Link{Cid: nd.Cid()}
 

@@ -18,13 +18,16 @@ import (
 
 func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
 	loader, storer := testutil.NewTestStore(blockStore)
 	block := testutil.GenerateBlocksOfSize(1, 100)[0]
 	writer, commit, err := storer(ipld.LinkContext{})
+	if err != nil {
+		t.Fatal("should be able to store")
+	}
 	_, err = writer.Write(block.RawData())
 	if err != nil {
 		t.Fatal("could not seed block store")
@@ -65,7 +68,7 @@ func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
 
 func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
@@ -118,7 +121,7 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 
 func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
@@ -166,7 +169,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 
 func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
@@ -203,7 +206,7 @@ func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T)
 
 func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
@@ -267,7 +270,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 
 func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
@@ -324,7 +327,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 
 func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)
@@ -373,7 +376,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 
 func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
 	blockStore := make(map[ipld.Link][]byte)

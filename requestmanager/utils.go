@@ -29,12 +29,12 @@ func metadataForResponses(responses []gsmsg.GraphSyncResponse) map[graphsync.Req
 	for _, response := range responses {
 		mdRaw, found := response.Extension(graphsync.ExtensionMetadata)
 		if !found {
-			log.Warningf("Unable to decode metadata in response for request id: %d", response.RequestID())
+			log.Warnf("Unable to decode metadata in response for request id: %d", response.RequestID())
 			continue
 		}
 		md, err := metadata.DecodeMetadata(mdRaw)
 		if err != nil {
-			log.Warningf("Unable to decode metadata in response for request id: %d", response.RequestID())
+			log.Warnf("Unable to decode metadata in response for request id: %d", response.RequestID())
 			continue
 		}
 		responseMetadata[response.RequestID()] = md
