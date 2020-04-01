@@ -234,6 +234,7 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 	for _, requestHook := range rm.requestHooks {
 		requestHook.hook(p, request, ha)
 		if ha.err != nil {
+			rm.requestHooksLk.RUnlock()
 			return
 		}
 	}
