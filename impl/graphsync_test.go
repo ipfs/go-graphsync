@@ -99,7 +99,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	var receivedRequestData []byte
 	// initialize graphsync on second node to response to requests
 	gsnet := td.GraphSyncHost2()
-	err := gsnet.RegisterRequestReceivedHook(
+	gsnet.RegisterRequestReceivedHook(
 		func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 			var has bool
 			receivedRequestData, has = requestData.Extension(td.extensionName)
@@ -107,7 +107,6 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 			hookActions.SendExtensionData(td.extensionResponse)
 		},
 	)
-	require.NoError(t, err, "error registering extension")
 
 	blockChainLength := 100
 	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
@@ -117,7 +116,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	message := gsmsg.New()
 	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), td.extension))
 	// send request across network
-	err = td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
+	err := td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
 	require.NoError(t, err)
 	// read the values sent back to requestor
 	var received gsmsg.GraphSyncMessage
@@ -150,6 +149,27 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	require.Equal(t, td.extensionResponseData, receivedExtensions[0], "did not return correct extension data")
 }
 
+func TestRejectRequestsByDefault(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	requestor := td.GraphSyncHost1()
+	// setup responder to disable default validation, meaning all requests are rejected
+	_ = td.GraphSyncHost2(RejectAllRequestsByDefault())
+
+	blockChainLength := 5
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 5, blockChainLength)
+
+	// send request across network
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	testutil.VerifyEmptyResponse(ctx, t, progressChan)
+	testutil.VerifySingleTerminalError(ctx, t, errChan)
+}
+
 func TestGraphsyncRoundTrip(t *testing.T) {
 	// create network
 	ctx := context.Background()
@@ -170,7 +190,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	var receivedResponseData []byte
 	var receivedRequestData []byte
 
-	err := requestor.RegisterResponseReceivedHook(
+	requestor.RegisterResponseReceivedHook(
 		func(p peer.ID, responseData graphsync.ResponseData) error {
 			data, has := responseData.Extension(td.extensionName)
 			if has {
@@ -178,9 +198,8 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 			}
 			return nil
 		})
-	require.NoError(t, err, "Error setting up extension")
 
-	err = responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+	responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 		var has bool
 		receivedRequestData, has = requestData.Extension(td.extensionName)
 		if !has {
@@ -189,7 +208,6 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 			hookActions.SendExtensionData(td.extensionResponse)
 		}
 	})
-	require.NoError(t, err, "Error setting up extension")
 
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
@@ -342,15 +360,14 @@ func TestUnixFSFetch(t *testing.T) {
 	requestor := New(ctx, td.gsnet1, loader1, storer1)
 	responder := New(ctx, td.gsnet2, loader2, storer2)
 	extensionName := graphsync.ExtensionName("Free for all")
-	err = responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+	responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 		hookActions.ValidateRequest()
 		hookActions.SendExtensionData(graphsync.ExtensionData{
 			Name: extensionName,
 			Data: nil,
 		})
 	})
-	require.NoError(t, err)
-	
+
 	// make a go-ipld-prime link for the root UnixFS node
 	clink := cidlink.Link{Cid: nd.Cid()}
 
@@ -443,13 +460,13 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 	return td
 }
 
-func (td *gsTestData) GraphSyncHost1() graphsync.GraphExchange {
-	return New(td.ctx, td.gsnet1, td.loader1, td.storer1)
+func (td *gsTestData) GraphSyncHost1(options ...Option) graphsync.GraphExchange {
+	return New(td.ctx, td.gsnet1, td.loader1, td.storer1, options...)
 }
 
-func (td *gsTestData) GraphSyncHost2() graphsync.GraphExchange {
+func (td *gsTestData) GraphSyncHost2(options ...Option) graphsync.GraphExchange {
 
-	return New(td.ctx, td.gsnet2, td.loader2, td.storer2)
+	return New(td.ctx, td.gsnet2, td.loader2, td.storer2, options...)
 }
 
 type receivedMessage struct {

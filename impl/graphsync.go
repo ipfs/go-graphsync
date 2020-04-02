@@ -4,15 +4,15 @@ import (
 	"context"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
-
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/requestmanager"
+	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
 	"github.com/ipfs/go-graphsync/responsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
+	"github.com/ipfs/go-graphsync/selectorvalidator"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue"
 	ipld "github.com/ipld/go-ipld-prime"
@@ -21,26 +21,41 @@ import (
 
 var log = logging.Logger("graphsync")
 
+const maxRecursionDepth = 100
+
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
 type GraphSync struct {
-	network             gsnet.GraphSyncNetwork
-	loader              ipld.Loader
-	storer              ipld.Storer
-	requestManager      *requestmanager.RequestManager
-	responseManager     *responsemanager.ResponseManager
-	asyncLoader         *asyncloader.AsyncLoader
-	peerResponseManager *peerresponsemanager.PeerResponseManager
-	peerTaskQueue       *peertaskqueue.PeerTaskQueue
-	peerManager         *peermanager.PeerMessageManager
-	ctx                 context.Context
-	cancel              context.CancelFunc
+	network                    gsnet.GraphSyncNetwork
+	loader                     ipld.Loader
+	storer                     ipld.Storer
+	requestManager             *requestmanager.RequestManager
+	responseManager            *responsemanager.ResponseManager
+	asyncLoader                *asyncloader.AsyncLoader
+	peerResponseManager        *peerresponsemanager.PeerResponseManager
+	peerTaskQueue              *peertaskqueue.PeerTaskQueue
+	peerManager                *peermanager.PeerMessageManager
+	ctx                        context.Context
+	cancel                     context.CancelFunc
+	unregisterDefaultValidator graphsync.UnregisterHookFunc
+}
+
+// Option defines the functional option type that can be used to configure
+// graphsync instances
+type Option func(*GraphSync)
+
+// RejectAllRequestsByDefault means that without hooks registered
+// that perform their own request validation, all requests are rejected
+func RejectAllRequestsByDefault() Option {
+	return func(gs *GraphSync) {
+		gs.unregisterDefaultValidator()
+	}
 }
 
 // New creates a new GraphSync Exchange on the given network,
 // and the given link loader+storer.
 func New(parent context.Context, network gsnet.GraphSyncNetwork,
-	loader ipld.Loader, storer ipld.Storer) graphsync.GraphExchange {
+	loader ipld.Loader, storer ipld.Storer, options ...Option) graphsync.GraphExchange {
 	ctx, cancel := context.WithCancel(parent)
 
 	createMessageQueue := func(ctx context.Context, p peer.ID) peermanager.PeerQueue {
@@ -55,18 +70,24 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
 	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue)
+	unregisterDefaultValidator := responseManager.RegisterHook(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
-		network:             network,
-		loader:              loader,
-		storer:              storer,
-		asyncLoader:         asyncLoader,
-		requestManager:      requestManager,
-		peerManager:         peerManager,
-		peerTaskQueue:       peerTaskQueue,
-		peerResponseManager: peerResponseManager,
-		responseManager:     responseManager,
-		ctx:                 ctx,
-		cancel:              cancel,
+		network:                    network,
+		loader:                     loader,
+		storer:                     storer,
+		asyncLoader:                asyncLoader,
+		requestManager:             requestManager,
+		peerManager:                peerManager,
+		peerTaskQueue:              peerTaskQueue,
+		peerResponseManager:        peerResponseManager,
+		responseManager:            responseManager,
+		ctx:                        ctx,
+		cancel:                     cancel,
+		unregisterDefaultValidator: unregisterDefaultValidator,
+	}
+
+	for _, option := range options {
+		option(graphSync)
 	}
 
 	asyncLoader.Startup()
@@ -86,15 +107,13 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 // If overrideDefaultValidation is set to true, then if the hook does not error,
 // it is considered to have "validated" the request -- and that validation supersedes
 // the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
-func (gs *GraphSync) RegisterRequestReceivedHook(hook graphsync.OnRequestReceivedHook) error {
-	gs.responseManager.RegisterHook(hook)
-	return nil
+func (gs *GraphSync) RegisterRequestReceivedHook(hook graphsync.OnRequestReceivedHook) graphsync.UnregisterHookFunc {
+	return gs.responseManager.RegisterHook(hook)
 }
 
 // RegisterResponseReceivedHook adds a hook that runs when a response is received
-func (gs *GraphSync) RegisterResponseReceivedHook(hook graphsync.OnResponseReceivedHook) error {
-	gs.requestManager.RegisterHook(hook)
-	return nil
+func (gs *GraphSync) RegisterResponseReceivedHook(hook graphsync.OnResponseReceivedHook) graphsync.UnregisterHookFunc {
+	return gs.requestManager.RegisterHook(hook)
 }
 
 type graphSyncReceiver GraphSync

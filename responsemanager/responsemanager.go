@@ -2,6 +2,7 @@ package responsemanager
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/ipfs/go-graphsync"
@@ -9,7 +10,6 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/loader"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
-	"github.com/ipfs/go-graphsync/responsemanager/selectorvalidator"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -19,7 +19,6 @@ import (
 
 const (
 	maxInProcessRequests = 6
-	maxRecursionDepth    = 100
 	thawSpeed            = time.Millisecond * 100
 )
 
@@ -40,6 +39,7 @@ type responseTaskData struct {
 }
 
 type requestHook struct {
+	key  uint64
 	hook graphsync.OnRequestReceivedHook
 }
 
@@ -75,6 +75,8 @@ type ResponseManager struct {
 	workSignal          chan struct{}
 	ticker              *time.Ticker
 	inProgressResponses map[responseKey]inProgressResponseStatus
+	requestHooksLk      sync.RWMutex
+	requestHookNextKey  uint64
 	requestHooks        []requestHook
 }
 
@@ -113,10 +115,21 @@ func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, reque
 }
 
 // RegisterHook registers an extension to process new incoming requests
-func (rm *ResponseManager) RegisterHook(hook graphsync.OnRequestReceivedHook) {
-	select {
-	case rm.messages <- &requestHook{hook}:
-	case <-rm.ctx.Done():
+func (rm *ResponseManager) RegisterHook(hook graphsync.OnRequestReceivedHook) graphsync.UnregisterHookFunc {
+	rm.requestHooksLk.Lock()
+	rh := requestHook{rm.requestHookNextKey, hook}
+	rm.requestHookNextKey++
+	rm.requestHooks = append(rm.requestHooks, rh)
+	rm.requestHooksLk.Unlock()
+	return func() {
+		rm.requestHooksLk.Lock()
+		defer rm.requestHooksLk.Unlock()
+		for i, matchHook := range rm.requestHooks {
+			if rh.key == matchHook.key {
+				rm.requestHooks = append(rm.requestHooks[:i], rm.requestHooks[i+1:]...)
+				return
+			}
+		}
 	}
 }
 
@@ -217,18 +230,18 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
 	selectorSpec := request.Selector()
 	ha := &hookActions{false, request.ID(), peerResponseSender, nil}
+	rm.requestHooksLk.RLock()
 	for _, requestHook := range rm.requestHooks {
 		requestHook.hook(p, request, ha)
 		if ha.err != nil {
+			rm.requestHooksLk.RUnlock()
 			return
 		}
 	}
+	rm.requestHooksLk.RUnlock()
 	if !ha.isValidated {
-		err := selectorvalidator.ValidateSelector(selectorSpec, maxRecursionDepth)
-		if err != nil {
-			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-			return
-		}
+		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
+		return
 	}
 	selector, err := ipldutil.ParseSelector(selectorSpec)
 	if err != nil {
@@ -302,10 +315,6 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			}
 		}
 	}
-}
-
-func (rh *requestHook) handle(rm *ResponseManager) {
-	rm.requestHooks = append(rm.requestHooks, *rh)
 }
 
 func (rdr *responseDataRequest) handle(rm *ResponseManager) {

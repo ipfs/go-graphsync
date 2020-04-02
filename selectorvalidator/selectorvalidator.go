@@ -3,11 +3,13 @@ package selectorvalidator
 import (
 	"errors"
 
+	"github.com/ipfs/go-graphsync"
 	ipld "github.com/ipld/go-ipld-prime"
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 var (
@@ -16,10 +18,21 @@ var (
 	ErrInvalidLimit = errors.New("unsupported recursive selector limit")
 )
 
-// ValidateSelector applies the default selector validation policy to a selector
-// on an incoming request -- which by default is to limit recursive selectors
-// to a fixed depth
-func ValidateSelector(node ipld.Node, maxAcceptedDepth int) error {
+// SelectorValidator returns an OnRequestReceivedHook that only validates
+// requests if their selector only has no recursions that are greater than
+// maxAcceptedDepth
+func SelectorValidator(maxAcceptedDepth int) graphsync.OnRequestReceivedHook {
+	return func(p peer.ID, request graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+		err := ValidateMaxRecursionDepth(request.Selector(), maxAcceptedDepth)
+		if err == nil {
+			hookActions.ValidateRequest()
+		}
+	}
+}
+
+// ValidateMaxRecursionDepth examines the given selector node and verifies
+// recursive selectors are limited to the given fixed depth
+func ValidateMaxRecursionDepth(node ipld.Node, maxAcceptedDepth int) error {
 	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
 
 	// this selector is a selector for traversing selectors...

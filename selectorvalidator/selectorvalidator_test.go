@@ -11,7 +11,7 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 )
 
-func TestValidateSelector(t *testing.T) {
+func TestValidateMaxRecusionDepth(t *testing.T) {
 	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
 
 	successBase := ssb.ExploreRecursive(selector.RecursionLimitDepth(80), ssb.ExploreRecursiveEdge())
@@ -19,11 +19,11 @@ func TestValidateSelector(t *testing.T) {
 	failNoneBase := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreRecursiveEdge())
 
 	verifyOutcomes := func(t *testing.T, success ipld.Node, fail ipld.Node, failNone ipld.Node) {
-		err := ValidateSelector(success, 100)
+		err := ValidateMaxRecursionDepth(success, 100)
 		require.NoError(t, err, "valid selector should validate")
-		err = ValidateSelector(fail, 100)
+		err = ValidateMaxRecursionDepth(fail, 100)
 		require.Equal(t, ErrInvalidLimit, err, "selector should fail on invalid limit")
-		err = ValidateSelector(failNone, 100)
+		err = ValidateMaxRecursionDepth(failNone, 100)
 		require.Equal(t, ErrInvalidLimit, err, "selector should fail on no limit")
 	}
 

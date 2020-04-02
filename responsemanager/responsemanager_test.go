@@ -12,6 +12,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
+	"github.com/ipfs/go-graphsync/selectorvalidator"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
@@ -142,6 +143,7 @@ func TestIncomingQuery(t *testing.T) {
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
 	responseManager := New(ctx, loader, peerManager, queryQueue)
+	responseManager.RegisterHook(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 
 	requestID := graphsync.RequestID(rand.Int31())
@@ -179,6 +181,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
 	responseManager := New(ctx, loader, peerManager, queryQueue)
+	responseManager.RegisterHook(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 
 	requestID := graphsync.RequestID(rand.Int31())
@@ -287,85 +290,94 @@ func TestValidationAndExtensions(t *testing.T) {
 		Data: extensionResponseData,
 	}
 
-	t.Run("with invalid selector", func(t *testing.T) {
-		selectorSpec := testutil.NewInvalidSelectorSpec()
-		requestID := graphsync.RequestID(rand.Int31())
-		requests := []gsmsg.GraphSyncRequest{
-			gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, selectorSpec, graphsync.Priority(math.MaxInt32), extension),
-		}
-		p := testutil.GeneratePeers(1)[0]
+	requestID := graphsync.RequestID(rand.Int31())
+	requests := []gsmsg.GraphSyncRequest{
+		gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), extension),
+	}
+	p := testutil.GeneratePeers(1)[0]
 
-		t.Run("on its own, should fail validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, peerManager, queryQueue)
-			responseManager.Startup()
-			responseManager.ProcessRequests(ctx, p, requests)
-			var lastRequest completedRequest
-			testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
-			require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
-		})
-
-		t.Run("if non validating hook succeeds, does not pass validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, peerManager, queryQueue)
-			responseManager.Startup()
-			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
-				hookActions.SendExtensionData(extensionResponse)
-			})
-			responseManager.ProcessRequests(ctx, p, requests)
-			var lastRequest completedRequest
-			testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
-			require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
-			var receivedExtension sentExtension
-			testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
-			require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
-		})
-
-		t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, peerManager, queryQueue)
-			responseManager.Startup()
-			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
-				hookActions.ValidateRequest()
-				hookActions.SendExtensionData(extensionResponse)
-			})
-			responseManager.ProcessRequests(ctx, p, requests)
-			var lastRequest completedRequest
-			testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
-			require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
-			var receivedExtension sentExtension
-			testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
-			require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
-		})
+	t.Run("on its own, should fail validation", func(t *testing.T) {
+		responseManager := New(ctx, loader, peerManager, queryQueue)
+		responseManager.Startup()
+		responseManager.ProcessRequests(ctx, p, requests)
+		var lastRequest completedRequest
+		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
 	})
 
-	t.Run("with valid selector", func(t *testing.T) {
-		requestID := graphsync.RequestID(rand.Int31())
-		requests := []gsmsg.GraphSyncRequest{
-			gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), extension),
-		}
-		p := testutil.GeneratePeers(1)[0]
+	t.Run("if non validating hook succeeds, does not pass validation", func(t *testing.T) {
+		responseManager := New(ctx, loader, peerManager, queryQueue)
+		responseManager.Startup()
+		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+			hookActions.SendExtensionData(extensionResponse)
+		})
+		responseManager.ProcessRequests(ctx, p, requests)
+		var lastRequest completedRequest
+		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
+		var receivedExtension sentExtension
+		testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
+		require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
+	})
 
-		t.Run("on its own, should pass validation", func(t *testing.T) {
-			responseManager := New(ctx, loader, peerManager, queryQueue)
-			responseManager.Startup()
-			responseManager.ProcessRequests(ctx, p, requests)
-			var lastRequest completedRequest
-			testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
-			require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+	t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
+		responseManager := New(ctx, loader, peerManager, queryQueue)
+		responseManager.Startup()
+		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+			hookActions.ValidateRequest()
+			hookActions.SendExtensionData(extensionResponse)
+		})
+		responseManager.ProcessRequests(ctx, p, requests)
+		var lastRequest completedRequest
+		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+		var receivedExtension sentExtension
+		testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
+		require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
+	})
+
+	t.Run("if any hook fails, should fail", func(t *testing.T) {
+		responseManager := New(ctx, loader, peerManager, queryQueue)
+		responseManager.Startup()
+		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+			hookActions.ValidateRequest()
+		})
+		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+			hookActions.SendExtensionData(extensionResponse)
+			hookActions.TerminateWithError(errors.New("everything went to crap"))
+		})
+		responseManager.ProcessRequests(ctx, p, requests)
+		var lastRequest completedRequest
+		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
+		var receivedExtension sentExtension
+		testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
+		require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
+	})
+
+	t.Run("hooks can be unregistered", func(t *testing.T) {
+		responseManager := New(ctx, loader, peerManager, queryQueue)
+		responseManager.Startup()
+		unregister := responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+			hookActions.ValidateRequest()
+			hookActions.SendExtensionData(extensionResponse)
 		})
 
-		t.Run("if any hook fails, should fail", func(t *testing.T) {
-			responseManager := New(ctx, loader, peerManager, queryQueue)
-			responseManager.Startup()
-			responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
-				hookActions.SendExtensionData(extensionResponse)
-				hookActions.TerminateWithError(errors.New("everything went to crap"))
-			})
-			responseManager.ProcessRequests(ctx, p, requests)
-			var lastRequest completedRequest
-			testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
-			require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
-			var receivedExtension sentExtension
-			testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
-			require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
-		})
+		// hook validates request
+		responseManager.ProcessRequests(ctx, p, requests)
+		var lastRequest completedRequest
+		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+		var receivedExtension sentExtension
+		testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
+		require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
+
+		// unregister
+		unregister()
+
+		// no same request should fail
+		responseManager.ProcessRequests(ctx, p, requests)
+		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
 	})
 }
