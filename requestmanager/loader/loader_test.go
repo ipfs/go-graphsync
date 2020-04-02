@@ -6,13 +6,13 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
@@ -46,16 +46,10 @@ func TestWrappedAsyncLoaderReturnsValues(t *testing.T) {
 	data := testutil.RandomBytes(100)
 	responseChan <- types.AsyncLoadResult{Data: data, Err: nil}
 	stream, err := loader(link, ipld.LinkContext{})
-	if err != nil {
-		t.Fatal("Should not have errored on load")
-	}
+	require.NoError(t, err, "should load")
 	returnedData, err := ioutil.ReadAll(stream)
-	if err != nil {
-		t.Fatal("error in return stream")
-	}
-	if !reflect.DeepEqual(data, returnedData) {
-		t.Fatal("returned data did not match expected")
-	}
+	require.NoError(t, err, "stream did not read")
+	require.Equal(t, data, returnedData, "should return correct data")
 }
 
 func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
@@ -73,17 +67,11 @@ func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
 	err := errors.New("something went wrong")
 	responseChan <- types.AsyncLoadResult{Data: nil, Err: err}
 	stream, loadErr := loader(link, ipld.LinkContext{})
-	if stream != nil || loadErr != ipldutil.ErrDoNotFollow() {
-		t.Fatal("Should have errored on load")
-	}
-	select {
-	case <-ctx.Done():
-		t.Fatal("should have returned an error on side channel but didn't")
-	case returnedErr := <-errChan:
-		if returnedErr != err {
-			t.Fatal("returned wrong error on side channel")
-		}
-	}
+	require.Nil(t, stream, "should return nil reader")
+	require.EqualError(t, loadErr, ipldutil.ErrDoNotFollow().Error())
+	var returnedErr error
+	testutil.AssertReceive(ctx, t, errChan, &returnedErr, "should return an error on side channel")
+	require.EqualError(t, returnedErr, err.Error())
 }
 
 func TestWrappedAsyncLoaderContextCancels(t *testing.T) {
@@ -111,12 +99,11 @@ func TestWrappedAsyncLoaderContextCancels(t *testing.T) {
 	}()
 	subCancel()
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("should have returned from context cancelling but didn't")
-	case result := <-resultsChan:
-		if result.Reader != nil || result.error == nil {
-			t.Fatal("should have errored from context cancelling but didn't")
-		}
+	var result struct {
+		io.Reader
+		error
 	}
+	testutil.AssertReceive(ctx, t, resultsChan, &result, "should return from sub context cancelling")
+	require.Nil(t, result.Reader)
+	require.Error(t, result.error, "should error from sub context cancelling")
 }

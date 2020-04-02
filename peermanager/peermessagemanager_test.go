@@ -3,7 +3,6 @@ package peermanager
 import (
 	"context"
 	"math/rand"
-	"reflect"
 	"testing"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
 )
 
 type messageSent struct {
@@ -71,53 +71,35 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	cancelRequest := gsmsg.CancelRequest(id)
 	peerManager.SendRequest(tp[0], cancelRequest)
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not send first message")
-	case firstMessage := <-messagesSent:
-		if firstMessage.p != tp[0] {
-			t.Fatal("First message sent to wrong peer")
-		}
-		request := firstMessage.message.Requests()[0]
-		if request.ID() != id ||
-			request.IsCancel() != false ||
-			request.Priority() != priority ||
-			!reflect.DeepEqual(request.Selector(), selector) {
-			t.Fatal("did not send correct first message")
-		}
-	}
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not send second message")
-	case secondMessage := <-messagesSent:
-		if secondMessage.p != tp[1] {
-			t.Fatal("Second message sent to wrong peer")
-		}
-		request := secondMessage.message.Requests()[0]
-		if request.ID() != id ||
-			request.IsCancel() != false ||
-			request.Priority() != priority ||
-			!reflect.DeepEqual(request.Selector(), selector) {
-			t.Fatal("did not send correct second message")
-		}
-	}
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not send third message")
-	case thirdMessage := <-messagesSent:
-		if thirdMessage.p != tp[0] {
-			t.Fatal("Third message sent to wrong peer")
-		}
-		request := thirdMessage.message.Requests()[0]
-		if request.ID() != id ||
-			request.IsCancel() != true {
-			t.Fatal("third message was not a cancel")
-		}
-	}
+	var firstMessage messageSent
+	testutil.AssertReceive(ctx, t, messagesSent, &firstMessage, "first message did not send")
+	require.Equal(t, tp[0], firstMessage.p, "first message sent to incorrect peer")
+	request = firstMessage.message.Requests()[0]
+	require.Equal(t, id, request.ID())
+	require.False(t, request.IsCancel())
+	require.Equal(t, priority, request.Priority())
+	require.Equal(t, selector, request.Selector())
+
+	var secondMessage messageSent
+	testutil.AssertReceive(ctx, t, messagesSent, &secondMessage, "second message did not send")
+	require.Equal(t, tp[1], secondMessage.p, "second message sent to incorrect peer")
+	request = secondMessage.message.Requests()[0]
+	require.Equal(t, id, request.ID())
+	require.False(t, request.IsCancel())
+	require.Equal(t, priority, request.Priority())
+	require.Equal(t, selector, request.Selector())
+
+	var thirdMessage messageSent
+	testutil.AssertReceive(ctx, t, messagesSent, &thirdMessage, "third message did not send")
+
+	require.Equal(t, tp[0], thirdMessage.p, "third message sent to incorrect peer")
+	request = thirdMessage.message.Requests()[0]
+	require.Equal(t, id, request.ID())
+	require.True(t, request.IsCancel())
+
 	connectedPeers := peerManager.ConnectedPeers()
-	if len(connectedPeers) != 2 ||
-		!testutil.ContainsPeer(connectedPeers, tp[0]) ||
-		!testutil.ContainsPeer(connectedPeers, tp[1]) {
-		t.Fatal("did not connect all peers that were sent messages")
-	}
+	require.Len(t, connectedPeers, 2)
+
+	testutil.AssertContainsPeer(t, connectedPeers, tp[0])
+	testutil.AssertContainsPeer(t, connectedPeers, tp[1])
 }

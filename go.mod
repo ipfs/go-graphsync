@@ -26,4 +26,5 @@ require (
 	github.com/libp2p/go-libp2p-core v0.5.0
 	github.com/multiformats/go-multiaddr v0.2.1
 	github.com/multiformats/go-multihash v0.0.13
+	github.com/stretchr/testify v1.4.0
 )

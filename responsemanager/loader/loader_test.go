@@ -7,12 +7,12 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
-	"reflect"
 	"testing"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/stretchr/testify/require"
 
 	ipld "github.com/ipld/go-ipld-prime"
 )
@@ -51,32 +51,21 @@ func TestWrappedLoaderSendsResponses(t *testing.T) {
 	wrappedLoader := WrapLoader(ctx, loader, requestID, frs)
 
 	reader, err := wrappedLoader(link1, ipld.LinkContext{})
-	if err != nil {
-		t.Fatal("Should not have error if underlying loader returns valid buffer and no error")
-	}
+	require.NoError(t, err, "Should not have error if underlying loader returns valid buffer and no error")
 	result, err := ioutil.ReadAll(reader)
-	if err != nil || !reflect.DeepEqual(result, sourceBytes) {
-		t.Fatal("Should return reader that functions identical to source reader")
-	}
-	if frs.lastRequestID != requestID ||
-		frs.lastLink != link1 ||
-		!reflect.DeepEqual(frs.lastData, sourceBytes) {
-		t.Fatal("Should have sent block to response sender with correct params but did not")
-	}
+	require.NoError(t, err)
+	require.Equal(t, sourceBytes, result, "Should return reader that functions identical to source reader")
+	require.Equal(t, requestID, frs.lastRequestID, "should send block to response sender with correct params")
+	require.Equal(t, link1, frs.lastLink, "should send block to response sender with correct params")
+	require.Equal(t, sourceBytes, frs.lastData, "should send block to response sender with correct params")
 
 	reader, err = wrappedLoader(link2, ipld.LinkContext{})
 
-	if reader != nil || err == nil {
-		t.Fatal("Should return an error and empty reader if underlying loader does")
-	}
+	require.Nil(t, reader, "should return empty reader")
+	require.Error(t, err, "should return an error")
 
-	if err != ipldutil.ErrDoNotFollow() {
-		t.Fatal("Should convert error to a do not follow error")
-	}
-
-	if frs.lastRequestID != requestID ||
-		frs.lastLink != link2 ||
-		frs.lastData != nil {
-		t.Fatal("Should sent metadata for link but no block, but did not")
-	}
+	require.Equal(t, ipldutil.ErrDoNotFollow(), err, "Should convert error to a do not follow error")
+	require.Equal(t, requestID, frs.lastRequestID)
+	require.Equal(t, link2, frs.lastLink, "Should send metadata")
+	require.Nil(t, frs.lastData, "Should not send block")
 }

@@ -5,6 +5,7 @@ import (
 
 	ipld "github.com/ipld/go-ipld-prime"
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
@@ -19,17 +20,11 @@ func TestValidateSelector(t *testing.T) {
 
 	verifyOutcomes := func(t *testing.T, success ipld.Node, fail ipld.Node, failNone ipld.Node) {
 		err := ValidateSelector(success, 100)
-		if err != nil {
-			t.Fatal("valid selector returned error")
-		}
+		require.NoError(t, err, "valid selector should validate")
 		err = ValidateSelector(fail, 100)
-		if err != ErrInvalidLimit {
-			t.Fatal("selector should have failed on invalid limit")
-		}
+		require.Equal(t, ErrInvalidLimit, err, "selector should fail on invalid limit")
 		err = ValidateSelector(failNone, 100)
-		if err != ErrInvalidLimit {
-			t.Fatal("selector should have failed on invalid limit")
-		}
+		require.Equal(t, ErrInvalidLimit, err, "selector should fail on no limit")
 	}
 
 	t.Run("ExploreRecursive", func(t *testing.T) {

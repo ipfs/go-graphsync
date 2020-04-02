@@ -10,11 +10,11 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	"github.com/stretchr/testify/require"
 
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
@@ -66,36 +66,23 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	graphSync.Request(requestCtx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
 	var message receivedMessage
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not receive message sent")
-	case message = <-r.messageReceived:
-	}
+	testutil.AssertReceive(ctx, t, r.messageReceived, &message, "did not receive message sent")
 
 	sender := message.sender
-	if sender != td.host1.ID() {
-		t.Fatal("received message from wrong node")
-	}
+	require.Equal(t, td.host1.ID(), sender, "received message from wrong node")
 
 	received := message.message
 	receivedRequests := received.Requests()
-	if len(receivedRequests) != 1 {
-		t.Fatal("Did not add request to received message")
-	}
+	require.Len(t, receivedRequests, 1, "Did not add request to received message")
 	receivedRequest := receivedRequests[0]
 	receivedSpec := receivedRequest.Selector()
-	if !reflect.DeepEqual(blockChain.Selector(), receivedSpec) {
-		t.Fatal("did not transmit selector spec correctly")
-	}
+	require.Equal(t, blockChain.Selector(), receivedSpec, "did not transmit selector spec correctly")
 	_, err := ipldutil.ParseSelector(receivedSpec)
-	if err != nil {
-		t.Fatal("did not receive parsible selector on other side")
-	}
+	require.NoError(t, err, "did not receive parsible selector on other side")
 
 	returnedData, found := receivedRequest.Extension(td.extensionName)
-	if !found || !reflect.DeepEqual(td.extensionData, returnedData) {
-		t.Fatal("Failed to encode extension")
-	}
+	require.True(t, found)
+	require.Equal(t, td.extensionData, returnedData, "Failed to encode extension")
 }
 
 func TestSendResponseToIncomingRequest(t *testing.T) {
@@ -116,15 +103,11 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 		func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 			var has bool
 			receivedRequestData, has = requestData.Extension(td.extensionName)
-			if !has {
-				t.Fatal("did not have expected extension")
-			}
+			require.True(t, has, "did not have expected extension")
 			hookActions.SendExtensionData(td.extensionResponse)
 		},
 	)
-	if err != nil {
-		t.Fatal("error registering extension")
-	}
+	require.NoError(t, err, "error registering extension")
 
 	blockChainLength := 100
 	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
@@ -135,58 +118,36 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), td.extension))
 	// send request across network
 	err = td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
-	if err != nil {
-		t.Fatal("Unable to send message")
-	}
+	require.NoError(t, err)
 	// read the values sent back to requestor
 	var received gsmsg.GraphSyncMessage
 	var receivedBlocks []blocks.Block
 	var receivedExtensions [][]byte
-readAllMessages:
 	for {
-		select {
-		case <-ctx.Done():
-			t.Fatal("did not receive complete response")
-		case message := <-r.messageReceived:
-			sender := message.sender
-			if sender != td.host2.ID() {
-				t.Fatal("received message from wrong node")
-			}
+		var message receivedMessage
+		testutil.AssertReceive(ctx, t, r.messageReceived, &message, "did not receive complete response")
 
-			received = message.message
-			receivedBlocks = append(receivedBlocks, received.Blocks()...)
-			receivedResponses := received.Responses()
-			receivedExtension, found := receivedResponses[0].Extension(td.extensionName)
-			if found {
-				receivedExtensions = append(receivedExtensions, receivedExtension)
-			}
-			if len(receivedResponses) != 1 {
-				t.Fatal("Did not receive response")
-			}
-			if receivedResponses[0].RequestID() != requestID {
-				t.Fatal("Sent response for incorrect request id")
-			}
-			if receivedResponses[0].Status() != graphsync.PartialResponse {
-				break readAllMessages
-			}
+		sender := message.sender
+		require.Equal(t, td.host2.ID(), sender, "received message from wrong node")
+
+		received = message.message
+		receivedBlocks = append(receivedBlocks, received.Blocks()...)
+		receivedResponses := received.Responses()
+		receivedExtension, found := receivedResponses[0].Extension(td.extensionName)
+		if found {
+			receivedExtensions = append(receivedExtensions, receivedExtension)
+		}
+		require.Len(t, receivedResponses, 1, "Did not receive response")
+		require.Equal(t, requestID, receivedResponses[0].RequestID(), "Sent response for incorrect request id")
+		if receivedResponses[0].Status() != graphsync.PartialResponse {
+			break
 		}
 	}
 
-	if len(receivedBlocks) != blockChainLength {
-		t.Fatal("Send incorrect number of blocks or there were duplicate blocks")
-	}
-
-	if !reflect.DeepEqual(td.extensionData, receivedRequestData) {
-		t.Fatal("did not receive correct request extension data")
-	}
-
-	if len(receivedExtensions) != 1 {
-		t.Fatal("should have sent extension responses but didn't")
-	}
-
-	if !reflect.DeepEqual(receivedExtensions[0], td.extensionResponseData) {
-		t.Fatal("did not return correct extension data")
-	}
+	require.Len(t, receivedBlocks, blockChainLength, "Send incorrect number of blocks or there were duplicate blocks")
+	require.Equal(t, td.extensionData, receivedRequestData, "did not receive correct request extension data")
+	require.Len(t, receivedExtensions, 1, "should have sent extension responses but didn't")
+	require.Equal(t, td.extensionResponseData, receivedExtensions[0], "did not return correct extension data")
 }
 
 func TestGraphsyncRoundTrip(t *testing.T) {
@@ -217,9 +178,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 			}
 			return nil
 		})
-	if err != nil {
-		t.Fatal("Error setting up extension")
-	}
+	require.NoError(t, err, "Error setting up extension")
 
 	err = responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
 		var has bool
@@ -230,50 +189,17 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 			hookActions.SendExtensionData(td.extensionResponse)
 		}
 	})
-
-	if err != nil {
-		t.Fatal("Error setting up extension")
-	}
+	require.NoError(t, err, "Error setting up extension")
 
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
-	responses := testutil.CollectResponses(ctx, t, progressChan)
-	errs := testutil.CollectErrors(ctx, t, errChan)
-
-	if len(responses) != blockChainLength*2 {
-		t.Fatal("did not traverse all nodes")
-	}
-	if len(errs) != 0 {
-		t.Fatal("errors during traverse")
-	}
-	if len(td.blockStore1) != blockChainLength {
-		t.Fatal("did not store all blocks")
-	}
-
-	expectedPath := ""
-	for i, response := range responses {
-		if response.Path.String() != expectedPath {
-			t.Fatal("incorrect path")
-		}
-		if i%2 == 0 {
-			if expectedPath == "" {
-				expectedPath = "Parents"
-			} else {
-				expectedPath = expectedPath + "/Parents"
-			}
-		} else {
-			expectedPath = expectedPath + "/0"
-		}
-	}
+	blockChain.VerifyWholeChain(ctx, progressChan)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
 
 	// verify extension roundtrip
-	if !reflect.DeepEqual(receivedRequestData, td.extensionData) {
-		t.Fatal("did not receive correct extension request data")
-	}
-
-	if !reflect.DeepEqual(receivedResponseData, td.extensionResponseData) {
-		t.Fatal("did not receive correct extension response data")
-	}
+	require.Equal(t, td.extensionData, receivedRequestData, "did not receive correct extension request data")
+	require.Equal(t, td.extensionResponseData, receivedResponseData, "did not receive correct extension response data")
 }
 
 // TestRoundTripLargeBlocksSlowNetwork test verifies graphsync continues to work
@@ -307,15 +233,8 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector())
 
-	responses := testutil.CollectResponses(ctx, t, progressChan)
-	errs := testutil.CollectErrors(ctx, t, errChan)
-
-	if len(responses) != blockChainLength*2 {
-		t.Fatal("did not traverse all nodes")
-	}
-	if len(errs) != 0 {
-		t.Fatal("errors during traverse")
-	}
+	blockChain.VerifyWholeChain(ctx, progressChan)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
 }
 
 // What this test does:
@@ -380,14 +299,11 @@ func TestUnixFSFetch(t *testing.T) {
 
 	// read in a fixture file
 	path, err := filepath.Abs(filepath.Join("fixtures", "lorem.txt"))
-	if err != nil {
-		t.Fatal("unable to create path for fixture file")
-	}
+	require.NoError(t, err, "unable to create path for fixture file")
 
 	f, err := os.Open(path)
-	if err != nil {
-		t.Fatal("unable to open fixture file")
-	}
+	require.NoError(t, err, "unable to open fixture file")
+
 	var buf bytes.Buffer
 	tr := io.TeeReader(f, &buf)
 	file := files.NewReaderFile(tr)
@@ -403,17 +319,13 @@ func TestUnixFSFetch(t *testing.T) {
 	}
 
 	db, err := params.New(chunker.NewSizeSplitter(file, int64(unixfsChunkSize)))
-	if err != nil {
-		t.Fatal("unable to setup dag builder")
-	}
+	require.NoError(t, err, "unable to setup dag builder")
+
 	nd, err := balanced.Layout(db)
-	if err != nil {
-		t.Fatal("unable to create unix fs node")
-	}
+	require.NoError(t, err, "unable to create unix fs node")
+
 	err = bufferedDS.Commit()
-	if err != nil {
-		t.Fatal("unable to commit unix fs node")
-	}
+	require.NoError(t, err, "unable to commit unix fs node")
 
 	// save the original files bytes
 	origBytes := buf.Bytes()
@@ -437,9 +349,7 @@ func TestUnixFSFetch(t *testing.T) {
 			Data: nil,
 		})
 	})
-	if err != nil {
-		t.Fatal("unable to register extension")
-	}
+	require.NoError(t, err)
 	
 	// make a go-ipld-prime link for the root UnixFS node
 	clink := cidlink.Link{Cid: nd.Cid()}
@@ -458,44 +368,28 @@ func TestUnixFSFetch(t *testing.T) {
 		})
 
 	_ = testutil.CollectResponses(ctx, t, progressChan)
-	responseErrors := testutil.CollectErrors(ctx, t, errChan)
-
-	// verify traversal was successful
-	if len(responseErrors) != 0 {
-		t.Fatal("Response should be successful but wasn't")
-	}
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
 
 	// setup a DagService for the second block store
 	dagService1 := merkledag.NewDAGService(blockservice.New(bs1, offline.Exchange(bs1)))
 
 	// load the root of the UnixFS DAG from the new blockstore
 	otherNode, err := dagService1.Get(ctx, nd.Cid())
-	if err != nil {
-		t.Fatal("should have been able to read received root node but didn't")
-	}
+	require.NoError(t, err, "should have been able to read received root node but didn't")
 
 	// Setup a UnixFS file reader
 	n, err := unixfile.NewUnixfsFile(ctx, dagService1, otherNode)
-	if err != nil {
-		t.Fatal("should have been able to setup UnixFS file but wasn't")
-	}
+	require.NoError(t, err, "should have been able to setup UnixFS file but wasn't")
 
 	fn, ok := n.(files.File)
-	if !ok {
-		t.Fatal("file should be a regular file, but wasn't")
-	}
+	require.True(t, ok, "file should be a regular file, but wasn't")
 
 	// Read the bytes for the UnixFS File
 	finalBytes, err := ioutil.ReadAll(fn)
-	if err != nil {
-		t.Fatal("should have been able to read all of unix FS file but wasn't")
-	}
+	require.NoError(t, err, "should have been able to read all of unix FS file but wasn't")
 
 	// verify original bytes match final bytes!
-	if !reflect.DeepEqual(origBytes, finalBytes) {
-		t.Fatal("should have gotten same bytes written as read but didn't")
-	}
-
+	require.Equal(t, origBytes, finalBytes, "should have gotten same bytes written as read but didn't")
 }
 
 type gsTestData struct {
@@ -521,17 +415,11 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 	var err error
 	// setup network
 	td.host1, err = td.mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
+	require.NoError(t, err, "error generating host")
 	td.host2, err = td.mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
+	require.NoError(t, err, "error generating host")
 	err = td.mn.LinkAll()
-	if err != nil {
-		t.Fatal("error linking hosts")
-	}
+	require.NoError(t, err, "error linking hosts")
 
 	td.gsnet1 = gsnet.NewFromLibp2pHost(td.host1)
 	td.gsnet2 = gsnet.NewFromLibp2pHost(td.host2)
