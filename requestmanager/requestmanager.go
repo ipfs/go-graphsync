@@ -35,7 +35,7 @@ type inProgressRequestStatus struct {
 
 type responseHook struct {
 	key  uint64
-	hook graphsync.OnResponseReceivedHook
+	hook graphsync.OnIncomingResponseHook
 }
 
 // PeerHandler is an interface that can send requests to peers
@@ -204,13 +204,13 @@ func (rm *RequestManager) ProcessResponses(p peer.ID, responses []gsmsg.GraphSyn
 }
 
 type registerHookMessage struct {
-	hook               graphsync.OnResponseReceivedHook
+	hook               graphsync.OnIncomingResponseHook
 	unregisterHookChan chan graphsync.UnregisterHookFunc
 }
 
 // RegisterHook registers an extension to processincoming responses
 func (rm *RequestManager) RegisterHook(
-	hook graphsync.OnResponseReceivedHook) graphsync.UnregisterHookFunc {
+	hook graphsync.OnIncomingResponseHook) graphsync.UnregisterHookFunc {
 	response := make(chan graphsync.UnregisterHookFunc)
 	select {
 	case rm.messages <- &registerHookMessage{hook, response}:

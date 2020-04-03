@@ -21,8 +21,8 @@ var (
 // SelectorValidator returns an OnRequestReceivedHook that only validates
 // requests if their selector only has no recursions that are greater than
 // maxAcceptedDepth
-func SelectorValidator(maxAcceptedDepth int) graphsync.OnRequestReceivedHook {
-	return func(p peer.ID, request graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+func SelectorValidator(maxAcceptedDepth int) graphsync.OnIncomingRequestHook {
+	return func(p peer.ID, request graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		err := ValidateMaxRecursionDepth(request.Selector(), maxAcceptedDepth)
 		if err == nil {
 			hookActions.ValidateRequest()

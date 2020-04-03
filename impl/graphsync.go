@@ -103,17 +103,22 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 	return gs.requestManager.SendRequest(ctx, p, root, selector, extensions...)
 }
 
-// RegisterRequestReceivedHook adds a hook that runs when a request is received
+// RegisterIncomingRequestHook adds a hook that runs when a request is received
 // If overrideDefaultValidation is set to true, then if the hook does not error,
 // it is considered to have "validated" the request -- and that validation supersedes
 // the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
-func (gs *GraphSync) RegisterRequestReceivedHook(hook graphsync.OnRequestReceivedHook) graphsync.UnregisterHookFunc {
+func (gs *GraphSync) RegisterIncomingRequestHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
 	return gs.responseManager.RegisterHook(hook)
 }
 
-// RegisterResponseReceivedHook adds a hook that runs when a response is received
-func (gs *GraphSync) RegisterResponseReceivedHook(hook graphsync.OnResponseReceivedHook) graphsync.UnregisterHookFunc {
+// RegisterIncomingResponseHook adds a hook that runs when a response is received
+func (gs *GraphSync) RegisterIncomingResponseHook(hook graphsync.OnIncomingResponseHook) graphsync.UnregisterHookFunc {
 	return gs.requestManager.RegisterHook(hook)
+}
+
+// RegisterOutgoingRequestHook adds a hook that runs immediately prior to sending a new request
+func (gs *GraphSync) RegisterOutgoingRequestHook(hook graphsync.OnOutgoingRequestHook) graphsync.UnregisterHookFunc {
+	return func() {}
 }
 
 type graphSyncReceiver GraphSync

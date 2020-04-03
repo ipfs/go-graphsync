@@ -8,8 +8,8 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/testutil/chaintypes"
 	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/fluent"
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -34,17 +34,53 @@ type TestBlockChain struct {
 	TipLink          ipld.Link
 }
 
-func createBlock(nb fluent.NodeBuilder, parents []ipld.Link, size uint64) ipld.Node {
-	return nb.CreateMap(func(mb fluent.MapBuilder, knb fluent.NodeBuilder, vnb fluent.NodeBuilder) {
-		mb.Insert(knb.CreateString("Parents"), vnb.CreateList(func(lb fluent.ListBuilder, vnb fluent.NodeBuilder) {
-			for _, parent := range parents {
-				lb.Append(vnb.CreateLink(parent))
-			}
-		}))
-		mb.Insert(knb.CreateString("Messages"), vnb.CreateList(func(lb fluent.ListBuilder, vnb fluent.NodeBuilder) {
-			lb.Append(vnb.CreateBytes(RandomBytes(int64(size))))
-		}))
-	})
+func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
+	links := make([]ipld.Node, 0, len(parents))
+	for _, parent := range parents {
+		lnb := chaintypes.Link__NodeBuilder()
+		link, err := lnb.CreateLink(parent)
+		if err != nil {
+			return nil, err
+		}
+		links = append(links, link)
+	}
+	pnb := chaintypes.Parents__NodeBuilder()
+	pnblnb, err := pnb.CreateList()
+	if err != nil {
+		return nil, err
+	}
+	err = pnblnb.AppendAll(links)
+	if err != nil {
+		return nil, err
+	}
+	parentsNd, err := pnblnb.Build()
+	if err != nil {
+		return nil, err
+	}
+	parentsNdTyped := parentsNd.(chaintypes.Parents)
+	mnb := chaintypes.Messages__NodeBuilder()
+	mnblnb, err := mnb.CreateList()
+	if err != nil {
+		return nil, err
+	}
+	bnb := chaintypes.Bytes__NodeBuilder()
+	bytes, err := bnb.CreateBytes(RandomBytes(int64(size)))
+	if err != nil {
+		return nil, err
+	}
+	err = mnblnb.Append(bytes)
+	if err != nil {
+		return nil, err
+	}
+	mesagesNd, err := mnblnb.Build()
+	if err != nil {
+		return nil, err
+	}
+	messagesNdTyped := mesagesNd.(chaintypes.Messages)
+	return chaintypes.Block{
+		Parents:  parentsNdTyped,
+		Messages: messagesNdTyped,
+	}, nil
 }
 
 // SetupBlockChain creates a new test block chain with the given height
@@ -56,11 +92,7 @@ func SetupBlockChain(
 	size uint64,
 	blockChainLength int) *TestBlockChain {
 	linkBuilder := cidlink.LinkBuilder{Prefix: cid.NewPrefixV1(cid.DagCBOR, mh.SHA2_256)}
-	var genisisNode ipld.Node
-	err := fluent.Recover(func() {
-		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
-		genisisNode = createBlock(nb, []ipld.Link{}, size)
-	})
+	genisisNode, err := createBlock([]ipld.Link{}, size)
 	require.NoError(t, err, "Error creating genesis block")
 	genesisLink, err := linkBuilder.Build(ctx, ipld.LinkContext{}, genisisNode, storer)
 	require.NoError(t, err, "Error creating link to genesis block")
@@ -68,11 +100,7 @@ func SetupBlockChain(
 	middleNodes := make([]ipld.Node, 0, blockChainLength-2)
 	middleLinks := make([]ipld.Link, 0, blockChainLength-2)
 	for i := 0; i < blockChainLength-2; i++ {
-		var node ipld.Node
-		err := fluent.Recover(func() {
-			nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
-			node = createBlock(nb, []ipld.Link{parent}, size)
-		})
+		node, err := createBlock([]ipld.Link{parent}, size)
 		require.NoError(t, err, "Error creating middle block")
 		middleNodes = append(middleNodes, node)
 		link, err := linkBuilder.Build(ctx, ipld.LinkContext{}, node, storer)
@@ -80,11 +108,7 @@ func SetupBlockChain(
 		middleLinks = append(middleLinks, link)
 		parent = link
 	}
-	var tipNode ipld.Node
-	err = fluent.Recover(func() {
-		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
-		tipNode = createBlock(nb, []ipld.Link{parent}, size)
-	})
+	tipNode, err := createBlock([]ipld.Link{parent}, size)
 	require.NoError(t, err, "Error creating tip block")
 	tipLink, err := linkBuilder.Build(ctx, ipld.LinkContext{}, tipNode, storer)
 	require.NoError(t, err, "Error creating link to tip block")
@@ -124,7 +148,7 @@ func (tbc *TestBlockChain) NodeTipIndex(fromTip int) ipld.Node {
 		return tbc.MiddleNodes[height-1]
 	}
 }
-func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress, start int, end int) {
+func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress, start int, end int, verifyTypes bool) {
 	require.Len(tbc.t, responses, (end-start)*blockChainTraversedNodesPerBlock, "traverses all nodes")
 	expectedPath := ""
 	for i := 0; i < start; i++ {
@@ -137,12 +161,20 @@ func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress
 	for i, response := range responses {
 		require.Equal(tbc.t, expectedPath, response.Path.String(), "response has correct path")
 		if i%2 == 0 {
+			if verifyTypes {
+				_, ok := response.Node.(chaintypes.Block)
+				require.True(tbc.t, ok, "nodes in response should have correct type")
+			}
 			if expectedPath == "" {
 				expectedPath = "Parents"
 			} else {
 				expectedPath = expectedPath + "/Parents"
 			}
 		} else {
+			if verifyTypes {
+				_, ok := response.Node.(chaintypes.Parents)
+				require.True(tbc.t, ok, "nodes in response should have correct type")
+			}
 			expectedPath = expectedPath + "/0"
 		}
 		if response.LastBlock.Path.String() != response.Path.String() {
@@ -164,14 +196,27 @@ func (tbc *TestBlockChain) VerifyWholeChain(ctx context.Context, responseChan <-
 // VerifyRemainder verifies the given response channel returns the remainder of the chain starting at the nth block from the tip
 func (tbc *TestBlockChain) VerifyRemainder(ctx context.Context, responseChan <-chan graphsync.ResponseProgress, from int) {
 	responses := CollectResponses(ctx, tbc.t, responseChan)
-	tbc.checkResponses(responses, from, tbc.blockChainLength)
+	tbc.checkResponses(responses, from, tbc.blockChainLength, false)
 }
 
 // VerifyResponseRange verifies the given response channel returns the given range of respnses, indexed from the tip
 // (with possibly more data left in the channel)
 func (tbc *TestBlockChain) VerifyResponseRange(ctx context.Context, responseChan <-chan graphsync.ResponseProgress, from int, to int) {
 	responses := ReadNResponses(ctx, tbc.t, responseChan, (to-from)*blockChainTraversedNodesPerBlock)
-	tbc.checkResponses(responses, from, to)
+	tbc.checkResponses(responses, from, to, false)
+}
+
+// VerifyWholeChainWithTypes verifies the given response channel returns the expected responses for the whole chain
+// and that the types in the response are the expected types for a block chain
+func (tbc *TestBlockChain) VerifyWholeChainWithTypes(ctx context.Context, responseChan <-chan graphsync.ResponseProgress) {
+	tbc.VerifyRemainderWithTypes(ctx, responseChan, 0)
+}
+
+// VerifyRemainderWithTypes verifies the given response channel returns the remainder of the chain starting at the nth block from the tip
+// and that the types in the response are the expected types for a block chain
+func (tbc *TestBlockChain) VerifyRemainderWithTypes(ctx context.Context, responseChan <-chan graphsync.ResponseProgress, from int) {
+	responses := CollectResponses(ctx, tbc.t, responseChan)
+	tbc.checkResponses(responses, from, tbc.blockChainLength, true)
 }
 
 // Blocks Returns the given raw blocks for the block chain for the given range, indexed from the tip
@@ -198,4 +243,9 @@ func (tbc *TestBlockChain) AllBlocks() []blocks.Block {
 // RemainderBlocks returns the remaining blocks for a blockchain, indexed from tip
 func (tbc *TestBlockChain) RemainderBlocks(from int) []blocks.Block {
 	return tbc.Blocks(from, tbc.blockChainLength)
+}
+
+// BlockChooser is a NodeBuilderChooser function that always returns the block chain
+func BlockChooser(ipld.Link, ipld.LinkContext) ipld.NodeBuilder {
+	return chaintypes.Block__NodeBuilder()
 }

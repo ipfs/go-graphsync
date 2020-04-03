@@ -99,8 +99,8 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	var receivedRequestData []byte
 	// initialize graphsync on second node to response to requests
 	gsnet := td.GraphSyncHost2()
-	gsnet.RegisterRequestReceivedHook(
-		func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+	gsnet.RegisterIncomingRequestHook(
+		func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			var has bool
 			receivedRequestData, has = requestData.Extension(td.extensionName)
 			require.True(t, has, "did not have expected extension")
@@ -190,7 +190,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	var receivedResponseData []byte
 	var receivedRequestData []byte
 
-	requestor.RegisterResponseReceivedHook(
+	requestor.RegisterIncomingResponseHook(
 		func(p peer.ID, responseData graphsync.ResponseData) error {
 			data, has := responseData.Extension(td.extensionName)
 			if has {
@@ -199,7 +199,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 			return nil
 		})
 
-	responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		var has bool
 		receivedRequestData, has = requestData.Extension(td.extensionName)
 		if !has {
@@ -360,7 +360,7 @@ func TestUnixFSFetch(t *testing.T) {
 	requestor := New(ctx, td.gsnet1, loader1, storer1)
 	responder := New(ctx, td.gsnet2, loader2, storer2)
 	extensionName := graphsync.ExtensionName("Free for all")
-	responder.RegisterRequestReceivedHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		hookActions.ValidateRequest()
 		hookActions.SendExtensionData(graphsync.ExtensionData{
 			Name: extensionName,

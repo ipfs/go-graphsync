@@ -40,7 +40,7 @@ type responseTaskData struct {
 
 type requestHook struct {
 	key  uint64
-	hook graphsync.OnRequestReceivedHook
+	hook graphsync.OnIncomingRequestHook
 }
 
 // QueryQueue is an interface that can receive new selector query tasks
@@ -115,7 +115,7 @@ func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, reque
 }
 
 // RegisterHook registers an extension to process new incoming requests
-func (rm *ResponseManager) RegisterHook(hook graphsync.OnRequestReceivedHook) graphsync.UnregisterHookFunc {
+func (rm *ResponseManager) RegisterHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
 	rm.requestHooksLk.Lock()
 	rh := requestHook{rm.requestHookNextKey, hook}
 	rm.requestHookNextKey++
