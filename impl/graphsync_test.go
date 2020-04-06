@@ -241,8 +241,11 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	altStore2 := make(map[ipld.Link][]byte)
 	altLoader2, altStorer2 := testutil.NewTestStore(altStore2)
 
-	requestor.RegisterPersistenceOption("chainstore", altLoader1, altStorer1)
-	responder.RegisterPersistenceOption("chainstore", altLoader2, altStorer2)
+	err := requestor.RegisterPersistenceOption("chainstore", altLoader1, altStorer1)
+	require.NoError(t, err)
+
+	err = responder.RegisterPersistenceOption("chainstore", altLoader2, altStorer2)
+	require.NoError(t, err)
 
 	blockChainLength := 100
 	blockChain := testutil.SetupBlockChain(ctx, t, altLoader1, altStorer2, 100, blockChainLength)
