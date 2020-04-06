@@ -209,6 +209,8 @@ type hookActions struct {
 	requestID          graphsync.RequestID
 	peerResponseSender peerresponsemanager.PeerResponseSender
 	err                error
+	loader             ipld.Loader
+	chooser            traversal.NodeBuilderChooser
 }
 
 func (ha *hookActions) SendExtensionData(ext graphsync.ExtensionData) {
@@ -224,12 +226,20 @@ func (ha *hookActions) ValidateRequest() {
 	ha.isValidated = true
 }
 
+func (ha *hookActions) UseLoader(loader ipld.Loader) {
+	ha.loader = loader
+}
+
+func (ha *hookActions) UseNodeBuilderChooser(chooser traversal.NodeBuilderChooser) {
+	ha.chooser = chooser
+}
+
 func (rm *ResponseManager) executeQuery(ctx context.Context,
 	p peer.ID,
 	request gsmsg.GraphSyncRequest) {
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
 	selectorSpec := request.Selector()
-	ha := &hookActions{false, request.ID(), peerResponseSender, nil}
+	ha := &hookActions{false, request.ID(), peerResponseSender, nil, rm.loader, nil}
 	rm.requestHooksLk.RLock()
 	for _, requestHook := range rm.requestHooks {
 		requestHook.hook(p, request, ha)
@@ -249,8 +259,8 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 		return
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
-	wrappedLoader := loader.WrapLoader(ctx, rm.loader, request.ID(), peerResponseSender)
-	err = ipldutil.Traverse(ctx, wrappedLoader, rootLink, selector, noopVisitor)
+	wrappedLoader := loader.WrapLoader(ctx, ha.loader, request.ID(), peerResponseSender)
+	err = ipldutil.Traverse(ctx, wrappedLoader, ha.chooser, rootLink, selector, noopVisitor)
 	if err != nil {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return

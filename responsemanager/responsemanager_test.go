@@ -16,6 +16,7 @@ import (
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
+	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
@@ -379,5 +380,78 @@ func TestValidationAndExtensions(t *testing.T) {
 		responseManager.ProcessRequests(ctx, p, requests)
 		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
 		require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
+	})
+
+	t.Run("hooks can alter the loader", func(t *testing.T) {
+		obs := make(map[ipld.Link][]byte)
+		oloader, _ := testutil.NewTestStore(obs)
+		responseManager := New(ctx, oloader, peerManager, queryQueue)
+		responseManager.Startup()
+		// add validating hook -- so the request SHOULD succeed
+		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+			hookActions.ValidateRequest()
+		})
+
+		// request fails with base loader reading from block store that's missing data
+		var lastRequest completedRequest
+		responseManager.ProcessRequests(ctx, p, requests)
+		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
+
+		// register hook to use different loader
+		_ = responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+			if _, found := requestData.Extension(extensionName); found {
+				hookActions.UseLoader(loader)
+				hookActions.SendExtensionData(extensionResponse)
+			}
+		})
+
+		// hook uses different loader that should make request succeed
+		responseManager.ProcessRequests(ctx, p, requests)
+		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+		var receivedExtension sentExtension
+		testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
+		require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
+	})
+
+	t.Run("hooks can alter the node builder chooser", func(t *testing.T) {
+		responseManager := New(ctx, loader, peerManager, queryQueue)
+		responseManager.Startup()
+
+		customChooserCallCount := 0
+		customChooser := func(ipld.Link, ipld.LinkContext) ipld.NodeBuilder {
+			customChooserCallCount++
+			return ipldfree.NodeBuilder()
+		}
+
+		// add validating hook -- so the request SHOULD succeed
+		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+			hookActions.ValidateRequest()
+		})
+
+		// with default chooser, customer chooser not called
+		var lastRequest completedRequest
+		responseManager.ProcessRequests(ctx, p, requests)
+		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+		require.Equal(t, 0, customChooserCallCount)
+
+		// register hook to use custom chooser
+		_ = responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+			if _, found := requestData.Extension(extensionName); found {
+				hookActions.UseNodeBuilderChooser(customChooser)
+				hookActions.SendExtensionData(extensionResponse)
+			}
+		})
+
+		// verify now that request succeeds and uses custom chooser
+		responseManager.ProcessRequests(ctx, p, requests)
+		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+		var receivedExtension sentExtension
+		testutil.AssertReceive(ctx, t, sentExtensions, &receivedExtension, "should send extension response")
+		require.Equal(t, extensionResponse, receivedExtension.extension, "incorrect extension response sent")
+		require.Equal(t, 5, customChooserCallCount)
 	})
 }

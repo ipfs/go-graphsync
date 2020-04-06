@@ -6,6 +6,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -138,6 +139,8 @@ type ResponseData interface {
 // behavior for the response
 type RequestReceivedHookActions interface {
 	SendExtensionData(ExtensionData)
+	UseLoader(ipld.Loader)
+	UseNodeBuilderChooser(traversal.NodeBuilderChooser)
 	TerminateWithError(error)
 	ValidateRequest()
 }
