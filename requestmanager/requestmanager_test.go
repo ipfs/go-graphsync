@@ -60,8 +60,11 @@ func newFakeAsyncLoader() *fakeAsyncLoader {
 		blks:             make(chan []blocks.Block, 1),
 	}
 }
-func (fal *fakeAsyncLoader) StartRequest(requestID graphsync.RequestID) {
+
+func (fal *fakeAsyncLoader) StartRequest(graphsync.RequestID, string) error {
+	return nil
 }
+
 func (fal *fakeAsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
 	fal.responses <- responses
@@ -593,3 +596,26 @@ func TestEncodingExtensions(t *testing.T) {
 		testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 	})
 }
+
+/*
+func TestOutgoingRequestHooks(t *testing.T) {
+	requestRecordChan := make(chan requestRecord, 2)
+	fph := &fakePeerHandler{requestRecordChan}
+	ctx := context.Background()
+	fal := newFakeAsyncLoader()
+	requestManager := New(ctx, fal)
+	requestManager.SetDelegate(fph)
+	requestManager.Startup()
+
+	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	peers := testutil.GeneratePeers(1)
+
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testutil.NewTestStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+
+	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
+
+}
+*/

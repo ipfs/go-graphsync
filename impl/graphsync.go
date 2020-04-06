@@ -121,6 +121,14 @@ func (gs *GraphSync) RegisterOutgoingRequestHook(hook graphsync.OnOutgoingReques
 	return func() {}
 }
 
+func (gs *GraphSync) RegisterPersistenceOption(name string, loader ipld.Loader, storer ipld.Storer) error {
+	err := gs.asyncLoader.RegisterPersistenceOption(name, loader, storer)
+	if err != nil {
+		return err
+	}
+	return gs.responseManager.RegisterPersistenceOption(name, loader)
+}
+
 type graphSyncReceiver GraphSync
 
 func (gsr *graphSyncReceiver) graphSync() *GraphSync {

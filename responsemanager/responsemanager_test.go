@@ -398,10 +398,12 @@ func TestValidationAndExtensions(t *testing.T) {
 		testutil.AssertReceive(ctx, t, completedRequestChan, &lastRequest, "should complete request")
 		require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
 
+		err := responseManager.RegisterPersistenceOption("chainstore", loader)
+		require.NoError(t, err)
 		// register hook to use different loader
 		_ = responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			if _, found := requestData.Extension(extensionName); found {
-				hookActions.UseLoader(loader)
+				hookActions.UsePersistenceOption("chainstore")
 				hookActions.SendExtensionData(extensionResponse)
 			}
 		})

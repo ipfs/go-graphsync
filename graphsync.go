@@ -139,7 +139,7 @@ type ResponseData interface {
 // behavior for the response
 type IncomingRequestHookActions interface {
 	SendExtensionData(ExtensionData)
-	UseLoader(ipld.Loader)
+	UsePersistenceOption(name string)
 	UseNodeBuilderChooser(traversal.NodeBuilderChooser)
 	TerminateWithError(error)
 	ValidateRequest()
@@ -148,8 +148,7 @@ type IncomingRequestHookActions interface {
 // OutgoingRequestHookActions are actions that an outgoing request hook can take
 // to change the execution of this request
 type OutgoingRequestHookActions interface {
-	UseLoader(ipld.Loader)
-	UseStorer(ipld.Storer)
+	UsePersistenceOption(name string)
 	UseNodeBuilderChooser(traversal.NodeBuilderChooser)
 }
 
@@ -175,6 +174,9 @@ type UnregisterHookFunc func()
 type GraphExchange interface {
 	// Request initiates a new GraphSync request to the given peer using the given selector spec.
 	Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...ExtensionData) (<-chan ResponseProgress, <-chan error)
+
+	// RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
+	RegisterPersistenceOption(name string, loader ipld.Loader, storer ipld.Storer) error
 
 	// RegisterIncomingRequestHook adds a hook that runs when a request is received
 	RegisterIncomingRequestHook(hook OnIncomingRequestHook) UnregisterHookFunc

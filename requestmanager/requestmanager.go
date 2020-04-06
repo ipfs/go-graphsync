@@ -46,7 +46,7 @@ type PeerHandler interface {
 // AsyncLoader is an interface for loading links asynchronously, returning
 // results as new responses are processed
 type AsyncLoader interface {
-	StartRequest(requestID graphsync.RequestID)
+	StartRequest(graphsync.RequestID, string) error
 	ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
 		blks []blocks.Block)
 	AsyncLoad(requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult
@@ -408,7 +408,10 @@ func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID,
 	rm.inProgressRequestStatuses[requestID] = &inProgressRequestStatus{
 		ctx, cancel, p, networkErrorChan,
 	}
-	rm.asyncLoader.StartRequest(requestID)
+	err = rm.asyncLoader.StartRequest(requestID, "")
+	if err != nil {
+		return rm.singleErrorResponse(err)
+	}
 	rm.peerHandler.SendRequest(p, gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, maxPriority, extensions...))
 	return rm.executeTraversal(ctx, requestID, root, selector, networkErrorChan)
 }
