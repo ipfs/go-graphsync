@@ -70,7 +70,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
 	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue)
-	unregisterDefaultValidator := responseManager.RegisterHook(selectorvalidator.SelectorValidator(maxRecursionDepth))
+	unregisterDefaultValidator := responseManager.RegisterRequestHook(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
 		network:                    network,
 		loader:                     loader,
@@ -108,19 +108,20 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 // it is considered to have "validated" the request -- and that validation supersedes
 // the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
 func (gs *GraphSync) RegisterIncomingRequestHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
-	return gs.responseManager.RegisterHook(hook)
+	return gs.responseManager.RegisterRequestHook(hook)
 }
 
 // RegisterIncomingResponseHook adds a hook that runs when a response is received
 func (gs *GraphSync) RegisterIncomingResponseHook(hook graphsync.OnIncomingResponseHook) graphsync.UnregisterHookFunc {
-	return gs.requestManager.RegisterHook(hook)
+	return gs.requestManager.RegisterResponseHook(hook)
 }
 
 // RegisterOutgoingRequestHook adds a hook that runs immediately prior to sending a new request
 func (gs *GraphSync) RegisterOutgoingRequestHook(hook graphsync.OnOutgoingRequestHook) graphsync.UnregisterHookFunc {
-	return func() {}
+	return gs.requestManager.RegisterRequestHook(hook)
 }
 
+// RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
 func (gs *GraphSync) RegisterPersistenceOption(name string, loader ipld.Loader, storer ipld.Storer) error {
 	err := gs.asyncLoader.RegisterPersistenceOption(name, loader, storer)
 	if err != nil {

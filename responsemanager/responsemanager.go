@@ -130,8 +130,8 @@ func (rm *ResponseManager) RegisterPersistenceOption(name string, loader ipld.Lo
 	return nil
 }
 
-// RegisterHook registers an extension to process new incoming requests
-func (rm *ResponseManager) RegisterHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
+// RegisterRequestHook registers an extension to process new incoming requests
+func (rm *ResponseManager) RegisterRequestHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
 	rm.requestHooksLk.Lock()
 	rh := requestHook{rm.requestHookNextKey, hook}
 	rm.requestHookNextKey++

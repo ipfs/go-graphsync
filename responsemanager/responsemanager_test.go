@@ -144,7 +144,7 @@ func TestIncomingQuery(t *testing.T) {
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
 	responseManager := New(ctx, loader, peerManager, queryQueue)
-	responseManager.RegisterHook(selectorvalidator.SelectorValidator(100))
+	responseManager.RegisterRequestHook(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 
 	requestID := graphsync.RequestID(rand.Int31())
@@ -182,7 +182,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	peerManager := &fakePeerManager{peerResponseSender: fprs}
 	queryQueue := &fakeQueryQueue{}
 	responseManager := New(ctx, loader, peerManager, queryQueue)
-	responseManager.RegisterHook(selectorvalidator.SelectorValidator(100))
+	responseManager.RegisterRequestHook(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 
 	requestID := graphsync.RequestID(rand.Int31())
@@ -309,7 +309,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("if non validating hook succeeds, does not pass validation", func(t *testing.T) {
 		responseManager := New(ctx, loader, peerManager, queryQueue)
 		responseManager.Startup()
-		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.SendExtensionData(extensionResponse)
 		})
 		responseManager.ProcessRequests(ctx, p, requests)
@@ -324,7 +324,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
 		responseManager := New(ctx, loader, peerManager, queryQueue)
 		responseManager.Startup()
-		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 			hookActions.SendExtensionData(extensionResponse)
 		})
@@ -340,10 +340,10 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("if any hook fails, should fail", func(t *testing.T) {
 		responseManager := New(ctx, loader, peerManager, queryQueue)
 		responseManager.Startup()
-		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 		})
-		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.SendExtensionData(extensionResponse)
 			hookActions.TerminateWithError(errors.New("everything went to crap"))
 		})
@@ -359,7 +359,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("hooks can be unregistered", func(t *testing.T) {
 		responseManager := New(ctx, loader, peerManager, queryQueue)
 		responseManager.Startup()
-		unregister := responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		unregister := responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 			hookActions.SendExtensionData(extensionResponse)
 		})
@@ -388,7 +388,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		responseManager := New(ctx, oloader, peerManager, queryQueue)
 		responseManager.Startup()
 		// add validating hook -- so the request SHOULD succeed
-		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 		})
 
@@ -401,7 +401,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		err := responseManager.RegisterPersistenceOption("chainstore", loader)
 		require.NoError(t, err)
 		// register hook to use different loader
-		_ = responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		_ = responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			if _, found := requestData.Extension(extensionName); found {
 				hookActions.UsePersistenceOption("chainstore")
 				hookActions.SendExtensionData(extensionResponse)
@@ -428,7 +428,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		}
 
 		// add validating hook -- so the request SHOULD succeed
-		responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 		})
 
@@ -440,7 +440,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		require.Equal(t, 0, customChooserCallCount)
 
 		// register hook to use custom chooser
-		_ = responseManager.RegisterHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		_ = responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			if _, found := requestData.Extension(extensionName); found {
 				hookActions.UseNodeBuilderChooser(customChooser)
 				hookActions.SendExtensionData(extensionResponse)

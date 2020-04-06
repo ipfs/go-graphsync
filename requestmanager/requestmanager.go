@@ -15,6 +15,7 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
@@ -36,6 +37,11 @@ type inProgressRequestStatus struct {
 type responseHook struct {
 	key  uint64
 	hook graphsync.OnIncomingResponseHook
+}
+
+type requestHook struct {
+	key  uint64
+	hook graphsync.OnOutgoingRequestHook
 }
 
 // PeerHandler is an interface that can send requests to peers
@@ -66,8 +72,9 @@ type RequestManager struct {
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
 	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
-	responseHookNextKey       uint64
+	hooksNextKey              uint64
 	responseHooks             []responseHook
+	requestHooks              []requestHook
 }
 
 type requestManagerMessage interface {
@@ -203,17 +210,38 @@ func (rm *RequestManager) ProcessResponses(p peer.ID, responses []gsmsg.GraphSyn
 	}
 }
 
-type registerHookMessage struct {
+type registerRequestHookMessage struct {
+	hook               graphsync.OnOutgoingRequestHook
+	unregisterHookChan chan graphsync.UnregisterHookFunc
+}
+
+type registerResponseHookMessage struct {
 	hook               graphsync.OnIncomingResponseHook
 	unregisterHookChan chan graphsync.UnregisterHookFunc
 }
 
-// RegisterHook registers an extension to processincoming responses
-func (rm *RequestManager) RegisterHook(
+// RegisterRequestHook registers an extension to process outgoing requests
+func (rm *RequestManager) RegisterRequestHook(hook graphsync.OnOutgoingRequestHook) graphsync.UnregisterHookFunc {
+	response := make(chan graphsync.UnregisterHookFunc)
+	select {
+	case rm.messages <- &registerRequestHookMessage{hook, response}:
+	case <-rm.ctx.Done():
+		return nil
+	}
+	select {
+	case unregister := <-response:
+		return unregister
+	case <-rm.ctx.Done():
+		return nil
+	}
+}
+
+// RegisterResponseHook registers an extension to process incoming responses
+func (rm *RequestManager) RegisterResponseHook(
 	hook graphsync.OnIncomingResponseHook) graphsync.UnregisterHookFunc {
 	response := make(chan graphsync.UnregisterHookFunc)
 	select {
-	case rm.messages <- &registerHookMessage{hook, response}:
+	case rm.messages <- &registerResponseHookMessage{hook, response}:
 	case <-rm.ctx.Done():
 		return nil
 	}
@@ -300,9 +328,26 @@ func (prm *processResponseMessage) handle(rm *RequestManager) {
 	rm.processTerminations(filteredResponses)
 }
 
-func (rhm *registerHookMessage) handle(rm *RequestManager) {
-	rh := responseHook{rm.responseHookNextKey, rhm.hook}
-	rm.responseHookNextKey++
+func (rhm *registerRequestHookMessage) handle(rm *RequestManager) {
+	rh := requestHook{rm.hooksNextKey, rhm.hook}
+	rm.hooksNextKey++
+	rm.requestHooks = append(rm.requestHooks, rh)
+	select {
+	case rhm.unregisterHookChan <- func() {
+		for i, matchHook := range rm.requestHooks {
+			if rh.key == matchHook.key {
+				rm.requestHooks = append(rm.requestHooks[:i], rm.requestHooks[i+1:]...)
+				return
+			}
+		}
+	}:
+	case <-rm.ctx.Done():
+	}
+}
+
+func (rhm *registerResponseHookMessage) handle(rm *RequestManager) {
+	rh := responseHook{rm.hooksNextKey, rhm.hook}
+	rm.hooksNextKey++
 	rm.responseHooks = append(rm.responseHooks, rh)
 	select {
 	case rhm.unregisterHookChan <- func() {
@@ -390,6 +435,19 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.Respo
 	}
 }
 
+type hookActions struct {
+	persistenceOption  string
+	nodeBuilderChooser traversal.NodeBuilderChooser
+}
+
+func (ha *hookActions) UsePersistenceOption(name string) {
+	ha.persistenceOption = name
+}
+
+func (ha *hookActions) UseNodeBuilderChooser(nodeBuilderChooser traversal.NodeBuilderChooser) {
+	ha.nodeBuilderChooser = nodeBuilderChooser
+}
+
 func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (chan graphsync.ResponseProgress, chan error) {
 	_, err := ipldutil.EncodeNode(selectorSpec)
 	if err != nil {
@@ -408,12 +466,17 @@ func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID,
 	rm.inProgressRequestStatuses[requestID] = &inProgressRequestStatus{
 		ctx, cancel, p, networkErrorChan,
 	}
-	err = rm.asyncLoader.StartRequest(requestID, "")
+	request := gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, maxPriority, extensions...)
+	ha := &hookActions{}
+	for _, hook := range rm.requestHooks {
+		hook.hook(p, request, ha)
+	}
+	err = rm.asyncLoader.StartRequest(requestID, ha.persistenceOption)
 	if err != nil {
 		return rm.singleErrorResponse(err)
 	}
-	rm.peerHandler.SendRequest(p, gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, maxPriority, extensions...))
-	return rm.executeTraversal(ctx, requestID, root, selector, networkErrorChan)
+	rm.peerHandler.SendRequest(p, request)
+	return rm.executeTraversal(ctx, requestID, root, selector, ha.nodeBuilderChooser, networkErrorChan)
 }
 
 func (rm *RequestManager) executeTraversal(
@@ -421,6 +484,7 @@ func (rm *RequestManager) executeTraversal(
 	requestID graphsync.RequestID,
 	root ipld.Link,
 	selector selector.Selector,
+	nodeBuilderChooser traversal.NodeBuilderChooser,
 	networkErrorChan chan error,
 ) (chan graphsync.ResponseProgress, chan error) {
 	inProgressChan := make(chan graphsync.ResponseProgress)
@@ -428,7 +492,7 @@ func (rm *RequestManager) executeTraversal(
 	loaderFn := loader.WrapAsyncLoader(ctx, rm.asyncLoader.AsyncLoad, requestID, inProgressErr)
 	visitor := visitToChannel(ctx, inProgressChan)
 	go func() {
-		_ = ipldutil.Traverse(ctx, loaderFn, nil, root, selector, visitor)
+		_ = ipldutil.Traverse(ctx, loaderFn, nodeBuilderChooser, root, selector, visitor)
 		select {
 		case networkError := <-networkErrorChan:
 			select {

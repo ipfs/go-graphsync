@@ -245,7 +245,7 @@ func (tbc *TestBlockChain) RemainderBlocks(from int) []blocks.Block {
 	return tbc.Blocks(from, tbc.blockChainLength)
 }
 
-// BlockChooser is a NodeBuilderChooser function that always returns the block chain
-func BlockChooser(ipld.Link, ipld.LinkContext) ipld.NodeBuilder {
+// Chooser is a NodeBuilderChooser function that always returns the block chain
+func (tbc *TestBlockChain) Chooser(ipld.Link, ipld.LinkContext) ipld.NodeBuilder {
 	return chaintypes.Block__NodeBuilder()
 }

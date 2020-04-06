@@ -220,6 +220,66 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	require.Equal(t, td.extensionResponseData, receivedResponseData, "did not receive correct extension response data")
 }
 
+func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	// alternate storing location for responder
+	altStore1 := make(map[ipld.Link][]byte)
+	altLoader1, altStorer1 := testutil.NewTestStore(altStore1)
+
+	// alternate storing location for requestor
+	altStore2 := make(map[ipld.Link][]byte)
+	altLoader2, altStorer2 := testutil.NewTestStore(altStore2)
+
+	requestor.RegisterPersistenceOption("chainstore", altLoader1, altStorer1)
+	responder.RegisterPersistenceOption("chainstore", altLoader2, altStorer2)
+
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, altLoader1, altStorer2, 100, blockChainLength)
+
+	extensionName := graphsync.ExtensionName("blockchain")
+	extension := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: nil,
+	}
+
+	requestor.RegisterOutgoingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.OutgoingRequestHookActions) {
+		_, has := requestData.Extension(extensionName)
+		if has {
+			hookActions.UseNodeBuilderChooser(blockChain.Chooser)
+			hookActions.UsePersistenceOption("chainstore")
+		}
+	})
+	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		_, has := requestData.Extension(extensionName)
+		if has {
+			hookActions.UseNodeBuilderChooser(blockChain.Chooser)
+			hookActions.UsePersistenceOption("chainstore")
+		}
+	})
+
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector())
+	testutil.VerifyEmptyResponse(ctx, t, progressChan)
+	testutil.VerifySingleTerminalError(ctx, t, errChan)
+
+	progressChan, errChan = requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), extension)
+
+	blockChain.VerifyWholeChainWithTypes(ctx, progressChan)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, 0, "should store no blocks in normal store")
+	require.Len(t, altStore1, blockChainLength, "did not store all blocks in alternate store")
+}
+
 // TestRoundTripLargeBlocksSlowNetwork test verifies graphsync continues to work
 // under a specific of adverse conditions:
 // -- large blocks being returned by a query
