@@ -46,11 +46,18 @@ type requestKey struct {
 	link      ipld.Link
 }
 
+type storeKey struct {
+	requestID graphsync.RequestID
+	storeName string
+}
+
 type fakeAsyncLoader struct {
 	responseChannelsLk sync.RWMutex
 	responseChannels   map[requestKey]chan types.AsyncLoadResult
 	responses          chan map[graphsync.RequestID]metadata.Metadata
 	blks               chan []blocks.Block
+	storesRequestedLk  sync.RWMutex
+	storesRequested    map[storeKey]struct{}
 }
 
 func newFakeAsyncLoader() *fakeAsyncLoader {
@@ -58,10 +65,17 @@ func newFakeAsyncLoader() *fakeAsyncLoader {
 		responseChannels: make(map[requestKey]chan types.AsyncLoadResult),
 		responses:        make(chan map[graphsync.RequestID]metadata.Metadata, 1),
 		blks:             make(chan []blocks.Block, 1),
+		storesRequested:  make(map[storeKey]struct{}),
 	}
 }
-func (fal *fakeAsyncLoader) StartRequest(requestID graphsync.RequestID) {
+
+func (fal *fakeAsyncLoader) StartRequest(requestID graphsync.RequestID, name string) error {
+	fal.storesRequestedLk.Lock()
+	fal.storesRequested[storeKey{requestID, name}] = struct{}{}
+	fal.storesRequestedLk.Unlock()
+	return nil
 }
+
 func (fal *fakeAsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
 	fal.responses <- responses
@@ -86,6 +100,13 @@ func (fal *fakeAsyncLoader) verifyNoRemainingData(t *testing.T, requestID graphs
 		require.NotEqual(t, key.requestID, requestID, "did not clean up request properly")
 	}
 	fal.responseChannelsLk.Unlock()
+}
+
+func (fal *fakeAsyncLoader) verifyStoreUsed(t *testing.T, requestID graphsync.RequestID, storeName string) {
+	fal.storesRequestedLk.RLock()
+	_, ok := fal.storesRequested[storeKey{requestID, storeName}]
+	require.True(t, ok, "request should load from correct store")
+	fal.storesRequestedLk.RUnlock()
 }
 
 func (fal *fakeAsyncLoader) asyncLoad(requestID graphsync.RequestID, link ipld.Link) chan types.AsyncLoadResult {
@@ -538,7 +559,7 @@ func TestEncodingExtensions(t *testing.T) {
 		receivedExtensionData <- data
 		return <-expectedError
 	}
-	requestManager.RegisterHook(hook)
+	requestManager.RegisterResponseHook(hook)
 	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector(), extension1, extension2)
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
@@ -592,4 +613,69 @@ func TestEncodingExtensions(t *testing.T) {
 		testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
 		testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 	})
+}
+
+func TestOutgoingRequestHooks(t *testing.T) {
+	requestRecordChan := make(chan requestRecord, 2)
+	fph := &fakePeerHandler{requestRecordChan}
+	ctx := context.Background()
+	fal := newFakeAsyncLoader()
+	requestManager := New(ctx, fal)
+	requestManager.SetDelegate(fph)
+	requestManager.Startup()
+
+	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	peers := testutil.GeneratePeers(1)
+
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testutil.NewTestStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+
+	extensionName1 := graphsync.ExtensionName("blockchain")
+	extension1 := graphsync.ExtensionData{
+		Name: extensionName1,
+		Data: nil,
+	}
+
+	hook := func(p peer.ID, r graphsync.RequestData, ha graphsync.OutgoingRequestHookActions) {
+		_, has := r.Extension(extensionName1)
+		if has {
+			ha.UseNodeBuilderChooser(blockChain.Chooser)
+			ha.UsePersistenceOption("chainstore")
+		}
+	}
+	requestManager.RegisterRequestHook(hook)
+
+	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector(), extension1)
+	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
+
+	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
+
+	md := metadataForBlocks(blockChain.AllBlocks(), true)
+	mdEncoded, err := metadata.EncodeMetadata(md)
+	require.NoError(t, err)
+	mdExt := graphsync.ExtensionData{
+		Name: graphsync.ExtensionMetadata,
+		Data: mdEncoded,
+	}
+	responses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, mdExt),
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, mdExt),
+	}
+	requestManager.ProcessResponses(peers[0], responses, blockChain.AllBlocks())
+	fal.verifyLastProcessedBlocks(ctx, t, blockChain.AllBlocks())
+	fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+		requestRecords[0].gsr.ID(): md,
+		requestRecords[1].gsr.ID(): md,
+	})
+	fal.successResponseOn(requestRecords[0].gsr.ID(), blockChain.AllBlocks())
+	fal.successResponseOn(requestRecords[1].gsr.ID(), blockChain.AllBlocks())
+
+	blockChain.VerifyWholeChainWithTypes(requestCtx, returnedResponseChan1)
+	blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
+	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan1)
+	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan2)
+	fal.verifyStoreUsed(t, requestRecords[0].gsr.ID(), "chainstore")
+	fal.verifyStoreUsed(t, requestRecords[1].gsr.ID(), "")
 }

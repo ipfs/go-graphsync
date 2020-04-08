@@ -70,7 +70,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
 	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue)
-	unregisterDefaultValidator := responseManager.RegisterHook(selectorvalidator.SelectorValidator(maxRecursionDepth))
+	unregisterDefaultValidator := responseManager.RegisterRequestHook(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
 		network:                    network,
 		loader:                     loader,
@@ -103,17 +103,31 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 	return gs.requestManager.SendRequest(ctx, p, root, selector, extensions...)
 }
 
-// RegisterRequestReceivedHook adds a hook that runs when a request is received
+// RegisterIncomingRequestHook adds a hook that runs when a request is received
 // If overrideDefaultValidation is set to true, then if the hook does not error,
 // it is considered to have "validated" the request -- and that validation supersedes
 // the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
-func (gs *GraphSync) RegisterRequestReceivedHook(hook graphsync.OnRequestReceivedHook) graphsync.UnregisterHookFunc {
-	return gs.responseManager.RegisterHook(hook)
+func (gs *GraphSync) RegisterIncomingRequestHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
+	return gs.responseManager.RegisterRequestHook(hook)
 }
 
-// RegisterResponseReceivedHook adds a hook that runs when a response is received
-func (gs *GraphSync) RegisterResponseReceivedHook(hook graphsync.OnResponseReceivedHook) graphsync.UnregisterHookFunc {
-	return gs.requestManager.RegisterHook(hook)
+// RegisterIncomingResponseHook adds a hook that runs when a response is received
+func (gs *GraphSync) RegisterIncomingResponseHook(hook graphsync.OnIncomingResponseHook) graphsync.UnregisterHookFunc {
+	return gs.requestManager.RegisterResponseHook(hook)
+}
+
+// RegisterOutgoingRequestHook adds a hook that runs immediately prior to sending a new request
+func (gs *GraphSync) RegisterOutgoingRequestHook(hook graphsync.OnOutgoingRequestHook) graphsync.UnregisterHookFunc {
+	return gs.requestManager.RegisterRequestHook(hook)
+}
+
+// RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
+func (gs *GraphSync) RegisterPersistenceOption(name string, loader ipld.Loader, storer ipld.Storer) error {
+	err := gs.asyncLoader.RegisterPersistenceOption(name, loader, storer)
+	if err != nil {
+		return err
+	}
+	return gs.responseManager.RegisterPersistenceOption(name, loader)
 }
 
 type graphSyncReceiver GraphSync

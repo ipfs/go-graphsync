@@ -2,6 +2,7 @@ package responsemanager
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -40,7 +41,7 @@ type responseTaskData struct {
 
 type requestHook struct {
 	key  uint64
-	hook graphsync.OnRequestReceivedHook
+	hook graphsync.OnIncomingRequestHook
 }
 
 // QueryQueue is an interface that can receive new selector query tasks
@@ -71,13 +72,15 @@ type ResponseManager struct {
 	peerManager PeerManager
 	queryQueue  QueryQueue
 
-	messages            chan responseManagerMessage
-	workSignal          chan struct{}
-	ticker              *time.Ticker
-	inProgressResponses map[responseKey]inProgressResponseStatus
-	requestHooksLk      sync.RWMutex
-	requestHookNextKey  uint64
-	requestHooks        []requestHook
+	messages             chan responseManagerMessage
+	workSignal           chan struct{}
+	ticker               *time.Ticker
+	inProgressResponses  map[responseKey]inProgressResponseStatus
+	requestHooksLk       sync.RWMutex
+	requestHookNextKey   uint64
+	requestHooks         []requestHook
+	persistenceOptionsLk sync.RWMutex
+	persistenceOptions   map[string]ipld.Loader
 }
 
 // New creates a new response manager from the given context, loader,
@@ -97,6 +100,7 @@ func New(ctx context.Context,
 		workSignal:          make(chan struct{}, 1),
 		ticker:              time.NewTicker(thawSpeed),
 		inProgressResponses: make(map[responseKey]inProgressResponseStatus),
+		persistenceOptions:  make(map[string]ipld.Loader),
 	}
 }
 
@@ -114,8 +118,20 @@ func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, reque
 	}
 }
 
-// RegisterHook registers an extension to process new incoming requests
-func (rm *ResponseManager) RegisterHook(hook graphsync.OnRequestReceivedHook) graphsync.UnregisterHookFunc {
+// RegisterPersistenceOption registers a new loader for the response manager
+func (rm *ResponseManager) RegisterPersistenceOption(name string, loader ipld.Loader) error {
+	rm.persistenceOptionsLk.Lock()
+	defer rm.persistenceOptionsLk.Unlock()
+	_, ok := rm.persistenceOptions[name]
+	if ok {
+		return errors.New("persistence option alreayd registered")
+	}
+	rm.persistenceOptions[name] = loader
+	return nil
+}
+
+// RegisterRequestHook registers an extension to process new incoming requests
+func (rm *ResponseManager) RegisterRequestHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
 	rm.requestHooksLk.Lock()
 	rh := requestHook{rm.requestHookNextKey, hook}
 	rm.requestHookNextKey++
@@ -205,6 +221,7 @@ func noopVisitor(tp traversal.Progress, n ipld.Node, tr traversal.VisitReason) e
 }
 
 type hookActions struct {
+	persistenceOptions map[string]ipld.Loader
 	isValidated        bool
 	requestID          graphsync.RequestID
 	peerResponseSender peerresponsemanager.PeerResponseSender
@@ -226,7 +243,12 @@ func (ha *hookActions) ValidateRequest() {
 	ha.isValidated = true
 }
 
-func (ha *hookActions) UseLoader(loader ipld.Loader) {
+func (ha *hookActions) UsePersistenceOption(name string) {
+	loader, ok := ha.persistenceOptions[name]
+	if !ok {
+		ha.TerminateWithError(errors.New("unknown loader option"))
+		return
+	}
 	ha.loader = loader
 }
 
@@ -239,15 +261,18 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 	request gsmsg.GraphSyncRequest) {
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
 	selectorSpec := request.Selector()
-	ha := &hookActions{false, request.ID(), peerResponseSender, nil, rm.loader, nil}
 	rm.requestHooksLk.RLock()
+	rm.persistenceOptionsLk.RLock()
+	ha := &hookActions{rm.persistenceOptions, false, request.ID(), peerResponseSender, nil, rm.loader, nil}
 	for _, requestHook := range rm.requestHooks {
 		requestHook.hook(p, request, ha)
 		if ha.err != nil {
 			rm.requestHooksLk.RUnlock()
+			rm.persistenceOptionsLk.RUnlock()
 			return
 		}
 	}
+	rm.persistenceOptionsLk.RUnlock()
 	rm.requestHooksLk.RUnlock()
 	if !ha.isValidated {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)

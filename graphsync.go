@@ -135,27 +135,37 @@ type ResponseData interface {
 	Extension(name ExtensionName) ([]byte, bool)
 }
 
-// RequestReceivedHookActions are actions that a request hook can take to change
+// IncomingRequestHookActions are actions that a request hook can take to change
 // behavior for the response
-type RequestReceivedHookActions interface {
+type IncomingRequestHookActions interface {
 	SendExtensionData(ExtensionData)
-	UseLoader(ipld.Loader)
+	UsePersistenceOption(name string)
 	UseNodeBuilderChooser(traversal.NodeBuilderChooser)
 	TerminateWithError(error)
 	ValidateRequest()
 }
 
-// OnRequestReceivedHook is a hook that runs each time a request is received.
-// It receives the peer that sent the request and all data about the request.
-// It should return:
-// extensionData - any extension data to add to the outgoing response
-// err - error - if not nil, halt request and return RequestRejected with the responseData
-type OnRequestReceivedHook func(p peer.ID, request RequestData, hookActions RequestReceivedHookActions)
+// OutgoingRequestHookActions are actions that an outgoing request hook can take
+// to change the execution of this request
+type OutgoingRequestHookActions interface {
+	UsePersistenceOption(name string)
+	UseNodeBuilderChooser(traversal.NodeBuilderChooser)
+}
 
-// OnResponseReceivedHook is a hook that runs each time a response is received.
+// OnIncomingRequestHook is a hook that runs each time a new request is received.
+// It receives the peer that sent the request and all data about the request.
+// It receives an interface for customizing the response to this request
+type OnIncomingRequestHook func(p peer.ID, request RequestData, hookActions IncomingRequestHookActions)
+
+// OnIncomingResponseHook is a hook that runs each time a new response is received.
 // It receives the peer that sent the response and all data about the response.
 // If it returns an error processing is halted and the original request is cancelled.
-type OnResponseReceivedHook func(p peer.ID, responseData ResponseData) error
+type OnIncomingResponseHook func(p peer.ID, responseData ResponseData) error
+
+// OnOutgoingRequestHook is a hook that runs immediately prior to sending a request
+// It receives the peer we're sending a request to and all the data aobut the request
+// It receives an interface for customizing how we handle executing this request
+type OnOutgoingRequestHook func(p peer.ID, request RequestData, hookActions OutgoingRequestHookActions)
 
 // UnregisterHookFunc is a function call to unregister a hook that was previously registered
 type UnregisterHookFunc func()
@@ -165,12 +175,15 @@ type GraphExchange interface {
 	// Request initiates a new GraphSync request to the given peer using the given selector spec.
 	Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...ExtensionData) (<-chan ResponseProgress, <-chan error)
 
-	// RegisterRequestReceivedHook adds a hook that runs when a request is received
-	// If overrideDefaultValidation is set to true, then if the hook does not error,
-	// it is considered to have "validated" the request -- and that validation supersedes
-	// the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
-	RegisterRequestReceivedHook(hook OnRequestReceivedHook) UnregisterHookFunc
+	// RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
+	RegisterPersistenceOption(name string, loader ipld.Loader, storer ipld.Storer) error
 
-	// RegisterResponseReceivedHook adds a hook that runs when a response is received
-	RegisterResponseReceivedHook(OnResponseReceivedHook) UnregisterHookFunc
+	// RegisterIncomingRequestHook adds a hook that runs when a request is received
+	RegisterIncomingRequestHook(hook OnIncomingRequestHook) UnregisterHookFunc
+
+	// RegisterIncomingResponseHook adds a hook that runs when a response is received
+	RegisterIncomingResponseHook(OnIncomingResponseHook) UnregisterHookFunc
+
+	// RegisterOutgoingRequestHook adds a hook that runs immediately prior to sending a new request
+	RegisterOutgoingRequestHook(hook OnOutgoingRequestHook) UnregisterHookFunc
 }
