@@ -16,7 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 
-	"github.com/filecoin-project/go-data-transfer"
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/network"
 )
@@ -76,10 +76,7 @@ func NewGraphSyncDataTransfer(host host.Host, gs graphsync.GraphExchange) datatr
 		sync.Mutex{},
 		0,
 	}
-	if err := gs.RegisterRequestReceivedHook(impl.gsReqRecdHook); err != nil {
-		log.Error(err)
-		return nil
-	}
+	gs.RegisterIncomingRequestHook(impl.gsReqRecdHook)
 	dtReceiver := &graphsyncReceiver{impl}
 	dataTransferNetwork.SetDelegate(dtReceiver)
 	return impl
@@ -87,7 +84,7 @@ func NewGraphSyncDataTransfer(host host.Host, gs graphsync.GraphExchange) datatr
 
 // gsReqRecdHook is a graphsync.OnRequestReceivedHook hook
 // if an incoming request does not match a previous push request, it returns an error.
-func (impl *graphsyncImpl) gsReqRecdHook(p peer.ID, request graphsync.RequestData, hookActions graphsync.RequestReceivedHookActions) {
+func (impl *graphsyncImpl) gsReqRecdHook(p peer.ID, request graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 
 	// if this is a push request the sender is us.
 	transferData, err := impl.getExtensionData(request)

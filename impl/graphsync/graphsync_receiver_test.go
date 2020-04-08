@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/filecoin-project/go-data-transfer"
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 	. "github.com/filecoin-project/go-data-transfer/impl/graphsync"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/network"
@@ -25,9 +25,9 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	gsData := newGraphsyncTestingData(ctx, t)
-	host1 := gsData.host1
-	host2 := gsData.host2
+	gsData := testutil.NewGraphsyncTestingData(ctx, t)
+	host1 := gsData.Host1
+	host2 := gsData.Host2
 
 	// setup receiving peer to just record message coming in
 	dtnet1 := network.NewFromLibp2pHost(host1)
@@ -36,14 +36,12 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	}
 	dtnet1.SetDelegate(r)
 
-	gs2 := &fakeGraphSync{
-		requests: make(chan receivedGraphSyncRequest, 1),
-	}
+	gs2 := testutil.NewFakeGraphSync()
 
 	voucher := fakeDTType{"applesauce"}
 	baseCid := testutil.GenerateCids(1)[0]
 	var buffer bytes.Buffer
-	err := dagcbor.Encoder(gsData.allSelector, &buffer)
+	err := dagcbor.Encoder(gsData.AllSelector, &buffer)
 	require.NoError(t, err)
 
 	t.Run("Response to push with successful validation", func(t *testing.T) {
