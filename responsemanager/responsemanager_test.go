@@ -422,9 +422,9 @@ func TestValidationAndExtensions(t *testing.T) {
 		responseManager.Startup()
 
 		customChooserCallCount := 0
-		customChooser := func(ipld.Link, ipld.LinkContext) ipld.NodeBuilder {
+		customChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodeBuilder, error) {
 			customChooserCallCount++
-			return ipldfree.NodeBuilder()
+			return ipldfree.NodeBuilder(), nil
 		}
 
 		// add validating hook -- so the request SHOULD succeed

@@ -2,7 +2,6 @@ package chaintypes
 
 import (
 	ipld "github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/impl/typed"
 	"github.com/ipld/go-ipld-prime/schema"
 )
 
@@ -13,19 +12,19 @@ type Bytes struct{ x []byte }
 // TODO generateKindBytes.EmitNativeAccessors
 // TODO generateKindBytes.EmitNativeBuilder
 type MaybeBytes struct {
-	Maybe typed.Maybe
+	Maybe schema.Maybe
 	Value Bytes
 }
 
 func (m MaybeBytes) Must() Bytes {
-	if m.Maybe != typed.Maybe_Value {
+	if m.Maybe != schema.Maybe_Value {
 		panic("unbox of a maybe rejected")
 	}
 	return m.Value
 }
 
 var _ ipld.Node = Bytes{}
-var _ typed.Node = Bytes{}
+var _ schema.TypedNode = Bytes{}
 
 func (Bytes) Type() schema.Type {
 	return nil /*TODO:typelit*/
@@ -81,9 +80,7 @@ func (Bytes) AsLink() (ipld.Link, error) {
 func (Bytes) NodeBuilder() ipld.NodeBuilder {
 	return _Bytes__NodeBuilder{}
 }
-
 type _Bytes__NodeBuilder struct{}
-
 func Bytes__NodeBuilder() ipld.NodeBuilder {
 	return _Bytes__NodeBuilder{}
 }
@@ -123,25 +120,24 @@ func (_Bytes__NodeBuilder) CreateLink(ipld.Link) (ipld.Node, error) {
 func (Bytes) Representation() ipld.Node {
 	panic("TODO representation")
 }
-
 type Link struct{ x ipld.Link }
 
 // TODO generateKindLink.EmitNativeAccessors
 // TODO generateKindLink.EmitNativeBuilder
 type MaybeLink struct {
-	Maybe typed.Maybe
+	Maybe schema.Maybe
 	Value Link
 }
 
 func (m MaybeLink) Must() Link {
-	if m.Maybe != typed.Maybe_Value {
+	if m.Maybe != schema.Maybe_Value {
 		panic("unbox of a maybe rejected")
 	}
 	return m.Value
 }
 
 var _ ipld.Node = Link{}
-var _ typed.Node = Link{}
+var _ schema.TypedNode = Link{}
 
 func (Link) Type() schema.Type {
 	return nil /*TODO:typelit*/
@@ -197,7 +193,6 @@ func (x Link) AsLink() (ipld.Link, error) {
 func (Link) NodeBuilder() ipld.NodeBuilder {
 	return _Link__NodeBuilder{}
 }
-
 type _Link__NodeBuilder struct{}
 
 func Link__NodeBuilder() ipld.NodeBuilder {
@@ -239,13 +234,11 @@ func (nb _Link__NodeBuilder) CreateLink(v ipld.Link) (ipld.Node, error) {
 func (Link) Representation() ipld.Node {
 	panic("TODO representation")
 }
-
 type String struct{ x string }
 
 func (x String) String() string {
 	return x.x
 }
-
 type String__Content struct {
 	Value string
 }
@@ -267,19 +260,19 @@ func (b String__Content) MustBuild() String {
 }
 
 type MaybeString struct {
-	Maybe typed.Maybe
+	Maybe schema.Maybe
 	Value String
 }
 
 func (m MaybeString) Must() String {
-	if m.Maybe != typed.Maybe_Value {
+	if m.Maybe != schema.Maybe_Value {
 		panic("unbox of a maybe rejected")
 	}
 	return m.Value
 }
 
 var _ ipld.Node = String{}
-var _ typed.Node = String{}
+var _ schema.TypedNode = String{}
 
 func (String) Type() schema.Type {
 	return nil /*TODO:typelit*/
@@ -335,9 +328,7 @@ func (String) AsLink() (ipld.Link, error) {
 func (String) NodeBuilder() ipld.NodeBuilder {
 	return _String__NodeBuilder{}
 }
-
 type _String__NodeBuilder struct{}
-
 func String__NodeBuilder() ipld.NodeBuilder {
 	return _String__NodeBuilder{}
 }
@@ -377,27 +368,25 @@ func (_String__NodeBuilder) CreateLink(ipld.Link) (ipld.Node, error) {
 func (String) Representation() ipld.Node {
 	panic("TODO representation")
 }
-
-type Parents struct {
+type Parents struct{
 	x []Link
 }
-
 // TODO generateKindList.EmitNativeAccessors
 // TODO generateKindList.EmitNativeBuilder
 type MaybeParents struct {
-	Maybe typed.Maybe
+	Maybe schema.Maybe
 	Value Parents
 }
 
 func (m MaybeParents) Must() Parents {
-	if m.Maybe != typed.Maybe_Value {
+	if m.Maybe != schema.Maybe_Value {
 		panic("unbox of a maybe rejected")
 	}
 	return m.Value
 }
 
 var _ ipld.Node = Parents{}
-var _ typed.Node = Parents{}
+var _ schema.TypedNode = Parents{}
 
 func (Parents) Type() schema.Type {
 	return nil /*TODO:typelit*/
@@ -440,7 +429,7 @@ type _Parents__Itr struct {
 	idx  int
 }
 
-func (itr *_Parents__Itr) Next() (idx int, value ipld.Node, _ error) {
+func (itr *_Parents__Itr) Next() (idx int, value ipld.Node, _ error)	{
 	if itr.idx >= len(itr.node.x) {
 		return 0, nil, ipld.ErrIteratorOverread{}
 	}
@@ -484,7 +473,6 @@ func (Parents) AsLink() (ipld.Link, error) {
 func (Parents) NodeBuilder() ipld.NodeBuilder {
 	return _Parents__NodeBuilder{}
 }
-
 type _Parents__NodeBuilder struct{}
 
 func Parents__NodeBuilder() ipld.NodeBuilder {
@@ -497,10 +485,10 @@ func (_Parents__NodeBuilder) AmendMap() (ipld.MapBuilder, error) {
 	return nil, ipld.ErrWrongKind{TypeName: "Parents.Builder", MethodName: "AmendMap", AppropriateKind: ipld.ReprKindSet_JustMap, ActualKind: ipld.ReprKind_List}
 }
 func (nb _Parents__NodeBuilder) CreateList() (ipld.ListBuilder, error) {
-	return &_Parents__ListBuilder{v: &Parents{}}, nil
+	return &_Parents__ListBuilder{v:&Parents{}}, nil
 }
 
-type _Parents__ListBuilder struct {
+type _Parents__ListBuilder struct{
 	v *Parents
 }
 
@@ -541,13 +529,13 @@ func (lb *_Parents__ListBuilder) validate(v ipld.Node) error {
 	if v.IsNull() {
 		panic("type mismatch on struct field assignment: cannot assign null to non-nullable field") // FIXME need an error type for this
 	}
-	tv, ok := v.(typed.Node)
+	tv, ok := v.(schema.TypedNode)
 	if !ok {
-		panic("need typed.Node for insertion into struct") // FIXME need an error type for this
+		panic("need schema.TypedNode for insertion into struct") // FIXME need an error type for this
 	}
 	_, ok = v.(Link)
 	if !ok {
-		panic("value for type Parents is type Link; cannot assign " + tv.Type().Name()) // FIXME need an error type for this
+		panic("value for type Parents is type Link; cannot assign "+tv.Type().Name()) // FIXME need an error type for this
 	}
 	return nil
 }
@@ -566,7 +554,7 @@ func (lb *_Parents__ListBuilder) AppendAll(vs []ipld.Node) error {
 	}
 	off := len(lb.v.x)
 	new := off + len(vs)
-	lb.growList(new - 1)
+	lb.growList(new-1)
 	for _, v := range vs {
 		lb.unsafeSet(off, v)
 		off++
@@ -631,27 +619,25 @@ func (_Parents__NodeBuilder) CreateLink(ipld.Link) (ipld.Node, error) {
 func (n Parents) Representation() ipld.Node {
 	panic("TODO representation")
 }
-
-type Messages struct {
+type Messages struct{
 	x []Bytes
 }
-
 // TODO generateKindList.EmitNativeAccessors
 // TODO generateKindList.EmitNativeBuilder
 type MaybeMessages struct {
-	Maybe typed.Maybe
+	Maybe schema.Maybe
 	Value Messages
 }
 
 func (m MaybeMessages) Must() Messages {
-	if m.Maybe != typed.Maybe_Value {
+	if m.Maybe != schema.Maybe_Value {
 		panic("unbox of a maybe rejected")
 	}
 	return m.Value
 }
 
 var _ ipld.Node = Messages{}
-var _ typed.Node = Messages{}
+var _ schema.TypedNode = Messages{}
 
 func (Messages) Type() schema.Type {
 	return nil /*TODO:typelit*/
@@ -694,7 +680,7 @@ type _Messages__Itr struct {
 	idx  int
 }
 
-func (itr *_Messages__Itr) Next() (idx int, value ipld.Node, _ error) {
+func (itr *_Messages__Itr) Next() (idx int, value ipld.Node, _ error)	{
 	if itr.idx >= len(itr.node.x) {
 		return 0, nil, ipld.ErrIteratorOverread{}
 	}
@@ -738,7 +724,6 @@ func (Messages) AsLink() (ipld.Link, error) {
 func (Messages) NodeBuilder() ipld.NodeBuilder {
 	return _Messages__NodeBuilder{}
 }
-
 type _Messages__NodeBuilder struct{}
 
 func Messages__NodeBuilder() ipld.NodeBuilder {
@@ -751,10 +736,10 @@ func (_Messages__NodeBuilder) AmendMap() (ipld.MapBuilder, error) {
 	return nil, ipld.ErrWrongKind{TypeName: "Messages.Builder", MethodName: "AmendMap", AppropriateKind: ipld.ReprKindSet_JustMap, ActualKind: ipld.ReprKind_List}
 }
 func (nb _Messages__NodeBuilder) CreateList() (ipld.ListBuilder, error) {
-	return &_Messages__ListBuilder{v: &Messages{}}, nil
+	return &_Messages__ListBuilder{v:&Messages{}}, nil
 }
 
-type _Messages__ListBuilder struct {
+type _Messages__ListBuilder struct{
 	v *Messages
 }
 
@@ -795,13 +780,13 @@ func (lb *_Messages__ListBuilder) validate(v ipld.Node) error {
 	if v.IsNull() {
 		panic("type mismatch on struct field assignment: cannot assign null to non-nullable field") // FIXME need an error type for this
 	}
-	tv, ok := v.(typed.Node)
+	tv, ok := v.(schema.TypedNode)
 	if !ok {
-		panic("need typed.Node for insertion into struct") // FIXME need an error type for this
+		panic("need schema.TypedNode for insertion into struct") // FIXME need an error type for this
 	}
 	_, ok = v.(Bytes)
 	if !ok {
-		panic("value for type Messages is type Bytes; cannot assign " + tv.Type().Name()) // FIXME need an error type for this
+		panic("value for type Messages is type Bytes; cannot assign "+tv.Type().Name()) // FIXME need an error type for this
 	}
 	return nil
 }
@@ -820,7 +805,7 @@ func (lb *_Messages__ListBuilder) AppendAll(vs []ipld.Node) error {
 	}
 	off := len(lb.v.x)
 	new := off + len(vs)
-	lb.growList(new - 1)
+	lb.growList(new-1)
 	for _, v := range vs {
 		lb.unsafeSet(off, v)
 		off++
@@ -885,30 +870,25 @@ func (_Messages__NodeBuilder) CreateLink(ipld.Link) (ipld.Node, error) {
 func (n Messages) Representation() ipld.Node {
 	panic("TODO representation")
 }
+type Block struct{
+	d Block__Content
+}
 
-type Block struct {
-	Parents  Parents
+func (x Block) FieldParents()Parents {
+	return x.d.Parents
+}
+func (x Block) FieldMessages()Messages {
+	return x.d.Messages
+}
+
+
+type Block__Content struct {
+	Parents Parents
 	Messages Messages
 }
 
-func (x Parents) FieldParents() Parents {
-	// TODO going to tear through here with changes to Maybe system in a moment anyway
-	return Parents{}
-}
-func (x Messages) FieldMessages() Messages {
-	// TODO going to tear through here with changes to Maybe system in a moment anyway
-	return Messages{}
-}
-
-type Block__Content struct {
-	// TODO
-	// TODO
-}
-
 func (b Block__Content) Build() (Block, error) {
-	x := Block{
-		// TODO
-	}
+	x := Block{b}
 	// FUTURE : want to support customizable validation.
 	//   but 'if v, ok := x.(schema.Validatable); ok {' doesn't fly: need a way to work on concrete types.
 	return x, nil
@@ -922,19 +902,19 @@ func (b Block__Content) MustBuild() Block {
 }
 
 type MaybeBlock struct {
-	Maybe typed.Maybe
+	Maybe schema.Maybe
 	Value Block
 }
 
 func (m MaybeBlock) Must() Block {
-	if m.Maybe != typed.Maybe_Value {
+	if m.Maybe != schema.Maybe_Value {
 		panic("unbox of a maybe rejected")
 	}
 	return m.Value
 }
 
 var _ ipld.Node = Block{}
-var _ typed.Node = Block{}
+var _ schema.TypedNode = Block{}
 
 func (Block) Type() schema.Type {
 	return nil /*TODO:typelit*/
@@ -945,11 +925,11 @@ func (Block) ReprKind() ipld.ReprKind {
 func (x Block) LookupString(key string) (ipld.Node, error) {
 	switch key {
 	case "Parents":
-		return x.Parents, nil
+		return x.d.Parents, nil
 	case "Messages":
-		return x.Messages, nil
+		return x.d.Messages, nil
 	default:
-		return nil, typed.ErrNoSuchField{Type: nil /*TODO*/, FieldName: key}
+		return nil, schema.ErrNoSuchField{Type: nil /*TODO*/, FieldName: key}
 	}
 }
 func (x Block) Lookup(key ipld.Node) (ipld.Node, error) {
@@ -981,10 +961,10 @@ func (itr *_Block__Itr) Next() (k ipld.Node, v ipld.Node, _ error) {
 	switch itr.idx {
 	case 0:
 		k = String{"Parents"}
-		v = itr.node.Parents
+		v = itr.node.d.Parents
 	case 1:
 		k = String{"Messages"}
-		v = itr.node.Messages
+		v = itr.node.d.Messages
 	default:
 		panic("unreachable")
 	}
@@ -1028,19 +1008,19 @@ func (Block) AsLink() (ipld.Link, error) {
 func (Block) NodeBuilder() ipld.NodeBuilder {
 	return _Block__NodeBuilder{}
 }
-
 type _Block__NodeBuilder struct{}
 
 func Block__NodeBuilder() ipld.NodeBuilder {
 	return _Block__NodeBuilder{}
 }
 func (nb _Block__NodeBuilder) CreateMap() (ipld.MapBuilder, error) {
-	return &_Block__MapBuilder{v: &Block{}}, nil
+	mb := &_Block__MapBuilder{v:&Block{}}
+	return mb, nil
 }
 
-type _Block__MapBuilder struct {
-	v               *Block
-	Parents__isset  bool
+type _Block__MapBuilder struct{
+	v *Block
+	Parents__isset bool
 	Messages__isset bool
 }
 
@@ -1054,32 +1034,32 @@ func (mb *_Block__MapBuilder) Insert(k, v ipld.Node) error {
 		if v.IsNull() {
 			panic("type mismatch on struct field assignment: cannot assign null to non-nullable field") // FIXME need an error type for this
 		}
-		tv, ok := v.(typed.Node)
+		tv, ok := v.(schema.TypedNode)
 		if !ok {
-			panic("need typed.Node for insertion into struct") // FIXME need an error type for this
+			panic("need schema.TypedNode for insertion into struct") // FIXME need an error type for this
 		}
 		x, ok := v.(Parents)
 		if !ok {
-			panic("field 'Parents' in type Block is type Parents; cannot assign " + tv.Type().Name()) // FIXME need an error type for this
+			panic("field 'Parents' in type Block is type Parents; cannot assign "+tv.Type().Name()) // FIXME need an error type for this
 		}
-		mb.v.Parents = x
+		mb.v.d.Parents = x
 		mb.Parents__isset = true
 	case "Messages":
 		if v.IsNull() {
 			panic("type mismatch on struct field assignment: cannot assign null to non-nullable field") // FIXME need an error type for this
 		}
-		tv, ok := v.(typed.Node)
+		tv, ok := v.(schema.TypedNode)
 		if !ok {
-			panic("need typed.Node for insertion into struct") // FIXME need an error type for this
+			panic("need schema.TypedNode for insertion into struct") // FIXME need an error type for this
 		}
 		x, ok := v.(Messages)
 		if !ok {
-			panic("field 'Messages' in type Block is type Messages; cannot assign " + tv.Type().Name()) // FIXME need an error type for this
+			panic("field 'Messages' in type Block is type Messages; cannot assign "+tv.Type().Name()) // FIXME need an error type for this
 		}
-		mb.v.Messages = x
+		mb.v.d.Messages = x
 		mb.Messages__isset = true
 	default:
-		return typed.ErrNoSuchField{Type: nil /*TODO:typelit*/, FieldName: ks}
+		return schema.ErrNoSuchField{Type: nil /*TODO:typelit*/, FieldName: ks}
 	}
 	return nil
 }
@@ -1107,7 +1087,7 @@ func (mb *_Block__MapBuilder) BuilderForValue(ks string) ipld.NodeBuilder {
 	case "Messages":
 		return Messages__NodeBuilder()
 	default:
-		panic(typed.ErrNoSuchField{Type: nil /*TODO:typelit*/, FieldName: ks})
+		panic(schema.ErrNoSuchField{Type: nil /*TODO:typelit*/, FieldName: ks})
 	}
 	return nil
 }
@@ -1145,10 +1125,9 @@ func (_Block__NodeBuilder) CreateLink(ipld.Link) (ipld.Node, error) {
 func (n Block) Representation() ipld.Node {
 	return _Block__Repr{&n}
 }
-
 var _ ipld.Node = _Block__Repr{}
 
-type _Block__Repr struct {
+type _Block__Repr struct{
 	n *Block
 }
 
@@ -1158,11 +1137,11 @@ func (_Block__Repr) ReprKind() ipld.ReprKind {
 func (rn _Block__Repr) LookupString(key string) (ipld.Node, error) {
 	switch key {
 	case "Parents":
-		return rn.n.Parents, nil
+		return rn.n.d.Parents, nil
 	case "Messages":
-		return rn.n.Messages, nil
+		return rn.n.d.Messages, nil
 	default:
-		return nil, typed.ErrNoSuchField{Type: nil /*TODO*/, FieldName: key}
+		return nil, schema.ErrNoSuchField{Type: nil /*TODO*/, FieldName: key}
 	}
 }
 func (rn _Block__Repr) Lookup(key ipld.Node) (ipld.Node, error) {
@@ -1195,10 +1174,10 @@ func (itr *_Block__ReprItr) Next() (k ipld.Node, v ipld.Node, _ error) {
 		switch itr.idx {
 		case 0:
 			k = String{"Parents"}
-			v = itr.node.Parents
+			v = itr.node.d.Parents
 		case 1:
 			k = String{"Messages"}
-			v = itr.node.Messages
+			v = itr.node.d.Messages
 		default:
 			panic("unreachable")
 		}
@@ -1244,19 +1223,19 @@ func (_Block__Repr) AsLink() (ipld.Link, error) {
 func (_Block__Repr) NodeBuilder() ipld.NodeBuilder {
 	return _Block__ReprBuilder{}
 }
-
 type _Block__ReprBuilder struct{}
 
 func Block__ReprBuilder() ipld.NodeBuilder {
 	return _Block__ReprBuilder{}
 }
 func (nb _Block__ReprBuilder) CreateMap() (ipld.MapBuilder, error) {
-	return &_Block__ReprMapBuilder{v: &Block{}}, nil
+	mb := &_Block__ReprMapBuilder{v:&Block{}}
+	return mb, nil
 }
 
-type _Block__ReprMapBuilder struct {
-	v               *Block
-	Parents__isset  bool
+type _Block__ReprMapBuilder struct{
+	v *Block
+	Parents__isset bool
 	Messages__isset bool
 }
 
@@ -1273,15 +1252,15 @@ func (mb *_Block__ReprMapBuilder) Insert(k, v ipld.Node) error {
 		if v.IsNull() {
 			panic("type mismatch on struct field assignment: cannot assign null to non-nullable field") // FIXME need an error type for this
 		}
-		tv, ok := v.(typed.Node)
+		tv, ok := v.(schema.TypedNode)
 		if !ok {
-			panic("need typed.Node for insertion into struct") // FIXME need an error type for this
+			panic("need schema.TypedNode for insertion into struct") // FIXME need an error type for this
 		}
 		x, ok := v.(Parents)
 		if !ok {
-			panic("field 'Parents' (key: 'Parents') in type Block is type Parents; cannot assign " + tv.Type().Name()) // FIXME need an error type for this
+			panic("field 'Parents' (key: 'Parents') in type Block is type Parents; cannot assign "+tv.Type().Name()) // FIXME need an error type for this
 		}
-		mb.v.Parents = x
+		mb.v.d.Parents = x
 		mb.Parents__isset = true
 	case "Messages":
 		if mb.Messages__isset {
@@ -1290,18 +1269,18 @@ func (mb *_Block__ReprMapBuilder) Insert(k, v ipld.Node) error {
 		if v.IsNull() {
 			panic("type mismatch on struct field assignment: cannot assign null to non-nullable field") // FIXME need an error type for this
 		}
-		tv, ok := v.(typed.Node)
+		tv, ok := v.(schema.TypedNode)
 		if !ok {
-			panic("need typed.Node for insertion into struct") // FIXME need an error type for this
+			panic("need schema.TypedNode for insertion into struct") // FIXME need an error type for this
 		}
 		x, ok := v.(Messages)
 		if !ok {
-			panic("field 'Messages' (key: 'Messages') in type Block is type Messages; cannot assign " + tv.Type().Name()) // FIXME need an error type for this
+			panic("field 'Messages' (key: 'Messages') in type Block is type Messages; cannot assign "+tv.Type().Name()) // FIXME need an error type for this
 		}
-		mb.v.Messages = x
+		mb.v.d.Messages = x
 		mb.Messages__isset = true
 	default:
-		return typed.ErrNoSuchField{Type: nil /*TODO:typelit*/, FieldName: ks}
+		return schema.ErrNoSuchField{Type: nil /*TODO:typelit*/, FieldName: ks}
 	}
 	return nil
 }
@@ -1329,7 +1308,7 @@ func (mb *_Block__ReprMapBuilder) BuilderForValue(ks string) ipld.NodeBuilder {
 	case "Messages":
 		return Messages__NodeBuilder()
 	default:
-		panic(typed.ErrNoSuchField{Type: nil /*TODO:typelit*/, FieldName: ks})
+		panic(schema.ErrNoSuchField{Type: nil /*TODO:typelit*/, FieldName: ks})
 	}
 	return nil
 }
