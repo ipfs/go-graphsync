@@ -3,6 +3,7 @@ module github.com/ipfs/go-graphsync
 go 1.12
 
 require (
+	github.com/filecoin-project/go-fil-markets v0.0.0-20200408062434-d92f329a6428
 	github.com/gogo/protobuf v1.3.1
 	github.com/ipfs/go-block-format v0.0.2
 	github.com/ipfs/go-blockservice v0.1.3

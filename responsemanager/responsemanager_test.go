@@ -211,15 +211,23 @@ func TestCancellationQueryInProgress(t *testing.T) {
 
 	// at this point we should receive at most one more block, then traversal
 	// should complete
-	testutil.AssertReceiveFirst(t, sentResponses, &sentResponse, "should send one additional response", ctx.Done(), requestIDChan)
-	k = sentResponse.link.(cidlink.Link)
-	blockIndex = testutil.IndexOf(blks, k.Cid)
-	require.NotEqual(t, blockIndex, -1, "did not send correct link")
-	require.Equal(t, blks[blockIndex].RawData(), sentResponse.data, "sent incorrect data")
-	require.Equal(t, requestID, sentResponse.requestID, "incorrect response id")
-
-	// We should now be done
-	testutil.AssertDoesReceiveFirst(t, requestIDChan, "should complete request", ctx.Done(), sentResponses)
+	additionalBlocks := 0
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("should complete request before context closes")
+		case sentResponse = <-sentResponses:
+			k = sentResponse.link.(cidlink.Link)
+			blockIndex = testutil.IndexOf(blks, k.Cid)
+			require.NotEqual(t, blockIndex, -1, "did not send correct link")
+			require.Equal(t, blks[blockIndex].RawData(), sentResponse.data, "sent incorrect data")
+			require.Equal(t, requestID, sentResponse.requestID, "incorrect response id")
+			additionalBlocks++
+		case <-requestIDChan:
+			require.LessOrEqual(t, additionalBlocks, 1, "should send at most 1 additional block")
+			return
+		}
+	}
 }
 
 func TestEarlyCancellation(t *testing.T) {

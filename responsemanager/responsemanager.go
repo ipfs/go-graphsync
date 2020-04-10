@@ -9,8 +9,8 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/responsemanager/loader"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
+	"github.com/ipfs/go-graphsync/responsemanager/runtraversal"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -204,7 +204,10 @@ func (rm *ResponseManager) processQueriesWorker() {
 			case <-rm.ctx.Done():
 				return
 			}
-			rm.executeQuery(taskData.ctx, key.p, taskData.request)
+			loader, traverser, err := rm.prepareQuery(taskData.ctx, key.p, taskData.request)
+			if err == nil {
+				rm.executeQuery(key.p, taskData.request, loader, traverser)
+			}
 			select {
 			case rm.messages <- &finishResponseRequest{key}:
 			case <-rm.ctx.Done():
@@ -214,10 +217,6 @@ func (rm *ResponseManager) processQueriesWorker() {
 
 	}
 
-}
-
-func noopVisitor(tp traversal.Progress, n ipld.Node, tr traversal.VisitReason) error {
-	return nil
 }
 
 type hookActions struct {
@@ -256,9 +255,9 @@ func (ha *hookActions) UseNodeBuilderChooser(chooser traversal.NodeBuilderChoose
 	ha.chooser = chooser
 }
 
-func (rm *ResponseManager) executeQuery(ctx context.Context,
+func (rm *ResponseManager) prepareQuery(ctx context.Context,
 	p peer.ID,
-	request gsmsg.GraphSyncRequest) {
+	request gsmsg.GraphSyncRequest) (ipld.Loader, ipldutil.Traverser, error) {
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
 	selectorSpec := request.Selector()
 	rm.requestHooksLk.RLock()
@@ -269,28 +268,39 @@ func (rm *ResponseManager) executeQuery(ctx context.Context,
 		if ha.err != nil {
 			rm.requestHooksLk.RUnlock()
 			rm.persistenceOptionsLk.RUnlock()
-			return
+			return nil, nil, errors.New("hook terminated request")
 		}
 	}
 	rm.persistenceOptionsLk.RUnlock()
 	rm.requestHooksLk.RUnlock()
 	if !ha.isValidated {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return
-	}
-	selector, err := ipldutil.ParseSelector(selectorSpec)
-	if err != nil {
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return
+		return nil, nil, errors.New("request not valid")
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
-	wrappedLoader := loader.WrapLoader(ctx, ha.loader, request.ID(), peerResponseSender)
-	err = ipldutil.Traverse(ctx, wrappedLoader, ha.chooser, rootLink, selector, noopVisitor)
+	traverser := ipldutil.TraversalBuilder{
+		Root:     rootLink,
+		Selector: selectorSpec,
+		Chooser:  ha.chooser,
+	}.Start(ctx)
+	return ha.loader, traverser, nil
+}
+
+func (rm *ResponseManager) executeQuery(p peer.ID,
+	request gsmsg.GraphSyncRequest,
+	loader ipld.Loader,
+	traverser ipldutil.Traverser) error {
+	peerResponseSender := rm.peerManager.SenderForPeer(p)
+	err := runtraversal.RunTraversal(loader, traverser, func(link ipld.Link, data []byte) error {
+		peerResponseSender.SendResponse(request.ID(), link, data)
+		return nil
+	})
 	if err != nil {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return
+		return err
 	}
 	peerResponseSender.FinishRequest(request.ID())
+	return nil
 }
 
 // Startup starts processing for the WantManager.
