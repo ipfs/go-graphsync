@@ -47,7 +47,7 @@ func TestMessageBuilding(t *testing.T) {
 		rb.AddBlock(block)
 	}
 
-	require.Equal(t, 300, rb.BlockSize(), "did not calculate block size correctly")
+	require.Equal(t, uint64(300), rb.BlockSize(), "did not calculate block size correctly")
 
 	extensionData1 := testutil.RandomBytes(100)
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")

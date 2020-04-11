@@ -108,8 +108,9 @@ func (fprs *fakePeerResponseSender) SendResponse(
 	requestID graphsync.RequestID,
 	link ipld.Link,
 	data []byte,
-) {
+) uint64 {
 	fprs.sentResponses <- sentResponse{requestID, link, data}
+	return uint64(len(data))
 }
 
 func (fprs *fakePeerResponseSender) SendExtensionData(

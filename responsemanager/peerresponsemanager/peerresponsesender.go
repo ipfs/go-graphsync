@@ -21,7 +21,7 @@ import (
 
 const (
 	// max block size is the maximum size for batching blocks in a single payload
-	maxBlockSize = 512 * 1024
+	maxBlockSize uint64 = 512 * 1024
 )
 
 var log = logging.Logger("graphsync")
@@ -53,7 +53,7 @@ type PeerResponseSender interface {
 		requestID graphsync.RequestID,
 		link ipld.Link,
 		data []byte,
-	)
+	) uint64
 	SendExtensionData(graphsync.RequestID, graphsync.ExtensionData)
 	FinishRequest(requestID graphsync.RequestID)
 	FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode)
@@ -94,15 +94,16 @@ func (prm *peerResponseSender) SendExtensionData(requestID graphsync.RequestID, 
 // SendResponse sends a given link for a given
 // requestID across the wire, as well as its corresponding
 // block if the block is present and has not already been sent
+// it returns the number of block bytes sent
 func (prm *peerResponseSender) SendResponse(
 	requestID graphsync.RequestID,
 	link ipld.Link,
 	data []byte,
-) {
+) uint64 {
 	hasBlock := data != nil
 	prm.linkTrackerLk.Lock()
 	sendBlock := hasBlock && prm.linkTracker.BlockRefCount(link) == 0
-	blkSize := len(data)
+	blkSize := uint64(len(data))
 	if !sendBlock {
 		blkSize = 0
 	}
@@ -122,6 +123,7 @@ func (prm *peerResponseSender) SendResponse(
 	}) {
 		prm.signalWork()
 	}
+	return blkSize
 }
 
 // FinishRequest marks the given requestID as having sent all responses
@@ -154,7 +156,7 @@ func (prm *peerResponseSender) finish(requestID graphsync.RequestID, status grap
 		prm.signalWork()
 	}
 }
-func (prm *peerResponseSender) buildResponse(blkSize int, buildResponseFn func(*responsebuilder.ResponseBuilder)) bool {
+func (prm *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn func(*responsebuilder.ResponseBuilder)) bool {
 	prm.responseBuildersLk.Lock()
 	defer prm.responseBuildersLk.Unlock()
 	if shouldBeginNewResponse(prm.responseBuilders, blkSize) {
@@ -165,7 +167,7 @@ func (prm *peerResponseSender) buildResponse(blkSize int, buildResponseFn func(*
 	return !responseBuilder.Empty()
 }
 
-func shouldBeginNewResponse(responseBuilders []*responsebuilder.ResponseBuilder, blkSize int) bool {
+func shouldBeginNewResponse(responseBuilders []*responsebuilder.ResponseBuilder, blkSize uint64) bool {
 	if len(responseBuilders) == 0 {
 		return true
 	}

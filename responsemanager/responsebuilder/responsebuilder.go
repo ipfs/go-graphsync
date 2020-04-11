@@ -13,7 +13,7 @@ import (
 // GraphSync message components once responses are ready to send.
 type ResponseBuilder struct {
 	outgoingBlocks     []blocks.Block
-	blkSize            int
+	blkSize            uint64
 	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
 	outgoingResponses  map[graphsync.RequestID]metadata.Metadata
 	extensions         map[graphsync.RequestID][]graphsync.ExtensionData
@@ -30,7 +30,7 @@ func New() *ResponseBuilder {
 
 // AddBlock adds the given block to the response.
 func (rb *ResponseBuilder) AddBlock(block blocks.Block) {
-	rb.blkSize += len(block.RawData())
+	rb.blkSize += uint64(len(block.RawData()))
 	rb.outgoingBlocks = append(rb.outgoingBlocks, block)
 }
 
@@ -40,7 +40,7 @@ func (rb *ResponseBuilder) AddExtensionData(requestID graphsync.RequestID, exten
 }
 
 // BlockSize returns the total size of all blocks in this response
-func (rb *ResponseBuilder) BlockSize() int {
+func (rb *ResponseBuilder) BlockSize() uint64 {
 	return rb.blkSize
 }
 
