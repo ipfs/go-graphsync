@@ -23,8 +23,10 @@ import (
 var log = logging.Logger("graphsync")
 
 const (
-	// maxPriority is the max priority as defined by the bitswap protocol
+	// maxPriority is the max priority as defined by the graphsync protocol
 	maxPriority = graphsync.Priority(math.MaxInt32)
+	// defaultPriority is the default priority for requests sent by graphsync
+	defaultPriority = graphsync.Priority(0)
 )
 
 type inProgressRequestStatus struct {
@@ -466,7 +468,7 @@ func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID,
 	rm.inProgressRequestStatuses[requestID] = &inProgressRequestStatus{
 		ctx, cancel, p, networkErrorChan,
 	}
-	request := gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, maxPriority, extensions...)
+	request := gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, defaultPriority, extensions...)
 	ha := &hookActions{}
 	for _, hook := range rm.requestHooks {
 		hook.hook(p, request, ha)

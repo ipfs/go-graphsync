@@ -53,7 +53,7 @@ type PeerResponseSender interface {
 		requestID graphsync.RequestID,
 		link ipld.Link,
 		data []byte,
-	) uint64
+	) graphsync.BlockData
 	SendExtensionData(graphsync.RequestID, graphsync.ExtensionData)
 	FinishRequest(requestID graphsync.RequestID)
 	FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode)
@@ -91,6 +91,27 @@ func (prm *peerResponseSender) SendExtensionData(requestID graphsync.RequestID, 
 	}
 }
 
+type blockData struct {
+	link      ipld.Link
+	blockSize uint64
+	sendBlock bool
+}
+
+func (bd blockData) Link() ipld.Link {
+	return bd.link
+}
+
+func (bd blockData) BlockSize() uint64 {
+	return bd.blockSize
+}
+
+func (bd blockData) BlockSizeOnWire() uint64 {
+	if !bd.sendBlock {
+		return 0
+	}
+	return bd.blockSize
+}
+
 // SendResponse sends a given link for a given
 // requestID across the wire, as well as its corresponding
 // block if the block is present and has not already been sent
@@ -99,18 +120,16 @@ func (prm *peerResponseSender) SendResponse(
 	requestID graphsync.RequestID,
 	link ipld.Link,
 	data []byte,
-) uint64 {
+) graphsync.BlockData {
 	hasBlock := data != nil
 	prm.linkTrackerLk.Lock()
 	sendBlock := hasBlock && prm.linkTracker.BlockRefCount(link) == 0
 	blkSize := uint64(len(data))
-	if !sendBlock {
-		blkSize = 0
-	}
+	bd := blockData{link, blkSize, sendBlock}
 	prm.linkTracker.RecordLinkTraversal(requestID, link, hasBlock)
 	prm.linkTrackerLk.Unlock()
 
-	if prm.buildResponse(blkSize, func(responseBuilder *responsebuilder.ResponseBuilder) {
+	if prm.buildResponse(bd.BlockSizeOnWire(), func(responseBuilder *responsebuilder.ResponseBuilder) {
 		if sendBlock {
 			cidLink := link.(cidlink.Link)
 			block, err := blocks.NewBlockWithCid(data, cidLink.Cid)
@@ -123,7 +142,7 @@ func (prm *peerResponseSender) SendResponse(
 	}) {
 		prm.signalWork()
 	}
-	return blkSize
+	return bd
 }
 
 // FinishRequest marks the given requestID as having sent all responses

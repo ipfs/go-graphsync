@@ -130,6 +130,16 @@ func (gs *GraphSync) RegisterPersistenceOption(name string, loader ipld.Loader, 
 	return gs.responseManager.RegisterPersistenceOption(name, loader)
 }
 
+// RegisterOutgoingBlockHook registers a hook that runs after each block is sent in a response
+func (gs *GraphSync) RegisterOutgoingBlockHook(hook graphsync.OnOutgoingBlockHook) graphsync.UnregisterHookFunc {
+	return gs.responseManager.RegisterBlockHook(hook)
+}
+
+// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
+func (gs *GraphSync) UnpauseResponse(p peer.ID, requestID graphsync.RequestID) error {
+	return gs.responseManager.UnpauseResponse(p, requestID)
+}
+
 type graphSyncReceiver GraphSync
 
 func (gsr *graphSyncReceiver) graphSync() *GraphSync {

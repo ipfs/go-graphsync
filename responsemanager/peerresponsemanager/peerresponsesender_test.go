@@ -54,8 +54,10 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	peerResponseManager := NewResponseSender(ctx, p, fph)
 	peerResponseManager.Startup()
 
-	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())
-
+	bd := peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())
+	require.Equal(t, links[0], bd.Link())
+	require.Equal(t, uint64(len(blks[0].RawData())), bd.BlockSize())
+	require.Equal(t, uint64(len(blks[0].RawData())), bd.BlockSizeOnWire())
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send first message")
 
 	require.Len(t, fph.lastBlocks, 1)
@@ -65,9 +67,18 @@ func TestPeerResponseManagerSendsResponses(t *testing.T) {
 	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
 
-	peerResponseManager.SendResponse(requestID2, links[0], blks[0].RawData())
-	peerResponseManager.SendResponse(requestID1, links[1], blks[1].RawData())
-	peerResponseManager.SendResponse(requestID1, links[2], nil)
+	bd = peerResponseManager.SendResponse(requestID2, links[0], blks[0].RawData())
+	require.Equal(t, links[0], bd.Link())
+	require.Equal(t, uint64(len(blks[0].RawData())), bd.BlockSize())
+	require.Equal(t, uint64(0), bd.BlockSizeOnWire())
+	bd = peerResponseManager.SendResponse(requestID1, links[1], blks[1].RawData())
+	require.Equal(t, links[1], bd.Link())
+	require.Equal(t, uint64(len(blks[1].RawData())), bd.BlockSize())
+	require.Equal(t, uint64(len(blks[1].RawData())), bd.BlockSizeOnWire())
+	bd = peerResponseManager.SendResponse(requestID1, links[2], nil)
+	require.Equal(t, links[2], bd.Link())
+	require.Equal(t, uint64(0), bd.BlockSize())
+	require.Equal(t, uint64(0), bd.BlockSizeOnWire())
 	peerResponseManager.FinishRequest(requestID1)
 
 	// let peer reponse manager know last message was sent so message sending can continue
