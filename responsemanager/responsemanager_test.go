@@ -10,7 +10,10 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/responsemanager/blockhooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
+	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
+	"github.com/ipfs/go-graphsync/responsemanager/requesthooks.go"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipfs/go-peertaskqueue/peertask"
@@ -149,8 +152,8 @@ func TestIncomingQuery(t *testing.T) {
 	defer td.cancel()
 	blks := td.blockChain.AllBlocks()
 
-	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
-	responseManager.RegisterRequestHook(selectorvalidator.SelectorValidator(100))
+	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
+	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
@@ -170,8 +173,8 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	td := newTestData(t)
 	defer td.cancel()
 	blks := td.blockChain.AllBlocks()
-	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
-	responseManager.RegisterRequestHook(selectorvalidator.SelectorValidator(100))
+	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
+	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 
@@ -217,7 +220,7 @@ func TestEarlyCancellation(t *testing.T) {
 	td := newTestData(t)
 	defer td.cancel()
 	td.queryQueue.popWait.Add(1)
-	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
+	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
 	responseManager.Startup()
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 
@@ -241,7 +244,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("on its own, should fail validation", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
 		responseManager.Startup()
 		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		var lastRequest completedRequest
@@ -252,9 +255,9 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("if non validating hook succeeds, does not pass validation", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
 		responseManager.Startup()
-		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.SendExtensionData(td.extensionResponse)
 		})
 		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
@@ -269,9 +272,9 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
 		responseManager.Startup()
-		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 			hookActions.SendExtensionData(td.extensionResponse)
 		})
@@ -287,12 +290,12 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("if any hook fails, should fail", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
 		responseManager.Startup()
-		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 		})
-		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.SendExtensionData(td.extensionResponse)
 			hookActions.TerminateWithError(errors.New("everything went to crap"))
 		})
@@ -308,9 +311,9 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("hooks can be unregistered", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
 		responseManager.Startup()
-		unregister := responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		unregister := td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 			hookActions.SendExtensionData(td.extensionResponse)
 		})
@@ -338,10 +341,10 @@ func TestValidationAndExtensions(t *testing.T) {
 		defer td.cancel()
 		obs := make(map[ipld.Link][]byte)
 		oloader, _ := testutil.NewTestStore(obs)
-		responseManager := New(td.ctx, oloader, td.peerManager, td.queryQueue)
+		responseManager := New(td.ctx, oloader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
 		responseManager.Startup()
 		// add validating hook -- so the request SHOULD succeed
-		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 		})
 
@@ -351,10 +354,10 @@ func TestValidationAndExtensions(t *testing.T) {
 		testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
 		require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "should terminate with failure")
 
-		err := responseManager.RegisterPersistenceOption("chainstore", td.loader)
+		err := td.peristenceOptions.Register("chainstore", td.loader)
 		require.NoError(t, err)
 		// register hook to use different loader
-		_ = responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		_ = td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			if _, found := requestData.Extension(td.extensionName); found {
 				hookActions.UsePersistenceOption("chainstore")
 				hookActions.SendExtensionData(td.extensionResponse)
@@ -372,7 +375,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("hooks can alter the node builder chooser", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
 		responseManager.Startup()
 
 		customChooserCallCount := 0
@@ -382,7 +385,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		}
 
 		// add validating hook -- so the request SHOULD succeed
-		responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 		})
 
@@ -394,7 +397,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		require.Equal(t, 0, customChooserCallCount)
 
 		// register hook to use custom chooser
-		_ = responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		_ = td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			if _, found := requestData.Extension(td.extensionName); found {
 				hookActions.UseNodeBuilderChooser(customChooser)
 				hookActions.SendExtensionData(td.extensionResponse)
@@ -415,12 +418,12 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("can send extension data", func(t *testing.T) {
 			td := newTestData(t)
 			defer td.cancel()
-			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
+			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
 			responseManager.Startup()
-			responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 				hookActions.ValidateRequest()
 			})
-			responseManager.RegisterBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+			td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
 				hookActions.SendExtensionData(td.extensionResponse)
 			})
 			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
@@ -437,12 +440,12 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("can send errors", func(t *testing.T) {
 			td := newTestData(t)
 			defer td.cancel()
-			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
+			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
 			responseManager.Startup()
-			responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 				hookActions.ValidateRequest()
 			})
-			responseManager.RegisterBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+			td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
 				hookActions.TerminateWithError(errors.New("failed"))
 			})
 			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
@@ -454,15 +457,15 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("can pause/unpause", func(t *testing.T) {
 			td := newTestData(t)
 			defer td.cancel()
-			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue)
+			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks)
 			responseManager.Startup()
-			responseManager.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 				hookActions.ValidateRequest()
 			})
 			blkIndex := 1
 			blockCount := 3
 			var hasPaused bool
-			responseManager.RegisterBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+			td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
 				if blkIndex >= blockCount && !hasPaused {
 					hookActions.PauseResponse()
 					hasPaused = true
@@ -514,6 +517,9 @@ type testData struct {
 	requestID             graphsync.RequestID
 	requests              []gsmsg.GraphSyncRequest
 	p                     peer.ID
+	peristenceOptions     *persistenceoptions.PersistenceOptions
+	requestHooks          *requesthooks.IncomingRequestHooks
+	blockHooks            *blockhooks.OutgoingBlockHooks
 }
 
 func newTestData(t *testing.T) testData {
@@ -550,5 +556,8 @@ func newTestData(t *testing.T) testData {
 		gsmsg.NewRequest(td.requestID, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0), td.extension),
 	}
 	td.p = testutil.GeneratePeers(1)[0]
+	td.peristenceOptions = persistenceoptions.New()
+	td.requestHooks = requesthooks.New(td.peristenceOptions)
+	td.blockHooks = blockhooks.New()
 	return td
 }
