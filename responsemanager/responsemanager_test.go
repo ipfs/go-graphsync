@@ -13,7 +13,7 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/blockhooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
-	"github.com/ipfs/go-graphsync/responsemanager/requesthooks.go"
+	"github.com/ipfs/go-graphsync/responsemanager/requesthooks"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipfs/go-peertaskqueue/peertask"

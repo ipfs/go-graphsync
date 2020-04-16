@@ -12,7 +12,7 @@ import (
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
-	"github.com/ipfs/go-graphsync/responsemanager/requesthooks.go"
+	"github.com/ipfs/go-graphsync/responsemanager/requesthooks"
 	"github.com/ipfs/go-graphsync/responsemanager/runtraversal"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue/peertask"
