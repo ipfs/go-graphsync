@@ -74,6 +74,7 @@ type GraphSyncRequest struct {
 	id         graphsync.RequestID
 	extensions map[string][]byte
 	isCancel   bool
+	isUpdate   bool
 }
 
 // GraphSyncResponse is an struct to capture data on a response sent back
@@ -110,12 +111,17 @@ func NewRequest(id graphsync.RequestID,
 	priority graphsync.Priority,
 	extensions ...graphsync.ExtensionData) GraphSyncRequest {
 
-	return newRequest(id, root, selector, priority, false, toExtensionsMap(extensions))
+	return newRequest(id, root, selector, priority, false, false, toExtensionsMap(extensions))
 }
 
 // CancelRequest request generates a request to cancel an in progress request
 func CancelRequest(id graphsync.RequestID) GraphSyncRequest {
-	return newRequest(id, cid.Cid{}, nil, 0, true, nil)
+	return newRequest(id, cid.Cid{}, nil, 0, true, false, nil)
+}
+
+// UpdateRequest generates a new request to update an in progress request with the given extensions
+func UpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionData) GraphSyncRequest {
+	return newRequest(id, cid.Cid{}, nil, 0, false, true, toExtensionsMap(extensions))
 }
 
 func toExtensionsMap(extensions []graphsync.ExtensionData) (extensionsMap map[string][]byte) {
@@ -133,6 +139,7 @@ func newRequest(id graphsync.RequestID,
 	selector ipld.Node,
 	priority graphsync.Priority,
 	isCancel bool,
+	isUpdate bool,
 	extensions map[string][]byte) GraphSyncRequest {
 	return GraphSyncRequest{
 		id:         id,
@@ -140,6 +147,7 @@ func newRequest(id graphsync.RequestID,
 		selector:   selector,
 		priority:   priority,
 		isCancel:   isCancel,
+		isUpdate:   isUpdate,
 		extensions: extensions,
 	}
 }
@@ -162,15 +170,23 @@ func newResponse(requestID graphsync.RequestID,
 func newMessageFromProto(pbm pb.Message) (GraphSyncMessage, error) {
 	gsm := newMsg()
 	for _, req := range pbm.Requests {
-		root, err := cid.Cast(req.Root)
-		if err != nil {
-			return nil, err
+		var root cid.Cid
+		var err error
+		if !req.Cancel && !req.Update {
+			root, err = cid.Cast(req.Root)
+			if err != nil {
+				return nil, err
+			}
 		}
-		selector, err := ipldutil.DecodeNode(req.Selector)
-		if err != nil {
-			return nil, err
+
+		var selector ipld.Node
+		if !req.Cancel && !req.Update {
+			selector, err = ipldutil.DecodeNode(req.Selector)
+			if err != nil {
+				return nil, err
+			}
 		}
-		gsm.AddRequest(newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.GetExtensions()))
+		gsm.AddRequest(newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, req.GetExtensions()))
 	}
 
 	for _, res := range pbm.Responses {
@@ -273,6 +289,7 @@ func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 			Selector:   selector,
 			Priority:   int32(request.priority),
 			Cancel:     request.isCancel,
+			Update:     request.isUpdate,
 			Extensions: request.extensions,
 		})
 	}
@@ -348,6 +365,9 @@ func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) ([]byte, boo
 
 // IsCancel returns true if this particular request is being cancelled
 func (gsr GraphSyncRequest) IsCancel() bool { return gsr.isCancel }
+
+// IsUpdate returns true if this particular request is being updated
+func (gsr GraphSyncRequest) IsUpdate() bool { return gsr.isUpdate }
 
 // RequestID returns the request ID for this response
 func (gsr GraphSyncResponse) RequestID() graphsync.RequestID { return gsr.requestID }

@@ -51,6 +51,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.Equal(t, int32(id), pbRequest.Id)
 	require.Equal(t, int32(priority), pbRequest.Priority)
 	require.False(t, pbRequest.Cancel)
+	require.False(t, pbRequest.Update)
 	require.Equal(t, root.Bytes(), pbRequest.Root)
 	require.Equal(t, selectorEncoded, pbRequest.Selector)
 	require.Equal(t, map[string][]byte{"graphsync/awesome": extension.Data}, pbRequest.Extensions)
@@ -64,6 +65,7 @@ func TestAppendingRequests(t *testing.T) {
 	extensionData, found = deserializedRequest.Extension(extensionName)
 	require.Equal(t, id, deserializedRequest.ID())
 	require.False(t, deserializedRequest.IsCancel())
+	require.False(t, deserializedRequest.IsUpdate())
 	require.Equal(t, priority, deserializedRequest.Priority())
 	require.Equal(t, root.String(), deserializedRequest.Root().String())
 	require.Equal(t, selector, deserializedRequest.Selector())
@@ -158,6 +160,59 @@ func TestRequestCancel(t *testing.T) {
 	request := requests[0]
 	require.Equal(t, id, request.ID())
 	require.True(t, request.IsCancel())
+
+	buf := new(bytes.Buffer)
+	err := gsm.ToNet(buf)
+	require.NoError(t, err, "did not serialize protobuf message")
+	deserialized, err := FromNet(buf)
+	require.NoError(t, err, "did not deserialize protobuf message")
+	deserializedRequests := deserialized.Requests()
+	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
+	deserializedRequest := deserializedRequests[0]
+	require.Equal(t, request.ID(), deserializedRequest.ID())
+	require.Equal(t, request.IsCancel(), deserializedRequest.IsCancel())
+}
+
+func TestRequestUpdate(t *testing.T) {
+
+	id := graphsync.RequestID(rand.Int31())
+	extensionName := graphsync.ExtensionName("graphsync/awesome")
+	extension := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: testutil.RandomBytes(100),
+	}
+
+	gsm := New()
+	gsm.AddRequest(UpdateRequest(id, extension))
+
+	requests := gsm.Requests()
+	require.Len(t, requests, 1, "did not add cancel request")
+	request := requests[0]
+	require.Equal(t, id, request.ID())
+	require.True(t, request.IsUpdate())
+	require.False(t, request.IsCancel())
+	extensionData, found := request.Extension(extensionName)
+	require.True(t, found)
+	require.Equal(t, extension.Data, extensionData)
+
+	buf := new(bytes.Buffer)
+	err := gsm.ToNet(buf)
+	require.NoError(t, err, "did not serialize protobuf message")
+	deserialized, err := FromNet(buf)
+	require.NoError(t, err, "did not deserialize protobuf message")
+
+	deserializedRequests := deserialized.Requests()
+	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
+	deserializedRequest := deserializedRequests[0]
+	extensionData, found = deserializedRequest.Extension(extensionName)
+	require.Equal(t, request.ID(), deserializedRequest.ID())
+	require.Equal(t, request.IsCancel(), deserializedRequest.IsCancel())
+	require.Equal(t, request.IsUpdate(), deserializedRequest.IsUpdate())
+	require.Equal(t, request.Priority(), deserializedRequest.Priority())
+	require.Equal(t, request.Root().String(), deserializedRequest.Root().String())
+	require.Equal(t, request.Selector(), deserializedRequest.Selector())
+	require.True(t, found)
+	require.Equal(t, extension.Data, extensionData)
 }
 
 func TestToNetFromNetEquivalency(t *testing.T) {
@@ -197,6 +252,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	extensionData, found := deserializedRequest.Extension(extensionName)
 	require.Equal(t, request.ID(), deserializedRequest.ID())
 	require.False(t, deserializedRequest.IsCancel())
+	require.False(t, deserializedRequest.IsUpdate())
 	require.Equal(t, request.Priority(), deserializedRequest.Priority())
 	require.Equal(t, request.Root().String(), deserializedRequest.Root().String())
 	require.Equal(t, request.Selector(), deserializedRequest.Selector())
@@ -221,7 +277,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	}
 
 	for _, b := range gsm.Blocks() {
-		_, ok := keys[b.Cid()]; 
+		_, ok := keys[b.Cid()]
 		require.True(t, ok)
 	}
 }
