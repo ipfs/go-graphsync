@@ -10,10 +10,9 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/responsemanager/blockhooks"
+	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
-	"github.com/ipfs/go-graphsync/responsemanager/requesthooks"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipfs/go-peertaskqueue/peertask"
@@ -518,8 +517,8 @@ type testData struct {
 	requests              []gsmsg.GraphSyncRequest
 	p                     peer.ID
 	peristenceOptions     *persistenceoptions.PersistenceOptions
-	requestHooks          *requesthooks.IncomingRequestHooks
-	blockHooks            *blockhooks.OutgoingBlockHooks
+	requestHooks          *hooks.IncomingRequestHooks
+	blockHooks            *hooks.OutgoingBlockHooks
 }
 
 func newTestData(t *testing.T) testData {
@@ -557,7 +556,7 @@ func newTestData(t *testing.T) testData {
 	}
 	td.p = testutil.GeneratePeers(1)[0]
 	td.peristenceOptions = persistenceoptions.New()
-	td.requestHooks = requesthooks.New(td.peristenceOptions)
-	td.blockHooks = blockhooks.New()
+	td.requestHooks = hooks.NewRequestHooks(td.peristenceOptions)
+	td.blockHooks = hooks.NewBlockHooks()
 	return td
 }

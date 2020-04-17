@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
@@ -185,7 +186,9 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -272,7 +275,9 @@ func TestCancelRequestInProgress(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
@@ -331,7 +336,9 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	ctx := context.Background()
 	managerCtx, managerCancel := context.WithCancel(ctx)
 	fal := newFakeAsyncLoader()
-	requestManager := New(managerCtx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(managerCtx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
@@ -372,7 +379,9 @@ func TestUnencodableSelector(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -393,7 +402,9 @@ func TestFailedRequest(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -422,7 +433,9 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -458,7 +471,9 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -493,7 +508,9 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -526,7 +543,9 @@ func TestEncodingExtensions(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -567,7 +586,7 @@ func TestEncodingExtensions(t *testing.T) {
 			hookActions.UpdateRequestWithExtensions(update...)
 		}
 	}
-	requestManager.RegisterResponseHook(hook)
+	responseHooks.Register(hook)
 	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector(), extension1, extension2)
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
@@ -662,7 +681,9 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -687,7 +708,7 @@ func TestOutgoingRequestHooks(t *testing.T) {
 			ha.UsePersistenceOption("chainstore")
 		}
 	}
-	requestManager.RegisterRequestHook(hook)
+	requestHooks.Register(hook)
 
 	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector(), extension1)
 	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())

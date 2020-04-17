@@ -6,13 +6,12 @@ import (
 	"math"
 	"time"
 
-	"github.com/ipfs/go-graphsync/responsemanager/blockhooks"
+	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
-	"github.com/ipfs/go-graphsync/responsemanager/requesthooks"
 	"github.com/ipfs/go-graphsync/responsemanager/runtraversal"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue/peertask"
@@ -61,12 +60,12 @@ type QueryQueue interface {
 
 // RequestHooks is an interface for processing request hooks
 type RequestHooks interface {
-	ProcessRequestHooks(p peer.ID, request graphsync.RequestData) requesthooks.Result
+	ProcessRequestHooks(p peer.ID, request graphsync.RequestData) hooks.RequestResult
 }
 
 // BlockHooks is an interface for processing block hooks
 type BlockHooks interface {
-	ProcessBlockHooks(p peer.ID, request graphsync.RequestData, blockData graphsync.BlockData) blockhooks.Result
+	ProcessBlockHooks(p peer.ID, request graphsync.RequestData, blockData graphsync.BlockData) hooks.BlockResult
 }
 
 // PeerManager is an interface that returns sender interfaces for peer responses.
@@ -291,7 +290,7 @@ func (rm *ResponseManager) executeQuery(p peer.ID,
 		return nil
 	})
 	if err != nil {
-		if err != blockhooks.ErrPaused {
+		if err != hooks.ErrPaused {
 			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		}
 		return err
@@ -378,7 +377,7 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 	if !ok {
 		return
 	}
-	if ftr.err == blockhooks.ErrPaused {
+	if ftr.err == hooks.ErrPaused {
 		response.isPaused = true
 		return
 	}

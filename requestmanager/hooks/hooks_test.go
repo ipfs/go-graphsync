@@ -33,7 +33,7 @@ func TestRequestHookProcessing(t *testing.T) {
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
 	p := testutil.GeneratePeers(1)[0]
 	testCases := map[string]struct {
-		configure func(t *testing.T, hooks *hooks.Hooks)
+		configure func(t *testing.T, hooks *hooks.OutgoingRequestHooks)
 		assert    func(t *testing.T, result hooks.RequestResult)
 	}{
 		"no hooks": {
@@ -43,8 +43,8 @@ func TestRequestHookProcessing(t *testing.T) {
 			},
 		},
 		"hooks alter chooser": {
-			configure: func(t *testing.T, hooks *hooks.Hooks) {
-				hooks.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.OutgoingRequestHookActions) {
+			configure: func(t *testing.T, hooks *hooks.OutgoingRequestHooks) {
+				hooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.OutgoingRequestHookActions) {
 					if _, found := requestData.Extension(extensionName); found {
 						hookActions.UseNodeBuilderChooser(fakeChooser)
 					}
@@ -56,8 +56,8 @@ func TestRequestHookProcessing(t *testing.T) {
 			},
 		},
 		"hooks alter persistence option": {
-			configure: func(t *testing.T, hooks *hooks.Hooks) {
-				hooks.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.OutgoingRequestHookActions) {
+			configure: func(t *testing.T, hooks *hooks.OutgoingRequestHooks) {
+				hooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.OutgoingRequestHookActions) {
 					if _, found := requestData.Extension(extensionName); found {
 						hookActions.UsePersistenceOption("chainstore")
 					}
@@ -69,8 +69,8 @@ func TestRequestHookProcessing(t *testing.T) {
 			},
 		},
 		"hooks unregistered": {
-			configure: func(t *testing.T, hooks *hooks.Hooks) {
-				unregister := hooks.RegisterRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.OutgoingRequestHookActions) {
+			configure: func(t *testing.T, hooks *hooks.OutgoingRequestHooks) {
+				unregister := hooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.OutgoingRequestHookActions) {
 					if _, found := requestData.Extension(extensionName); found {
 						hookActions.UsePersistenceOption("chainstore")
 					}
@@ -85,7 +85,7 @@ func TestRequestHookProcessing(t *testing.T) {
 	}
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
-			hooks := hooks.New()
+			hooks := hooks.NewRequestHooks()
 			if data.configure != nil {
 				data.configure(t, hooks)
 			}
@@ -115,7 +115,7 @@ func TestResponseHookProcessing(t *testing.T) {
 
 	p := testutil.GeneratePeers(1)[0]
 	testCases := map[string]struct {
-		configure func(t *testing.T, hooks *hooks.Hooks)
+		configure func(t *testing.T, hooks *hooks.IncomingResponseHooks)
 		assert    func(t *testing.T, result hooks.ResponseResult)
 	}{
 		"no hooks": {
@@ -125,11 +125,11 @@ func TestResponseHookProcessing(t *testing.T) {
 			},
 		},
 		"short circuit on error": {
-			configure: func(t *testing.T, hooks *hooks.Hooks) {
-				hooks.RegisterResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+			configure: func(t *testing.T, hooks *hooks.IncomingResponseHooks) {
+				hooks.Register(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
 					hookActions.TerminateWithError(errors.New("something went wrong"))
 				})
-				hooks.RegisterResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+				hooks.Register(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
 					hookActions.UpdateRequestWithExtensions(extensionUpdate)
 				})
 			},
@@ -139,8 +139,8 @@ func TestResponseHookProcessing(t *testing.T) {
 			},
 		},
 		"hooks update with extensions": {
-			configure: func(t *testing.T, hooks *hooks.Hooks) {
-				hooks.RegisterResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+			configure: func(t *testing.T, hooks *hooks.IncomingResponseHooks) {
+				hooks.Register(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
 					if _, found := responseData.Extension(extensionName); found {
 						hookActions.UpdateRequestWithExtensions(extensionUpdate)
 					}
@@ -153,8 +153,8 @@ func TestResponseHookProcessing(t *testing.T) {
 			},
 		},
 		"hooks unregistered": {
-			configure: func(t *testing.T, hooks *hooks.Hooks) {
-				unregister := hooks.RegisterResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+			configure: func(t *testing.T, hooks *hooks.IncomingResponseHooks) {
+				unregister := hooks.Register(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
 					if _, found := responseData.Extension(extensionName); found {
 						hookActions.UpdateRequestWithExtensions(extensionUpdate)
 					}
@@ -169,7 +169,7 @@ func TestResponseHookProcessing(t *testing.T) {
 	}
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
-			hooks := hooks.New()
+			hooks := hooks.NewResponseHooks()
 			if data.configure != nil {
 				data.configure(t, hooks)
 			}

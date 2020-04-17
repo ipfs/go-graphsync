@@ -1,4 +1,4 @@
-package requesthooks
+package hooks
 
 import (
 	"errors"
@@ -23,13 +23,13 @@ type PersistenceOptions interface {
 // IncomingRequestHooks is a set of incoming request hooks that can be processed
 type IncomingRequestHooks struct {
 	persistenceOptions PersistenceOptions
-	requestHooksLk     sync.RWMutex
-	requestHookNextKey uint64
-	requestHooks       []requestHook
+	hooksLk            sync.RWMutex
+	nextKey            uint64
+	hooks              []requestHook
 }
 
-// New returns a new list of incoming request hooks
-func New(persistenceOptions PersistenceOptions) *IncomingRequestHooks {
+// NewRequestHooks returns a new list of incoming request hooks
+func NewRequestHooks(persistenceOptions PersistenceOptions) *IncomingRequestHooks {
 	return &IncomingRequestHooks{
 		persistenceOptions: persistenceOptions,
 	}
@@ -37,25 +37,25 @@ func New(persistenceOptions PersistenceOptions) *IncomingRequestHooks {
 
 // Register registers an extension to process new incoming requests
 func (irh *IncomingRequestHooks) Register(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
-	irh.requestHooksLk.Lock()
-	rh := requestHook{irh.requestHookNextKey, hook}
-	irh.requestHookNextKey++
-	irh.requestHooks = append(irh.requestHooks, rh)
-	irh.requestHooksLk.Unlock()
+	irh.hooksLk.Lock()
+	rh := requestHook{irh.nextKey, hook}
+	irh.nextKey++
+	irh.hooks = append(irh.hooks, rh)
+	irh.hooksLk.Unlock()
 	return func() {
-		irh.requestHooksLk.Lock()
-		defer irh.requestHooksLk.Unlock()
-		for i, matchHook := range irh.requestHooks {
+		irh.hooksLk.Lock()
+		defer irh.hooksLk.Unlock()
+		for i, matchHook := range irh.hooks {
 			if rh.key == matchHook.key {
-				irh.requestHooks = append(irh.requestHooks[:i], irh.requestHooks[i+1:]...)
+				irh.hooks = append(irh.hooks[:i], irh.hooks[i+1:]...)
 				return
 			}
 		}
 	}
 }
 
-// Result is the outcome of running requesthooks
-type Result struct {
+// RequestResult is the outcome of running requesthooks
+type RequestResult struct {
 	IsValidated   bool
 	CustomLoader  ipld.Loader
 	CustomChooser traversal.NodeBuilderChooser
@@ -64,13 +64,13 @@ type Result struct {
 }
 
 // ProcessRequestHooks runs request hooks against an incoming request
-func (irh *IncomingRequestHooks) ProcessRequestHooks(p peer.ID, request graphsync.RequestData) Result {
-	irh.requestHooksLk.RLock()
-	defer irh.requestHooksLk.RUnlock()
-	ha := &hookActions{
+func (irh *IncomingRequestHooks) ProcessRequestHooks(p peer.ID, request graphsync.RequestData) RequestResult {
+	irh.hooksLk.RLock()
+	defer irh.hooksLk.RUnlock()
+	ha := &requestHookActions{
 		persistenceOptions: irh.persistenceOptions,
 	}
-	for _, requestHook := range irh.requestHooks {
+	for _, requestHook := range irh.hooks {
 		requestHook.hook(p, request, ha)
 		if ha.hasError() {
 			break
@@ -79,7 +79,7 @@ func (irh *IncomingRequestHooks) ProcessRequestHooks(p peer.ID, request graphsyn
 	return ha.result()
 }
 
-type hookActions struct {
+type requestHookActions struct {
 	persistenceOptions PersistenceOptions
 	isValidated        bool
 	err                error
@@ -88,12 +88,12 @@ type hookActions struct {
 	extensions         []graphsync.ExtensionData
 }
 
-func (ha *hookActions) hasError() bool {
+func (ha *requestHookActions) hasError() bool {
 	return ha.err != nil
 }
 
-func (ha *hookActions) result() Result {
-	return Result{
+func (ha *requestHookActions) result() RequestResult {
+	return RequestResult{
 		IsValidated:   ha.isValidated,
 		CustomLoader:  ha.loader,
 		CustomChooser: ha.chooser,
@@ -102,19 +102,19 @@ func (ha *hookActions) result() Result {
 	}
 }
 
-func (ha *hookActions) SendExtensionData(ext graphsync.ExtensionData) {
+func (ha *requestHookActions) SendExtensionData(ext graphsync.ExtensionData) {
 	ha.extensions = append(ha.extensions, ext)
 }
 
-func (ha *hookActions) TerminateWithError(err error) {
+func (ha *requestHookActions) TerminateWithError(err error) {
 	ha.err = err
 }
 
-func (ha *hookActions) ValidateRequest() {
+func (ha *requestHookActions) ValidateRequest() {
 	ha.isValidated = true
 }
 
-func (ha *hookActions) UsePersistenceOption(name string) {
+func (ha *requestHookActions) UsePersistenceOption(name string) {
 	loader, ok := ha.persistenceOptions.GetLoader(name)
 	if !ok {
 		ha.TerminateWithError(errors.New("unknown loader option"))
@@ -123,6 +123,6 @@ func (ha *hookActions) UsePersistenceOption(name string) {
 	ha.loader = loader
 }
 
-func (ha *hookActions) UseNodeBuilderChooser(chooser traversal.NodeBuilderChooser) {
+func (ha *requestHookActions) UseNodeBuilderChooser(chooser traversal.NodeBuilderChooser) {
 	ha.chooser = chooser
 }

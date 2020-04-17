@@ -63,7 +63,8 @@ type RequestManager struct {
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
 	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
-	hooks                     *hooks.Hooks
+	requestHooks              *hooks.OutgoingRequestHooks
+	responseHooks             *hooks.IncomingResponseHooks
 }
 
 type requestManagerMessage interface {
@@ -71,7 +72,10 @@ type requestManagerMessage interface {
 }
 
 // New generates a new request manager from a context, network, and selectorQuerier
-func New(ctx context.Context, asyncLoader AsyncLoader) *RequestManager {
+func New(ctx context.Context,
+	asyncLoader AsyncLoader,
+	requestHooks *hooks.OutgoingRequestHooks,
+	responseHooks *hooks.IncomingResponseHooks) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
 		ctx:                       ctx,
@@ -80,7 +84,8 @@ func New(ctx context.Context, asyncLoader AsyncLoader) *RequestManager {
 		rc:                        newResponseCollector(ctx),
 		messages:                  make(chan requestManagerMessage, 16),
 		inProgressRequestStatuses: make(map[graphsync.RequestID]*inProgressRequestStatus),
-		hooks:                     hooks.New(),
+		requestHooks:              requestHooks,
+		responseHooks:             responseHooks,
 	}
 }
 
@@ -200,49 +205,6 @@ func (rm *RequestManager) ProcessResponses(p peer.ID, responses []gsmsg.GraphSyn
 	}
 }
 
-type registerRequestHookMessage struct {
-	hook               graphsync.OnOutgoingRequestHook
-	unregisterHookChan chan graphsync.UnregisterHookFunc
-}
-
-type registerResponseHookMessage struct {
-	hook               graphsync.OnIncomingResponseHook
-	unregisterHookChan chan graphsync.UnregisterHookFunc
-}
-
-// RegisterRequestHook registers an extension to process outgoing requests
-func (rm *RequestManager) RegisterRequestHook(hook graphsync.OnOutgoingRequestHook) graphsync.UnregisterHookFunc {
-	response := make(chan graphsync.UnregisterHookFunc)
-	select {
-	case rm.messages <- &registerRequestHookMessage{hook, response}:
-	case <-rm.ctx.Done():
-		return nil
-	}
-	select {
-	case unregister := <-response:
-		return unregister
-	case <-rm.ctx.Done():
-		return nil
-	}
-}
-
-// RegisterResponseHook registers an extension to process incoming responses
-func (rm *RequestManager) RegisterResponseHook(
-	hook graphsync.OnIncomingResponseHook) graphsync.UnregisterHookFunc {
-	response := make(chan graphsync.UnregisterHookFunc)
-	select {
-	case rm.messages <- &registerResponseHookMessage{hook, response}:
-	case <-rm.ctx.Done():
-		return nil
-	}
-	select {
-	case unregister := <-response:
-		return unregister
-	case <-rm.ctx.Done():
-		return nil
-	}
-}
-
 // Startup starts processing for the WantManager.
 func (rm *RequestManager) Startup() {
 	go rm.run()
@@ -318,22 +280,6 @@ func (prm *processResponseMessage) handle(rm *RequestManager) {
 	rm.processTerminations(filteredResponses)
 }
 
-func (rhm *registerRequestHookMessage) handle(rm *RequestManager) {
-	unregister := rm.hooks.RegisterRequestHook(rhm.hook)
-	select {
-	case rhm.unregisterHookChan <- unregister:
-	case <-rm.ctx.Done():
-	}
-}
-
-func (rhm *registerResponseHookMessage) handle(rm *RequestManager) {
-	unregister := rm.hooks.RegisterResponseHook(rhm.hook)
-	select {
-	case rhm.unregisterHookChan <- unregister:
-	case <-rm.ctx.Done():
-	}
-}
-
 func (rm *RequestManager) filterResponsesForPeer(responses []gsmsg.GraphSyncResponse, p peer.ID) []gsmsg.GraphSyncResponse {
 	responsesForPeer := make([]gsmsg.GraphSyncResponse, 0, len(responses))
 	for _, response := range responses {
@@ -358,7 +304,7 @@ func (rm *RequestManager) processExtensions(responses []gsmsg.GraphSyncResponse,
 }
 
 func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg.GraphSyncResponse) bool {
-	result := rm.hooks.ProcessResponseHooks(p, response)
+	result := rm.responseHooks.ProcessResponseHooks(p, response)
 	if len(result.Extensions) > 0 {
 		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
 		rm.peerHandler.SendRequest(p, updateRequest)
@@ -428,7 +374,7 @@ func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID,
 		ctx, cancel, p, networkErrorChan,
 	}
 	request := gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, defaultPriority, extensions...)
-	hooksResult := rm.hooks.ProcessRequestHooks(p, request)
+	hooksResult := rm.requestHooks.ProcessRequestHooks(p, request)
 	err = rm.asyncLoader.StartRequest(requestID, hooksResult.PersistenceOption)
 	if err != nil {
 		return rm.singleErrorResponse(err)
