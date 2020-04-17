@@ -157,19 +157,26 @@ type IncomingRequestHookActions interface {
 	ValidateRequest()
 }
 
+// OutgoingBlockHookActions are actions that an outgoing block hook can take to
+// change the execution of a request
+type OutgoingBlockHookActions interface {
+	SendExtensionData(ExtensionData)
+	TerminateWithError(error)
+	PauseResponse()
+}
+
 // OutgoingRequestHookActions are actions that an outgoing request hook can take
-// to change the execution of this request
+// to change the execution of a request
 type OutgoingRequestHookActions interface {
 	UsePersistenceOption(name string)
 	UseNodeBuilderChooser(traversal.NodeBuilderChooser)
 }
 
-// OutgoingBlockHookActions are actions that an outgoing block hook can take to
-// change the execution of this request
-type OutgoingBlockHookActions interface {
-	SendExtensionData(ExtensionData)
+// IncomingResponseHookActions are actions that incoming response hook can take
+// to change the execution of a request
+type IncomingResponseHookActions interface {
 	TerminateWithError(error)
-	PauseResponse()
+	UpdateRequestWithExtensions(...ExtensionData)
 }
 
 // OnIncomingRequestHook is a hook that runs each time a new request is received.
@@ -180,7 +187,7 @@ type OnIncomingRequestHook func(p peer.ID, request RequestData, hookActions Inco
 // OnIncomingResponseHook is a hook that runs each time a new response is received.
 // It receives the peer that sent the response and all data about the response.
 // If it returns an error processing is halted and the original request is cancelled.
-type OnIncomingResponseHook func(p peer.ID, responseData ResponseData) error
+type OnIncomingResponseHook func(p peer.ID, responseData ResponseData, hookActions IncomingResponseHookActions)
 
 // OnOutgoingRequestHook is a hook that runs immediately prior to sending a request
 // It receives the peer we're sending a request to and all the data aobut the request

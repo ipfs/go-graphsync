@@ -191,12 +191,11 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	var receivedRequestData []byte
 
 	requestor.RegisterIncomingResponseHook(
-		func(p peer.ID, responseData graphsync.ResponseData) error {
+		func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
 			data, has := responseData.Extension(td.extensionName)
 			if has {
 				receivedResponseData = data
 			}
-			return nil
 		})
 
 	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {

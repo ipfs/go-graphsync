@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ipfs/go-graphsync/requestmanager/hooks"
+
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
 	ipldutil "github.com/ipfs/go-graphsync/ipldutil"
@@ -31,16 +33,6 @@ type inProgressRequestStatus struct {
 	cancelFn     func()
 	p            peer.ID
 	networkError chan error
-}
-
-type responseHook struct {
-	key  uint64
-	hook graphsync.OnIncomingResponseHook
-}
-
-type requestHook struct {
-	key  uint64
-	hook graphsync.OnOutgoingRequestHook
 }
 
 // PeerHandler is an interface that can send requests to peers
@@ -71,9 +63,7 @@ type RequestManager struct {
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
 	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
-	hooksNextKey              uint64
-	responseHooks             []responseHook
-	requestHooks              []requestHook
+	hooks                     *hooks.Hooks
 }
 
 type requestManagerMessage interface {
@@ -90,6 +80,7 @@ func New(ctx context.Context, asyncLoader AsyncLoader) *RequestManager {
 		rc:                        newResponseCollector(ctx),
 		messages:                  make(chan requestManagerMessage, 16),
 		inProgressRequestStatuses: make(map[graphsync.RequestID]*inProgressRequestStatus),
+		hooks:                     hooks.New(),
 	}
 }
 
@@ -328,35 +319,17 @@ func (prm *processResponseMessage) handle(rm *RequestManager) {
 }
 
 func (rhm *registerRequestHookMessage) handle(rm *RequestManager) {
-	rh := requestHook{rm.hooksNextKey, rhm.hook}
-	rm.hooksNextKey++
-	rm.requestHooks = append(rm.requestHooks, rh)
+	unregister := rm.hooks.RegisterRequestHook(rhm.hook)
 	select {
-	case rhm.unregisterHookChan <- func() {
-		for i, matchHook := range rm.requestHooks {
-			if rh.key == matchHook.key {
-				rm.requestHooks = append(rm.requestHooks[:i], rm.requestHooks[i+1:]...)
-				return
-			}
-		}
-	}:
+	case rhm.unregisterHookChan <- unregister:
 	case <-rm.ctx.Done():
 	}
 }
 
 func (rhm *registerResponseHookMessage) handle(rm *RequestManager) {
-	rh := responseHook{rm.hooksNextKey, rhm.hook}
-	rm.hooksNextKey++
-	rm.responseHooks = append(rm.responseHooks, rh)
+	unregister := rm.hooks.RegisterResponseHook(rhm.hook)
 	select {
-	case rhm.unregisterHookChan <- func() {
-		for i, matchHook := range rm.responseHooks {
-			if rh.key == matchHook.key {
-				rm.responseHooks = append(rm.responseHooks[:i], rm.responseHooks[i+1:]...)
-				return
-			}
-		}
-	}:
+	case rhm.unregisterHookChan <- unregister:
 	case <-rm.ctx.Done():
 	}
 }
@@ -385,18 +358,20 @@ func (rm *RequestManager) processExtensions(responses []gsmsg.GraphSyncResponse,
 }
 
 func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg.GraphSyncResponse) bool {
-	for _, responseHook := range rm.responseHooks {
-		err := responseHook.hook(p, response)
-		if err != nil {
-			requestStatus := rm.inProgressRequestStatuses[response.RequestID()]
-			responseError := rm.generateResponseErrorFromStatus(graphsync.RequestFailedUnknown)
-			select {
-			case requestStatus.networkError <- responseError:
-			case <-requestStatus.ctx.Done():
-			}
-			requestStatus.cancelFn()
-			return false
+	result := rm.hooks.ProcessResponseHooks(p, response)
+	if len(result.Extensions) > 0 {
+		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
+		rm.peerHandler.SendRequest(p, updateRequest)
+	}
+	if result.Err != nil {
+		requestStatus := rm.inProgressRequestStatuses[response.RequestID()]
+		responseError := rm.generateResponseErrorFromStatus(graphsync.RequestFailedUnknown)
+		select {
+		case requestStatus.networkError <- responseError:
+		case <-requestStatus.ctx.Done():
 		}
+		requestStatus.cancelFn()
+		return false
 	}
 	return true
 }
@@ -434,19 +409,6 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.Respo
 	}
 }
 
-type hookActions struct {
-	persistenceOption  string
-	nodeBuilderChooser traversal.NodeBuilderChooser
-}
-
-func (ha *hookActions) UsePersistenceOption(name string) {
-	ha.persistenceOption = name
-}
-
-func (ha *hookActions) UseNodeBuilderChooser(nodeBuilderChooser traversal.NodeBuilderChooser) {
-	ha.nodeBuilderChooser = nodeBuilderChooser
-}
-
 func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (chan graphsync.ResponseProgress, chan error) {
 	_, err := ipldutil.EncodeNode(selectorSpec)
 	if err != nil {
@@ -466,16 +428,13 @@ func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID,
 		ctx, cancel, p, networkErrorChan,
 	}
 	request := gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, defaultPriority, extensions...)
-	ha := &hookActions{}
-	for _, hook := range rm.requestHooks {
-		hook.hook(p, request, ha)
-	}
-	err = rm.asyncLoader.StartRequest(requestID, ha.persistenceOption)
+	hooksResult := rm.hooks.ProcessRequestHooks(p, request)
+	err = rm.asyncLoader.StartRequest(requestID, hooksResult.PersistenceOption)
 	if err != nil {
 		return rm.singleErrorResponse(err)
 	}
 	rm.peerHandler.SendRequest(p, request)
-	return rm.executeTraversal(ctx, requestID, root, selector, ha.nodeBuilderChooser, networkErrorChan)
+	return rm.executeTraversal(ctx, requestID, root, selector, hooksResult.CustomChooser, networkErrorChan)
 }
 
 func (rm *RequestManager) executeTraversal(
