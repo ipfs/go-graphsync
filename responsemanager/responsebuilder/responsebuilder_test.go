@@ -30,18 +30,18 @@ func TestMessageBuilding(t *testing.T) {
 	rb.AddLink(requestID1, links[1], false)
 	rb.AddLink(requestID1, links[2], true)
 
-	rb.AddCompletedRequest(requestID1, graphsync.RequestCompletedPartial)
+	rb.AddResponseCode(requestID1, graphsync.RequestCompletedPartial)
 
 	rb.AddLink(requestID2, links[1], true)
 	rb.AddLink(requestID2, links[2], true)
 	rb.AddLink(requestID2, links[1], true)
 
-	rb.AddCompletedRequest(requestID2, graphsync.RequestCompletedFull)
+	rb.AddResponseCode(requestID2, graphsync.RequestCompletedFull)
 
 	rb.AddLink(requestID3, links[0], true)
 	rb.AddLink(requestID3, links[1], true)
 
-	rb.AddCompletedRequest(requestID4, graphsync.RequestCompletedFull)
+	rb.AddResponseCode(requestID4, graphsync.RequestCompletedFull)
 
 	for _, block := range blocks {
 		rb.AddBlock(block)

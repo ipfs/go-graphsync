@@ -57,6 +57,7 @@ type PeerResponseSender interface {
 	SendExtensionData(graphsync.RequestID, graphsync.ExtensionData)
 	FinishRequest(requestID graphsync.RequestID)
 	FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode)
+	PauseRequest(requestID graphsync.RequestID)
 }
 
 // NewResponseSender generates a new PeerResponseSender for the given context, peer ID,
@@ -168,9 +169,13 @@ func (prm *peerResponseSender) FinishWithError(requestID graphsync.RequestID, st
 	prm.finish(requestID, status)
 }
 
+func (prm *peerResponseSender) PauseRequest(requestID graphsync.RequestID) {
+	prm.finish(requestID, graphsync.RequestPaused)
+}
+
 func (prm *peerResponseSender) finish(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
 	if prm.buildResponse(0, func(responseBuilder *responsebuilder.ResponseBuilder) {
-		responseBuilder.AddCompletedRequest(requestID, status)
+		responseBuilder.AddResponseCode(requestID, status)
 	}) {
 		prm.signalWork()
 	}

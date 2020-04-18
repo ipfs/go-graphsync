@@ -59,6 +59,9 @@ const (
 	// PartialResponse may include blocks and metadata about the in progress response
 	// in extra.
 	PartialResponse = ResponseStatusCode(14)
+	// RequestPaused indicates a request is paused and will not send any more data
+	// until unpaused
+	RequestPaused = ResponseStatusCode(15)
 
 	// Success Response Codes (request terminated)
 
@@ -179,6 +182,14 @@ type IncomingResponseHookActions interface {
 	UpdateRequestWithExtensions(...ExtensionData)
 }
 
+// RequestUpdatedHookActions are actions that can be taken in a request updated hook to
+// change execution of the response
+type RequestUpdatedHookActions interface {
+	TerminateWithError(error)
+	SendExtensionData(ExtensionData)
+	UnpauseResponse()
+}
+
 // OnIncomingRequestHook is a hook that runs each time a new request is received.
 // It receives the peer that sent the request and all data about the request.
 // It receives an interface for customizing the response to this request
@@ -200,6 +211,11 @@ type OnOutgoingRequestHook func(p peer.ID, request RequestData, hookActions Outg
 // and the size of the block sent
 // It receives an interface for taking further action on the response
 type OnOutgoingBlockHook func(p peer.ID, request RequestData, block BlockData, hookActions OutgoingBlockHookActions)
+
+// OnRequestUpdatedHook is a hook that runs when an update to a request is received
+// It receives the peer we're sending to, the original request, the request update
+// It receives an interface to taking further action on the response
+type OnRequestUpdatedHook func(p peer.ID, request RequestData, updateRequest RequestData, hookActions RequestUpdatedHookActions)
 
 // UnregisterHookFunc is a function call to unregister a hook that was previously registered
 type UnregisterHookFunc func()
@@ -223,6 +239,9 @@ type GraphExchange interface {
 
 	// RegisterOutgoingBlockHook adds a hook that runs every time a block is sent from a responder
 	RegisterOutgoingBlockHook(hook OnOutgoingBlockHook) UnregisterHookFunc
+
+	// RegisterRequestUpdatedHook adds a hook that runs every time an update to a request is received
+	RegisterRequestUpdatedHook(hook OnRequestUpdatedHook) UnregisterHookFunc
 
 	// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
 	UnpauseResponse(peer.ID, RequestID) error

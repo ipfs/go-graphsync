@@ -300,3 +300,96 @@ func TestBlockHookProcessing(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateHookProcessing(t *testing.T) {
+	extensionData := testutil.RandomBytes(100)
+	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
+	extension := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionData,
+	}
+	extensionUpdateData := testutil.RandomBytes(100)
+	extensionUpdate := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionUpdateData,
+	}
+	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponse := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionResponseData,
+	}
+
+	root := testutil.GenerateCids(1)[0]
+	requestID := graphsync.RequestID(rand.Int31())
+	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
+	update := gsmsg.UpdateRequest(requestID, extensionUpdate)
+	p := testutil.GeneratePeers(1)[0]
+	testCases := map[string]struct {
+		configure func(t *testing.T, updateHooks *hooks.RequestUpdatedHooks)
+		assert    func(t *testing.T, result hooks.UpdateResult)
+	}{
+		"no hooks": {
+			assert: func(t *testing.T, result hooks.UpdateResult) {
+				require.Empty(t, result.Extensions)
+				require.NoError(t, result.Err)
+				require.False(t, result.Unpause)
+			},
+		},
+		"send extension data": {
+			configure: func(t *testing.T, updateHooks *hooks.RequestUpdatedHooks) {
+				updateHooks.Register(func(p peer.ID, requestData graphsync.RequestData, updateData graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+					_, found := requestData.Extension(extensionName)
+					_, updateFound := updateData.Extension(extensionName)
+					if found && updateFound {
+						hookActions.SendExtensionData(extensionResponse)
+					}
+				})
+			},
+			assert: func(t *testing.T, result hooks.UpdateResult) {
+				require.Len(t, result.Extensions, 1)
+				require.Contains(t, result.Extensions, extensionResponse)
+				require.NoError(t, result.Err)
+				require.False(t, result.Unpause)
+
+			},
+		},
+		"terminate with error": {
+			configure: func(t *testing.T, updateHooks *hooks.RequestUpdatedHooks) {
+				updateHooks.Register(func(p peer.ID, requestData graphsync.RequestData, updateData graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+					hookActions.TerminateWithError(errors.New("failed"))
+				})
+			},
+			assert: func(t *testing.T, result hooks.UpdateResult) {
+				require.Empty(t, result.Extensions)
+				require.EqualError(t, result.Err, "failed")
+				require.False(t, result.Unpause)
+
+			},
+		},
+		"unpause response": {
+			configure: func(t *testing.T, updateHooks *hooks.RequestUpdatedHooks) {
+				updateHooks.Register(func(p peer.ID, requestData graphsync.RequestData, updateData graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+					hookActions.UnpauseResponse()
+				})
+			},
+			assert: func(t *testing.T, result hooks.UpdateResult) {
+				require.Empty(t, result.Extensions)
+				require.NoError(t, result.Err)
+				require.True(t, result.Unpause)
+			},
+		},
+	}
+	for testCase, data := range testCases {
+		t.Run(testCase, func(t *testing.T) {
+			updateHooks := hooks.NewUpdateHooks()
+			if data.configure != nil {
+				data.configure(t, updateHooks)
+			}
+			result := updateHooks.ProcessUpdateHooks(p, request, update)
+			if data.assert != nil {
+				data.assert(t, result)
+			}
+		})
+	}
+}
