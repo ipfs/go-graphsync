@@ -444,7 +444,10 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		return
 	}
 	if result.Unpause {
-		rm.unpauseRequest(key.p, key.requestID)
+		err := rm.unpauseRequest(key.p, key.requestID)
+		if err != nil {
+			log.Warnf("error unpausing request: %s", err.Error())
+		}
 	}
 }
 
