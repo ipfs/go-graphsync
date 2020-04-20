@@ -143,8 +143,9 @@ func (fprs *fakePeerResponseSender) SendExtensionData(
 	fprs.sentExtensions <- sentExtension{requestID, extension}
 }
 
-func (fprs *fakePeerResponseSender) FinishRequest(requestID graphsync.RequestID) {
+func (fprs *fakePeerResponseSender) FinishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode {
 	fprs.lastCompletedRequest <- completedRequest{requestID, graphsync.RequestCompletedFull}
+	return graphsync.RequestCompletedFull
 }
 
 func (fprs *fakePeerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
@@ -160,7 +161,7 @@ func TestIncomingQuery(t *testing.T) {
 	defer td.cancel()
 	blks := td.blockChain.AllBlocks()
 
-	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 
@@ -181,7 +182,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	td := newTestData(t)
 	defer td.cancel()
 	blks := td.blockChain.AllBlocks()
-	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
@@ -228,7 +229,7 @@ func TestEarlyCancellation(t *testing.T) {
 	td := newTestData(t)
 	defer td.cancel()
 	td.queryQueue.popWait.Add(1)
-	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 	responseManager.Startup()
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 
@@ -252,7 +253,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("on its own, should fail validation", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 		responseManager.Startup()
 		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		var lastRequest completedRequest
@@ -263,7 +264,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("if non validating hook succeeds, does not pass validation", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 		responseManager.Startup()
 		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.SendExtensionData(td.extensionResponse)
@@ -280,7 +281,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("if validating hook succeeds, should pass validation", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 		responseManager.Startup()
 		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
@@ -298,7 +299,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("if any hook fails, should fail", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 		responseManager.Startup()
 		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
@@ -319,7 +320,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("hooks can be unregistered", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 		responseManager.Startup()
 		unregister := td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
@@ -349,7 +350,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		defer td.cancel()
 		obs := make(map[ipld.Link][]byte)
 		oloader, _ := testutil.NewTestStore(obs)
-		responseManager := New(td.ctx, oloader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+		responseManager := New(td.ctx, oloader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 		responseManager.Startup()
 		// add validating hook -- so the request SHOULD succeed
 		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
@@ -383,7 +384,7 @@ func TestValidationAndExtensions(t *testing.T) {
 	t.Run("hooks can alter the node builder chooser", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
-		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 		responseManager.Startup()
 
 		customChooserCallCount := 0
@@ -426,7 +427,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("can send extension data", func(t *testing.T) {
 			td := newTestData(t)
 			defer td.cancel()
-			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 			responseManager.Startup()
 			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 				hookActions.ValidateRequest()
@@ -448,7 +449,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("can send errors", func(t *testing.T) {
 			td := newTestData(t)
 			defer td.cancel()
-			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 			responseManager.Startup()
 			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 				hookActions.ValidateRequest()
@@ -465,7 +466,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("can pause/unpause", func(t *testing.T) {
 			td := newTestData(t)
 			defer td.cancel()
-			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 			responseManager.Startup()
 			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 				hookActions.ValidateRequest()
@@ -501,7 +502,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		t.Run("can pause/unpause", func(t *testing.T) {
 			td := newTestData(t)
 			defer td.cancel()
-			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 			responseManager.Startup()
 			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 				hookActions.ValidateRequest()
@@ -540,7 +541,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			t.Run("when unpaused", func(t *testing.T) {
 				td := newTestData(t)
 				defer td.cancel()
-				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 				responseManager.Startup()
 				td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 					hookActions.ValidateRequest()
@@ -577,7 +578,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			t.Run("when paused", func(t *testing.T) {
 				td := newTestData(t)
 				defer td.cancel()
-				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 				responseManager.Startup()
 				td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 					hookActions.ValidateRequest()
@@ -622,7 +623,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			t.Run("when unpaused", func(t *testing.T) {
 				td := newTestData(t)
 				defer td.cancel()
-				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 				responseManager.Startup()
 				td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 					hookActions.ValidateRequest()
@@ -656,7 +657,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			t.Run("when paused", func(t *testing.T) {
 				td := newTestData(t)
 				defer td.cancel()
-				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
 				responseManager.Startup()
 				td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 					hookActions.ValidateRequest()
@@ -699,6 +700,29 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 	})
+	t.Run("final response status listeners", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+		})
+		statusChan := make(chan graphsync.ResponseStatusCode, 1)
+		td.completedListeners.Register(func(p peer.ID, requestData graphsync.RequestData, status graphsync.ResponseStatusCode) {
+			select {
+			case statusChan <- status:
+			default:
+			}
+		})
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		var lastRequest completedRequest
+		testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+		var status graphsync.ResponseStatusCode
+		testutil.AssertReceive(td.ctx, t, statusChan, &status, "should receive status")
+		require.True(t, gsmsg.IsTerminalSuccessCode(status), "request should succeed")
+	})
 }
 
 type testData struct {
@@ -730,6 +754,7 @@ type testData struct {
 	requestHooks          *hooks.IncomingRequestHooks
 	blockHooks            *hooks.OutgoingBlockHooks
 	updateHooks           *hooks.RequestUpdatedHooks
+	completedListeners    *hooks.CompletedResponseListeners
 }
 
 func newTestData(t *testing.T) testData {
@@ -778,5 +803,6 @@ func newTestData(t *testing.T) testData {
 	td.requestHooks = hooks.NewRequestHooks(td.peristenceOptions)
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()
+	td.completedListeners = hooks.NewCompletedResponseListeners()
 	return td
 }

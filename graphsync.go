@@ -217,6 +217,9 @@ type OnOutgoingBlockHook func(p peer.ID, request RequestData, block BlockData, h
 // It receives an interface to taking further action on the response
 type OnRequestUpdatedHook func(p peer.ID, request RequestData, updateRequest RequestData, hookActions RequestUpdatedHookActions)
 
+// OnResponseCompletedListener provides a way to listen for when responder has finished serving a response
+type OnResponseCompletedListener func(p peer.ID, request RequestData, status ResponseStatusCode)
+
 // UnregisterHookFunc is a function call to unregister a hook that was previously registered
 type UnregisterHookFunc func()
 
@@ -242,6 +245,9 @@ type GraphExchange interface {
 
 	// RegisterRequestUpdatedHook adds a hook that runs every time an update to a request is received
 	RegisterRequestUpdatedHook(hook OnRequestUpdatedHook) UnregisterHookFunc
+
+	// RegisterCompletedResponseListener adds a listener on the responder for completed responses
+	RegisterCompletedResponseListener(listener OnResponseCompletedListener) UnregisterHookFunc
 
 	// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
 	UnpauseResponse(peer.ID, RequestID) error

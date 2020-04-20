@@ -76,6 +76,11 @@ type UpdateHooks interface {
 	ProcessUpdateHooks(p peer.ID, request graphsync.RequestData, update graphsync.RequestData) hooks.UpdateResult
 }
 
+// CompletedListeners is an interface for notifying listeners that responses are complete
+type CompletedListeners interface {
+	NotifyCompletedListeners(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode)
+}
+
 // PeerManager is an interface that returns sender interfaces for peer responses.
 type PeerManager interface {
 	SenderForPeer(p peer.ID) peerresponsemanager.PeerResponseSender
@@ -96,6 +101,7 @@ type ResponseManager struct {
 	requestHooks        RequestHooks
 	blockHooks          BlockHooks
 	updateHooks         UpdateHooks
+	completedListeners  CompletedListeners
 	messages            chan responseManagerMessage
 	workSignal          chan struct{}
 	ticker              *time.Ticker
@@ -110,7 +116,8 @@ func New(ctx context.Context,
 	queryQueue QueryQueue,
 	requestHooks RequestHooks,
 	blockHooks BlockHooks,
-	updateHooks UpdateHooks) *ResponseManager {
+	updateHooks UpdateHooks,
+	completedListeners CompletedListeners) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
 	return &ResponseManager{
 		ctx:                 ctx,
@@ -121,6 +128,7 @@ func New(ctx context.Context,
 		requestHooks:        requestHooks,
 		blockHooks:          blockHooks,
 		updateHooks:         updateHooks,
+		completedListeners:  completedListeners,
 		messages:            make(chan responseManagerMessage, 16),
 		workSignal:          make(chan struct{}, 1),
 		ticker:              time.NewTicker(thawSpeed),
@@ -187,8 +195,9 @@ type responseDataRequest struct {
 }
 
 type finishTaskRequest struct {
-	key responseKey
-	err error
+	key    responseKey
+	status graphsync.ResponseStatusCode
+	err    error
 }
 
 type setResponseDataRequest struct {
@@ -231,9 +240,9 @@ func (rm *ResponseManager) processQueriesWorker() {
 			case <-rm.ctx.Done():
 				return
 			}
-			err := rm.executeTask(key, taskData)
+			status, err := rm.executeTask(key, taskData)
 			select {
-			case rm.messages <- &finishTaskRequest{key, err}:
+			case rm.messages <- &finishTaskRequest{key, status, err}:
 			case <-rm.ctx.Done():
 			}
 		}
@@ -243,18 +252,18 @@ func (rm *ResponseManager) processQueriesWorker() {
 
 }
 
-func (rm *ResponseManager) executeTask(key responseKey, taskData *responseTaskData) error {
+func (rm *ResponseManager) executeTask(key responseKey, taskData *responseTaskData) (graphsync.ResponseStatusCode, error) {
 	var err error
 	loader := taskData.loader
 	traverser := taskData.traverser
 	if loader == nil || traverser == nil {
 		loader, traverser, err = rm.prepareQuery(taskData.ctx, key.p, taskData.request)
 		if err != nil {
-			return err
+			return graphsync.RequestFailedUnknown, err
 		}
 		select {
 		case <-rm.ctx.Done():
-			return nil
+			return graphsync.RequestFailedUnknown, errors.New("context cancelled")
 		case rm.messages <- &setResponseDataRequest{key, loader, traverser}:
 		}
 	}
@@ -291,7 +300,7 @@ func (rm *ResponseManager) executeQuery(
 	request gsmsg.GraphSyncRequest,
 	loader ipld.Loader,
 	traverser ipldutil.Traverser,
-	updateSignal chan struct{}) error {
+	updateSignal chan struct{}) (graphsync.ResponseStatusCode, error) {
 	updateChan := make(chan []gsmsg.GraphSyncRequest)
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
 	err := runtraversal.RunTraversal(loader, traverser, func(link ipld.Link, data []byte) error {
@@ -314,13 +323,12 @@ func (rm *ResponseManager) executeQuery(
 	if err != nil {
 		if err != hooks.ErrPaused {
 			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		} else {
-			peerResponseSender.PauseRequest(request.ID())
+			return graphsync.RequestFailedUnknown, err
 		}
-		return err
+		peerResponseSender.PauseRequest(request.ID())
+		return graphsync.RequestPaused, err
 	}
-	peerResponseSender.FinishRequest(request.ID())
-	return nil
+	return peerResponseSender.FinishRequest(request.ID()), nil
 }
 
 func (rm *ResponseManager) checkForUpdates(
@@ -492,6 +500,7 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 		response.isPaused = true
 		return
 	}
+	rm.completedListeners.NotifyCompletedListeners(ftr.key.p, response.request, ftr.status)
 	if ftr.err != nil {
 		log.Infof("response failed: %w", ftr.err)
 	}
