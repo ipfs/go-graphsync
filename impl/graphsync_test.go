@@ -239,11 +239,14 @@ func TestPauseResume(t *testing.T) {
 
 	stopPoint := 50
 	blocksSent := 0
-	var requestID graphsync.RequestID
+	requestIDChan := make(chan graphsync.RequestID, 1)
 	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
 		_, has := requestData.Extension(td.extensionName)
 		if has {
-			requestID = requestData.ID()
+			select {
+			case requestIDChan <- requestData.ID():
+			default:
+			}
 			blocksSent++
 			if blocksSent == stopPoint {
 				hookActions.PauseResponse()
@@ -259,7 +262,9 @@ func TestPauseResume(t *testing.T) {
 	timer := time.NewTimer(100 * time.Millisecond)
 	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
 
-	responder.UnpauseResponse(td.host1.ID(), requestID)
+	requestID := <-requestIDChan
+	err := responder.UnpauseResponse(td.host1.ID(), requestID)
+	require.NoError(t, err)
 
 	blockChain.VerifyRemainder(ctx, progressChan, stopPoint)
 	testutil.VerifyEmptyErrors(ctx, t, errChan)

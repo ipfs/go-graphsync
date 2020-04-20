@@ -3,7 +3,6 @@ package requestmanager
 import (
 	"context"
 	"fmt"
-	"math"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
@@ -23,8 +22,6 @@ import (
 var log = logging.Logger("graphsync")
 
 const (
-	// maxPriority is the max priority as defined by the graphsync protocol
-	maxPriority = graphsync.Priority(math.MaxInt32)
 	// defaultPriority is the default priority for requests sent by graphsync
 	defaultPriority = graphsync.Priority(0)
 )
