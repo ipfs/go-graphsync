@@ -537,74 +537,165 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 		t.Run("can send extension data", func(t *testing.T) {
-			td := newTestData(t)
-			defer td.cancel()
-			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
-			responseManager.Startup()
-			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
-				hookActions.ValidateRequest()
+			t.Run("when unpaused", func(t *testing.T) {
+				td := newTestData(t)
+				defer td.cancel()
+				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+				responseManager.Startup()
+				td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+					hookActions.ValidateRequest()
+				})
+				blkIndex := 0
+				blockCount := 3
+				wait := make(chan struct{})
+				sent := make(chan struct{})
+				td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+					blkIndex++
+					if blkIndex == blockCount {
+						close(sent)
+						<-wait
+					}
+				})
+				td.updateHooks.Register(func(p peer.ID, requestData graphsync.RequestData, updateData graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+					if _, found := updateData.Extension(td.extensionName); found {
+						hookActions.SendExtensionData(td.extensionResponse)
+					}
+				})
+				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+				testutil.AssertDoesReceive(td.ctx, t, sent, "sends blocks")
+				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
+				responseManager.synchronize()
+				close(wait)
+				var lastRequest completedRequest
+				testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
+				require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+				var receivedExtension sentExtension
+				testutil.AssertReceive(td.ctx, t, td.sentExtensions, &receivedExtension, "should send extension response")
+				require.Equal(t, td.extensionResponse, receivedExtension.extension, "incorrect extension response sent")
 			})
-			blkIndex := 0
-			blockCount := 3
-			wait := make(chan struct{})
-			sent := make(chan struct{})
-			td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-				blkIndex++
-				if blkIndex == blockCount {
-					close(sent)
-					<-wait
+
+			t.Run("when paused", func(t *testing.T) {
+				td := newTestData(t)
+				defer td.cancel()
+				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+				responseManager.Startup()
+				td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+					hookActions.ValidateRequest()
+				})
+				blkIndex := 0
+				blockCount := 3
+				td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+					blkIndex++
+					if blkIndex == blockCount {
+						hookActions.PauseResponse()
+					}
+				})
+				td.updateHooks.Register(func(p peer.ID, requestData graphsync.RequestData, updateData graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+					if _, found := updateData.Extension(td.extensionName); found {
+						hookActions.SendExtensionData(td.extensionResponse)
+					}
+				})
+				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+				var sentResponses []sentResponse
+				for i := 0; i < blockCount; i++ {
+					testutil.AssertDoesReceive(td.ctx, t, td.sentResponses, "should sent block")
 				}
+				testutil.AssertChannelEmpty(t, td.sentResponses, "should not send more blocks")
+				var pausedRequest pausedRequest
+				testutil.AssertReceive(td.ctx, t, td.pausedRequests, &pausedRequest, "should pause request")
+				require.LessOrEqual(t, len(sentResponses), blockCount)
+
+				// send update
+				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
+
+				// receive data
+				var receivedExtension sentExtension
+				testutil.AssertReceive(td.ctx, t, td.sentExtensions, &receivedExtension, "should send extension response")
+
+				// should still be paused
+				timer := time.NewTimer(500 * time.Millisecond)
+				testutil.AssertDoesReceiveFirst(t, timer.C, "should not complete request while paused", td.completedRequestChan)
 			})
-			td.updateHooks.Register(func(p peer.ID, requestData graphsync.RequestData, updateData graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
-				if _, found := updateData.Extension(td.extensionName); found {
-					hookActions.SendExtensionData(td.extensionResponse)
-				}
-			})
-			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
-			testutil.AssertDoesReceive(td.ctx, t, sent, "sends blocks")
-			responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
-			responseManager.synchronize()
-			close(wait)
-			var lastRequest completedRequest
-			testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
-			require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
-			var receivedExtension sentExtension
-			testutil.AssertReceive(td.ctx, t, td.sentExtensions, &receivedExtension, "should send extension response")
-			require.Equal(t, td.extensionResponse, receivedExtension.extension, "incorrect extension response sent")
 		})
 
 		t.Run("can send errors", func(t *testing.T) {
-			td := newTestData(t)
-			defer td.cancel()
-			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
-			responseManager.Startup()
-			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
-				hookActions.ValidateRequest()
+			t.Run("when unpaused", func(t *testing.T) {
+				td := newTestData(t)
+				defer td.cancel()
+				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+				responseManager.Startup()
+				td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+					hookActions.ValidateRequest()
+				})
+				blkIndex := 0
+				blockCount := 3
+				wait := make(chan struct{})
+				sent := make(chan struct{})
+				td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+					blkIndex++
+					if blkIndex == blockCount {
+						close(sent)
+						<-wait
+					}
+				})
+				td.updateHooks.Register(func(p peer.ID, requestData graphsync.RequestData, updateData graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+					if _, found := updateData.Extension(td.extensionName); found {
+						hookActions.TerminateWithError(errors.New("something went wrong"))
+					}
+				})
+				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+				testutil.AssertDoesReceive(td.ctx, t, sent, "sends blocks")
+				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
+				responseManager.synchronize()
+				close(wait)
+				var lastRequest completedRequest
+				testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
+				require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "request should fail")
 			})
-			blkIndex := 0
-			blockCount := 3
-			wait := make(chan struct{})
-			sent := make(chan struct{})
-			td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-				blkIndex++
-				if blkIndex == blockCount {
-					close(sent)
-					<-wait
+
+			t.Run("when paused", func(t *testing.T) {
+				td := newTestData(t)
+				defer td.cancel()
+				responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks)
+				responseManager.Startup()
+				td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+					hookActions.ValidateRequest()
+				})
+				blkIndex := 0
+				blockCount := 3
+				td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+					blkIndex++
+					if blkIndex == blockCount {
+						hookActions.PauseResponse()
+					}
+				})
+				td.updateHooks.Register(func(p peer.ID, requestData graphsync.RequestData, updateData graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+					if _, found := updateData.Extension(td.extensionName); found {
+						hookActions.TerminateWithError(errors.New("something went wrong"))
+					}
+				})
+				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+				var sentResponses []sentResponse
+				for i := 0; i < blockCount; i++ {
+					testutil.AssertDoesReceive(td.ctx, t, td.sentResponses, "should sent block")
 				}
+				testutil.AssertChannelEmpty(t, td.sentResponses, "should not send more blocks")
+				var pausedRequest pausedRequest
+				testutil.AssertReceive(td.ctx, t, td.pausedRequests, &pausedRequest, "should pause request")
+				require.LessOrEqual(t, len(sentResponses), blockCount)
+
+				// send update
+				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
+
+				// should terminate
+				var lastRequest completedRequest
+				testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
+				require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "request should fail")
+
+				// cannot unpause
+				err := responseManager.UnpauseResponse(td.p, td.requestID)
+				require.Error(t, err)
 			})
-			td.updateHooks.Register(func(p peer.ID, requestData graphsync.RequestData, updateData graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
-				if _, found := updateData.Extension(td.extensionName); found {
-					hookActions.TerminateWithError(errors.New("something went wrong"))
-				}
-			})
-			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
-			testutil.AssertDoesReceive(td.ctx, t, sent, "sends blocks")
-			responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
-			responseManager.synchronize()
-			close(wait)
-			var lastRequest completedRequest
-			testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
-			require.True(t, gsmsg.IsTerminalFailureCode(lastRequest.result), "request should fail")
 		})
 
 	})

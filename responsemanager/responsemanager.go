@@ -439,6 +439,8 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 	}
 	if result.Err != nil {
 		peerResponseSender.FinishWithError(key.requestID, graphsync.RequestFailedUnknown)
+		delete(rm.inProgressResponses, key)
+		response.cancelFn()
 		return
 	}
 	if result.Unpause {
