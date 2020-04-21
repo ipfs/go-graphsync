@@ -220,6 +220,58 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	require.Equal(t, td.extensionResponseData, receivedResponseData, "did not receive correct extension response data")
 }
 
+func TestPauseResume(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	stopPoint := 50
+	blocksSent := 0
+	requestIDChan := make(chan graphsync.RequestID, 1)
+	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+		_, has := requestData.Extension(td.extensionName)
+		if has {
+			select {
+			case requestIDChan <- requestData.ID():
+			default:
+			}
+			blocksSent++
+			if blocksSent == stopPoint {
+				hookActions.PauseResponse()
+			}
+		} else {
+			hookActions.TerminateWithError(errors.New("should have sent extension"))
+		}
+	})
+
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	blockChain.VerifyResponseRange(ctx, progressChan, 0, stopPoint)
+	timer := time.NewTimer(100 * time.Millisecond)
+	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
+
+	requestID := <-requestIDChan
+	err := responder.UnpauseResponse(td.host1.ID(), requestID)
+	require.NoError(t, err)
+
+	blockChain.VerifyRemainder(ctx, progressChan, stopPoint)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
+
+}
+
 func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	// create network
 	ctx := context.Background()
@@ -273,7 +325,7 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector())
 	testutil.VerifyEmptyResponse(ctx, t, progressChan)
-	testutil.VerifySingleTerminalError(ctx, t, errChan)
+	testutil.VerifyHasErrors(ctx, t, errChan)
 
 	progressChan, errChan = requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), extension)
 

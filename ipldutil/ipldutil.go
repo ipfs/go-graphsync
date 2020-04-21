@@ -23,8 +23,8 @@ func ErrDoNotFollow() error {
 }
 
 var (
-	defaultChooser traversal.NodeBuilderChooser = dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) ipld.NodeBuilder {
-		return free.NodeBuilder()
+	defaultChooser traversal.NodeBuilderChooser = dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodeBuilder, error) {
+		return free.NodeBuilder(), nil
 	})
 )
 
@@ -32,7 +32,10 @@ func Traverse(ctx context.Context, loader ipld.Loader, chooser traversal.NodeBui
 	if chooser == nil {
 		chooser = defaultChooser
 	}
-	builder := chooser(root, ipld.LinkContext{})
+	builder, err := chooser(root, ipld.LinkContext{})
+	if err != nil {
+		return err
+	}
 	node, err := root.Load(ctx, ipld.LinkContext{}, builder, loader)
 	if err != nil {
 		return err

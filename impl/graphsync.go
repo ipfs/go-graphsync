@@ -11,7 +11,10 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
 	"github.com/ipfs/go-graphsync/responsemanager"
+	"github.com/ipfs/go-graphsync/responsemanager/blockhooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
+	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
+	"github.com/ipfs/go-graphsync/responsemanager/requesthooks"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue"
@@ -35,6 +38,9 @@ type GraphSync struct {
 	peerResponseManager        *peerresponsemanager.PeerResponseManager
 	peerTaskQueue              *peertaskqueue.PeerTaskQueue
 	peerManager                *peermanager.PeerMessageManager
+	incomingRequestHooks       *requesthooks.IncomingRequestHooks
+	outgoingBlockHooks         *blockhooks.OutgoingBlockHooks
+	persistenceOptions         *persistenceoptions.PersistenceOptions
 	ctx                        context.Context
 	cancel                     context.CancelFunc
 	unregisterDefaultValidator graphsync.UnregisterHookFunc
@@ -69,8 +75,11 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		return peerresponsemanager.NewResponseSender(ctx, p, peerManager)
 	}
 	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
-	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue)
-	unregisterDefaultValidator := responseManager.RegisterRequestHook(selectorvalidator.SelectorValidator(maxRecursionDepth))
+	persistenceOptions := persistenceoptions.New()
+	incomingRequestHooks := requesthooks.New(persistenceOptions)
+	outgoingBlockHooks := blockhooks.New()
+	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks)
+	unregisterDefaultValidator := incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
 		network:                    network,
 		loader:                     loader,
@@ -78,6 +87,9 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		asyncLoader:                asyncLoader,
 		requestManager:             requestManager,
 		peerManager:                peerManager,
+		persistenceOptions:         persistenceOptions,
+		incomingRequestHooks:       incomingRequestHooks,
+		outgoingBlockHooks:         outgoingBlockHooks,
 		peerTaskQueue:              peerTaskQueue,
 		peerResponseManager:        peerResponseManager,
 		responseManager:            responseManager,
@@ -108,7 +120,7 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 // it is considered to have "validated" the request -- and that validation supersedes
 // the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
 func (gs *GraphSync) RegisterIncomingRequestHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
-	return gs.responseManager.RegisterRequestHook(hook)
+	return gs.incomingRequestHooks.Register(hook)
 }
 
 // RegisterIncomingResponseHook adds a hook that runs when a response is received
@@ -127,7 +139,17 @@ func (gs *GraphSync) RegisterPersistenceOption(name string, loader ipld.Loader, 
 	if err != nil {
 		return err
 	}
-	return gs.responseManager.RegisterPersistenceOption(name, loader)
+	return gs.persistenceOptions.Register(name, loader)
+}
+
+// RegisterOutgoingBlockHook registers a hook that runs after each block is sent in a response
+func (gs *GraphSync) RegisterOutgoingBlockHook(hook graphsync.OnOutgoingBlockHook) graphsync.UnregisterHookFunc {
+	return gs.outgoingBlockHooks.Register(hook)
+}
+
+// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
+func (gs *GraphSync) UnpauseResponse(p peer.ID, requestID graphsync.RequestID) error {
+	return gs.responseManager.UnpauseResponse(p, requestID)
 }
 
 type graphSyncReceiver GraphSync

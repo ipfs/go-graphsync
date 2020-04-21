@@ -207,8 +207,8 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	require.Equal(t, peers[0], requestRecords[1].p)
 	require.False(t, requestRecords[0].gsr.IsCancel())
 	require.False(t, requestRecords[1].gsr.IsCancel())
-	require.Equal(t, maxPriority, requestRecords[0].gsr.Priority())
-	require.Equal(t, maxPriority, requestRecords[1].gsr.Priority())
+	require.Equal(t, defaultPriority, requestRecords[0].gsr.Priority())
+	require.Equal(t, defaultPriority, requestRecords[1].gsr.Priority())
 
 	require.Equal(t, blockChain1.Selector(), requestRecords[0].gsr.Selector(), "did not encode selector properly")
 	require.Equal(t, blockChain2.Selector(), requestRecords[1].gsr.Selector(), "did not encode selector properly")

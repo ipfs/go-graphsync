@@ -135,6 +135,18 @@ type ResponseData interface {
 	Extension(name ExtensionName) ([]byte, bool)
 }
 
+// BlockData gives information about a block included in a graphsync response
+type BlockData interface {
+	// Link is the link/cid for the block
+	Link() ipld.Link
+
+	// BlockSize specifies the size of the block
+	BlockSize() uint64
+
+	// BlockSize specifies the amount of data actually transmitted over the network
+	BlockSizeOnWire() uint64
+}
+
 // IncomingRequestHookActions are actions that a request hook can take to change
 // behavior for the response
 type IncomingRequestHookActions interface {
@@ -152,6 +164,14 @@ type OutgoingRequestHookActions interface {
 	UseNodeBuilderChooser(traversal.NodeBuilderChooser)
 }
 
+// OutgoingBlockHookActions are actions that an outgoing block hook can take to
+// change the execution of this request
+type OutgoingBlockHookActions interface {
+	SendExtensionData(ExtensionData)
+	TerminateWithError(error)
+	PauseResponse()
+}
+
 // OnIncomingRequestHook is a hook that runs each time a new request is received.
 // It receives the peer that sent the request and all data about the request.
 // It receives an interface for customizing the response to this request
@@ -166,6 +186,13 @@ type OnIncomingResponseHook func(p peer.ID, responseData ResponseData) error
 // It receives the peer we're sending a request to and all the data aobut the request
 // It receives an interface for customizing how we handle executing this request
 type OnOutgoingRequestHook func(p peer.ID, request RequestData, hookActions OutgoingRequestHookActions)
+
+// OnOutgoingBlockHook is a hook that runs immediately after a requestor sends a new block
+// on a response
+// It receives the peer we're sending a request to, all the data aobut the request, a link for the block sent,
+// and the size of the block sent
+// It receives an interface for taking further action on the response
+type OnOutgoingBlockHook func(p peer.ID, request RequestData, block BlockData, hookActions OutgoingBlockHookActions)
 
 // UnregisterHookFunc is a function call to unregister a hook that was previously registered
 type UnregisterHookFunc func()
@@ -186,4 +213,10 @@ type GraphExchange interface {
 
 	// RegisterOutgoingRequestHook adds a hook that runs immediately prior to sending a new request
 	RegisterOutgoingRequestHook(hook OnOutgoingRequestHook) UnregisterHookFunc
+
+	// RegisterOutgoingBlockHook adds a hook that runs every time a block is sent from a responder
+	RegisterOutgoingBlockHook(hook OnOutgoingBlockHook) UnregisterHookFunc
+
+	// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
+	UnpauseResponse(peer.ID, RequestID) error
 }

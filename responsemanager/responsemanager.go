@@ -3,20 +3,25 @@ package responsemanager
 import (
 	"context"
 	"errors"
-	"sync"
+	"math"
 	"time"
+
+	"github.com/ipfs/go-graphsync/responsemanager/blockhooks"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/responsemanager/loader"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
+	"github.com/ipfs/go-graphsync/responsemanager/requesthooks"
+	"github.com/ipfs/go-graphsync/responsemanager/runtraversal"
+	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
+
+var log = logging.Logger("graphsync")
 
 const (
 	maxInProcessRequests = 6
@@ -24,9 +29,12 @@ const (
 )
 
 type inProgressResponseStatus struct {
-	ctx      context.Context
-	cancelFn func()
-	request  gsmsg.GraphSyncRequest
+	ctx       context.Context
+	cancelFn  func()
+	request   gsmsg.GraphSyncRequest
+	loader    ipld.Loader
+	traverser ipldutil.Traverser
+	isPaused  bool
 }
 
 type responseKey struct {
@@ -35,13 +43,10 @@ type responseKey struct {
 }
 
 type responseTaskData struct {
-	ctx     context.Context
-	request gsmsg.GraphSyncRequest
-}
-
-type requestHook struct {
-	key  uint64
-	hook graphsync.OnIncomingRequestHook
+	ctx       context.Context
+	request   gsmsg.GraphSyncRequest
+	loader    ipld.Loader
+	traverser ipldutil.Traverser
 }
 
 // QueryQueue is an interface that can receive new selector query tasks
@@ -52,6 +57,16 @@ type QueryQueue interface {
 	Remove(topic peertask.Topic, p peer.ID)
 	TasksDone(to peer.ID, tasks ...*peertask.Task)
 	ThawRound()
+}
+
+// RequestHooks is an interface for processing request hooks
+type RequestHooks interface {
+	ProcessRequestHooks(p peer.ID, request graphsync.RequestData) requesthooks.Result
+}
+
+// BlockHooks is an interface for processing block hooks
+type BlockHooks interface {
+	ProcessBlockHooks(p peer.ID, request graphsync.RequestData, blockData graphsync.BlockData) blockhooks.Result
 }
 
 // PeerManager is an interface that returns sender interfaces for peer responses.
@@ -66,21 +81,18 @@ type responseManagerMessage interface {
 // ResponseManager handles incoming requests from the network, initiates selector
 // traversals, and transmits responses
 type ResponseManager struct {
-	ctx         context.Context
-	cancelFn    context.CancelFunc
-	loader      ipld.Loader
-	peerManager PeerManager
-	queryQueue  QueryQueue
+	ctx          context.Context
+	cancelFn     context.CancelFunc
+	loader       ipld.Loader
+	peerManager  PeerManager
+	queryQueue   QueryQueue
+	requestHooks RequestHooks
+	blockHooks   BlockHooks
 
-	messages             chan responseManagerMessage
-	workSignal           chan struct{}
-	ticker               *time.Ticker
-	inProgressResponses  map[responseKey]inProgressResponseStatus
-	requestHooksLk       sync.RWMutex
-	requestHookNextKey   uint64
-	requestHooks         []requestHook
-	persistenceOptionsLk sync.RWMutex
-	persistenceOptions   map[string]ipld.Loader
+	messages            chan responseManagerMessage
+	workSignal          chan struct{}
+	ticker              *time.Ticker
+	inProgressResponses map[responseKey]*inProgressResponseStatus
 }
 
 // New creates a new response manager from the given context, loader,
@@ -88,7 +100,9 @@ type ResponseManager struct {
 func New(ctx context.Context,
 	loader ipld.Loader,
 	peerManager PeerManager,
-	queryQueue QueryQueue) *ResponseManager {
+	queryQueue QueryQueue,
+	requestHooks RequestHooks,
+	blockHooks BlockHooks) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
 	return &ResponseManager{
 		ctx:                 ctx,
@@ -96,11 +110,12 @@ func New(ctx context.Context,
 		loader:              loader,
 		peerManager:         peerManager,
 		queryQueue:          queryQueue,
+		requestHooks:        requestHooks,
+		blockHooks:          blockHooks,
 		messages:            make(chan responseManagerMessage, 16),
 		workSignal:          make(chan struct{}, 1),
 		ticker:              time.NewTicker(thawSpeed),
-		inProgressResponses: make(map[responseKey]inProgressResponseStatus),
-		persistenceOptions:  make(map[string]ipld.Loader),
+		inProgressResponses: make(map[responseKey]*inProgressResponseStatus),
 	}
 }
 
@@ -118,34 +133,25 @@ func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, reque
 	}
 }
 
-// RegisterPersistenceOption registers a new loader for the response manager
-func (rm *ResponseManager) RegisterPersistenceOption(name string, loader ipld.Loader) error {
-	rm.persistenceOptionsLk.Lock()
-	defer rm.persistenceOptionsLk.Unlock()
-	_, ok := rm.persistenceOptions[name]
-	if ok {
-		return errors.New("persistence option alreayd registered")
-	}
-	rm.persistenceOptions[name] = loader
-	return nil
+type unpauseRequestMessage struct {
+	p         peer.ID
+	requestID graphsync.RequestID
+	response  chan error
 }
 
-// RegisterRequestHook registers an extension to process new incoming requests
-func (rm *ResponseManager) RegisterRequestHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
-	rm.requestHooksLk.Lock()
-	rh := requestHook{rm.requestHookNextKey, hook}
-	rm.requestHookNextKey++
-	rm.requestHooks = append(rm.requestHooks, rh)
-	rm.requestHooksLk.Unlock()
-	return func() {
-		rm.requestHooksLk.Lock()
-		defer rm.requestHooksLk.Unlock()
-		for i, matchHook := range rm.requestHooks {
-			if rh.key == matchHook.key {
-				rm.requestHooks = append(rm.requestHooks[:i], rm.requestHooks[i+1:]...)
-				return
-			}
-		}
+// UnpauseResponse unpauses a response that was previously paused
+func (rm *ResponseManager) UnpauseResponse(p peer.ID, requestID graphsync.RequestID) error {
+	response := make(chan error, 1)
+	select {
+	case <-rm.ctx.Done():
+		return errors.New("Context Cancelled")
+	case rm.messages <- &unpauseRequestMessage{p, requestID, response}:
+	}
+	select {
+	case <-rm.ctx.Done():
+		return errors.New("Context Cancelled")
+	case err := <-response:
+		return err
 	}
 }
 
@@ -171,8 +177,15 @@ type responseDataRequest struct {
 	taskDataChan chan *responseTaskData
 }
 
-type finishResponseRequest struct {
+type finishTaskRequest struct {
 	key responseKey
+	err error
+}
+
+type setResponseDataRequest struct {
+	key       responseKey
+	loader    ipld.Loader
+	traverser ipldutil.Traverser
 }
 
 func (rm *ResponseManager) processQueriesWorker() {
@@ -204,9 +217,9 @@ func (rm *ResponseManager) processQueriesWorker() {
 			case <-rm.ctx.Done():
 				return
 			}
-			rm.executeQuery(taskData.ctx, key.p, taskData.request)
+			err := rm.executeTask(key, taskData)
 			select {
-			case rm.messages <- &finishResponseRequest{key}:
+			case rm.messages <- &finishTaskRequest{key, err}:
 			case <-rm.ctx.Done():
 			}
 		}
@@ -216,81 +229,75 @@ func (rm *ResponseManager) processQueriesWorker() {
 
 }
 
-func noopVisitor(tp traversal.Progress, n ipld.Node, tr traversal.VisitReason) error {
-	return nil
-}
-
-type hookActions struct {
-	persistenceOptions map[string]ipld.Loader
-	isValidated        bool
-	requestID          graphsync.RequestID
-	peerResponseSender peerresponsemanager.PeerResponseSender
-	err                error
-	loader             ipld.Loader
-	chooser            traversal.NodeBuilderChooser
-}
-
-func (ha *hookActions) SendExtensionData(ext graphsync.ExtensionData) {
-	ha.peerResponseSender.SendExtensionData(ha.requestID, ext)
-}
-
-func (ha *hookActions) TerminateWithError(err error) {
-	ha.err = err
-	ha.peerResponseSender.FinishWithError(ha.requestID, graphsync.RequestFailedUnknown)
-}
-
-func (ha *hookActions) ValidateRequest() {
-	ha.isValidated = true
-}
-
-func (ha *hookActions) UsePersistenceOption(name string) {
-	loader, ok := ha.persistenceOptions[name]
-	if !ok {
-		ha.TerminateWithError(errors.New("unknown loader option"))
-		return
-	}
-	ha.loader = loader
-}
-
-func (ha *hookActions) UseNodeBuilderChooser(chooser traversal.NodeBuilderChooser) {
-	ha.chooser = chooser
-}
-
-func (rm *ResponseManager) executeQuery(ctx context.Context,
-	p peer.ID,
-	request gsmsg.GraphSyncRequest) {
-	peerResponseSender := rm.peerManager.SenderForPeer(p)
-	selectorSpec := request.Selector()
-	rm.requestHooksLk.RLock()
-	rm.persistenceOptionsLk.RLock()
-	ha := &hookActions{rm.persistenceOptions, false, request.ID(), peerResponseSender, nil, rm.loader, nil}
-	for _, requestHook := range rm.requestHooks {
-		requestHook.hook(p, request, ha)
-		if ha.err != nil {
-			rm.requestHooksLk.RUnlock()
-			rm.persistenceOptionsLk.RUnlock()
-			return
+func (rm *ResponseManager) executeTask(key responseKey, taskData *responseTaskData) error {
+	var err error
+	loader := taskData.loader
+	traverser := taskData.traverser
+	if loader == nil || traverser == nil {
+		loader, traverser, err = rm.prepareQuery(taskData.ctx, key.p, taskData.request)
+		if err != nil {
+			return err
+		}
+		select {
+		case <-rm.ctx.Done():
+			return nil
+		case rm.messages <- &setResponseDataRequest{key, loader, traverser}:
 		}
 	}
-	rm.persistenceOptionsLk.RUnlock()
-	rm.requestHooksLk.RUnlock()
-	if !ha.isValidated {
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return
+	return rm.executeQuery(key.p, taskData.request, loader, traverser)
+}
+
+func (rm *ResponseManager) prepareQuery(ctx context.Context,
+	p peer.ID,
+	request gsmsg.GraphSyncRequest) (ipld.Loader, ipldutil.Traverser, error) {
+	result := rm.requestHooks.ProcessRequestHooks(p, request)
+	peerResponseSender := rm.peerManager.SenderForPeer(p)
+	for _, extension := range result.Extensions {
+		peerResponseSender.SendExtensionData(request.ID(), extension)
 	}
-	selector, err := ipldutil.ParseSelector(selectorSpec)
-	if err != nil {
+	if result.Err != nil || !result.IsValidated {
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return
+		return nil, nil, errors.New("request not valid")
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
-	wrappedLoader := loader.WrapLoader(ctx, ha.loader, request.ID(), peerResponseSender)
-	err = ipldutil.Traverse(ctx, wrappedLoader, ha.chooser, rootLink, selector, noopVisitor)
+	traverser := ipldutil.TraversalBuilder{
+		Root:     rootLink,
+		Selector: request.Selector(),
+		Chooser:  result.CustomChooser,
+	}.Start(ctx)
+	loader := result.CustomLoader
+	if loader == nil {
+		loader = rm.loader
+	}
+	return loader, traverser, nil
+}
+
+func (rm *ResponseManager) executeQuery(p peer.ID,
+	request gsmsg.GraphSyncRequest,
+	loader ipld.Loader,
+	traverser ipldutil.Traverser) error {
+	peerResponseSender := rm.peerManager.SenderForPeer(p)
+	err := runtraversal.RunTraversal(loader, traverser, func(link ipld.Link, data []byte) error {
+		blockData := peerResponseSender.SendResponse(request.ID(), link, data)
+		if blockData.BlockSize() > 0 {
+			result := rm.blockHooks.ProcessBlockHooks(p, request, blockData)
+			for _, extension := range result.Extensions {
+				peerResponseSender.SendExtensionData(request.ID(), extension)
+			}
+			if result.Err != nil {
+				return result.Err
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return
+		if err != blockhooks.ErrPaused {
+			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
+		}
+		return err
 	}
 	peerResponseSender.FinishRequest(request.ID())
+	return nil
 }
 
 // Startup starts processing for the WantManager.
@@ -331,7 +338,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 		if !request.IsCancel() {
 			ctx, cancelFn := context.WithCancel(rm.ctx)
 			rm.inProgressResponses[key] =
-				inProgressResponseStatus{
+				&inProgressResponseStatus{
 					ctx:      ctx,
 					cancelFn: cancelFn,
 					request:  request,
@@ -356,7 +363,7 @@ func (rdr *responseDataRequest) handle(rm *ResponseManager) {
 	response, ok := rm.inProgressResponses[rdr.key]
 	var taskData *responseTaskData
 	if ok {
-		taskData = &responseTaskData{response.ctx, response.request}
+		taskData = &responseTaskData{response.ctx, response.request, response.loader, response.traverser}
 	} else {
 		taskData = nil
 	}
@@ -366,18 +373,60 @@ func (rdr *responseDataRequest) handle(rm *ResponseManager) {
 	}
 }
 
-func (frr *finishResponseRequest) handle(rm *ResponseManager) {
-	response, ok := rm.inProgressResponses[frr.key]
+func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
+	response, ok := rm.inProgressResponses[ftr.key]
 	if !ok {
 		return
 	}
-	delete(rm.inProgressResponses, frr.key)
+	if ftr.err == blockhooks.ErrPaused {
+		response.isPaused = true
+		return
+	}
+	if ftr.err != nil {
+		log.Infof("response failed: %w", ftr.err)
+	}
+	delete(rm.inProgressResponses, ftr.key)
 	response.cancelFn()
+}
+
+func (srdr *setResponseDataRequest) handle(rm *ResponseManager) {
+	response, ok := rm.inProgressResponses[srdr.key]
+	if !ok {
+		return
+	}
+	response.loader = srdr.loader
+	response.traverser = srdr.traverser
 }
 
 func (sm *synchronizeMessage) handle(rm *ResponseManager) {
 	select {
 	case <-rm.ctx.Done():
 	case sm.sync <- struct{}{}:
+	}
+}
+
+func (urm *unpauseRequestMessage) unpauseRequest(rm *ResponseManager) error {
+	key := responseKey{urm.p, urm.requestID}
+	inProgressResponse, ok := rm.inProgressResponses[key]
+	if !ok {
+		return errors.New("could not find request")
+	}
+	if !inProgressResponse.isPaused {
+		return errors.New("request is not paused")
+	}
+	inProgressResponse.isPaused = false
+	rm.queryQueue.PushTasks(urm.p, peertask.Task{Topic: key, Priority: math.MaxInt32, Work: 1})
+	select {
+	case rm.workSignal <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+func (urm *unpauseRequestMessage) handle(rm *ResponseManager) {
+	err := urm.unpauseRequest(rm)
+	select {
+	case <-rm.ctx.Done():
+	case urm.response <- err:
 	}
 }

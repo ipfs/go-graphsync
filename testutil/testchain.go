@@ -57,7 +57,6 @@ func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	parentsNdTyped := parentsNd.(chaintypes.Parents)
 	mnb := chaintypes.Messages__NodeBuilder()
 	mnblnb, err := mnb.CreateList()
 	if err != nil {
@@ -76,11 +75,29 @@ func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	messagesNdTyped := mesagesNd.(chaintypes.Messages)
-	return chaintypes.Block{
-		Parents:  parentsNdTyped,
-		Messages: messagesNdTyped,
-	}, nil
+	blknb := chaintypes.Block__NodeBuilder()
+	blknbmnb, err := blknb.CreateMap()
+	if err != nil {
+		return nil, err
+	}
+	snb := chaintypes.String__NodeBuilder()
+	key, err := snb.CreateString("Parents")
+	if err != nil {
+		return nil, err
+	}
+	err = blknbmnb.Insert(key, parentsNd)
+	if err != nil {
+		return nil, err
+	}
+	key, err = snb.CreateString("Messages")
+	if err != nil {
+		return nil, err
+	}
+	err = blknbmnb.Insert(key, mesagesNd)
+	if err != nil {
+		return nil, err
+	}
+	return blknbmnb.Build()
 }
 
 // SetupBlockChain creates a new test block chain with the given height
@@ -246,6 +263,6 @@ func (tbc *TestBlockChain) RemainderBlocks(from int) []blocks.Block {
 }
 
 // Chooser is a NodeBuilderChooser function that always returns the block chain
-func (tbc *TestBlockChain) Chooser(ipld.Link, ipld.LinkContext) ipld.NodeBuilder {
-	return chaintypes.Block__NodeBuilder()
+func (tbc *TestBlockChain) Chooser(ipld.Link, ipld.LinkContext) (ipld.NodeBuilder, error) {
+	return chaintypes.Block__NodeBuilder(), nil
 }
