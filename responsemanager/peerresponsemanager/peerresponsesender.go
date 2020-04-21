@@ -55,7 +55,7 @@ type PeerResponseSender interface {
 		data []byte,
 	) graphsync.BlockData
 	SendExtensionData(graphsync.RequestID, graphsync.ExtensionData)
-	FinishRequest(requestID graphsync.RequestID)
+	FinishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode
 	FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode)
 	PauseRequest(requestID graphsync.RequestID)
 }
@@ -147,7 +147,7 @@ func (prm *peerResponseSender) SendResponse(
 }
 
 // FinishRequest marks the given requestID as having sent all responses
-func (prm *peerResponseSender) FinishRequest(requestID graphsync.RequestID) {
+func (prm *peerResponseSender) FinishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode {
 	prm.linkTrackerLk.Lock()
 	isComplete := prm.linkTracker.FinishRequest(requestID)
 	prm.linkTrackerLk.Unlock()
@@ -158,6 +158,7 @@ func (prm *peerResponseSender) FinishRequest(requestID graphsync.RequestID) {
 		status = graphsync.RequestCompletedPartial
 	}
 	prm.finish(requestID, status)
+	return status
 }
 
 // FinishWithError marks the given requestID as having terminated with an error

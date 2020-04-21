@@ -208,6 +208,13 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 		}
 	})
 
+	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
+	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+		select {
+		case finalResponseStatusChan <- status:
+		default:
+		}
+	})
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
 	blockChain.VerifyWholeChain(ctx, progressChan)
@@ -217,6 +224,11 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	// verify extension roundtrip
 	require.Equal(t, td.extensionData, receivedRequestData, "did not receive correct extension request data")
 	require.Equal(t, td.extensionResponseData, receivedResponseData, "did not receive correct extension response data")
+
+	// verify listener
+	var finalResponseStatus graphsync.ResponseStatusCode
+	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
+	require.Equal(t, graphsync.RequestCompletedFull, finalResponseStatus)
 }
 
 func TestPauseResume(t *testing.T) {
