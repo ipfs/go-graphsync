@@ -162,19 +162,30 @@ func ReadNResponses(ctx context.Context, t *testing.T, responseChan <-chan graph
 // VerifySingleTerminalError verifies that exactly one error was sent over a channel
 // and then the channel was closed.
 func VerifySingleTerminalError(ctx context.Context, t *testing.T, errChan <-chan error) {
-	select {
-	case err := <-errChan:
-		require.NotNil(t, err, "should have sent a erminal error but did not")
-	case <-ctx.Done():
-		t.Fatal("no errors sent")
-	}
+	var err error
+	AssertReceive(ctx, t, errChan, &err, "should receive an error")
 	select {
 	case _, ok := <-errChan:
-		if ok {
-			t.Fatal("shouldn't have sent second error but did")
-		}
+		require.False(t, ok, "shouldn't have sent second error but did")
 	case <-ctx.Done():
 		t.Fatal("errors not closed")
+	}
+}
+
+// VerifyHasErrors verifies that at least one error was sent over a channel
+func VerifyHasErrors(ctx context.Context, t *testing.T, errChan <-chan error) {
+	errCount := 0
+	for {
+		select {
+		case _, ok := <-errChan:
+			if !ok {
+				require.NotZero(t, errCount, "should have errors")
+				return
+			}
+			errCount++
+		case <-ctx.Done():
+			t.Fatal("errors not closed")
+		}
 	}
 }
 

@@ -325,7 +325,7 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector())
 	testutil.VerifyEmptyResponse(ctx, t, progressChan)
-	testutil.VerifySingleTerminalError(ctx, t, errChan)
+	testutil.VerifyHasErrors(ctx, t, errChan)
 
 	progressChan, errChan = requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), extension)
 
