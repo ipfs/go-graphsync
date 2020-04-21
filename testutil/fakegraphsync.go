@@ -77,4 +77,24 @@ func (fgs *FakeGraphSync) RegisterOutgoingRequestHook(hook graphsync.OnOutgoingR
 	return nil
 }
 
+// RegisterOutgoingBlockHook adds a hook that runs every time a block is sent from a responder
+func (fgs *FakeGraphSync) RegisterOutgoingBlockHook(hook graphsync.OnOutgoingBlockHook) graphsync.UnregisterHookFunc {
+	return nil
+}
+
+// RegisterRequestUpdatedHook adds a hook that runs every time an update to a request is received
+func (fgs *FakeGraphSync) RegisterRequestUpdatedHook(hook graphsync.OnRequestUpdatedHook) graphsync.UnregisterHookFunc {
+	return nil
+}
+
+// RegisterCompletedResponseListener adds a listener on the responder for completed responses
+func (fgs *FakeGraphSync) RegisterCompletedResponseListener(listener graphsync.OnResponseCompletedListener) graphsync.UnregisterHookFunc {
+	return nil
+}
+
+// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
+func (fgs *FakeGraphSync) UnpauseResponse(_ peer.ID, _ graphsync.RequestID) error {
+	return nil
+}
+
 var _ graphsync.GraphExchange = &FakeGraphSync{}

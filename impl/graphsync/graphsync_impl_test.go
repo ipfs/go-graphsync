@@ -977,13 +977,14 @@ func TestDataTransferPushRoundTrip(t *testing.T) {
 	dt1 := NewGraphSyncDataTransfer(host1, gs1)
 	dt2 := NewGraphSyncDataTransfer(host2, gs2)
 
-	finished := make(chan struct{}, 1)
+	finished := make(chan struct{}, 2)
 	var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 		if event.Code == datatransfer.Complete {
 			finished <- struct{}{}
 		}
 	}
-	unsub := dt2.SubscribeToEvents(subscriber)
+	dt1.SubscribeToEvents(subscriber)
+	dt2.SubscribeToEvents(subscriber)
 	voucher := fakeDTType{"applesauce"}
 	sv := newSV()
 	sv.expectSuccessPull()
@@ -991,14 +992,15 @@ func TestDataTransferPushRoundTrip(t *testing.T) {
 
 	chid, err := dt1.OpenPushDataChannel(ctx, host2.ID(), &voucher, rootCid, gsData.AllSelector)
 	require.NoError(t, err)
-	select {
-	case <-ctx.Done():
-		t.Fatal("Did not complete succcessful data transfer")
-	case <-finished:
-		gsData.VerifyFileTransferred(t, root, true)
+	for i := 0; i < 2; i++ {
+		select {
+		case <-ctx.Done():
+			t.Fatal("Did not complete succcessful data transfer")
+		case <-finished:
+		}
 	}
+	gsData.VerifyFileTransferred(t, root, true)
 	assert.Equal(t, chid.Initiator, host1.ID())
-	unsub()
 }
 
 func TestDataTransferPullRoundTrip(t *testing.T) {
@@ -1018,12 +1020,13 @@ func TestDataTransferPullRoundTrip(t *testing.T) {
 	dt1 := NewGraphSyncDataTransfer(host1, gs1)
 	dt2 := NewGraphSyncDataTransfer(host2, gs2)
 
-	finished := make(chan struct{}, 1)
+	finished := make(chan struct{}, 2)
 	var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 		if event.Code == datatransfer.Complete {
 			finished <- struct{}{}
 		}
 	}
+	dt1.SubscribeToEvents(subscriber)
 	dt2.SubscribeToEvents(subscriber)
 	voucher := fakeDTType{"applesauce"}
 	sv := newSV()
@@ -1032,10 +1035,12 @@ func TestDataTransferPullRoundTrip(t *testing.T) {
 
 	_, err := dt2.OpenPullDataChannel(ctx, host1.ID(), &voucher, rootCid, gsData.AllSelector)
 	require.NoError(t, err)
-	select {
-	case <-ctx.Done():
-		t.Fatal("Did not complete succcessful data transfer")
-	case <-finished:
-		gsData.VerifyFileTransferred(t, root, true)
+	for i := 0; i < 2; i++ {
+		select {
+		case <-ctx.Done():
+			t.Fatal("Did not complete succcessful data transfer")
+		case <-finished:
+		}
 	}
+	gsData.VerifyFileTransferred(t, root, true)
 }

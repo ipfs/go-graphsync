@@ -77,6 +77,7 @@ func NewGraphSyncDataTransfer(host host.Host, gs graphsync.GraphExchange) datatr
 		0,
 	}
 	gs.RegisterIncomingRequestHook(impl.gsReqRecdHook)
+	gs.RegisterCompletedResponseListener(impl.gsCompletedResponseListener)
 	dtReceiver := &graphsyncReceiver{impl}
 	dataTransferNetwork.SetDelegate(dtReceiver)
 	return impl
@@ -116,6 +117,37 @@ func (impl *graphsyncImpl) gsReqRecdHook(p peer.ID, request graphsync.RequestDat
 
 	hookActions.ValidateRequest()
 	hookActions.SendExtensionData(respData)
+}
+
+// gsCompletedResponseListener is a graphsync.OnCompletedResponseListener. We use it learn when the data transfer is complete
+// for the side that is responding to a graphsync request
+func (impl *graphsyncImpl) gsCompletedResponseListener(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+	transferData, err := impl.getExtensionData(request)
+	if err != nil {
+		return
+	}
+
+	sender := impl.peerID
+	initiator := impl.peerID
+	if transferData.IsPull {
+		// if it's a pull request: the initiator is them
+		initiator = p
+	}
+	chid := datatransfer.ChannelID{Initiator: initiator, ID: datatransfer.TransferID(transferData.TransferID)}
+
+	chst := impl.getChannelByIDAndSender(chid, sender)
+	if chst == datatransfer.EmptyChannelState {
+		return
+	}
+
+	evt := datatransfer.Event{
+		Code:      datatransfer.Error,
+		Timestamp: time.Now(),
+	}
+	if status == graphsync.RequestCompletedFull {
+		evt.Code = datatransfer.Complete
+	}
+	impl.notifySubscribers(evt, chst)
 }
 
 // gsExtended is a small interface used by getExtensionData
