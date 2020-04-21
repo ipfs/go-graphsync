@@ -1,4 +1,4 @@
-package blockhooks
+package hooks
 
 import (
 	"errors"
@@ -18,47 +18,47 @@ type blockHook struct {
 
 // OutgoingBlockHooks is a set of outgoing block hooks that can be processed
 type OutgoingBlockHooks struct {
-	blockHooksLk      sync.RWMutex
-	blockHooksNextKey uint64
-	blockHooks        []blockHook
+	hooksLk sync.RWMutex
+	nextKey uint64
+	hooks   []blockHook
 }
 
-// New returns a new list of outgoing block hooks
-func New() *OutgoingBlockHooks {
+// NewBlockHooks returns a new list of outgoing block hooks
+func NewBlockHooks() *OutgoingBlockHooks {
 	return &OutgoingBlockHooks{}
 }
 
 // Register registers an hook to process outgoing blocks in a response
 func (obh *OutgoingBlockHooks) Register(hook graphsync.OnOutgoingBlockHook) graphsync.UnregisterHookFunc {
-	obh.blockHooksLk.Lock()
-	bh := blockHook{obh.blockHooksNextKey, hook}
-	obh.blockHooksNextKey++
-	obh.blockHooks = append(obh.blockHooks, bh)
-	obh.blockHooksLk.Unlock()
+	obh.hooksLk.Lock()
+	bh := blockHook{obh.nextKey, hook}
+	obh.nextKey++
+	obh.hooks = append(obh.hooks, bh)
+	obh.hooksLk.Unlock()
 	return func() {
-		obh.blockHooksLk.Lock()
-		defer obh.blockHooksLk.Unlock()
-		for i, matchHook := range obh.blockHooks {
+		obh.hooksLk.Lock()
+		defer obh.hooksLk.Unlock()
+		for i, matchHook := range obh.hooks {
 			if bh.key == matchHook.key {
-				obh.blockHooks = append(obh.blockHooks[:i], obh.blockHooks[i+1:]...)
+				obh.hooks = append(obh.hooks[:i], obh.hooks[i+1:]...)
 				return
 			}
 		}
 	}
 }
 
-// Result is the result of processing block hooks
-type Result struct {
+// BlockResult is the result of processing block hooks
+type BlockResult struct {
 	Err        error
 	Extensions []graphsync.ExtensionData
 }
 
 // ProcessBlockHooks runs block hooks against a request and block data
-func (obh *OutgoingBlockHooks) ProcessBlockHooks(p peer.ID, request graphsync.RequestData, blockData graphsync.BlockData) Result {
-	obh.blockHooksLk.RLock()
-	defer obh.blockHooksLk.RUnlock()
+func (obh *OutgoingBlockHooks) ProcessBlockHooks(p peer.ID, request graphsync.RequestData, blockData graphsync.BlockData) BlockResult {
+	obh.hooksLk.RLock()
+	defer obh.hooksLk.RUnlock()
 	bha := &blockHookActions{}
-	for _, bh := range obh.blockHooks {
+	for _, bh := range obh.hooks {
 		bh.hook(p, request, blockData, bha)
 		if bha.hasError() {
 			break
@@ -76,8 +76,8 @@ func (bha *blockHookActions) hasError() bool {
 	return bha.err != nil
 }
 
-func (bha *blockHookActions) result() Result {
-	return Result{bha.err, bha.extensions}
+func (bha *blockHookActions) result() BlockResult {
+	return BlockResult{bha.err, bha.extensions}
 }
 
 func (bha *blockHookActions) SendExtensionData(data graphsync.ExtensionData) {

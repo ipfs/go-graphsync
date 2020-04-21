@@ -59,6 +59,9 @@ const (
 	// PartialResponse may include blocks and metadata about the in progress response
 	// in extra.
 	PartialResponse = ResponseStatusCode(14)
+	// RequestPaused indicates a request is paused and will not send any more data
+	// until unpaused
+	RequestPaused = ResponseStatusCode(15)
 
 	// Success Response Codes (request terminated)
 
@@ -157,19 +160,34 @@ type IncomingRequestHookActions interface {
 	ValidateRequest()
 }
 
+// OutgoingBlockHookActions are actions that an outgoing block hook can take to
+// change the execution of a request
+type OutgoingBlockHookActions interface {
+	SendExtensionData(ExtensionData)
+	TerminateWithError(error)
+	PauseResponse()
+}
+
 // OutgoingRequestHookActions are actions that an outgoing request hook can take
-// to change the execution of this request
+// to change the execution of a request
 type OutgoingRequestHookActions interface {
 	UsePersistenceOption(name string)
 	UseNodeBuilderChooser(traversal.NodeBuilderChooser)
 }
 
-// OutgoingBlockHookActions are actions that an outgoing block hook can take to
-// change the execution of this request
-type OutgoingBlockHookActions interface {
-	SendExtensionData(ExtensionData)
+// IncomingResponseHookActions are actions that incoming response hook can take
+// to change the execution of a request
+type IncomingResponseHookActions interface {
 	TerminateWithError(error)
-	PauseResponse()
+	UpdateRequestWithExtensions(...ExtensionData)
+}
+
+// RequestUpdatedHookActions are actions that can be taken in a request updated hook to
+// change execution of the response
+type RequestUpdatedHookActions interface {
+	TerminateWithError(error)
+	SendExtensionData(ExtensionData)
+	UnpauseResponse()
 }
 
 // OnIncomingRequestHook is a hook that runs each time a new request is received.
@@ -180,7 +198,7 @@ type OnIncomingRequestHook func(p peer.ID, request RequestData, hookActions Inco
 // OnIncomingResponseHook is a hook that runs each time a new response is received.
 // It receives the peer that sent the response and all data about the response.
 // If it returns an error processing is halted and the original request is cancelled.
-type OnIncomingResponseHook func(p peer.ID, responseData ResponseData) error
+type OnIncomingResponseHook func(p peer.ID, responseData ResponseData, hookActions IncomingResponseHookActions)
 
 // OnOutgoingRequestHook is a hook that runs immediately prior to sending a request
 // It receives the peer we're sending a request to and all the data aobut the request
@@ -193,6 +211,11 @@ type OnOutgoingRequestHook func(p peer.ID, request RequestData, hookActions Outg
 // and the size of the block sent
 // It receives an interface for taking further action on the response
 type OnOutgoingBlockHook func(p peer.ID, request RequestData, block BlockData, hookActions OutgoingBlockHookActions)
+
+// OnRequestUpdatedHook is a hook that runs when an update to a request is received
+// It receives the peer we're sending to, the original request, the request update
+// It receives an interface to taking further action on the response
+type OnRequestUpdatedHook func(p peer.ID, request RequestData, updateRequest RequestData, hookActions RequestUpdatedHookActions)
 
 // UnregisterHookFunc is a function call to unregister a hook that was previously registered
 type UnregisterHookFunc func()
@@ -216,6 +239,9 @@ type GraphExchange interface {
 
 	// RegisterOutgoingBlockHook adds a hook that runs every time a block is sent from a responder
 	RegisterOutgoingBlockHook(hook OnOutgoingBlockHook) UnregisterHookFunc
+
+	// RegisterRequestUpdatedHook adds a hook that runs every time an update to a request is received
+	RegisterRequestUpdatedHook(hook OnRequestUpdatedHook) UnregisterHookFunc
 
 	// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
 	UnpauseResponse(peer.ID, RequestID) error

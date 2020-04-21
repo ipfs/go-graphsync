@@ -50,10 +50,10 @@ func (rb *ResponseBuilder) AddLink(requestID graphsync.RequestID, link ipld.Link
 	rb.outgoingResponses[requestID] = append(rb.outgoingResponses[requestID], metadata.Item{Link: link, BlockPresent: blockPresent})
 }
 
-// AddCompletedRequest marks the given request as completed in the response,
+// AddResponseCode marks the given request as completed in the response,
 // as well as whether the graphsync request responded with complete or partial
 // data.
-func (rb *ResponseBuilder) AddCompletedRequest(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
+func (rb *ResponseBuilder) AddResponseCode(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
 	rb.completedResponses[requestID] = status
 	// make sure this completion goes out in next response even if no links are sent
 	_, ok := rb.outgoingResponses[requestID]

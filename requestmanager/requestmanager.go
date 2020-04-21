@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ipfs/go-graphsync/requestmanager/hooks"
+
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
 	ipldutil "github.com/ipfs/go-graphsync/ipldutil"
@@ -31,16 +33,6 @@ type inProgressRequestStatus struct {
 	cancelFn     func()
 	p            peer.ID
 	networkError chan error
-}
-
-type responseHook struct {
-	key  uint64
-	hook graphsync.OnIncomingResponseHook
-}
-
-type requestHook struct {
-	key  uint64
-	hook graphsync.OnOutgoingRequestHook
 }
 
 // PeerHandler is an interface that can send requests to peers
@@ -71,9 +63,8 @@ type RequestManager struct {
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
 	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
-	hooksNextKey              uint64
-	responseHooks             []responseHook
-	requestHooks              []requestHook
+	requestHooks              *hooks.OutgoingRequestHooks
+	responseHooks             *hooks.IncomingResponseHooks
 }
 
 type requestManagerMessage interface {
@@ -81,7 +72,10 @@ type requestManagerMessage interface {
 }
 
 // New generates a new request manager from a context, network, and selectorQuerier
-func New(ctx context.Context, asyncLoader AsyncLoader) *RequestManager {
+func New(ctx context.Context,
+	asyncLoader AsyncLoader,
+	requestHooks *hooks.OutgoingRequestHooks,
+	responseHooks *hooks.IncomingResponseHooks) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
 		ctx:                       ctx,
@@ -90,6 +84,8 @@ func New(ctx context.Context, asyncLoader AsyncLoader) *RequestManager {
 		rc:                        newResponseCollector(ctx),
 		messages:                  make(chan requestManagerMessage, 16),
 		inProgressRequestStatuses: make(map[graphsync.RequestID]*inProgressRequestStatus),
+		requestHooks:              requestHooks,
+		responseHooks:             responseHooks,
 	}
 }
 
@@ -209,49 +205,6 @@ func (rm *RequestManager) ProcessResponses(p peer.ID, responses []gsmsg.GraphSyn
 	}
 }
 
-type registerRequestHookMessage struct {
-	hook               graphsync.OnOutgoingRequestHook
-	unregisterHookChan chan graphsync.UnregisterHookFunc
-}
-
-type registerResponseHookMessage struct {
-	hook               graphsync.OnIncomingResponseHook
-	unregisterHookChan chan graphsync.UnregisterHookFunc
-}
-
-// RegisterRequestHook registers an extension to process outgoing requests
-func (rm *RequestManager) RegisterRequestHook(hook graphsync.OnOutgoingRequestHook) graphsync.UnregisterHookFunc {
-	response := make(chan graphsync.UnregisterHookFunc)
-	select {
-	case rm.messages <- &registerRequestHookMessage{hook, response}:
-	case <-rm.ctx.Done():
-		return nil
-	}
-	select {
-	case unregister := <-response:
-		return unregister
-	case <-rm.ctx.Done():
-		return nil
-	}
-}
-
-// RegisterResponseHook registers an extension to process incoming responses
-func (rm *RequestManager) RegisterResponseHook(
-	hook graphsync.OnIncomingResponseHook) graphsync.UnregisterHookFunc {
-	response := make(chan graphsync.UnregisterHookFunc)
-	select {
-	case rm.messages <- &registerResponseHookMessage{hook, response}:
-	case <-rm.ctx.Done():
-		return nil
-	}
-	select {
-	case unregister := <-response:
-		return unregister
-	case <-rm.ctx.Done():
-		return nil
-	}
-}
-
 // Startup starts processing for the WantManager.
 func (rm *RequestManager) Startup() {
 	go rm.run()
@@ -327,40 +280,6 @@ func (prm *processResponseMessage) handle(rm *RequestManager) {
 	rm.processTerminations(filteredResponses)
 }
 
-func (rhm *registerRequestHookMessage) handle(rm *RequestManager) {
-	rh := requestHook{rm.hooksNextKey, rhm.hook}
-	rm.hooksNextKey++
-	rm.requestHooks = append(rm.requestHooks, rh)
-	select {
-	case rhm.unregisterHookChan <- func() {
-		for i, matchHook := range rm.requestHooks {
-			if rh.key == matchHook.key {
-				rm.requestHooks = append(rm.requestHooks[:i], rm.requestHooks[i+1:]...)
-				return
-			}
-		}
-	}:
-	case <-rm.ctx.Done():
-	}
-}
-
-func (rhm *registerResponseHookMessage) handle(rm *RequestManager) {
-	rh := responseHook{rm.hooksNextKey, rhm.hook}
-	rm.hooksNextKey++
-	rm.responseHooks = append(rm.responseHooks, rh)
-	select {
-	case rhm.unregisterHookChan <- func() {
-		for i, matchHook := range rm.responseHooks {
-			if rh.key == matchHook.key {
-				rm.responseHooks = append(rm.responseHooks[:i], rm.responseHooks[i+1:]...)
-				return
-			}
-		}
-	}:
-	case <-rm.ctx.Done():
-	}
-}
-
 func (rm *RequestManager) filterResponsesForPeer(responses []gsmsg.GraphSyncResponse, p peer.ID) []gsmsg.GraphSyncResponse {
 	responsesForPeer := make([]gsmsg.GraphSyncResponse, 0, len(responses))
 	for _, response := range responses {
@@ -385,18 +304,20 @@ func (rm *RequestManager) processExtensions(responses []gsmsg.GraphSyncResponse,
 }
 
 func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg.GraphSyncResponse) bool {
-	for _, responseHook := range rm.responseHooks {
-		err := responseHook.hook(p, response)
-		if err != nil {
-			requestStatus := rm.inProgressRequestStatuses[response.RequestID()]
-			responseError := rm.generateResponseErrorFromStatus(graphsync.RequestFailedUnknown)
-			select {
-			case requestStatus.networkError <- responseError:
-			case <-requestStatus.ctx.Done():
-			}
-			requestStatus.cancelFn()
-			return false
+	result := rm.responseHooks.ProcessResponseHooks(p, response)
+	if len(result.Extensions) > 0 {
+		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
+		rm.peerHandler.SendRequest(p, updateRequest)
+	}
+	if result.Err != nil {
+		requestStatus := rm.inProgressRequestStatuses[response.RequestID()]
+		responseError := rm.generateResponseErrorFromStatus(graphsync.RequestFailedUnknown)
+		select {
+		case requestStatus.networkError <- responseError:
+		case <-requestStatus.ctx.Done():
 		}
+		requestStatus.cancelFn()
+		return false
 	}
 	return true
 }
@@ -434,19 +355,6 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.Respo
 	}
 }
 
-type hookActions struct {
-	persistenceOption  string
-	nodeBuilderChooser traversal.NodeBuilderChooser
-}
-
-func (ha *hookActions) UsePersistenceOption(name string) {
-	ha.persistenceOption = name
-}
-
-func (ha *hookActions) UseNodeBuilderChooser(nodeBuilderChooser traversal.NodeBuilderChooser) {
-	ha.nodeBuilderChooser = nodeBuilderChooser
-}
-
 func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (chan graphsync.ResponseProgress, chan error) {
 	_, err := ipldutil.EncodeNode(selectorSpec)
 	if err != nil {
@@ -466,16 +374,13 @@ func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID,
 		ctx, cancel, p, networkErrorChan,
 	}
 	request := gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, defaultPriority, extensions...)
-	ha := &hookActions{}
-	for _, hook := range rm.requestHooks {
-		hook.hook(p, request, ha)
-	}
-	err = rm.asyncLoader.StartRequest(requestID, ha.persistenceOption)
+	hooksResult := rm.requestHooks.ProcessRequestHooks(p, request)
+	err = rm.asyncLoader.StartRequest(requestID, hooksResult.PersistenceOption)
 	if err != nil {
 		return rm.singleErrorResponse(err)
 	}
 	rm.peerHandler.SendRequest(p, request)
-	return rm.executeTraversal(ctx, requestID, root, selector, ha.nodeBuilderChooser, networkErrorChan)
+	return rm.executeTraversal(ctx, requestID, root, selector, hooksResult.CustomChooser, networkErrorChan)
 }
 
 func (rm *RequestManager) executeTraversal(

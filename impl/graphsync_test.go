@@ -191,12 +191,11 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	var receivedRequestData []byte
 
 	requestor.RegisterIncomingResponseHook(
-		func(p peer.ID, responseData graphsync.ResponseData) error {
+		func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
 			data, has := responseData.Extension(td.extensionName)
 			if has {
 				receivedResponseData = data
 			}
-			return nil
 		})
 
 	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
@@ -270,6 +269,65 @@ func TestPauseResume(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
 	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
 
+}
+
+func TestPauseResumeViaUpdate(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	var receivedReponseData []byte
+	var receivedUpdateData []byte
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	requestor.RegisterIncomingResponseHook(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+		if response.Status() == graphsync.RequestPaused {
+			var has bool
+			receivedReponseData, has = response.Extension(td.extensionName)
+			if has {
+				hookActions.UpdateRequestWithExtensions(td.extensionUpdate)
+			}
+		}
+	})
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+	stopPoint := 50
+	blocksSent := 0
+	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+		_, has := requestData.Extension(td.extensionName)
+		if has {
+			blocksSent++
+			if blocksSent == stopPoint {
+				hookActions.SendExtensionData(td.extensionResponse)
+				hookActions.PauseResponse()
+			}
+		} else {
+			hookActions.TerminateWithError(errors.New("should have sent extension"))
+		}
+	})
+	responder.RegisterRequestUpdatedHook(func(p peer.ID, request graphsync.RequestData, update graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+		var has bool
+		receivedUpdateData, has = update.Extension(td.extensionName)
+		if has {
+			hookActions.UnpauseResponse()
+		}
+	})
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	blockChain.VerifyWholeChain(ctx, progressChan)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
+
+	require.Equal(t, td.extensionResponseData, receivedReponseData, "did not receive correct extension response data")
+	require.Equal(t, td.extensionUpdateData, receivedUpdateData, "did not receive correct extension update data")
 }
 
 func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
@@ -539,6 +597,8 @@ type gsTestData struct {
 	extension                graphsync.ExtensionData
 	extensionResponseData    []byte
 	extensionResponse        graphsync.ExtensionData
+	extensionUpdateData      []byte
+	extensionUpdate          graphsync.ExtensionData
 }
 
 func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
@@ -570,6 +630,11 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 	td.extensionResponse = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionResponseData,
+	}
+	td.extensionUpdateData = testutil.RandomBytes(100)
+	td.extensionUpdate = graphsync.ExtensionData{
+		Name: td.extensionName,
+		Data: td.extensionUpdateData,
 	}
 
 	return td

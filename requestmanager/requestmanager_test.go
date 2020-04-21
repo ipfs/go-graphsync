@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
@@ -185,7 +186,9 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -272,7 +275,9 @@ func TestCancelRequestInProgress(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
@@ -331,7 +336,9 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	ctx := context.Background()
 	managerCtx, managerCancel := context.WithCancel(ctx)
 	fal := newFakeAsyncLoader()
-	requestManager := New(managerCtx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(managerCtx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
@@ -372,7 +379,9 @@ func TestUnencodableSelector(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -393,7 +402,9 @@ func TestFailedRequest(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -422,7 +433,9 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -458,7 +471,9 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -493,7 +508,9 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -526,7 +543,9 @@ func TestEncodingExtensions(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -553,13 +572,21 @@ func TestEncodingExtensions(t *testing.T) {
 
 	expectedError := make(chan error, 2)
 	receivedExtensionData := make(chan []byte, 2)
-	hook := func(p peer.ID, responseData graphsync.ResponseData) error {
+	expectedUpdateChan := make(chan []graphsync.ExtensionData, 2)
+	hook := func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
 		data, has := responseData.Extension(extensionName1)
 		require.True(t, has, "did not receive extension data in response")
 		receivedExtensionData <- data
-		return <-expectedError
+		err := <-expectedError
+		if err != nil {
+			hookActions.TerminateWithError(err)
+		}
+		update := <-expectedUpdateChan
+		if len(update) > 0 {
+			hookActions.UpdateRequestWithExtensions(update...)
+		}
 	}
-	requestManager.RegisterResponseHook(hook)
+	responseHooks.Register(hook)
 	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector(), extension1, extension2)
 
 	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
@@ -575,6 +602,7 @@ func TestEncodingExtensions(t *testing.T) {
 
 	t.Run("responding to extensions", func(t *testing.T) {
 		expectedData := testutil.RandomBytes(100)
+		expectedUpdate := testutil.RandomBytes(100)
 		firstResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
 				graphsync.PartialResponse, graphsync.ExtensionData{
@@ -588,11 +616,25 @@ func TestEncodingExtensions(t *testing.T) {
 			),
 		}
 		expectedError <- nil
+		expectedUpdateChan <- []graphsync.ExtensionData{
+			{
+				Name: extensionName1,
+				Data: expectedUpdate,
+			},
+		}
 		requestManager.ProcessResponses(peers[0], firstResponses, nil)
 		var received []byte
 		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "did not receive extension data")
 		require.Equal(t, expectedData, received, "did not receive correct extension data from resposne")
+
+		rr = readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+		receivedUpdateData, has := rr.gsr.Extension(extensionName1)
+		require.True(t, has)
+		require.Equal(t, expectedUpdate, receivedUpdateData, "should have updated with correct extension")
+
 		nextExpectedData := testutil.RandomBytes(100)
+		nextExpectedUpdate1 := testutil.RandomBytes(100)
+		nextExpectedUpdate2 := testutil.RandomBytes(100)
 
 		secondResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
@@ -607,9 +649,28 @@ func TestEncodingExtensions(t *testing.T) {
 			),
 		}
 		expectedError <- errors.New("a terrible thing happened")
+		expectedUpdateChan <- []graphsync.ExtensionData{
+			{
+				Name: extensionName1,
+				Data: nextExpectedUpdate1,
+			},
+			{
+				Name: extensionName2,
+				Data: nextExpectedUpdate2,
+			},
+		}
 		requestManager.ProcessResponses(peers[0], secondResponses, nil)
 		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "did not receive extension data")
 		require.Equal(t, nextExpectedData, received, "did not receive correct extension data from resposne")
+
+		rr = readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+		receivedUpdateData, has = rr.gsr.Extension(extensionName1)
+		require.True(t, has)
+		require.Equal(t, nextExpectedUpdate1, receivedUpdateData, "should have updated with correct extension")
+		receivedUpdateData, has = rr.gsr.Extension(extensionName2)
+		require.True(t, has)
+		require.Equal(t, nextExpectedUpdate2, receivedUpdateData, "should have updated with correct extension")
+
 		testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
 		testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 	})
@@ -620,7 +681,9 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	fal := newFakeAsyncLoader()
-	requestManager := New(ctx, fal)
+	requestHooks := hooks.NewRequestHooks()
+	responseHooks := hooks.NewResponseHooks()
+	requestManager := New(ctx, fal, requestHooks, responseHooks)
 	requestManager.SetDelegate(fph)
 	requestManager.Startup()
 
@@ -645,7 +708,7 @@ func TestOutgoingRequestHooks(t *testing.T) {
 			ha.UsePersistenceOption("chainstore")
 		}
 	}
-	requestManager.RegisterRequestHook(hook)
+	requestHooks.Register(hook)
 
 	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector(), extension1)
 	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())

@@ -10,11 +10,11 @@ import (
 	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/requestmanager"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
+	requestorhooks "github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager"
-	"github.com/ipfs/go-graphsync/responsemanager/blockhooks"
+	responderhooks "github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
-	"github.com/ipfs/go-graphsync/responsemanager/requesthooks"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue"
@@ -38,8 +38,11 @@ type GraphSync struct {
 	peerResponseManager        *peerresponsemanager.PeerResponseManager
 	peerTaskQueue              *peertaskqueue.PeerTaskQueue
 	peerManager                *peermanager.PeerMessageManager
-	incomingRequestHooks       *requesthooks.IncomingRequestHooks
-	outgoingBlockHooks         *blockhooks.OutgoingBlockHooks
+	incomingRequestHooks       *responderhooks.IncomingRequestHooks
+	outgoingBlockHooks         *responderhooks.OutgoingBlockHooks
+	requestUpdatedHooks        *responderhooks.RequestUpdatedHooks
+	incomingResponseHooks      *requestorhooks.IncomingResponseHooks
+	outgoingRequestHooks       *requestorhooks.OutgoingRequestHooks
 	persistenceOptions         *persistenceoptions.PersistenceOptions
 	ctx                        context.Context
 	cancel                     context.CancelFunc
@@ -69,16 +72,19 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
 	asyncLoader := asyncloader.New(ctx, loader, storer)
-	requestManager := requestmanager.New(ctx, asyncLoader)
+	incomingResponseHooks := requestorhooks.NewResponseHooks()
+	outgoingRequestHooks := requestorhooks.NewRequestHooks()
+	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks)
 	peerTaskQueue := peertaskqueue.New()
 	createdResponseQueue := func(ctx context.Context, p peer.ID) peerresponsemanager.PeerResponseSender {
 		return peerresponsemanager.NewResponseSender(ctx, p, peerManager)
 	}
 	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
 	persistenceOptions := persistenceoptions.New()
-	incomingRequestHooks := requesthooks.New(persistenceOptions)
-	outgoingBlockHooks := blockhooks.New()
-	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks)
+	incomingRequestHooks := responderhooks.NewRequestHooks(persistenceOptions)
+	outgoingBlockHooks := responderhooks.NewBlockHooks()
+	requestUpdatedHooks := responderhooks.NewUpdateHooks()
+	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks)
 	unregisterDefaultValidator := incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
 		network:                    network,
@@ -90,6 +96,9 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		persistenceOptions:         persistenceOptions,
 		incomingRequestHooks:       incomingRequestHooks,
 		outgoingBlockHooks:         outgoingBlockHooks,
+		requestUpdatedHooks:        requestUpdatedHooks,
+		incomingResponseHooks:      incomingResponseHooks,
+		outgoingRequestHooks:       outgoingRequestHooks,
 		peerTaskQueue:              peerTaskQueue,
 		peerResponseManager:        peerResponseManager,
 		responseManager:            responseManager,
@@ -125,12 +134,12 @@ func (gs *GraphSync) RegisterIncomingRequestHook(hook graphsync.OnIncomingReques
 
 // RegisterIncomingResponseHook adds a hook that runs when a response is received
 func (gs *GraphSync) RegisterIncomingResponseHook(hook graphsync.OnIncomingResponseHook) graphsync.UnregisterHookFunc {
-	return gs.requestManager.RegisterResponseHook(hook)
+	return gs.incomingResponseHooks.Register(hook)
 }
 
 // RegisterOutgoingRequestHook adds a hook that runs immediately prior to sending a new request
 func (gs *GraphSync) RegisterOutgoingRequestHook(hook graphsync.OnOutgoingRequestHook) graphsync.UnregisterHookFunc {
-	return gs.requestManager.RegisterRequestHook(hook)
+	return gs.outgoingRequestHooks.Register(hook)
 }
 
 // RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
@@ -145,6 +154,11 @@ func (gs *GraphSync) RegisterPersistenceOption(name string, loader ipld.Loader, 
 // RegisterOutgoingBlockHook registers a hook that runs after each block is sent in a response
 func (gs *GraphSync) RegisterOutgoingBlockHook(hook graphsync.OnOutgoingBlockHook) graphsync.UnregisterHookFunc {
 	return gs.outgoingBlockHooks.Register(hook)
+}
+
+// RegisterRequestUpdatedHook registers a hook that runs when an update to a request is received
+func (gs *GraphSync) RegisterRequestUpdatedHook(hook graphsync.OnRequestUpdatedHook) graphsync.UnregisterHookFunc {
+	return gs.requestUpdatedHooks.Register(hook)
 }
 
 // UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
