@@ -19,7 +19,6 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/peer"
-	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -98,7 +97,7 @@ func TestDataTransferOneWay(t *testing.T) {
 	dtnet2.SetDelegate(r)
 
 	gs := gsData.SetupGraphsyncHost1()
-	dt := NewGraphSyncDataTransfer(host1, gs)
+	dt := NewGraphSyncDataTransfer(host1, gs, gsData.StoredCounter1)
 
 	t.Run("OpenPushDataTransfer", func(t *testing.T) {
 		ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
@@ -253,7 +252,7 @@ func TestDataTransferValidation(t *testing.T) {
 	require.NoError(t, dagcbor.Encoder(gsData.AllSelector, &buffer))
 
 	t.Run("ValidatePush", func(t *testing.T) {
-		dt2 := NewGraphSyncDataTransfer(host2, gs2)
+		dt2 := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 		err := dt2.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), fv)
 		require.NoError(t, err)
 		// create push request
@@ -396,13 +395,11 @@ func TestGraphsyncImpl_RegisterVoucherType(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	mn := mocknet.New(ctx)
-	// setup network
-	host1, err := mn.GenPeer()
-	require.NoError(t, err)
+	gsData := testutil.NewGraphsyncTestingData(ctx, t)
+	host1 := gsData.Host1
 
 	gs1 := testutil.NewFakeGraphSync()
-	dt := NewGraphSyncDataTransfer(host1, gs1)
+	dt := NewGraphSyncDataTransfer(host1, gs1, gsData.StoredCounter1)
 	fv := &fakeValidator{ctx, make(chan receivedValidation)}
 
 	// a voucher type can be registered
@@ -430,12 +427,12 @@ func TestDataTransferSubscribing(t *testing.T) {
 	sv := newSV()
 	sv.stubErrorPull()
 	sv.stubErrorPush()
-	dt2 := NewGraphSyncDataTransfer(host2, gs2)
+	dt2 := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 	require.NoError(t, dt2.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv))
 	voucher := fakeDTType{"applesauce"}
 	baseCid := testutil.GenerateCids(1)[0]
 
-	dt1 := NewGraphSyncDataTransfer(host1, gs1)
+	dt1 := NewGraphSyncDataTransfer(host1, gs1, gsData.StoredCounter1)
 
 	subscribe1Calls := make(chan struct{}, 1)
 	subscribe1 := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
@@ -534,7 +531,7 @@ func TestDataTransferInitiatingPushGraphsyncRequests(t *testing.T) {
 		sv := newSV()
 		sv.expectSuccessPush()
 
-		dt2 := NewGraphSyncDataTransfer(host2, gs2)
+		dt2 := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 		require.NoError(t, dt2.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv))
 
 		require.NoError(t, dtnet1.SendMessage(ctx, host2.ID(), request))
@@ -564,7 +561,7 @@ func TestDataTransferInitiatingPushGraphsyncRequests(t *testing.T) {
 		sv := newSV()
 		sv.expectErrorPush()
 
-		dt2 := NewGraphSyncDataTransfer(host2, gs2)
+		dt2 := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 		require.NoError(t, dt2.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv))
 
 		require.NoError(t, dtnet1.SendMessage(ctx, host2.ID(), request))
@@ -601,8 +598,8 @@ func TestDataTransferInitiatingPullGraphsyncRequests(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
-		dtInit := NewGraphSyncDataTransfer(host1, gs1Init)
-		dtSender := NewGraphSyncDataTransfer(host2, gs2Sender)
+		dtInit := NewGraphSyncDataTransfer(host1, gs1Init, gsData.StoredCounter1)
+		dtSender := NewGraphSyncDataTransfer(host2, gs2Sender, gsData.StoredCounter2)
 		err := dtSender.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv)
 		require.NoError(t, err)
 
@@ -626,11 +623,11 @@ func TestDataTransferInitiatingPullGraphsyncRequests(t *testing.T) {
 		gs1 := testutil.NewFakeGraphSync()
 		gs2 := testutil.NewFakeGraphSync()
 
-		dt1 := NewGraphSyncDataTransfer(host1, gs1)
+		dt1 := NewGraphSyncDataTransfer(host1, gs1, gsData.StoredCounter1)
 		sv := newSV()
 		sv.expectErrorPull()
 
-		dt2 := NewGraphSyncDataTransfer(host2, gs2)
+		dt2 := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 		err := dt2.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv)
 		require.NoError(t, err)
 
@@ -667,8 +664,8 @@ func TestDataTransferInitiatingPullGraphsyncRequests(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
-		dt1 := NewGraphSyncDataTransfer(host1, gs1)
-		dt2 := NewGraphSyncDataTransfer(host2, gs2)
+		dt1 := NewGraphSyncDataTransfer(host1, gs1, gsData.StoredCounter1)
+		dt2 := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 		err := dt2.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv)
 		require.NoError(t, err)
 
@@ -757,7 +754,7 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 	gsData.GsNet2.SetDelegate(gsr)
 
 	gs1 := gsData.SetupGraphsyncHost1()
-	dt1 := NewGraphSyncDataTransfer(host1, gs1)
+	dt1 := NewGraphSyncDataTransfer(host1, gs1, gsData.StoredCounter1)
 
 	t.Run("when request is initiated", func(t *testing.T) {
 		_, err := dt1.OpenPushDataChannel(ctx, host2.ID(), &voucher, link.(cidlink.Link).Cid, gsData.AllSelector)
@@ -772,7 +769,7 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 		requestReceived := messageReceived.message.(message.DataTransferRequest)
 
 		var buf bytes.Buffer
-		extStruct := &ExtensionDataTransferData{TransferID: uint64(requestReceived.TransferID())}
+		extStruct := &ExtensionDataTransferData{TransferID: uint64(requestReceived.TransferID()), Initiator: host1.ID()}
 		err = extStruct.MarshalCBOR(&buf)
 		require.NoError(t, err)
 		extData := buf.Bytes()
@@ -791,7 +788,7 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 
 	t.Run("when no request is initiated", func(t *testing.T) {
 		var buf bytes.Buffer
-		extStruct := &ExtensionDataTransferData{TransferID: rand.Uint64()}
+		extStruct := &ExtensionDataTransferData{TransferID: rand.Uint64(), Initiator: host1.ID()}
 		err := extStruct.MarshalCBOR(&buf)
 		require.NoError(t, err)
 		extData := buf.Bytes()
@@ -833,7 +830,7 @@ func TestResponseHookWhenExtensionNotFound(t *testing.T) {
 	gsData.GsNet2.SetDelegate(gsr)
 
 	gs1 := gsData.SetupGraphsyncHost1()
-	dt1 := NewGraphSyncDataTransfer(host1, gs1)
+	dt1 := NewGraphSyncDataTransfer(host1, gs1, gsData.StoredCounter1)
 
 	t.Run("when it's not our extension, does not error and does not validate", func(t *testing.T) {
 		//register a hook that validates the request so we don't fail in gs because the request
@@ -898,7 +895,7 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 		sv := newSV()
 		sv.expectSuccessPull()
 
-		dt1 := NewGraphSyncDataTransfer(host2, gs2)
+		dt1 := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 		require.NoError(t, dt1.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv))
 
 		_, _, request := createDTRequest(t, true, id, selectorBytes)
@@ -938,8 +935,8 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 	})
 
 	t.Run("When request is not initiated, graphsync response is error", func(t *testing.T) {
-		_ = NewGraphSyncDataTransfer(host2, gs2)
-		extStruct := &ExtensionDataTransferData{TransferID: rand.Uint64()}
+		_ = NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
+		extStruct := &ExtensionDataTransferData{TransferID: rand.Uint64(), Initiator: host1.ID()}
 
 		var buf2 bytes.Buffer
 		err = extStruct.MarshalCBOR(&buf2)
@@ -974,8 +971,8 @@ func TestDataTransferPushRoundTrip(t *testing.T) {
 	gs1 := gsData.SetupGraphsyncHost1()
 	gs2 := gsData.SetupGraphsyncHost2()
 
-	dt1 := NewGraphSyncDataTransfer(host1, gs1)
-	dt2 := NewGraphSyncDataTransfer(host2, gs2)
+	dt1 := NewGraphSyncDataTransfer(host1, gs1, gsData.StoredCounter1)
+	dt2 := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 
 	finished := make(chan struct{}, 2)
 	var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
@@ -1017,8 +1014,8 @@ func TestDataTransferPullRoundTrip(t *testing.T) {
 	gs1 := gsData.SetupGraphsyncHost1()
 	gs2 := gsData.SetupGraphsyncHost2()
 
-	dt1 := NewGraphSyncDataTransfer(host1, gs1)
-	dt2 := NewGraphSyncDataTransfer(host2, gs2)
+	dt1 := NewGraphSyncDataTransfer(host1, gs1, gsData.StoredCounter1)
+	dt2 := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 
 	finished := make(chan struct{}, 2)
 	var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {

@@ -49,7 +49,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 		sv := newSV()
 		sv.expectSuccessPush()
 
-		dt := NewGraphSyncDataTransfer(host2, gs2)
+		dt := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 		require.NoError(t, dt.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv))
 
 		isPull := false
@@ -84,7 +84,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 		id := datatransfer.TransferID(rand.Int31())
 		sv := newSV()
 		sv.expectErrorPush()
-		dt := NewGraphSyncDataTransfer(host2, gs2)
+		dt := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 		err = dt.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv)
 		require.NoError(t, err)
 
@@ -121,7 +121,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 		sv := newSV()
 		sv.expectSuccessPull()
 
-		dt := NewGraphSyncDataTransfer(host2, gs2)
+		dt := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 		err = dt.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv)
 		require.NoError(t, err)
 
@@ -158,7 +158,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 		sv := newSV()
 		sv.expectErrorPull()
 
-		dt := NewGraphSyncDataTransfer(host2, gs2)
+		dt := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 		err = dt.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv)
 		require.NoError(t, err)
 

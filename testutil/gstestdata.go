@@ -12,9 +12,11 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/filecoin-project/go-storedcounter"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-datastore/namespace"
 	dss "github.com/ipfs/go-datastore/sync"
 	"github.com/ipfs/go-graphsync"
 	gsimpl "github.com/ipfs/go-graphsync/impl"
@@ -44,21 +46,23 @@ const unixfsLinksPerLevel = 1024
 // GraphsyncTestingData is a test harness for testing data transfer on top of
 // graphsync
 type GraphsyncTestingData struct {
-	Ctx         context.Context
-	Bs1         bstore.Blockstore
-	Bs2         bstore.Blockstore
-	DagService1 ipldformat.DAGService
-	DagService2 ipldformat.DAGService
-	Loader1     ipld.Loader
-	Loader2     ipld.Loader
-	Storer1     ipld.Storer
-	Storer2     ipld.Storer
-	Host1       host.Host
-	Host2       host.Host
-	GsNet1      gsnet.GraphSyncNetwork
-	GsNet2      gsnet.GraphSyncNetwork
-	AllSelector ipld.Node
-	OrigBytes   []byte
+	Ctx            context.Context
+	StoredCounter1 *storedcounter.StoredCounter
+	StoredCounter2 *storedcounter.StoredCounter
+	Bs1            bstore.Blockstore
+	Bs2            bstore.Blockstore
+	DagService1    ipldformat.DAGService
+	DagService2    ipldformat.DAGService
+	Loader1        ipld.Loader
+	Loader2        ipld.Loader
+	Storer1        ipld.Storer
+	Storer2        ipld.Storer
+	Host1          host.Host
+	Host2          host.Host
+	GsNet1         gsnet.GraphSyncNetwork
+	GsNet2         gsnet.GraphSyncNetwork
+	AllSelector    ipld.Node
+	OrigBytes      []byte
 }
 
 // NewGraphsyncTestingData returns a new GraphsyncTestingData instance
@@ -98,9 +102,15 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T) *GraphsyncTestin
 			return &buf, committer, nil
 		}
 	}
+	ds1 := dss.MutexWrap(datastore.NewMapDatastore())
+	ds2 := dss.MutexWrap(datastore.NewMapDatastore())
 	// make a blockstore and dag service
-	gsData.Bs1 = bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
-	gsData.Bs2 = bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
+	gsData.Bs1 = bstore.NewBlockstore(namespace.Wrap(ds1, datastore.NewKey("blockstore")))
+	gsData.Bs2 = bstore.NewBlockstore(namespace.Wrap(ds2, datastore.NewKey("blockstore")))
+
+	// make stored counters
+	gsData.StoredCounter1 = storedcounter.New(ds1, datastore.NewKey("counter"))
+	gsData.StoredCounter2 = storedcounter.New(ds2, datastore.NewKey("counter"))
 
 	gsData.DagService1 = merkledag.NewDAGService(blockservice.New(gsData.Bs1, offline.Exchange(gsData.Bs1)))
 	gsData.DagService2 = merkledag.NewDAGService(blockservice.New(gsData.Bs2, offline.Exchange(gsData.Bs2)))

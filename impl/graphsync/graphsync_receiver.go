@@ -11,7 +11,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
 
-	"github.com/filecoin-project/go-data-transfer"
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/message"
 )
 
@@ -44,7 +44,7 @@ func (receiver *graphsyncReceiver) ReceiveRequest(
 		receiver.impl.sendGsRequest(ctx, initiator, incoming.TransferID(), incoming.IsPull(), dataSender, root, stor)
 	}
 
-	_, err = receiver.impl.createNewChannel(incoming.TransferID(), incoming.BaseCid(), stor, voucher, initiator, dataSender, dataReceiver)
+	_, err = receiver.impl.channels.CreateNew(incoming.TransferID(), incoming.BaseCid(), stor, voucher, initiator, dataSender, dataReceiver)
 	if err != nil {
 		log.Error(err)
 		receiver.impl.sendResponse(ctx, false, initiator, incoming.TransferID())
@@ -130,14 +130,14 @@ func (receiver *graphsyncReceiver) ReceiveResponse(
 
 		// if we are handling a response to a pull request then they are sending data and the
 		// initiator is us
-		if chst = receiver.impl.getChannelByIDAndSender(chid, sender); chst != datatransfer.EmptyChannelState {
+		if chst = receiver.impl.channels.GetByIDAndSender(chid, sender); chst != datatransfer.EmptyChannelState {
 			baseCid := chst.BaseCID()
 			root := cidlink.Link{Cid: baseCid}
 			receiver.impl.sendGsRequest(ctx, receiver.impl.peerID, incoming.TransferID(), true, sender, root, chst.Selector())
 			evt.Code = datatransfer.Progress
 		}
 	}
-	receiver.impl.notifySubscribers(evt, chst)
+	receiver.impl.pubSub.Publish(evt, chst)
 }
 
 func (receiver *graphsyncReceiver) ReceiveError(error) {}
