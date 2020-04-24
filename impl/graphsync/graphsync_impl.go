@@ -3,6 +3,7 @@ package graphsyncimpl
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -18,8 +19,8 @@ import (
 	"github.com/filecoin-project/go-data-transfer/channels"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/network"
-	"github.com/filecoin-project/go-data-transfer/pubsub"
 	"github.com/filecoin-project/go-storedcounter"
+	"github.com/hannahhoward/go-pubsub"
 )
 
 // This file implements a VERY simple, incomplete version of the data transfer
@@ -44,13 +45,31 @@ type graphsyncImpl struct {
 	storedCounter       *storedcounter.StoredCounter
 }
 
+type internalEvent struct {
+	evt   datatransfer.Event
+	state datatransfer.ChannelState
+}
+
+func dispatcher(evt pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
+	ie, ok := evt.(internalEvent)
+	if !ok {
+		return errors.New("wrong type of event")
+	}
+	cb, ok := subscriberFn.(datatransfer.Subscriber)
+	if !ok {
+		return errors.New("wrong type of event")
+	}
+	cb(ie.evt, ie.state)
+	return nil
+}
+
 // NewGraphSyncDataTransfer initializes a new graphsync based data transfer manager
 func NewGraphSyncDataTransfer(host host.Host, gs graphsync.GraphExchange, storedCounter *storedcounter.StoredCounter) datatransfer.Manager {
 	dataTransferNetwork := network.NewFromLibp2pHost(host)
 	impl := &graphsyncImpl{
 		dataTransferNetwork,
 		make(map[string]validateType),
-		pubsub.New(),
+		pubsub.New(dispatcher),
 		channels.New(),
 		gs,
 		host.ID(),
@@ -117,7 +136,10 @@ func (impl *graphsyncImpl) gsCompletedResponseListener(p peer.ID, request graphs
 	if status == graphsync.RequestCompletedFull {
 		evt.Code = datatransfer.Complete
 	}
-	impl.pubSub.Publish(evt, chst)
+	err = impl.pubSub.Publish(internalEvent{evt, chst})
+	if err != nil {
+		log.Warnf("err publishing DT event: %s", err.Error())
+	}
 }
 
 // RegisterVoucherType registers a validator for the given voucher type
@@ -220,7 +242,7 @@ func (impl *graphsyncImpl) TransferChannelStatus(x datatransfer.ChannelID) datat
 
 // get notified when certain types of events happen
 func (impl *graphsyncImpl) SubscribeToEvents(subscriber datatransfer.Subscriber) datatransfer.Unsubscribe {
-	return impl.pubSub.Subscribe(subscriber)
+	return datatransfer.Unsubscribe(impl.pubSub.Subscribe(subscriber))
 }
 
 // get all in progress transfers
@@ -263,6 +285,9 @@ func (impl *graphsyncImpl) sendGsRequest(ctx context.Context, initiator peer.ID,
 				evt.Message = lastError.Error()
 			}
 		}
-		impl.pubSub.Publish(evt, chst)
+		err := impl.pubSub.Publish(internalEvent{evt, chst})
+		if err != nil {
+			log.Warnf("err publishing DT event: %s", err.Error())
+		}
 	}()
 }
