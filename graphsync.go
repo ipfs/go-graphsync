@@ -155,7 +155,7 @@ type BlockData interface {
 type IncomingRequestHookActions interface {
 	SendExtensionData(ExtensionData)
 	UsePersistenceOption(name string)
-	UseNodeBuilderChooser(traversal.NodeBuilderChooser)
+	UseLinkTargetNodeStyleChooser(traversal.LinkTargetNodeStyleChooser)
 	TerminateWithError(error)
 	ValidateRequest()
 }
@@ -172,7 +172,7 @@ type OutgoingBlockHookActions interface {
 // to change the execution of a request
 type OutgoingRequestHookActions interface {
 	UsePersistenceOption(name string)
-	UseNodeBuilderChooser(traversal.NodeBuilderChooser)
+	UseLinkTargetNodeStyleChooser(traversal.LinkTargetNodeStyleChooser)
 }
 
 // IncomingResponseHookActions are actions that incoming response hook can take

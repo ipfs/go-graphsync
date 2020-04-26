@@ -8,10 +8,9 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testutil/chaintypes"
 	"github.com/ipld/go-ipld-prime"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	mh "github.com/multiformats/go-multihash"
@@ -35,69 +34,53 @@ type TestBlockChain struct {
 }
 
 func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
-	links := make([]ipld.Node, 0, len(parents))
+	blknb := basicnode.Style.Map.NewBuilder()
+	blknbmnb, err := blknb.BeginMap(2)
+	if err != nil {
+		return nil, err
+	}
+
+	entnb, err := blknbmnb.AssembleEntry("Parents")
+	if err != nil {
+		return nil, err
+	}
+	pnblnb, err := entnb.BeginList(len(parents))
+	if err != nil {
+		return nil, err
+	}
 	for _, parent := range parents {
-		lnb := chaintypes.Link__NodeBuilder()
-		link, err := lnb.CreateLink(parent)
+		err := pnblnb.AssembleValue().AssignLink(parent)
 		if err != nil {
 			return nil, err
 		}
-		links = append(links, link)
 	}
-	pnb := chaintypes.Parents__NodeBuilder()
-	pnblnb, err := pnb.CreateList()
+	err = pnblnb.Finish()
 	if err != nil {
 		return nil, err
 	}
-	err = pnblnb.AppendAll(links)
+
+	entnb, err = blknbmnb.AssembleEntry("Messages")
 	if err != nil {
 		return nil, err
 	}
-	parentsNd, err := pnblnb.Build()
+	mnblnb, err := entnb.BeginList(1)
 	if err != nil {
 		return nil, err
 	}
-	mnb := chaintypes.Messages__NodeBuilder()
-	mnblnb, err := mnb.CreateList()
+	err = mnblnb.AssembleValue().AssignBytes(RandomBytes(int64(size)))
 	if err != nil {
 		return nil, err
 	}
-	bnb := chaintypes.Bytes__NodeBuilder()
-	bytes, err := bnb.CreateBytes(RandomBytes(int64(size)))
+	mnblnb.Finish()
 	if err != nil {
 		return nil, err
 	}
-	err = mnblnb.Append(bytes)
+
+	err = blknbmnb.Finish()
 	if err != nil {
 		return nil, err
 	}
-	mesagesNd, err := mnblnb.Build()
-	if err != nil {
-		return nil, err
-	}
-	blknb := chaintypes.Block__NodeBuilder()
-	blknbmnb, err := blknb.CreateMap()
-	if err != nil {
-		return nil, err
-	}
-	snb := chaintypes.String__NodeBuilder()
-	key, err := snb.CreateString("Parents")
-	if err != nil {
-		return nil, err
-	}
-	err = blknbmnb.Insert(key, parentsNd)
-	if err != nil {
-		return nil, err
-	}
-	key, err = snb.CreateString("Messages")
-	if err != nil {
-		return nil, err
-	}
-	err = blknbmnb.Insert(key, mesagesNd)
-	if err != nil {
-		return nil, err
-	}
-	return blknbmnb.Build()
+	return blknb.Build(), nil
 }
 
 // SetupBlockChain creates a new test block chain with the given height
@@ -134,7 +117,7 @@ func SetupBlockChain(
 
 // Selector returns the selector to recursive traverse the block chain parent links
 func (tbc *TestBlockChain) Selector() ipld.Node {
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
 	return ssb.ExploreRecursive(selector.RecursionLimitDepth(tbc.blockChainLength),
 		ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
 			efsb.Insert("Parents", ssb.ExploreAll(
@@ -178,20 +161,20 @@ func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress
 	for i, response := range responses {
 		require.Equal(tbc.t, expectedPath, response.Path.String(), "response has correct path")
 		if i%2 == 0 {
-			if verifyTypes {
-				_, ok := response.Node.(chaintypes.Block)
-				require.True(tbc.t, ok, "nodes in response should have correct type")
-			}
+			// if verifyTypes {
+			// 	_, ok := response.Node.(chaintypes.Block)
+			// 	require.True(tbc.t, ok, "nodes in response should have correct type")
+			// }
 			if expectedPath == "" {
 				expectedPath = "Parents"
 			} else {
 				expectedPath = expectedPath + "/Parents"
 			}
 		} else {
-			if verifyTypes {
-				_, ok := response.Node.(chaintypes.Parents)
-				require.True(tbc.t, ok, "nodes in response should have correct type")
-			}
+			// if verifyTypes {
+			// 	_, ok := response.Node.(chaintypes.Parents)
+			// 	require.True(tbc.t, ok, "nodes in response should have correct type")
+			// }
 			expectedPath = expectedPath + "/0"
 		}
 		if response.LastBlock.Path.String() != response.Path.String() {
@@ -263,6 +246,7 @@ func (tbc *TestBlockChain) RemainderBlocks(from int) []blocks.Block {
 }
 
 // Chooser is a NodeBuilderChooser function that always returns the block chain
-func (tbc *TestBlockChain) Chooser(ipld.Link, ipld.LinkContext) (ipld.NodeBuilder, error) {
-	return chaintypes.Block__NodeBuilder(), nil
+func (tbc *TestBlockChain) Chooser(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
+	return basicnode.Style.Any, nil
+	//return chaintypes.Block__NodeBuilder(), nil
 }

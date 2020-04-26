@@ -253,8 +253,13 @@ github.com/ipld/go-ipld-prime v0.0.2-0.20191108012745-28a82f04c785 h1:fASnkvtR+S
 github.com/ipld/go-ipld-prime v0.0.2-0.20191108012745-28a82f04c785/go.mod h1:bDDSvVz7vaK12FNvMeRYnpRFkSUPNQOiCYQezMD/P3w=
 github.com/ipld/go-ipld-prime v0.0.2-0.20200229094926-eb71617f4aeb h1:uvoZ2aTjsTt/6W5hkzj3JkPMY3oHvcla4WA29k4Jk0I=
 github.com/ipld/go-ipld-prime v0.0.2-0.20200229094926-eb71617f4aeb/go.mod h1:uVIwe/u0H4VdKv3kaN1ck7uCb6yD9cFLS9/ELyXbsw8=
+github.com/ipld/go-ipld-prime v0.0.2-0.20200327122045-fc80c2b0149d/go.mod h1:uVIwe/u0H4VdKv3kaN1ck7uCb6yD9cFLS9/ELyXbsw8=
+github.com/ipld/go-ipld-prime v0.0.2-0.20200331163611-44af114587ec h1:BhJ/pwukgBhmlzLfM6CeINszfzavl4ythOHALsovBOc=
+github.com/ipld/go-ipld-prime v0.0.2-0.20200331163611-44af114587ec/go.mod h1:uVIwe/u0H4VdKv3kaN1ck7uCb6yD9cFLS9/ELyXbsw8=
 github.com/ipld/go-ipld-prime-proto v0.0.0-20191113031812-e32bd156a1e5 h1:lSip43rAdyGA+yRQuy6ju0ucZkWpYc1F2CTQtZTVW/4=
 github.com/ipld/go-ipld-prime-proto v0.0.0-20191113031812-e32bd156a1e5/go.mod h1:gcvzoEDBjwycpXt3LBE061wT9f46szXGHAmj9uoP6fU=
+github.com/ipld/go-ipld-prime-proto v0.0.0-20200331015814-a6d6f408ac98 h1:SZ0fO/ir0lAAeKAU87s8wMpTp9wRuOScdwNpw0DT6HI=
+github.com/ipld/go-ipld-prime-proto v0.0.0-20200331015814-a6d6f408ac98/go.mod h1:gYRFQ2pKw0riArR4YCWmqmSW6rdytGW4ynwqOAx0VqY=
 github.com/ipld/go-ipld-prime-proto v0.0.0-20200409003434-8cf97d9cb362 h1:ZPMg5SLiHu/FzBIv7p8obE3VGwiKaRNnM+QxiYsk+tg=
 github.com/ipld/go-ipld-prime-proto v0.0.0-20200409003434-8cf97d9cb362/go.mod h1:ScHZhxNfNoOTfM87iqdAC37cDh56S+0/LK0NtyriaBk=
 github.com/ipsn/go-secp256k1 v0.0.0-20180726113642-9d62b9f0bc52/go.mod h1:fdg+/X9Gg4AsAIzWpEHwnqd+QY3b7lajxyjE1m4hkq4=

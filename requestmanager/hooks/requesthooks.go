@@ -47,7 +47,7 @@ func (orh *OutgoingRequestHooks) Register(hook graphsync.OnOutgoingRequestHook) 
 // RequestResult is the outcome of running requesthooks
 type RequestResult struct {
 	PersistenceOption string
-	CustomChooser     traversal.NodeBuilderChooser
+	CustomChooser     traversal.LinkTargetNodeStyleChooser
 }
 
 // ProcessRequestHooks runs request hooks against an outgoing request
@@ -63,7 +63,7 @@ func (orh *OutgoingRequestHooks) ProcessRequestHooks(p peer.ID, request graphsyn
 
 type requestHookActions struct {
 	persistenceOption  string
-	nodeBuilderChooser traversal.NodeBuilderChooser
+	nodeBuilderChooser traversal.LinkTargetNodeStyleChooser
 }
 
 func (rha *requestHookActions) result() RequestResult {
@@ -77,6 +77,6 @@ func (rha *requestHookActions) UsePersistenceOption(name string) {
 	rha.persistenceOption = name
 }
 
-func (rha *requestHookActions) UseNodeBuilderChooser(nodeBuilderChooser traversal.NodeBuilderChooser) {
+func (rha *requestHookActions) UseLinkTargetNodeStyleChooser(nodeBuilderChooser traversal.LinkTargetNodeStyleChooser) {
 	rha.nodeBuilderChooser = nodeBuilderChooser
 }

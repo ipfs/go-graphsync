@@ -7,7 +7,7 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/stretchr/testify/require"
 
@@ -23,7 +23,7 @@ func TestAppendingRequests(t *testing.T) {
 		Data: testutil.RandomBytes(100),
 	}
 	root := testutil.GenerateCids(1)[0]
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
 	selector := ssb.Matcher().Node()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
@@ -144,7 +144,7 @@ func contains(strs []string, x string) bool {
 }
 
 func TestRequestCancel(t *testing.T) {
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
 	selector := ssb.Matcher().Node()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
@@ -217,7 +217,7 @@ func TestRequestUpdate(t *testing.T) {
 
 func TestToNetFromNetEquivalency(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
 	selector := ssb.Matcher().Node()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{

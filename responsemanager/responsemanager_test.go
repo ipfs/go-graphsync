@@ -17,8 +17,8 @@ import (
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -388,9 +388,9 @@ func TestValidationAndExtensions(t *testing.T) {
 		responseManager.Startup()
 
 		customChooserCallCount := 0
-		customChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodeBuilder, error) {
+		customChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
 			customChooserCallCount++
-			return ipldfree.NodeBuilder(), nil
+			return basicnode.Style.Any, nil
 		}
 
 		// add validating hook -- so the request SHOULD succeed
@@ -408,7 +408,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		// register hook to use custom chooser
 		_ = td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			if _, found := requestData.Extension(td.extensionName); found {
-				hookActions.UseNodeBuilderChooser(customChooser)
+				hookActions.UseLinkTargetNodeStyleChooser(customChooser)
 				hookActions.SendExtensionData(td.extensionResponse)
 			}
 		})

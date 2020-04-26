@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/stretchr/testify/require"
 
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -381,14 +381,14 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	requestor.RegisterOutgoingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.OutgoingRequestHookActions) {
 		_, has := requestData.Extension(extensionName)
 		if has {
-			hookActions.UseNodeBuilderChooser(blockChain.Chooser)
+			hookActions.UseLinkTargetNodeStyleChooser(blockChain.Chooser)
 			hookActions.UsePersistenceOption("chainstore")
 		}
 	})
 	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		_, has := requestData.Extension(extensionName)
 		if has {
-			hookActions.UseNodeBuilderChooser(blockChain.Chooser)
+			hookActions.UseLinkTargetNodeStyleChooser(blockChain.Chooser)
 			hookActions.UsePersistenceOption("chainstore")
 		}
 	})
@@ -557,7 +557,7 @@ func TestUnixFSFetch(t *testing.T) {
 	clink := cidlink.Link{Cid: nd.Cid()}
 
 	// create a selector for the whole UnixFS dag
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
 
 	allSelector := ssb.ExploreRecursive(ipldselector.RecursionLimitNone(),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()

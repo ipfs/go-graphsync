@@ -4,7 +4,7 @@ import (
 	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/fluent"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 )
 
 // Item is a single link traversed in a repsonse
@@ -24,42 +24,47 @@ func DecodeMetadata(data []byte) (Metadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	var decodedData interface{}
-	err = fluent.Recover(func() {
-		simpleNode := fluent.WrapNode(node)
-		iterator := simpleNode.ListIterator()
-		var metadata Metadata
-		if simpleNode.Length() != -1 {
-			metadata = make(Metadata, 0, simpleNode.Length())
-		}
-
-		for !iterator.Done() {
-			_, item := iterator.Next()
-			link := item.LookupString("link").AsLink()
-			blockPresent := item.LookupString("blockPresent").AsBool()
-			metadata = append(metadata, Item{link, blockPresent})
-		}
-		decodedData = metadata
-	})
-	if err != nil {
-		return nil, err
+	iterator := node.ListIterator()
+	var metadata Metadata
+	if node.Length() != -1 {
+		metadata = make(Metadata, 0, node.Length())
 	}
-	return decodedData.(Metadata), err
+
+	for !iterator.Done() {
+		_, item, err := iterator.Next()
+		if err != nil {
+			return nil, err
+		}
+		linkNode, err := item.LookupString("link")
+		if err != nil {
+			return nil, err
+		}
+		link, err := linkNode.AsLink()
+		if err != nil {
+			return nil, err
+		}
+		blockPresentNode, err := item.LookupString("blockPresent")
+		if err != nil {
+			return nil, err
+		}
+		blockPresent, err := blockPresentNode.AsBool()
+		if err != nil {
+			return nil, err
+		}
+		metadata = append(metadata, Item{link, blockPresent})
+	}
+	return metadata, err
 }
 
 // EncodeMetadata encodes metadata to an IPLD node then serializes to raw bytes
 func EncodeMetadata(entries Metadata) ([]byte, error) {
-	var node ipld.Node
-	err := fluent.Recover(func() {
-		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
-		node = nb.CreateList(func(lb fluent.ListBuilder, nb fluent.NodeBuilder) {
+	node, err := fluent.Build(basicnode.Style.List, func(na fluent.NodeAssembler) {
+		na.CreateList(len(entries), func(na fluent.ListAssembler) {
 			for _, item := range entries {
-				lb.Append(
-					nb.CreateMap(func(mb fluent.MapBuilder, knb fluent.NodeBuilder, vnb fluent.NodeBuilder) {
-						mb.Insert(knb.CreateString("link"), vnb.CreateLink(item.Link))
-						mb.Insert(knb.CreateString("blockPresent"), vnb.CreateBool(item.BlockPresent))
-					}),
-				)
+				na.AssembleValue().CreateMap(2, func(na fluent.MapAssembler) {
+					na.AssembleEntry("link").AssignLink(item.Link)
+					na.AssembleEntry("blockPresent").AssignBool(item.BlockPresent)
+				})
 			}
 		})
 	})

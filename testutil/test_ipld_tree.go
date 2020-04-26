@@ -10,10 +10,10 @@ import (
 	"github.com/ipld/go-ipld-prime"
 
 	// to register multicodec
-	_ "github.com/ipld/go-ipld-prime/encoding/dagjson"
+	_ "github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/fluent"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 )
 
 // TestIPLDTree is a set of IPLD Data that forms a tree spread across some blocks
@@ -40,7 +40,6 @@ type TestIPLDTree struct {
 // NewTestIPLDTree returns a fake tree of nodes, spread across 5 blocks
 func NewTestIPLDTree() TestIPLDTree {
 	var storage = make(map[ipld.Link][]byte)
-	var fnb = fluent.WrapNodeBuilder(ipldfree.NodeBuilder()) // just for the other fixture building
 	encode := func(n ipld.Node) (ipld.Node, ipld.Link) {
 		lb := cidlink.LinkBuilder{Prefix: cid.Prefix{
 			Version:  1,
@@ -64,31 +63,31 @@ func NewTestIPLDTree() TestIPLDTree {
 	}
 
 	var (
-		leafAlpha, leafAlphaLnk         = encode(fnb.CreateString("alpha"))
+		leafAlpha, leafAlphaLnk         = encode(basicnode.NewString("alpha"))
 		leafAlphaBlock, _               = blocks.NewBlockWithCid(storage[leafAlphaLnk], leafAlphaLnk.(cidlink.Link).Cid)
-		leafBeta, leafBetaLnk           = encode(fnb.CreateString("beta"))
+		leafBeta, leafBetaLnk           = encode(basicnode.NewString("beta"))
 		leafBetaBlock, _                = blocks.NewBlockWithCid(storage[leafBetaLnk], leafBetaLnk.(cidlink.Link).Cid)
-		middleMapNode, middleMapNodeLnk = encode(fnb.CreateMap(func(mb fluent.MapBuilder, knb fluent.NodeBuilder, vnb fluent.NodeBuilder) {
-			mb.Insert(knb.CreateString("foo"), vnb.CreateBool(true))
-			mb.Insert(knb.CreateString("bar"), vnb.CreateBool(false))
-			mb.Insert(knb.CreateString("nested"), vnb.CreateMap(func(mb fluent.MapBuilder, knb fluent.NodeBuilder, vnb fluent.NodeBuilder) {
-				mb.Insert(knb.CreateString("alink"), vnb.CreateLink(leafAlphaLnk))
-				mb.Insert(knb.CreateString("nonlink"), vnb.CreateString("zoo"))
-			}))
+		middleMapNode, middleMapNodeLnk = encode(fluent.MustBuildMap(basicnode.Style.Map, 3, func(na fluent.MapAssembler) {
+			na.AssembleEntry("foo").AssignBool(true)
+			na.AssembleEntry("bar").AssignBool(false)
+			na.AssembleEntry("nested").CreateMap(2, func(na fluent.MapAssembler) {
+				na.AssembleEntry("alink").AssignLink(leafAlphaLnk)
+				na.AssembleEntry("nonlink").AssignString("zoo")
+			})
 		}))
 		middleMapBlock, _                 = blocks.NewBlockWithCid(storage[middleMapNodeLnk], middleMapNodeLnk.(cidlink.Link).Cid)
-		middleListNode, middleListNodeLnk = encode(fnb.CreateList(func(lb fluent.ListBuilder, vnb fluent.NodeBuilder) {
-			lb.Append(vnb.CreateLink(leafAlphaLnk))
-			lb.Append(vnb.CreateLink(leafAlphaLnk))
-			lb.Append(vnb.CreateLink(leafBetaLnk))
-			lb.Append(vnb.CreateLink(leafAlphaLnk))
+		middleListNode, middleListNodeLnk = encode(fluent.MustBuildList(basicnode.Style.List, 4, func(na fluent.ListAssembler) {
+			na.AssembleValue().AssignLink(leafAlphaLnk)
+			na.AssembleValue().AssignLink(leafAlphaLnk)
+			na.AssembleValue().AssignLink(leafBetaLnk)
+			na.AssembleValue().AssignLink(leafAlphaLnk)
 		}))
 		middleListBlock, _    = blocks.NewBlockWithCid(storage[middleListNodeLnk], middleListNodeLnk.(cidlink.Link).Cid)
-		rootNode, rootNodeLnk = encode(fnb.CreateMap(func(mb fluent.MapBuilder, knb fluent.NodeBuilder, vnb fluent.NodeBuilder) {
-			mb.Insert(knb.CreateString("plain"), vnb.CreateString("olde string"))
-			mb.Insert(knb.CreateString("linkedString"), vnb.CreateLink(leafAlphaLnk))
-			mb.Insert(knb.CreateString("linkedMap"), vnb.CreateLink(middleMapNodeLnk))
-			mb.Insert(knb.CreateString("linkedList"), vnb.CreateLink(middleListNodeLnk))
+		rootNode, rootNodeLnk = encode(fluent.MustBuildMap(basicnode.Style.Map, 4, func(na fluent.MapAssembler) {
+			na.AssembleEntry("plain").AssignString("olde string")
+			na.AssembleEntry("linkedString").AssignLink(leafAlphaLnk)
+			na.AssembleEntry("linkedMap").AssignLink(middleMapNodeLnk)
+			na.AssembleEntry("linkedList").AssignLink(middleListNodeLnk)
 		}))
 		rootBlock, _ = blocks.NewBlockWithCid(storage[rootNodeLnk], rootNodeLnk.(cidlink.Link).Cid)
 	)

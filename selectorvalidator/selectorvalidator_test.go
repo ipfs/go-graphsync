@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	ipld "github.com/ipld/go-ipld-prime"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -12,7 +12,7 @@ import (
 )
 
 func TestValidateMaxRecusionDepth(t *testing.T) {
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Map)
 
 	successBase := ssb.ExploreRecursive(selector.RecursionLimitDepth(80), ssb.ExploreRecursiveEdge())
 	failBase := ssb.ExploreRecursive(selector.RecursionLimitDepth(120), ssb.ExploreRecursiveEdge())
