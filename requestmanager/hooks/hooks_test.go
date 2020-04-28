@@ -10,15 +10,15 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRequestHookProcessing(t *testing.T) {
-	fakeChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodeBuilder, error) {
-		return ipldfree.NodeBuilder(), nil
+	fakeChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
+		return basicnode.Style.Any, nil
 	}
 	extensionData := testutil.RandomBytes(100)
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
@@ -29,7 +29,7 @@ func TestRequestHookProcessing(t *testing.T) {
 
 	root := testutil.GenerateCids(1)[0]
 	requestID := graphsync.RequestID(rand.Int31())
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
 	p := testutil.GeneratePeers(1)[0]
 	testCases := map[string]struct {
@@ -46,7 +46,7 @@ func TestRequestHookProcessing(t *testing.T) {
 			configure: func(t *testing.T, hooks *hooks.OutgoingRequestHooks) {
 				hooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.OutgoingRequestHookActions) {
 					if _, found := requestData.Extension(extensionName); found {
-						hookActions.UseNodeBuilderChooser(fakeChooser)
+						hookActions.UseLinkTargetNodeStyleChooser(fakeChooser)
 					}
 				})
 			},

@@ -7,8 +7,8 @@ import (
 
 	ipld "github.com/ipld/go-ipld-prime"
 	dagpb "github.com/ipld/go-ipld-prime-proto"
-	"github.com/ipld/go-ipld-prime/encoding/dagcbor"
-	free "github.com/ipld/go-ipld-prime/impl/free"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal"
 	ipldtraversal "github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -23,28 +23,30 @@ func ErrDoNotFollow() error {
 }
 
 var (
-	defaultChooser traversal.NodeBuilderChooser = dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodeBuilder, error) {
-		return free.NodeBuilder(), nil
+	defaultChooser traversal.LinkTargetNodeStyleChooser = dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
+		return basicnode.Style.Any, nil
 	})
 )
 
-func Traverse(ctx context.Context, loader ipld.Loader, chooser traversal.NodeBuilderChooser, root ipld.Link, s selector.Selector, fn traversal.AdvVisitFn) error {
+func Traverse(ctx context.Context, loader ipld.Loader, chooser traversal.LinkTargetNodeStyleChooser, root ipld.Link, s selector.Selector, fn traversal.AdvVisitFn) error {
 	if chooser == nil {
 		chooser = defaultChooser
 	}
-	builder, err := chooser(root, ipld.LinkContext{})
+	ns, err := chooser(root, ipld.LinkContext{})
 	if err != nil {
 		return err
 	}
-	node, err := root.Load(ctx, ipld.LinkContext{}, builder, loader)
+	nb := ns.NewBuilder()
+	err = root.Load(ctx, ipld.LinkContext{}, nb, loader)
 	if err != nil {
 		return err
 	}
+	node := nb.Build()
 	return traversal.Progress{
 		Cfg: &traversal.Config{
-			Ctx:                    ctx,
-			LinkLoader:             loader,
-			LinkNodeBuilderChooser: chooser,
+			Ctx:                        ctx,
+			LinkLoader:                 loader,
+			LinkTargetNodeStyleChooser: chooser,
 		},
 	}.WalkAdv(node, s, fn)
 }
@@ -63,8 +65,11 @@ func EncodeNode(node ipld.Node) ([]byte, error) {
 }
 
 func DecodeNode(encoded []byte) (ipld.Node, error) {
-	reader := bytes.NewReader(encoded)
-	return dagcbor.Decoder(free.NodeBuilder(), reader)
+	nb := basicnode.Style.Any.NewBuilder()
+	if err := dagcbor.Decoder(nb, bytes.NewReader(encoded)); err != nil {
+		return nil, err
+	}
+	return nb.Build(), nil
 }
 
 func ParseSelector(selector ipld.Node) (selector.Selector, error) {

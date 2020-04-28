@@ -17,7 +17,7 @@ type TraversalBuilder struct {
 	Root     ipld.Link
 	Selector ipld.Node
 	Visitor  traversal.AdvVisitFn
-	Chooser  traversal.NodeBuilderChooser
+	Chooser  traversal.LinkTargetNodeStyleChooser
 }
 
 // Traverser is an interface for performing a selector traversal that operates iteratively --
@@ -75,7 +75,7 @@ type traverser struct {
 	root           ipld.Link
 	selector       ipld.Node
 	visitor        traversal.AdvVisitFn
-	chooser        traversal.NodeBuilderChooser
+	chooser        traversal.LinkTargetNodeStyleChooser
 	currentLink    ipld.Link
 	currentContext ipld.LinkContext
 	isDone         bool
@@ -129,16 +129,18 @@ func (t *traverser) start() {
 				return response.input, response.err
 			}
 		}
-		nb, err := t.chooser(t.root, ipld.LinkContext{})
+		ns, err := t.chooser(t.root, ipld.LinkContext{})
 		if err != nil {
 			t.writeDone(err)
 			return
 		}
-		nd, err := t.root.Load(t.ctx, ipld.LinkContext{}, nb, loader)
+		nb := ns.NewBuilder()
+		err = t.root.Load(t.ctx, ipld.LinkContext{}, nb, loader)
 		if err != nil {
 			t.writeDone(err)
 			return
 		}
+		nd := nb.Build()
 
 		sel, err := selector.ParseSelector(t.selector)
 		if err != nil {
@@ -147,9 +149,9 @@ func (t *traverser) start() {
 		}
 		err = traversal.Progress{
 			Cfg: &traversal.Config{
-				Ctx:                    t.ctx,
-				LinkLoader:             loader,
-				LinkNodeBuilderChooser: t.chooser,
+				Ctx:                        t.ctx,
+				LinkLoader:                 loader,
+				LinkTargetNodeStyleChooser: t.chooser,
 			},
 		}.WalkAdv(nd, sel, t.visitor)
 		t.writeDone(err)

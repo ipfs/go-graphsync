@@ -5,7 +5,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	ipld "github.com/ipld/go-ipld-prime"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
@@ -33,7 +33,7 @@ func SelectorValidator(maxAcceptedDepth int) graphsync.OnIncomingRequestHook {
 // ValidateMaxRecursionDepth examines the given selector node and verifies
 // recursive selectors are limited to the given fixed depth
 func ValidateMaxRecursionDepth(node ipld.Node, maxAcceptedDepth int) error {
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Map)
 
 	// this selector is a selector for traversing selectors...
 	// it traverses the various selector types looking for recursion limit fields

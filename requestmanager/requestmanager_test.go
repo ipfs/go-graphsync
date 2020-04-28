@@ -374,29 +374,6 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan)
 }
 
-func TestUnencodableSelector(t *testing.T) {
-	requestRecordChan := make(chan requestRecord, 2)
-	fph := &fakePeerHandler{requestRecordChan}
-	ctx := context.Background()
-	fal := newFakeAsyncLoader()
-	requestHooks := hooks.NewRequestHooks()
-	responseHooks := hooks.NewResponseHooks()
-	requestManager := New(ctx, fal, requestHooks, responseHooks)
-	requestManager.SetDelegate(fph)
-	requestManager.Startup()
-
-	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	peers := testutil.GeneratePeers(1)
-
-	s := testutil.NewUnencodableSelectorSpec()
-	r := cidlink.Link{Cid: testutil.GenerateCids(1)[0]}
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], r, s)
-
-	testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
-	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
-}
-
 func TestFailedRequest(t *testing.T) {
 	requestRecordChan := make(chan requestRecord, 2)
 	fph := &fakePeerHandler{requestRecordChan}
@@ -704,7 +681,7 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	hook := func(p peer.ID, r graphsync.RequestData, ha graphsync.OutgoingRequestHookActions) {
 		_, has := r.Extension(extensionName1)
 		if has {
-			ha.UseNodeBuilderChooser(blockChain.Chooser)
+			ha.UseLinkTargetNodeStyleChooser(blockChain.Chooser)
 			ha.UsePersistenceOption("chainstore")
 		}
 	}

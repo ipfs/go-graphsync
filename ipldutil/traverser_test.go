@@ -9,8 +9,8 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
@@ -22,7 +22,7 @@ func TestTraverser(t *testing.T) {
 
 	t.Run("traverses correctly, simple struct", func(t *testing.T) {
 		testdata := testutil.NewTestIPLDTree()
-		ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+		ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
 		sel := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
 		traverser := TraversalBuilder{
 			Root:     testdata.RootNodeLnk,

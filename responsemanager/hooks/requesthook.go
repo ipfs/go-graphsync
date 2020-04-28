@@ -58,7 +58,7 @@ func (irh *IncomingRequestHooks) Register(hook graphsync.OnIncomingRequestHook) 
 type RequestResult struct {
 	IsValidated   bool
 	CustomLoader  ipld.Loader
-	CustomChooser traversal.NodeBuilderChooser
+	CustomChooser traversal.LinkTargetNodeStyleChooser
 	Err           error
 	Extensions    []graphsync.ExtensionData
 }
@@ -84,7 +84,7 @@ type requestHookActions struct {
 	isValidated        bool
 	err                error
 	loader             ipld.Loader
-	chooser            traversal.NodeBuilderChooser
+	chooser            traversal.LinkTargetNodeStyleChooser
 	extensions         []graphsync.ExtensionData
 }
 
@@ -123,6 +123,6 @@ func (ha *requestHookActions) UsePersistenceOption(name string) {
 	ha.loader = loader
 }
 
-func (ha *requestHookActions) UseNodeBuilderChooser(chooser traversal.NodeBuilderChooser) {
+func (ha *requestHookActions) UseLinkTargetNodeStyleChooser(chooser traversal.LinkTargetNodeStyleChooser) {
 	ha.chooser = chooser
 }

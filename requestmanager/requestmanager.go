@@ -388,7 +388,7 @@ func (rm *RequestManager) executeTraversal(
 	requestID graphsync.RequestID,
 	root ipld.Link,
 	selector selector.Selector,
-	nodeBuilderChooser traversal.NodeBuilderChooser,
+	nodeBuilderChooser traversal.LinkTargetNodeStyleChooser,
 	networkErrorChan chan error,
 ) (chan graphsync.ResponseProgress, chan error) {
 	inProgressChan := make(chan graphsync.ResponseProgress)
