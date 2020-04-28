@@ -71,7 +71,7 @@ func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	mnblnb.Finish()
+	err = mnblnb.Finish()
 	if err != nil {
 		return nil, err
 	}
