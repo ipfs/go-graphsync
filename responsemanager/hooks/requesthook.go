@@ -2,18 +2,13 @@ package hooks
 
 import (
 	"errors"
-	"sync"
 
+	"github.com/hannahhoward/go-pubsub"
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
-
-type requestHook struct {
-	key  uint64
-	hook graphsync.OnIncomingRequestHook
-}
 
 // PersistenceOptions is an interface for getting loaders by name
 type PersistenceOptions interface {
@@ -23,35 +18,33 @@ type PersistenceOptions interface {
 // IncomingRequestHooks is a set of incoming request hooks that can be processed
 type IncomingRequestHooks struct {
 	persistenceOptions PersistenceOptions
-	hooksLk            sync.RWMutex
-	nextKey            uint64
-	hooks              []requestHook
+	pubSub             *pubsub.PubSub
+}
+
+type internalRequestHookEvent struct {
+	p       peer.ID
+	request graphsync.RequestData
+	rha     *requestHookActions
+}
+
+func requestHookDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
+	ie := event.(internalRequestHookEvent)
+	hook := subscriberFn.(graphsync.OnIncomingRequestHook)
+	hook(ie.p, ie.request, ie.rha)
+	return ie.rha.err
 }
 
 // NewRequestHooks returns a new list of incoming request hooks
 func NewRequestHooks(persistenceOptions PersistenceOptions) *IncomingRequestHooks {
 	return &IncomingRequestHooks{
 		persistenceOptions: persistenceOptions,
+		pubSub:             pubsub.New(requestHookDispatcher),
 	}
 }
 
 // Register registers an extension to process new incoming requests
 func (irh *IncomingRequestHooks) Register(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
-	irh.hooksLk.Lock()
-	rh := requestHook{irh.nextKey, hook}
-	irh.nextKey++
-	irh.hooks = append(irh.hooks, rh)
-	irh.hooksLk.Unlock()
-	return func() {
-		irh.hooksLk.Lock()
-		defer irh.hooksLk.Unlock()
-		for i, matchHook := range irh.hooks {
-			if rh.key == matchHook.key {
-				irh.hooks = append(irh.hooks[:i], irh.hooks[i+1:]...)
-				return
-			}
-		}
-	}
+	return graphsync.UnregisterHookFunc(irh.pubSub.Subscribe(hook))
 }
 
 // RequestResult is the outcome of running requesthooks
@@ -65,17 +58,10 @@ type RequestResult struct {
 
 // ProcessRequestHooks runs request hooks against an incoming request
 func (irh *IncomingRequestHooks) ProcessRequestHooks(p peer.ID, request graphsync.RequestData) RequestResult {
-	irh.hooksLk.RLock()
-	defer irh.hooksLk.RUnlock()
 	ha := &requestHookActions{
 		persistenceOptions: irh.persistenceOptions,
 	}
-	for _, requestHook := range irh.hooks {
-		requestHook.hook(p, request, ha)
-		if ha.hasError() {
-			break
-		}
-	}
+	_ = irh.pubSub.Publish(internalRequestHookEvent{p, request, ha})
 	return ha.result()
 }
 
@@ -86,10 +72,6 @@ type requestHookActions struct {
 	loader             ipld.Loader
 	chooser            traversal.LinkTargetNodeStyleChooser
 	extensions         []graphsync.ExtensionData
-}
-
-func (ha *requestHookActions) hasError() bool {
-	return ha.err != nil
 }
 
 func (ha *requestHookActions) result() RequestResult {
