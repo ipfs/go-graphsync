@@ -5,8 +5,8 @@ import (
 
 	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/encoding/dagcbor"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 )
 
 var log = logging.Logger("graphsync-impl")
@@ -24,5 +24,10 @@ func nodeAsBytes(node ipld.Node) ([]byte, error) {
 // nodeFromBytes deserializes an ipld.Node
 func nodeFromBytes(from []byte) (ipld.Node, error) {
 	reader := bytes.NewReader(from)
-	return dagcbor.Decoder(ipldfree.NodeBuilder(), reader)
+	nb := basicnode.Style.Any.NewBuilder()
+	err := dagcbor.Decoder(nb, reader)
+	if err != nil {
+		return nil, err
+	}
+	return nb.Build(), err
 }

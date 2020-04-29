@@ -6,7 +6,7 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/channels"
 	"github.com/filecoin-project/go-data-transfer/testutil"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +33,7 @@ func TestChannels(t *testing.T) {
 	fv1 := &fakeVoucher{}
 	fv2 := &fakeVoucher{}
 	cids := testutil.GenerateCids(2)
-	selector := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder()).Matcher().Node()
+	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
 	peers := testutil.GeneratePeers(4)
 
 	t.Run("adding channels", func(t *testing.T) {

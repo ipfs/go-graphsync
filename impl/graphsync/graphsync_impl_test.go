@@ -13,9 +13,9 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/encoding/dagcbor"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -100,7 +100,7 @@ func TestDataTransferOneWay(t *testing.T) {
 	dt := NewGraphSyncDataTransfer(host1, gs, gsData.StoredCounter1)
 
 	t.Run("OpenPushDataTransfer", func(t *testing.T) {
-		ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+		ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
 
 		// this is the selector for "get the whole DAG"
 		// TODO: support storage deals with custom payload selectors
@@ -135,8 +135,10 @@ func TestDataTransferOneWay(t *testing.T) {
 		require.False(t, receivedRequest.IsCancel())
 		require.False(t, receivedRequest.IsPull())
 		reader := bytes.NewReader(receivedRequest.Selector())
-		receivedSelector, err := dagcbor.Decoder(ipldfree.NodeBuilder(), reader)
+		nb := basicnode.Style.Any.NewBuilder()
+		err = dagcbor.Decoder(nb, reader)
 		require.NoError(t, err)
+		receivedSelector := nb.Build()
 		require.Equal(t, receivedSelector, stor)
 		receivedVoucher := new(fakeDTType)
 		err = receivedVoucher.FromBytes(receivedRequest.Voucher())
@@ -146,7 +148,7 @@ func TestDataTransferOneWay(t *testing.T) {
 	})
 
 	t.Run("OpenPullDataTransfer", func(t *testing.T) {
-		ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+		ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
 
 		stor := ssb.ExploreRecursive(selector.RecursionLimitNone(),
 			ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
@@ -179,8 +181,10 @@ func TestDataTransferOneWay(t *testing.T) {
 		require.False(t, receivedRequest.IsCancel())
 		require.True(t, receivedRequest.IsPull())
 		reader := bytes.NewReader(receivedRequest.Selector())
-		receivedSelector, err := dagcbor.Decoder(ipldfree.NodeBuilder(), reader)
+		nb := basicnode.Style.Any.NewBuilder()
+		err = dagcbor.Decoder(nb, reader)
 		require.NoError(t, err)
+		receivedSelector := nb.Build()
 		require.Equal(t, receivedSelector, stor)
 		receivedVoucher := new(fakeDTType)
 		err = receivedVoucher.FromBytes(receivedRequest.Voucher())

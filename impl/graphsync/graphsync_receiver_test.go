@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipld/go-ipld-prime/encoding/dagcbor"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
