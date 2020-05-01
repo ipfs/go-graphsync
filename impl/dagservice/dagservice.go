@@ -2,7 +2,6 @@ package datatransfer
 
 import (
 	"context"
-	"reflect"
 	"time"
 
 	"github.com/ipfs/go-cid"
@@ -12,7 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"golang.org/x/xerrors"
 
-	"github.com/filecoin-project/go-data-transfer"
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 )
 
 // This file implements a VERY simple, incomplete version of the data transfer
@@ -38,7 +37,7 @@ func NewDAGServiceDataTransfer(dag ipldformat.DAGService) datatransfer.Manager {
 // RegisterVoucherType registers a validator for the given voucher type
 // will error if voucher type does not implement voucher
 // or if there is a voucher type registered with an identical identifier
-func (impl *dagserviceImpl) RegisterVoucherType(voucherType reflect.Type, validator datatransfer.RequestValidator) error {
+func (impl *dagserviceImpl) RegisterVoucherType(voucherType datatransfer.Voucher, validator datatransfer.RequestValidator) error {
 	return nil
 }
 

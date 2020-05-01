@@ -11,27 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type fakeVoucher struct{}
-
-func (fv *fakeVoucher) ToBytes() ([]byte, error) {
-	panic("not implemented")
-}
-
-func (fv *fakeVoucher) FromBytes(_ []byte) error {
-	panic("not implemented")
-}
-
-func (fv *fakeVoucher) Type() string {
-	panic("not implemented")
-}
-
 func TestChannels(t *testing.T) {
 	channels := channels.New()
 
 	tid1 := datatransfer.TransferID(0)
 	tid2 := datatransfer.TransferID(1)
-	fv1 := &fakeVoucher{}
-	fv2 := &fakeVoucher{}
+	fv1 := &testutil.FakeDTType{}
+	fv2 := &testutil.FakeDTType{}
 	cids := testutil.GenerateCids(2)
 	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
 	peers := testutil.GeneratePeers(4)

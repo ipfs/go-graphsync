@@ -5,32 +5,33 @@ import (
 	"math/rand"
 	"testing"
 
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/filecoin-project/go-data-transfer"
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 	. "github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/testutil"
 )
 
 func TestNewRequest(t *testing.T) {
 	baseCid := testutil.GenerateCids(1)[0]
-	selector := testutil.RandomBytes(100)
+	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
 	isPull := true
 	id := datatransfer.TransferID(rand.Int31())
-	vtype := "FakeVoucherType"
-	voucher := testutil.RandomBytes(100)
-
-	request := NewRequest(id, isPull, vtype, voucher, baseCid, selector)
+	voucher := testutil.NewFakeDTType()
+	request, err := NewRequest(id, isPull, voucher.Type(), voucher, baseCid, selector)
+	require.NoError(t, err)
 	assert.Equal(t, id, request.TransferID())
 	assert.False(t, request.IsCancel())
 	assert.True(t, request.IsPull())
 	assert.True(t, request.IsRequest())
 	assert.Equal(t, baseCid.String(), request.BaseCid().String())
-	assert.Equal(t, vtype, request.VoucherType())
-	assert.Equal(t, voucher, request.Voucher())
-	assert.Equal(t, selector, request.Selector())
-
+	testutil.AssertFakeDTVoucher(t, request, voucher)
+	receivedSelector, err := request.Selector()
+	require.NoError(t, err)
+	require.Equal(t, selector, receivedSelector)
 	// Sanity check to make sure we can cast to DataTransferMessage
 	msg, ok := request.(DataTransferMessage)
 	require.True(t, ok)
@@ -40,13 +41,15 @@ func TestNewRequest(t *testing.T) {
 }
 func TestTransferRequest_MarshalCBOR(t *testing.T) {
 	// sanity check MarshalCBOR does its thing w/o error
-	req := NewTestTransferRequest()
+	req, err := NewTestTransferRequest()
+	require.NoError(t, err)
 	wbuf := new(bytes.Buffer)
 	require.NoError(t, req.MarshalCBOR(wbuf))
 	assert.Greater(t, wbuf.Len(), 0)
 }
 func TestTransferRequest_UnmarshalCBOR(t *testing.T) {
-	req := NewTestTransferRequest()
+	req, err := NewTestTransferRequest()
+	require.NoError(t, err)
 	wbuf := new(bytes.Buffer)
 	// use ToNet / FromNet
 	require.NoError(t, req.ToNet(wbuf))
@@ -62,9 +65,8 @@ func TestTransferRequest_UnmarshalCBOR(t *testing.T) {
 	assert.Equal(t, req.IsPull(), desReq.IsPull())
 	assert.Equal(t, req.IsCancel(), desReq.IsCancel())
 	assert.Equal(t, req.BaseCid(), desReq.BaseCid())
-	assert.Equal(t, req.VoucherType(), desReq.VoucherType())
-	assert.Equal(t, req.Voucher(), desReq.Voucher())
-	assert.Equal(t, req.Selector(), desReq.Selector())
+	testutil.AssertEqualFakeDTVoucher(t, req, desReq)
+	testutil.AssertEqualSelector(t, req, desReq)
 }
 
 func TestResponses(t *testing.T) {
@@ -132,15 +134,15 @@ func TestRequestCancel(t *testing.T) {
 
 func TestToNetFromNetEquivalency(t *testing.T) {
 	baseCid := testutil.GenerateCids(1)[0]
-	selector := testutil.RandomBytes(100)
+	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
 	isPull := false
 	id := datatransfer.TransferID(rand.Int31())
 	accepted := false
-	voucherType := "FakeVoucherType"
-	voucher := testutil.RandomBytes(100)
-	request := NewRequest(id, isPull, voucherType, voucher, baseCid, selector)
+	voucher := testutil.NewFakeDTType()
+	request, err := NewRequest(id, isPull, voucher.Type(), voucher, baseCid, selector)
+	require.NoError(t, err)
 	buf := new(bytes.Buffer)
-	err := request.ToNet(buf)
+	err = request.ToNet(buf)
 	require.NoError(t, err)
 	require.Greater(t, buf.Len(), 0)
 	deserialized, err := FromNet(buf)
@@ -154,9 +156,8 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	require.Equal(t, deserializedRequest.IsPull(), request.IsPull())
 	require.Equal(t, deserializedRequest.IsRequest(), request.IsRequest())
 	require.Equal(t, deserializedRequest.BaseCid(), request.BaseCid())
-	require.Equal(t, deserializedRequest.VoucherType(), request.VoucherType())
-	require.Equal(t, deserializedRequest.Voucher(), request.Voucher())
-	require.Equal(t, deserializedRequest.Selector(), request.Selector())
+	testutil.AssertEqualFakeDTVoucher(t, request, deserializedRequest)
+	testutil.AssertEqualSelector(t, request, deserializedRequest)
 
 	response := NewResponse(id, accepted)
 	err = response.ToNet(buf)
@@ -185,12 +186,11 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	require.Equal(t, deserializedRequest.IsRequest(), request.IsRequest())
 }
 
-func NewTestTransferRequest() DataTransferRequest {
+func NewTestTransferRequest() (DataTransferRequest, error) {
 	bcid := testutil.GenerateCids(1)[0]
-	selector := testutil.RandomBytes(100)
+	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
 	isPull := false
 	id := datatransfer.TransferID(rand.Int31())
-	vtype := "FakeVoucherType"
-	v := testutil.RandomBytes(100)
-	return NewRequest(id, isPull, vtype, v, bcid, selector)
+	voucher := testutil.NewFakeDTType()
+	return NewRequest(id, isPull, voucher.Type(), voucher, bcid, selector)
 }

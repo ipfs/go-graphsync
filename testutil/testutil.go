@@ -2,12 +2,15 @@ package testutil
 
 import (
 	"bytes"
+	"testing"
 
+	"github.com/filecoin-project/go-data-transfer/message"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	"github.com/jbenet/go-random"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
 )
 
 var blockGenerator = blocksutil.NewBlockGenerator()
@@ -80,4 +83,13 @@ func IndexOf(blks []blocks.Block, c cid.Cid) int {
 // ContainsBlock returns true if a block is found n a list of blocks
 func ContainsBlock(blks []blocks.Block, block blocks.Block) bool {
 	return IndexOf(blks, block.Cid()) != -1
+}
+
+// AssertEqualSelector asserts two requests have the same valid selector
+func AssertEqualSelector(t *testing.T, expectedRequest message.DataTransferRequest, request message.DataTransferRequest) {
+	expectedSelector, err := expectedRequest.Selector()
+	require.NoError(t, err)
+	selector, err := request.Selector()
+	require.NoError(t, err)
+	require.Equal(t, expectedSelector, selector)
 }

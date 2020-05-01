@@ -4,9 +4,12 @@ import (
 	"io"
 
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
 	cborgen "github.com/whyrusleeping/cbor-gen"
+	xerrors "golang.org/x/xerrors"
 
-	"github.com/filecoin-project/go-data-transfer"
+	datatransfer "github.com/filecoin-project/go-data-transfer"
+	"github.com/filecoin-project/go-data-transfer/encoding"
 )
 
 // Reference file: https://github.com/ipfs/go-graphsync/blob/master/message/message.go
@@ -27,10 +30,10 @@ type DataTransferMessage interface {
 type DataTransferRequest interface {
 	DataTransferMessage
 	IsPull() bool
-	VoucherType() string
-	Voucher() []byte
+	VoucherType() datatransfer.TypeIdentifier
+	Voucher(decoder encoding.Decoder) (encoding.Encodable, error)
 	BaseCid() cid.Cid
-	Selector() []byte
+	Selector() (ipld.Node, error)
 	IsCancel() bool
 }
 
@@ -41,15 +44,26 @@ type DataTransferResponse interface {
 }
 
 // NewRequest generates a new request for the data transfer protocol
-func NewRequest(id datatransfer.TransferID, isPull bool, voucherIdentifier string, voucher []byte, baseCid cid.Cid, selector []byte) DataTransferRequest {
+func NewRequest(id datatransfer.TransferID, isPull bool, vtype datatransfer.TypeIdentifier, voucher encoding.Encodable, baseCid cid.Cid, selector ipld.Node) (DataTransferRequest, error) {
+	vbytes, err := encoding.Encode(voucher)
+	if err != nil {
+		return nil, xerrors.Errorf("Creating request: %w", err)
+	}
+	if baseCid == cid.Undef {
+		return nil, xerrors.Errorf("base CID must be defined")
+	}
+	selBytes, err := encoding.Encode(selector)
+	if err != nil {
+		return nil, xerrors.Errorf("Error encoding selector")
+	}
 	return &transferRequest{
 		Pull:   isPull,
-		Vouch:  voucher,
-		Stor:   selector,
-		BCid:   baseCid.String(),
-		VTyp:   voucherIdentifier,
+		Vouch:  &cborgen.Deferred{Raw: vbytes},
+		Stor:   &cborgen.Deferred{Raw: selBytes},
+		BCid:   &baseCid,
+		VTyp:   vtype,
 		XferID: uint64(id),
-	}
+	}, nil
 }
 
 // CancelRequest request generates a request to cancel an in progress request

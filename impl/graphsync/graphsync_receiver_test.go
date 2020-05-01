@@ -1,14 +1,11 @@
 package graphsyncimpl_test
 
 import (
-	"bytes"
 	"context"
 	"math/rand"
-	"reflect"
 	"testing"
 	"time"
 
-	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -38,11 +35,8 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 
 	gs2 := testutil.NewFakeGraphSync()
 
-	voucher := fakeDTType{"applesauce"}
+	voucher := testutil.NewFakeDTType()
 	baseCid := testutil.GenerateCids(1)[0]
-	var buffer bytes.Buffer
-	err := dagcbor.Encoder(gsData.AllSelector, &buffer)
-	require.NoError(t, err)
 
 	t.Run("Response to push with successful validation", func(t *testing.T) {
 		id := datatransfer.TransferID(rand.Int31())
@@ -50,13 +44,13 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 		sv.expectSuccessPush()
 
 		dt := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
-		require.NoError(t, dt.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv))
+		require.NoError(t, dt.RegisterVoucherType(&testutil.FakeDTType{}, sv))
 
 		isPull := false
-		voucherBytes, err := voucher.ToBytes()
+		_, err := message.NewRequest(id, isPull, voucher.Type(), voucher, baseCid, gsData.AllSelector)
 		require.NoError(t, err)
-		_ = message.NewRequest(id, isPull, voucher.Type(), voucherBytes, baseCid, buffer.Bytes())
-		request := message.NewRequest(id, isPull, voucher.Type(), voucherBytes, baseCid, buffer.Bytes())
+		request, err := message.NewRequest(id, isPull, voucher.Type(), voucher, baseCid, gsData.AllSelector)
+		require.NoError(t, err)
 		require.NoError(t, dtnet1.SendMessage(ctx, host2.ID(), request))
 		var messageReceived receivedMessage
 		select {
@@ -85,14 +79,13 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 		sv := newSV()
 		sv.expectErrorPush()
 		dt := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
-		err = dt.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv)
+		err := dt.RegisterVoucherType(&testutil.FakeDTType{}, sv)
 		require.NoError(t, err)
 
 		isPull := false
 
-		voucherBytes, err := voucher.ToBytes()
+		request, err := message.NewRequest(id, isPull, voucher.Type(), voucher, baseCid, gsData.AllSelector)
 		require.NoError(t, err)
-		request := message.NewRequest(id, isPull, voucher.Type(), voucherBytes, baseCid, buffer.Bytes())
 		require.NoError(t, dtnet1.SendMessage(ctx, host2.ID(), request))
 
 		var messageReceived receivedMessage
@@ -122,15 +115,13 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 		sv.expectSuccessPull()
 
 		dt := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
-		err = dt.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv)
+		err := dt.RegisterVoucherType(&testutil.FakeDTType{}, sv)
 		require.NoError(t, err)
 
 		isPull := true
 
-		voucherBytes, err := voucher.ToBytes()
+		request, err := message.NewRequest(id, isPull, voucher.Type(), voucher, baseCid, gsData.AllSelector)
 		require.NoError(t, err)
-		request := message.NewRequest(id, isPull, voucher.Type(), voucherBytes, baseCid, buffer.Bytes())
-
 		require.NoError(t, dtnet1.SendMessage(ctx, host2.ID(), request))
 		var messageReceived receivedMessage
 		select {
@@ -159,13 +150,13 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 		sv.expectErrorPull()
 
 		dt := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
-		err = dt.RegisterVoucherType(reflect.TypeOf(&fakeDTType{}), sv)
+		err := dt.RegisterVoucherType(&testutil.FakeDTType{}, sv)
 		require.NoError(t, err)
 
 		isPull := true
-		voucherBytes, err := voucher.ToBytes()
+
+		request, err := message.NewRequest(id, isPull, voucher.Type(), voucher, baseCid, gsData.AllSelector)
 		require.NoError(t, err)
-		request := message.NewRequest(id, isPull, voucher.Type(), voucherBytes, baseCid, buffer.Bytes())
 		require.NoError(t, dtnet1.SendMessage(ctx, host2.ID(), request))
 
 		var messageReceived receivedMessage

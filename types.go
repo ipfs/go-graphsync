@@ -2,26 +2,31 @@ package datatransfer
 
 import (
 	"context"
-	"reflect"
 	"time"
 
+	"github.com/filecoin-project/go-data-transfer/encoding"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
+// TypeIdentifier is a unique string identifier for a type of encodable object in a
+// registry
+type TypeIdentifier string
+
+// Registerable is a type of object in a registry. It must be encodable and must
+// have a single method that uniquely identifies its type
+type Registerable interface {
+	encoding.Encodable
+	// Type is a unique string identifier for this voucher type
+	Type() TypeIdentifier
+}
+
 // Voucher is used to validate
 // a data transfer request against the underlying storage or retrieval deal
 // that precipitated it. The only requirement is a voucher can read and write
 // from bytes, and has a string identifier type
-type Voucher interface {
-	// ToBytes converts the Voucher to raw bytes
-	ToBytes() ([]byte, error)
-	// FromBytes reads a Voucher from raw bytes
-	FromBytes([]byte) error
-	// Type is a unique string identifier for this voucher type
-	Type() string
-}
+type Voucher Registerable
 
 // Status is the status of transfer for a given channel
 type Status int
@@ -110,6 +115,7 @@ type ChannelState struct {
 	received uint64
 }
 
+// EmptyChannelState is the zero value for channel state, meaning not present
 var EmptyChannelState = ChannelState{}
 
 // Sent returns the number of bytes sent
@@ -171,7 +177,7 @@ type Manager interface {
 	// RegisterVoucherType registers a validator for the given voucher type
 	// will error if voucher type does not implement voucher
 	// or if there is a voucher type registered with an identical identifier
-	RegisterVoucherType(voucherType reflect.Type, validator RequestValidator) error
+	RegisterVoucherType(voucherType Voucher, validator RequestValidator) error
 
 	// open a data transfer that will send data to the recipient peer and
 	// transfer parts of the piece that match the selector
