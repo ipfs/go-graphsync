@@ -240,6 +240,10 @@ func (rm *ResponseManager) processQueriesWorker() {
 			case <-rm.ctx.Done():
 				return
 			}
+			if taskData == nil {
+				log.Info("Empty task on peer request stack")
+				continue
+			}
 			status, err := rm.executeTask(key, taskData)
 			select {
 			case rm.messages <- &finishTaskRequest{key, status, err}:
