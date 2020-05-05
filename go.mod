@@ -10,7 +10,7 @@ require (
 	github.com/ipfs/go-blockservice v0.1.3
 	github.com/ipfs/go-cid v0.0.5
 	github.com/ipfs/go-datastore v0.4.4
-	github.com/ipfs/go-graphsync v0.0.6-0.20200428204348-97a8cf76a482
+	github.com/ipfs/go-graphsync v0.0.6-0.20200504202014-9d5f2c26a103
 	github.com/ipfs/go-ipfs-blockstore v0.1.4
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-chunker v0.0.5
