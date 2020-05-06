@@ -166,6 +166,16 @@ func (impl *graphsyncImpl) OpenPushDataChannel(ctx context.Context, requestTo pe
 	if err != nil {
 		return chid, err
 	}
+	evt := datatransfer.Event{
+		Code:      datatransfer.Open,
+		Message:   "New Request Initiated",
+		Timestamp: time.Now(),
+	}
+	chst := impl.channels.GetByIDAndSender(chid, impl.peerID)
+	err = impl.pubSub.Publish(internalEvent{evt, chst})
+	if err != nil {
+		log.Warnf("err publishing DT event: %s", err.Error())
+	}
 	return chid, nil
 }
 
@@ -182,6 +192,16 @@ func (impl *graphsyncImpl) OpenPullDataChannel(ctx context.Context, requestTo pe
 		impl.peerID, requestTo, impl.peerID)
 	if err != nil {
 		return chid, err
+	}
+	evt := datatransfer.Event{
+		Code:      datatransfer.Open,
+		Message:   "New Request Initiated",
+		Timestamp: time.Now(),
+	}
+	chst := impl.channels.GetByIDAndSender(chid, requestTo)
+	err = impl.pubSub.Publish(internalEvent{evt, chst})
+	if err != nil {
+		log.Warnf("err publishing DT event: %s", err.Error())
 	}
 	return chid, nil
 }

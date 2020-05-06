@@ -635,7 +635,7 @@ func TestDataTransferInitiatingPullGraphsyncRequests(t *testing.T) {
 
 		subscribeCalls := make(chan struct{}, 1)
 		subscribe := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-			if event.Code == datatransfer.Error {
+			if event.Code == datatransfer.Progress {
 				subscribeCalls <- struct{}{}
 			}
 		}
@@ -935,9 +935,17 @@ func TestDataTransferPushRoundTrip(t *testing.T) {
 	dt2 := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 
 	finished := make(chan struct{}, 2)
+	errChan := make(chan struct{}, 2)
+	opened := make(chan struct{}, 2)
 	var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 		if event.Code == datatransfer.Complete {
 			finished <- struct{}{}
+		}
+		if event.Code == datatransfer.Error {
+			errChan <- struct{}{}
+		}
+		if event.Code == datatransfer.Open {
+			opened <- struct{}{}
 		}
 	}
 	dt1.SubscribeToEvents(subscriber)
@@ -949,11 +957,18 @@ func TestDataTransferPushRoundTrip(t *testing.T) {
 
 	chid, err := dt1.OpenPushDataChannel(ctx, host2.ID(), &voucher, rootCid, gsData.AllSelector)
 	require.NoError(t, err)
-	for i := 0; i < 2; i++ {
+	opens := 0
+	completes := 0
+	for opens < 2 || completes < 2 {
 		select {
 		case <-ctx.Done():
 			t.Fatal("Did not complete succcessful data transfer")
 		case <-finished:
+			completes++
+		case <-opened:
+			opens++
+		case <-errChan:
+			t.Fatal("received error on data transfer")
 		}
 	}
 	gsData.VerifyFileTransferred(t, root, true)
@@ -978,9 +993,17 @@ func TestDataTransferPullRoundTrip(t *testing.T) {
 	dt2 := NewGraphSyncDataTransfer(host2, gs2, gsData.StoredCounter2)
 
 	finished := make(chan struct{}, 2)
+	errChan := make(chan struct{}, 2)
+	opened := make(chan struct{}, 2)
 	var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 		if event.Code == datatransfer.Complete {
 			finished <- struct{}{}
+		}
+		if event.Code == datatransfer.Error {
+			errChan <- struct{}{}
+		}
+		if event.Code == datatransfer.Open {
+			opened <- struct{}{}
 		}
 	}
 	dt1.SubscribeToEvents(subscriber)
@@ -992,11 +1015,18 @@ func TestDataTransferPullRoundTrip(t *testing.T) {
 
 	_, err := dt2.OpenPullDataChannel(ctx, host1.ID(), &voucher, rootCid, gsData.AllSelector)
 	require.NoError(t, err)
-	for i := 0; i < 2; i++ {
+	opens := 0
+	completes := 0
+	for opens < 2 || completes < 2 {
 		select {
 		case <-ctx.Done():
 			t.Fatal("Did not complete succcessful data transfer")
 		case <-finished:
+			completes++
+		case <-opened:
+			opens++
+		case <-errChan:
+			t.Fatal("received error on data transfer")
 		}
 	}
 	gsData.VerifyFileTransferred(t, root, true)

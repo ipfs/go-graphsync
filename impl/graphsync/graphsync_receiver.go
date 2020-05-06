@@ -43,11 +43,21 @@ func (receiver *graphsyncReceiver) ReceiveRequest(
 		receiver.impl.sendGsRequest(ctx, initiator, incoming.TransferID(), incoming.IsPull(), dataSender, root, stor)
 	}
 
-	_, err = receiver.impl.channels.CreateNew(incoming.TransferID(), incoming.BaseCid(), stor, voucher, initiator, dataSender, dataReceiver)
+	chid, err := receiver.impl.channels.CreateNew(incoming.TransferID(), incoming.BaseCid(), stor, voucher, initiator, dataSender, dataReceiver)
 	if err != nil {
 		log.Error(err)
 		receiver.impl.sendResponse(ctx, false, initiator, incoming.TransferID())
 		return
+	}
+	evt := datatransfer.Event{
+		Code:      datatransfer.Open,
+		Message:   "Incoming request accepted",
+		Timestamp: time.Now(),
+	}
+	chst := receiver.impl.channels.GetByIDAndSender(chid, dataSender)
+	err = receiver.impl.pubSub.Publish(internalEvent{evt, chst})
+	if err != nil {
+		log.Warnf("err publishing DT event: %s", err.Error())
 	}
 	receiver.impl.sendResponse(ctx, true, initiator, incoming.TransferID())
 }
@@ -109,6 +119,7 @@ func (receiver *graphsyncReceiver) ReceiveResponse(
 		// initiator is us. construct a channel id for a pull request that we initiated and see
 		// if there is one in our saved channel list. otherwise we should not respond.
 		chid := datatransfer.ChannelID{Initiator: receiver.impl.peerID, ID: incoming.TransferID()}
+		evt.Code = datatransfer.Progress
 
 		// if we are handling a response to a pull request then they are sending data and the
 		// initiator is us
@@ -116,7 +127,6 @@ func (receiver *graphsyncReceiver) ReceiveResponse(
 			baseCid := chst.BaseCID()
 			root := cidlink.Link{Cid: baseCid}
 			receiver.impl.sendGsRequest(ctx, receiver.impl.peerID, incoming.TransferID(), true, sender, root, chst.Selector())
-			evt.Code = datatransfer.Progress
 		}
 	}
 	err := receiver.impl.pubSub.Publish(internalEvent{evt, chst})
