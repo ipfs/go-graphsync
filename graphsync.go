@@ -214,7 +214,7 @@ type OnIncomingResponseHook func(p peer.ID, responseData ResponseData, hookActio
 // The difference between BlockSize & BlockSizeOnWire can be used to determine
 // where the block came from (Local vs remote)
 // It receives an interface for customizing how we handle the ongoing execution of the request
-type OnIncomingBlockHook func(p peer.ID, responseData ResponseData, blockData BlockData, hookActions IncomingResponseHookActions)
+type OnIncomingBlockHook func(p peer.ID, responseData ResponseData, blockData BlockData, hookActions IncomingBlockHookActions)
 
 // OnOutgoingRequestHook is a hook that runs immediately prior to sending a request
 // It receives the peer we're sending a request to and all the data aobut the request
