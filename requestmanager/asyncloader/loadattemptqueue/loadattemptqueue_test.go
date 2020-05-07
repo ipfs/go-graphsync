@@ -19,9 +19,11 @@ func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
-	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
+	loadAttempter := func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
 		callCount++
-		return testutil.RandomBytes(100), nil
+		return types.AsyncLoadResult{
+			Data: testutil.RandomBytes(100),
+		}
 	}
 	loadAttemptQueue := New(loadAttempter)
 
@@ -45,9 +47,11 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
-	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
+	loadAttempter := func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
 		callCount++
-		return nil, fmt.Errorf("something went wrong")
+		return types.AsyncLoadResult{
+			Err: fmt.Errorf("something went wrong"),
+		}
 	}
 	loadAttemptQueue := New(loadAttempter)
 
@@ -69,13 +73,15 @@ func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
-	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
+	loadAttempter := func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
 		var result []byte
 		if callCount > 0 {
 			result = testutil.RandomBytes(100)
 		}
 		callCount++
-		return result, nil
+		return types.AsyncLoadResult{
+			Data: result,
+		}
 	}
 
 	loadAttemptQueue := New(loadAttempter)
@@ -99,14 +105,16 @@ func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing
 	defer cancel()
 	callCount := 0
 	called := make(chan struct{}, 2)
-	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
+	loadAttempter := func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
 		var result []byte
 		called <- struct{}{}
 		if callCount > 0 {
 			result = testutil.RandomBytes(100)
 		}
 		callCount++
-		return result, nil
+		return types.AsyncLoadResult{
+			Data: result,
+		}
 	}
 	loadAttemptQueue := New(loadAttempter)
 
@@ -132,14 +140,16 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	defer cancel()
 	callCount := 0
 	called := make(chan struct{}, 2)
-	loadAttempter := func(graphsync.RequestID, ipld.Link) ([]byte, error) {
+	loadAttempter := func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
 		var result []byte
 		called <- struct{}{}
 		if callCount > 0 {
 			result = testutil.RandomBytes(100)
 		}
 		callCount++
-		return result, nil
+		return types.AsyncLoadResult{
+			Data: result,
+		}
 	}
 	loadAttemptQueue := New(loadAttempter)
 
