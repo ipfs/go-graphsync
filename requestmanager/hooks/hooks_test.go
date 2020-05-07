@@ -97,6 +97,92 @@ func TestRequestHookProcessing(t *testing.T) {
 	}
 }
 
+func TestBlockHookProcessing(t *testing.T) {
+
+	extensionResponseData := testutil.RandomBytes(100)
+	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
+	extensionResponse := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionResponseData,
+	}
+	extensionUpdateData := testutil.RandomBytes(100)
+	extensionUpdate := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: extensionUpdateData,
+	}
+	requestID := graphsync.RequestID(rand.Int31())
+	response := gsmsg.NewResponse(requestID, graphsync.PartialResponse, extensionResponse)
+
+	p := testutil.GeneratePeers(1)[0]
+	blockData := testutil.NewFakeBlockData()
+
+	testCases := map[string]struct {
+		configure func(t *testing.T, hooks *hooks.IncomingBlockHooks)
+		assert    func(t *testing.T, result hooks.UpdateResult)
+	}{
+		"no hooks": {
+			assert: func(t *testing.T, result hooks.UpdateResult) {
+				require.Empty(t, result.Extensions)
+				require.NoError(t, result.Err)
+			},
+		},
+		"short circuit on error": {
+			configure: func(t *testing.T, hooks *hooks.IncomingBlockHooks) {
+				hooks.Register(func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
+					hookActions.TerminateWithError(errors.New("something went wrong"))
+				})
+				hooks.Register(func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
+					hookActions.UpdateRequestWithExtensions(extensionUpdate)
+				})
+			},
+			assert: func(t *testing.T, result hooks.UpdateResult) {
+				require.Empty(t, result.Extensions)
+				require.EqualError(t, result.Err, "something went wrong")
+			},
+		},
+		"hooks update with extensions": {
+			configure: func(t *testing.T, hooks *hooks.IncomingBlockHooks) {
+				hooks.Register(func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
+					if _, found := responseData.Extension(extensionName); found {
+						hookActions.UpdateRequestWithExtensions(extensionUpdate)
+					}
+				})
+			},
+			assert: func(t *testing.T, result hooks.UpdateResult) {
+				require.Len(t, result.Extensions, 1)
+				require.Equal(t, extensionUpdate, result.Extensions[0])
+				require.NoError(t, result.Err)
+			},
+		},
+		"hooks unregistered": {
+			configure: func(t *testing.T, hooks *hooks.IncomingBlockHooks) {
+				unregister := hooks.Register(func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
+					if _, found := responseData.Extension(extensionName); found {
+						hookActions.UpdateRequestWithExtensions(extensionUpdate)
+					}
+				})
+				unregister()
+			},
+			assert: func(t *testing.T, result hooks.UpdateResult) {
+				require.Empty(t, result.Extensions)
+				require.NoError(t, result.Err)
+			},
+		},
+	}
+	for testCase, data := range testCases {
+		t.Run(testCase, func(t *testing.T) {
+			hooks := hooks.NewBlockHooks()
+			if data.configure != nil {
+				data.configure(t, hooks)
+			}
+			result := hooks.ProcessBlockHooks(p, response, blockData)
+			if data.assert != nil {
+				data.assert(t, result)
+			}
+		})
+	}
+}
+
 func TestResponseHookProcessing(t *testing.T) {
 
 	extensionResponseData := testutil.RandomBytes(100)
@@ -116,10 +202,10 @@ func TestResponseHookProcessing(t *testing.T) {
 	p := testutil.GeneratePeers(1)[0]
 	testCases := map[string]struct {
 		configure func(t *testing.T, hooks *hooks.IncomingResponseHooks)
-		assert    func(t *testing.T, result hooks.ResponseResult)
+		assert    func(t *testing.T, result hooks.UpdateResult)
 	}{
 		"no hooks": {
-			assert: func(t *testing.T, result hooks.ResponseResult) {
+			assert: func(t *testing.T, result hooks.UpdateResult) {
 				require.Empty(t, result.Extensions)
 				require.NoError(t, result.Err)
 			},
@@ -133,7 +219,7 @@ func TestResponseHookProcessing(t *testing.T) {
 					hookActions.UpdateRequestWithExtensions(extensionUpdate)
 				})
 			},
-			assert: func(t *testing.T, result hooks.ResponseResult) {
+			assert: func(t *testing.T, result hooks.UpdateResult) {
 				require.Empty(t, result.Extensions)
 				require.EqualError(t, result.Err, "something went wrong")
 			},
@@ -146,7 +232,7 @@ func TestResponseHookProcessing(t *testing.T) {
 					}
 				})
 			},
-			assert: func(t *testing.T, result hooks.ResponseResult) {
+			assert: func(t *testing.T, result hooks.UpdateResult) {
 				require.Len(t, result.Extensions, 1)
 				require.Equal(t, extensionUpdate, result.Extensions[0])
 				require.NoError(t, result.Err)
@@ -161,7 +247,7 @@ func TestResponseHookProcessing(t *testing.T) {
 				})
 				unregister()
 			},
-			assert: func(t *testing.T, result hooks.ResponseResult) {
+			assert: func(t *testing.T, result hooks.UpdateResult) {
 				require.Empty(t, result.Extensions)
 				require.NoError(t, result.Err)
 			},

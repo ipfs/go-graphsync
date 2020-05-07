@@ -15,7 +15,7 @@ type IncomingResponseHooks struct {
 type internalResponseHookEvent struct {
 	p        peer.ID
 	response graphsync.ResponseData
-	rha      *responseHookActions
+	rha      *updateHookActions
 }
 
 func responseHookDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
@@ -35,35 +35,35 @@ func (irh *IncomingResponseHooks) Register(hook graphsync.OnIncomingResponseHook
 	return graphsync.UnregisterHookFunc(irh.pubSub.Subscribe(hook))
 }
 
-// ResponseResult is the outcome of running response hooks
-type ResponseResult struct {
+// UpdateResult is the outcome of running response hooks
+type UpdateResult struct {
 	Err        error
 	Extensions []graphsync.ExtensionData
 }
 
 // ProcessResponseHooks runs response hooks against an incoming response
-func (irh *IncomingResponseHooks) ProcessResponseHooks(p peer.ID, response graphsync.ResponseData) ResponseResult {
-	rha := &responseHookActions{}
+func (irh *IncomingResponseHooks) ProcessResponseHooks(p peer.ID, response graphsync.ResponseData) UpdateResult {
+	rha := &updateHookActions{}
 	_ = irh.pubSub.Publish(internalResponseHookEvent{p, response, rha})
 	return rha.result()
 }
 
-type responseHookActions struct {
+type updateHookActions struct {
 	err        error
 	extensions []graphsync.ExtensionData
 }
 
-func (rha *responseHookActions) result() ResponseResult {
-	return ResponseResult{
+func (rha *updateHookActions) result() UpdateResult {
+	return UpdateResult{
 		Err:        rha.err,
 		Extensions: rha.extensions,
 	}
 }
 
-func (rha *responseHookActions) TerminateWithError(err error) {
+func (rha *updateHookActions) TerminateWithError(err error) {
 	rha.err = err
 }
 
-func (rha *responseHookActions) UpdateRequestWithExtensions(extensions ...graphsync.ExtensionData) {
+func (rha *updateHookActions) UpdateRequestWithExtensions(extensions ...graphsync.ExtensionData) {
 	rha.extensions = append(rha.extensions, extensions...)
 }

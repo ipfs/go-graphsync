@@ -63,19 +63,36 @@ type RequestManager struct {
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
 	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
-	requestHooks              *hooks.OutgoingRequestHooks
-	responseHooks             *hooks.IncomingResponseHooks
+	requestHooks              RequestHooks
+	responseHooks             ResponseHooks
+	BlockHooks                BlockHooks
 }
 
 type requestManagerMessage interface {
 	handle(rm *RequestManager)
 }
 
+// RequestHooks run for new requests
+type RequestHooks interface {
+	ProcessRequestHooks(p peer.ID, request graphsync.RequestData) hooks.RequestResult
+}
+
+// ResponseHooks run for new responses
+type ResponseHooks interface {
+	ProcessResponseHooks(p peer.ID, response graphsync.ResponseData) hooks.UpdateResult
+}
+
+// BlockHooks run for each block loaded
+type BlockHooks interface {
+	ProcessBlockHooks(p peer.ID, response graphsync.ResponseData, block graphsync.BlockData) hooks.UpdateResult
+}
+
 // New generates a new request manager from a context, network, and selectorQuerier
 func New(ctx context.Context,
 	asyncLoader AsyncLoader,
-	requestHooks *hooks.OutgoingRequestHooks,
-	responseHooks *hooks.IncomingResponseHooks) *RequestManager {
+	requestHooks RequestHooks,
+	responseHooks ResponseHooks,
+	blockHooks BlockHooks) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
 		ctx:                       ctx,

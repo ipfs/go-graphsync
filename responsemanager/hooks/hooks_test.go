@@ -11,7 +11,6 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -203,23 +202,6 @@ func TestRequestHookProcessing(t *testing.T) {
 	}
 }
 
-type fakeBlkData struct {
-	link ipld.Link
-	size uint64
-}
-
-func (fbd fakeBlkData) Link() ipld.Link {
-	return fbd.link
-}
-
-func (fbd fakeBlkData) BlockSize() uint64 {
-	return fbd.size
-}
-
-func (fbd fakeBlkData) BlockSizeOnWire() uint64 {
-	return fbd.size
-}
-
 func TestBlockHookProcessing(t *testing.T) {
 	extensionData := testutil.RandomBytes(100)
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
@@ -238,10 +220,7 @@ func TestBlockHookProcessing(t *testing.T) {
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
 	p := testutil.GeneratePeers(1)[0]
-	blockData := &fakeBlkData{
-		link: cidlink.Link{Cid: testutil.GenerateCids(1)[0]},
-		size: rand.Uint64(),
-	}
+	blockData := testutil.NewFakeBlockData()
 	testCases := map[string]struct {
 		configure func(t *testing.T, blockHooks *hooks.OutgoingBlockHooks)
 		assert    func(t *testing.T, result hooks.BlockResult)

@@ -182,29 +182,19 @@ func encodedMetadataForBlocks(t *testing.T, blks []blocks.Block, present bool) g
 }
 
 func TestNormalSimultaneousFetch(t *testing.T) {
-	requestRecordChan := make(chan requestRecord, 2)
-	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
-	fal := newFakeAsyncLoader()
-	requestHooks := hooks.NewRequestHooks()
-	responseHooks := hooks.NewResponseHooks()
-	requestManager := New(ctx, fal, requestHooks, responseHooks)
-	requestManager.SetDelegate(fph)
-	requestManager.Startup()
+	td := newTestData(ctx, t)
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blockStore)
-	blockChain1 := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
-	blockChain2 := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	blockChain2 := testutil.SetupBlockChain(ctx, t, td.loader, td.storer, 100, 5)
 
-	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx, peers[0], blockChain1.TipLink, blockChain1.Selector())
-	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx, peers[0], blockChain2.TipLink, blockChain2.Selector())
+	returnedResponseChan1, returnedErrorChan1 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan2, returnedErrorChan2 := td.requestManager.SendRequest(requestCtx, peers[0], blockChain2.TipLink, blockChain2.Selector())
 
-	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
+	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
 
 	require.Equal(t, peers[0], requestRecords[0].p)
 	require.Equal(t, peers[0], requestRecords[1].p)
@@ -213,11 +203,11 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	require.Equal(t, defaultPriority, requestRecords[0].gsr.Priority())
 	require.Equal(t, defaultPriority, requestRecords[1].gsr.Priority())
 
-	require.Equal(t, blockChain1.Selector(), requestRecords[0].gsr.Selector(), "did not encode selector properly")
+	require.Equal(t, td.blockChain.Selector(), requestRecords[0].gsr.Selector(), "did not encode selector properly")
 	require.Equal(t, blockChain2.Selector(), requestRecords[1].gsr.Selector(), "did not encode selector properly")
 
-	firstBlocks := append(blockChain1.AllBlocks(), blockChain2.Blocks(0, 3)...)
-	firstMetadata1 := metadataForBlocks(blockChain1.AllBlocks(), true)
+	firstBlocks := append(td.blockChain.AllBlocks(), blockChain2.Blocks(0, 3)...)
+	firstMetadata1 := metadataForBlocks(td.blockChain.AllBlocks(), true)
 	firstMetadataEncoded1, err := metadata.EncodeMetadata(firstMetadata1)
 	require.NoError(t, err, "did not encode metadata")
 	firstMetadata2 := metadataForBlocks(blockChain2.Blocks(0, 3), true)
@@ -234,16 +224,16 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 		}),
 	}
 
-	requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-	fal.verifyLastProcessedBlocks(ctx, t, firstBlocks)
-	fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
+	td.fal.verifyLastProcessedBlocks(ctx, t, firstBlocks)
+	td.fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 		requestRecords[0].gsr.ID(): firstMetadata1,
 		requestRecords[1].gsr.ID(): firstMetadata2,
 	})
-	fal.successResponseOn(requestRecords[0].gsr.ID(), blockChain1.AllBlocks())
-	fal.successResponseOn(requestRecords[1].gsr.ID(), blockChain2.Blocks(0, 3))
+	td.fal.successResponseOn(requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.successResponseOn(requestRecords[1].gsr.ID(), blockChain2.Blocks(0, 3))
 
-	blockChain1.VerifyWholeChain(requestCtx, returnedResponseChan1)
+	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan1)
 	blockChain2.VerifyResponseRange(requestCtx, returnedResponseChan2, 0, 3)
 
 	moreBlocks := blockChain2.RemainderBlocks(3)
@@ -257,13 +247,13 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 		}),
 	}
 
-	requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	fal.verifyLastProcessedBlocks(ctx, t, moreBlocks)
-	fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
+	td.fal.verifyLastProcessedBlocks(ctx, t, moreBlocks)
+	td.fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 		requestRecords[1].gsr.ID(): moreMetadata,
 	})
 
-	fal.successResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
+	td.fal.successResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
 
 	blockChain2.VerifyRemainder(requestCtx, returnedResponseChan2, 3)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
@@ -271,15 +261,8 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 }
 
 func TestCancelRequestInProgress(t *testing.T) {
-	requestRecordChan := make(chan requestRecord, 2)
-	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
-	fal := newFakeAsyncLoader()
-	requestHooks := hooks.NewRequestHooks()
-	responseHooks := hooks.NewResponseHooks()
-	requestManager := New(ctx, fal, requestHooks, responseHooks)
-	requestManager.SetDelegate(fph)
-	requestManager.Startup()
+	td := newTestData(ctx, t)
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	requestCtx1, cancel1 := context.WithCancel(requestCtx)
@@ -287,228 +270,170 @@ func TestCancelRequestInProgress(t *testing.T) {
 	defer cancel2()
 	peers := testutil.GeneratePeers(1)
 
-	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blockStore)
-	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	returnedResponseChan1, returnedErrorChan1 := td.requestManager.SendRequest(requestCtx1, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan2, returnedErrorChan2 := td.requestManager.SendRequest(requestCtx2, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
-	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx1, peers[0], blockChain.TipLink, blockChain.Selector())
-	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx2, peers[0], blockChain.TipLink, blockChain.Selector())
+	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
 
-	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
-
-	firstBlocks := blockChain.Blocks(0, 3)
+	firstBlocks := td.blockChain.Blocks(0, 3)
 	firstMetadata := encodedMetadataForBlocks(t, firstBlocks, true)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.PartialResponse, firstMetadata),
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.PartialResponse, firstMetadata),
 	}
 
-	requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
+	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
 
-	fal.successResponseOn(requestRecords[0].gsr.ID(), firstBlocks)
-	fal.successResponseOn(requestRecords[1].gsr.ID(), firstBlocks)
-	blockChain.VerifyResponseRange(requestCtx1, returnedResponseChan1, 0, 3)
+	td.fal.successResponseOn(requestRecords[0].gsr.ID(), firstBlocks)
+	td.fal.successResponseOn(requestRecords[1].gsr.ID(), firstBlocks)
+	td.blockChain.VerifyResponseRange(requestCtx1, returnedResponseChan1, 0, 3)
 	cancel1()
-	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	require.True(t, rr.gsr.IsCancel())
 	require.Equal(t, requestRecords[0].gsr.ID(), rr.gsr.ID())
 
-	moreBlocks := blockChain.RemainderBlocks(3)
+	moreBlocks := td.blockChain.RemainderBlocks(3)
 	moreMetadata := encodedMetadataForBlocks(t, moreBlocks, true)
 	moreResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
-	requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	fal.successResponseOn(requestRecords[0].gsr.ID(), moreBlocks)
-	fal.successResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
+	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
+	td.fal.successResponseOn(requestRecords[0].gsr.ID(), moreBlocks)
+	td.fal.successResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
 
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan1)
-	blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
+	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan2)
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {
-	requestRecordChan := make(chan requestRecord, 2)
-	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
 	managerCtx, managerCancel := context.WithCancel(ctx)
-	fal := newFakeAsyncLoader()
-	requestHooks := hooks.NewRequestHooks()
-	responseHooks := hooks.NewResponseHooks()
-	requestManager := New(managerCtx, fal, requestHooks, responseHooks)
-	requestManager.SetDelegate(fph)
-	requestManager.Startup()
+	td := newTestData(managerCtx, t)
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blockStore)
-	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
-	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
-
-	firstBlocks := blockChain.Blocks(0, 3)
+	firstBlocks := td.blockChain.Blocks(0, 3)
 	firstMetadata := encodedMetadataForBlocks(t, firstBlocks, true)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.PartialResponse, firstMetadata),
 	}
-	requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-	fal.successResponseOn(rr.gsr.ID(), firstBlocks)
-	blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, 3)
+	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
+	td.fal.successResponseOn(rr.gsr.ID(), firstBlocks)
+	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, 3)
 	managerCancel()
 
-	moreBlocks := blockChain.RemainderBlocks(3)
+	moreBlocks := td.blockChain.RemainderBlocks(3)
 	moreMetadata := encodedMetadataForBlocks(t, moreBlocks, true)
 	moreResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
-	requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	fal.successResponseOn(rr.gsr.ID(), moreBlocks)
+	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
+	td.fal.successResponseOn(rr.gsr.ID(), moreBlocks)
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan)
 }
 
 func TestFailedRequest(t *testing.T) {
-	requestRecordChan := make(chan requestRecord, 2)
-	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
-	fal := newFakeAsyncLoader()
-	requestHooks := hooks.NewRequestHooks()
-	responseHooks := hooks.NewResponseHooks()
-	requestManager := New(ctx, fal, requestHooks, responseHooks)
-	requestManager.SetDelegate(fph)
-	requestManager.Startup()
-
+	td := newTestData(ctx, t)
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blockStore)
-	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
-
-	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 	failedResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound),
 	}
-	requestManager.ProcessResponses(peers[0], failedResponses, nil)
+	td.requestManager.ProcessResponses(peers[0], failedResponses, nil)
 
 	testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 }
 
 func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
-	requestRecordChan := make(chan requestRecord, 2)
-	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
-	fal := newFakeAsyncLoader()
-	requestHooks := hooks.NewRequestHooks()
-	responseHooks := hooks.NewResponseHooks()
-	requestManager := New(ctx, fal, requestHooks, responseHooks)
-	requestManager.SetDelegate(fph)
-	requestManager.Startup()
+	td := newTestData(ctx, t)
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blockStore)
-	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
+	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
-
-	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	// async loaded response responds immediately
-	fal.successResponseOn(rr.gsr.ID(), blockChain.AllBlocks())
+	td.fal.successResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
 
-	blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
+	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
 	// failure comes in later over network
 	failedResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound),
 	}
 
-	requestManager.ProcessResponses(peers[0], failedResponses, nil)
+	td.requestManager.ProcessResponses(peers[0], failedResponses, nil)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 
 }
 
 func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
-	requestRecordChan := make(chan requestRecord, 2)
-	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
-	fal := newFakeAsyncLoader()
-	requestHooks := hooks.NewRequestHooks()
-	responseHooks := hooks.NewResponseHooks()
-	requestManager := New(ctx, fal, requestHooks, responseHooks)
-	requestManager.SetDelegate(fph)
-	requestManager.Startup()
+	td := newTestData(ctx, t)
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blockStore)
-	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
+	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
-	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	// async loaded response responds immediately
-	fal.successResponseOn(rr.gsr.ID(), blockChain.AllBlocks())
+	td.fal.successResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
 
-	blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
+	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
-	md := encodedMetadataForBlocks(t, blockChain.AllBlocks(), true)
+	md := encodedMetadataForBlocks(t, td.blockChain.AllBlocks(), true)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
-	requestManager.ProcessResponses(peers[0], firstResponses, blockChain.AllBlocks())
+	td.requestManager.ProcessResponses(peers[0], firstResponses, td.blockChain.AllBlocks())
 
-	fal.verifyNoRemainingData(t, rr.gsr.ID())
+	td.fal.verifyNoRemainingData(t, rr.gsr.ID())
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 }
 
 func TestRequestReturnsMissingBlocks(t *testing.T) {
-	requestRecordChan := make(chan requestRecord, 2)
-	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
-	fal := newFakeAsyncLoader()
-	requestHooks := hooks.NewRequestHooks()
-	responseHooks := hooks.NewResponseHooks()
-	requestManager := New(ctx, fal, requestHooks, responseHooks)
-	requestManager.SetDelegate(fph)
-	requestManager.Startup()
+	td := newTestData(ctx, t)
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blockStore)
-	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
+	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
-	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
-	md := encodedMetadataForBlocks(t, blockChain.AllBlocks(), false)
+	md := encodedMetadataForBlocks(t, td.blockChain.AllBlocks(), false)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedPartial, md),
 	}
-	requestManager.ProcessResponses(peers[0], firstResponses, nil)
-	for _, block := range blockChain.AllBlocks() {
-		fal.responseOn(rr.gsr.ID(), cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: nil, Err: fmt.Errorf("Terrible Thing")})
+	td.requestManager.ProcessResponses(peers[0], firstResponses, nil)
+	for _, block := range td.blockChain.AllBlocks() {
+		td.fal.responseOn(rr.gsr.ID(), cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: nil, Err: fmt.Errorf("Terrible Thing")})
 	}
 	testutil.VerifyEmptyResponse(ctx, t, returnedResponseChan)
 	errs := testutil.CollectErrors(ctx, t, returnedErrorChan)
@@ -516,23 +441,12 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 }
 
 func TestEncodingExtensions(t *testing.T) {
-	requestRecordChan := make(chan requestRecord, 2)
-	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
-	fal := newFakeAsyncLoader()
-	requestHooks := hooks.NewRequestHooks()
-	responseHooks := hooks.NewResponseHooks()
-	requestManager := New(ctx, fal, requestHooks, responseHooks)
-	requestManager.SetDelegate(fph)
-	requestManager.Startup()
+	td := newTestData(ctx, t)
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
-
-	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blockStore)
-	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
 	extensionData1 := testutil.RandomBytes(100)
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
@@ -563,10 +477,10 @@ func TestEncodingExtensions(t *testing.T) {
 			hookActions.UpdateRequestWithExtensions(update...)
 		}
 	}
-	responseHooks.Register(hook)
-	returnedResponseChan, returnedErrorChan := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector(), extension1, extension2)
+	td.responseHooks.Register(hook)
+	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), extension1, extension2)
 
-	rr := readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	gsr := rr.gsr
 	returnedData1, found := gsr.Extension(extensionName1)
@@ -599,12 +513,12 @@ func TestEncodingExtensions(t *testing.T) {
 				Data: expectedUpdate,
 			},
 		}
-		requestManager.ProcessResponses(peers[0], firstResponses, nil)
+		td.requestManager.ProcessResponses(peers[0], firstResponses, nil)
 		var received []byte
 		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "did not receive extension data")
 		require.Equal(t, expectedData, received, "did not receive correct extension data from resposne")
 
-		rr = readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+		rr = readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 		receivedUpdateData, has := rr.gsr.Extension(extensionName1)
 		require.True(t, has)
 		require.Equal(t, expectedUpdate, receivedUpdateData, "should have updated with correct extension")
@@ -636,11 +550,11 @@ func TestEncodingExtensions(t *testing.T) {
 				Data: nextExpectedUpdate2,
 			},
 		}
-		requestManager.ProcessResponses(peers[0], secondResponses, nil)
+		td.requestManager.ProcessResponses(peers[0], secondResponses, nil)
 		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "did not receive extension data")
 		require.Equal(t, nextExpectedData, received, "did not receive correct extension data from resposne")
 
-		rr = readNNetworkRequests(requestCtx, t, requestRecordChan, 1)[0]
+		rr = readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 		receivedUpdateData, has = rr.gsr.Extension(extensionName1)
 		require.True(t, has)
 		require.Equal(t, nextExpectedUpdate1, receivedUpdateData, "should have updated with correct extension")
@@ -654,23 +568,12 @@ func TestEncodingExtensions(t *testing.T) {
 }
 
 func TestOutgoingRequestHooks(t *testing.T) {
-	requestRecordChan := make(chan requestRecord, 2)
-	fph := &fakePeerHandler{requestRecordChan}
 	ctx := context.Background()
-	fal := newFakeAsyncLoader()
-	requestHooks := hooks.NewRequestHooks()
-	responseHooks := hooks.NewResponseHooks()
-	requestManager := New(ctx, fal, requestHooks, responseHooks)
-	requestManager.SetDelegate(fph)
-	requestManager.Startup()
+	td := newTestData(ctx, t)
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
-
-	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blockStore)
-	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 5)
 
 	extensionName1 := graphsync.ExtensionName("blockchain")
 	extension1 := graphsync.ExtensionData{
@@ -681,18 +584,18 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	hook := func(p peer.ID, r graphsync.RequestData, ha graphsync.OutgoingRequestHookActions) {
 		_, has := r.Extension(extensionName1)
 		if has {
-			ha.UseLinkTargetNodeStyleChooser(blockChain.Chooser)
+			ha.UseLinkTargetNodeStyleChooser(td.blockChain.Chooser)
 			ha.UsePersistenceOption("chainstore")
 		}
 	}
-	requestHooks.Register(hook)
+	td.requestHooks.Register(hook)
 
-	returnedResponseChan1, returnedErrorChan1 := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector(), extension1)
-	returnedResponseChan2, returnedErrorChan2 := requestManager.SendRequest(requestCtx, peers[0], blockChain.TipLink, blockChain.Selector())
+	returnedResponseChan1, returnedErrorChan1 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), extension1)
+	returnedResponseChan2, returnedErrorChan2 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
-	requestRecords := readNNetworkRequests(requestCtx, t, requestRecordChan, 2)
+	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
 
-	md := metadataForBlocks(blockChain.AllBlocks(), true)
+	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
 	mdEncoded, err := metadata.EncodeMetadata(md)
 	require.NoError(t, err)
 	mdExt := graphsync.ExtensionData{
@@ -703,19 +606,50 @@ func TestOutgoingRequestHooks(t *testing.T) {
 		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, mdExt),
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, mdExt),
 	}
-	requestManager.ProcessResponses(peers[0], responses, blockChain.AllBlocks())
-	fal.verifyLastProcessedBlocks(ctx, t, blockChain.AllBlocks())
-	fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
+	td.fal.verifyLastProcessedBlocks(ctx, t, td.blockChain.AllBlocks())
+	td.fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 		requestRecords[0].gsr.ID(): md,
 		requestRecords[1].gsr.ID(): md,
 	})
-	fal.successResponseOn(requestRecords[0].gsr.ID(), blockChain.AllBlocks())
-	fal.successResponseOn(requestRecords[1].gsr.ID(), blockChain.AllBlocks())
+	td.fal.successResponseOn(requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.successResponseOn(requestRecords[1].gsr.ID(), td.blockChain.AllBlocks())
 
-	blockChain.VerifyWholeChainWithTypes(requestCtx, returnedResponseChan1)
-	blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
+	td.blockChain.VerifyWholeChainWithTypes(requestCtx, returnedResponseChan1)
+	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan1)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan2)
-	fal.verifyStoreUsed(t, requestRecords[0].gsr.ID(), "chainstore")
-	fal.verifyStoreUsed(t, requestRecords[1].gsr.ID(), "")
+	td.fal.verifyStoreUsed(t, requestRecords[0].gsr.ID(), "chainstore")
+	td.fal.verifyStoreUsed(t, requestRecords[1].gsr.ID(), "")
+}
+
+type testData struct {
+	requestRecordChan chan requestRecord
+	fph               *fakePeerHandler
+	fal               *fakeAsyncLoader
+	requestHooks      *hooks.OutgoingRequestHooks
+	responseHooks     *hooks.IncomingResponseHooks
+	blockHooks        *hooks.IncomingBlockHooks
+	requestManager    *RequestManager
+	blockStore        map[ipld.Link][]byte
+	loader            ipld.Loader
+	storer            ipld.Storer
+	blockChain        *testutil.TestBlockChain
+}
+
+func newTestData(ctx context.Context, t *testing.T) *testData {
+	td := &testData{}
+	td.requestRecordChan = make(chan requestRecord, 2)
+	td.fph = &fakePeerHandler{td.requestRecordChan}
+	td.fal = newFakeAsyncLoader()
+	td.requestHooks = hooks.NewRequestHooks()
+	td.responseHooks = hooks.NewResponseHooks()
+	td.blockHooks = hooks.NewBlockHooks()
+	td.requestManager = New(ctx, td.fal, td.requestHooks, td.responseHooks, td.blockHooks)
+	td.requestManager.SetDelegate(td.fph)
+	td.requestManager.Startup()
+	td.blockStore = make(map[ipld.Link][]byte)
+	td.loader, td.storer = testutil.NewTestStore(td.blockStore)
+	td.blockChain = testutil.SetupBlockChain(ctx, t, td.loader, td.storer, 100, 5)
+	return td
 }
