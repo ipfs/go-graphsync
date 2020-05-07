@@ -182,6 +182,13 @@ type IncomingResponseHookActions interface {
 	UpdateRequestWithExtensions(...ExtensionData)
 }
 
+// IncomingBlockHookActions are actions that incoming block hook can take
+// to change the execution of a request
+type IncomingBlockHookActions interface {
+	TerminateWithError(error)
+	UpdateRequestWithExtensions(...ExtensionData)
+}
+
 // RequestUpdatedHookActions are actions that can be taken in a request updated hook to
 // change execution of the response
 type RequestUpdatedHookActions interface {
@@ -197,8 +204,17 @@ type OnIncomingRequestHook func(p peer.ID, request RequestData, hookActions Inco
 
 // OnIncomingResponseHook is a hook that runs each time a new response is received.
 // It receives the peer that sent the response and all data about the response.
-// If it returns an error processing is halted and the original request is cancelled.
+// It receives an interface for customizing how we handle the ongoing execution of the request
 type OnIncomingResponseHook func(p peer.ID, responseData ResponseData, hookActions IncomingResponseHookActions)
+
+// OnIncomingBlockHook is a hook that runs each time a new block is validated as
+// part of the response, regardless of whether it came locally or over the network
+// It receives that sent the response, the most recent response, a link for the block received,
+// and the size of the block received
+// The difference between BlockSize & BlockSizeOnWire can be used to determine
+// where the block came from (Local vs remote)
+// It receives an interface for customizing how we handle the ongoing execution of the request
+type OnIncomingBlockHook func(p peer.ID, responseData ResponseData, blockData BlockData, hookActions IncomingResponseHookActions)
 
 // OnOutgoingRequestHook is a hook that runs immediately prior to sending a request
 // It receives the peer we're sending a request to and all the data aobut the request
@@ -236,6 +252,9 @@ type GraphExchange interface {
 
 	// RegisterIncomingResponseHook adds a hook that runs when a response is received
 	RegisterIncomingResponseHook(OnIncomingResponseHook) UnregisterHookFunc
+
+	// RegisterIncomingBlockHook adds a hook that runs when a block is received and validated (put in block store)
+	RegisterIncomingBlockHook(OnIncomingBlockHook) UnregisterHookFunc
 
 	// RegisterOutgoingRequestHook adds a hook that runs immediately prior to sending a new request
 	RegisterOutgoingRequestHook(hook OnOutgoingRequestHook) UnregisterHookFunc

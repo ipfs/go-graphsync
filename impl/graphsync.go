@@ -169,6 +169,11 @@ func (gs *GraphSync) RegisterCompletedResponseListener(listener graphsync.OnResp
 	return gs.completedResponseListeners.Register(listener)
 }
 
+// RegisterIncomingBlockHook adds a hook that runs when a block is received and validated (put in block store)
+func (gs *GraphSync) RegisterIncomingBlockHook(_ graphsync.OnIncomingBlockHook) graphsync.UnregisterHookFunc {
+	return nil
+}
+
 // UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
 func (gs *GraphSync) UnpauseResponse(p peer.ID, requestID graphsync.RequestID) error {
 	return gs.responseManager.UnpauseResponse(p, requestID)
