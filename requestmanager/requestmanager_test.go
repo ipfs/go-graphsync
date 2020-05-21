@@ -672,7 +672,7 @@ func TestBlockHooks(t *testing.T) {
 			metadata, has := receivedResponse.Extension(graphsync.ExtensionMetadata)
 			require.True(t, has)
 			require.Equal(t, firstMetadataEncoded, metadata, "should receive correct metadata")
-			receivedExtensionData, has := receivedResponse.Extension(extensionName1)
+			receivedExtensionData, _ := receivedResponse.Extension(extensionName1)
 			require.Equal(t, expectedData, receivedExtensionData, "should receive correct response extension data")
 			var receivedBlock graphsync.BlockData
 			testutil.AssertReceive(ctx, t, receivedBlocks, &receivedBlock, "did not receive block data")
@@ -686,6 +686,7 @@ func TestBlockHooks(t *testing.T) {
 		nextBlocks := td.blockChain.RemainderBlocks(3)
 		nextMetadata := metadataForBlocks(nextBlocks, true)
 		nextMetadataEncoded, err := metadata.EncodeMetadata(nextMetadata)
+		require.NoError(t, err)
 		secondResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
 				graphsync.RequestCompletedFull, graphsync.ExtensionData{
@@ -738,7 +739,7 @@ func TestBlockHooks(t *testing.T) {
 			metadata, has := receivedResponse.Extension(graphsync.ExtensionMetadata)
 			require.True(t, has)
 			require.Equal(t, nextMetadataEncoded, metadata, "should receive correct metadata")
-			receivedExtensionData, has := receivedResponse.Extension(extensionName1)
+			receivedExtensionData, _ := receivedResponse.Extension(extensionName1)
 			require.Equal(t, nextExpectedData, receivedExtensionData, "should receive correct response extension data")
 			var receivedBlock graphsync.BlockData
 			testutil.AssertReceive(ctx, t, receivedBlocks, &receivedBlock, "did not receive block data")

@@ -42,12 +42,10 @@ type peerResponseSender struct {
 	peerHandler  PeerMessageHandler
 	outgoingWork chan struct{}
 
-	linkTrackerLk        sync.RWMutex
-	linkTracker          *linktracker.LinkTracker
-	responseBuildersLk   sync.RWMutex
-	responseBuilders     []*responsebuilder.ResponseBuilder
-	transactionLk        sync.RWMutex
-	transactionRequestID *graphsync.RequestID
+	linkTrackerLk      sync.RWMutex
+	linkTracker        *linktracker.LinkTracker
+	responseBuildersLk sync.RWMutex
+	responseBuilders   []*responsebuilder.ResponseBuilder
 }
 
 // PeerResponseSender handles batching, deduping, and sending responses for
