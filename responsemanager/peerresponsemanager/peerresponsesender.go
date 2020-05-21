@@ -32,6 +32,9 @@ type PeerMessageHandler interface {
 	SendResponse(peer.ID, []gsmsg.GraphSyncResponse, []blocks.Block) <-chan struct{}
 }
 
+// Transaction is a series of operations that should be send together in a single response
+type Transaction func(PeerResponseTransactionSender) error
+
 type peerResponseSender struct {
 	p            peer.ID
 	ctx          context.Context
@@ -39,10 +42,12 @@ type peerResponseSender struct {
 	peerHandler  PeerMessageHandler
 	outgoingWork chan struct{}
 
-	linkTrackerLk      sync.RWMutex
-	linkTracker        *linktracker.LinkTracker
-	responseBuildersLk sync.RWMutex
-	responseBuilders   []*responsebuilder.ResponseBuilder
+	linkTrackerLk        sync.RWMutex
+	linkTracker          *linktracker.LinkTracker
+	responseBuildersLk   sync.RWMutex
+	responseBuilders     []*responsebuilder.ResponseBuilder
+	transactionLk        sync.RWMutex
+	transactionRequestID *graphsync.RequestID
 }
 
 // PeerResponseSender handles batching, deduping, and sending responses for
@@ -57,7 +62,22 @@ type PeerResponseSender interface {
 	SendExtensionData(graphsync.RequestID, graphsync.ExtensionData)
 	FinishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode
 	FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode)
+	// Transaction calls multiple operations at once so they end up in a single response
+	// Note: if the transaction function errors, the results will not execute
+	Transaction(requestID graphsync.RequestID, transaction Transaction) error
 	PauseRequest(requestID graphsync.RequestID)
+}
+
+// PeerResponseTransactionSender is a limited interface for sending responses inside a transaction
+type PeerResponseTransactionSender interface {
+	SendResponse(
+		link ipld.Link,
+		data []byte,
+	) graphsync.BlockData
+	SendExtensionData(graphsync.ExtensionData)
+	FinishRequest() graphsync.ResponseStatusCode
+	FinishWithError(status graphsync.ResponseStatusCode)
+	PauseRequest()
 }
 
 // NewResponseSender generates a new PeerResponseSender for the given context, peer ID,
@@ -75,119 +95,214 @@ func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHa
 }
 
 // Startup initiates message sending for a peer
-func (prm *peerResponseSender) Startup() {
-	go prm.run()
+func (prs *peerResponseSender) Startup() {
+	go prs.run()
+}
+
+type responseOperation interface {
+	build(responseBuilder *responsebuilder.ResponseBuilder)
+	size() uint64
+}
+
+func (prs *peerResponseSender) execute(operations []responseOperation) {
+	size := uint64(0)
+	for _, op := range operations {
+		size += op.size()
+	}
+	if prs.buildResponse(size, func(responseBuilder *responsebuilder.ResponseBuilder) {
+		for _, op := range operations {
+			op.build(responseBuilder)
+		}
+	}) {
+		prs.signalWork()
+	}
 }
 
 // Shutdown stops sending messages for a peer
-func (prm *peerResponseSender) Shutdown() {
-	prm.cancel()
+func (prs *peerResponseSender) Shutdown() {
+	prs.cancel()
 }
 
-func (prm *peerResponseSender) SendExtensionData(requestID graphsync.RequestID, extension graphsync.ExtensionData) {
-	if prm.buildResponse(0, func(responseBuilder *responsebuilder.ResponseBuilder) {
-		responseBuilder.AddExtensionData(requestID, extension)
-	}) {
-		prm.signalWork()
+type extensionOperation struct {
+	requestID graphsync.RequestID
+	extension graphsync.ExtensionData
+}
+
+func (eo extensionOperation) build(responseBuilder *responsebuilder.ResponseBuilder) {
+	responseBuilder.AddExtensionData(eo.requestID, eo.extension)
+}
+
+func (eo extensionOperation) size() uint64 {
+	return uint64(len(eo.extension.Data))
+}
+
+func (prs *peerResponseSender) SendExtensionData(requestID graphsync.RequestID, extension graphsync.ExtensionData) {
+	prs.execute([]responseOperation{extensionOperation{requestID, extension}})
+}
+
+type peerResponseTransactionSender struct {
+	requestID  graphsync.RequestID
+	operations []responseOperation
+	prs        *peerResponseSender
+}
+
+func (prts *peerResponseTransactionSender) SendResponse(link ipld.Link, data []byte) graphsync.BlockData {
+	op := prts.prs.setupBlockOperation(prts.requestID, link, data)
+	prts.operations = append(prts.operations, op)
+	return op
+}
+
+func (prts *peerResponseTransactionSender) SendExtensionData(extension graphsync.ExtensionData) {
+	prts.operations = append(prts.operations, extensionOperation{prts.requestID, extension})
+}
+
+func (prts *peerResponseTransactionSender) FinishRequest() graphsync.ResponseStatusCode {
+	op := prts.prs.setupFinishOperation(prts.requestID)
+	prts.operations = append(prts.operations, op)
+	return op.status
+}
+
+func (prts *peerResponseTransactionSender) FinishWithError(status graphsync.ResponseStatusCode) {
+	prts.operations = append(prts.operations, prts.prs.setupFinishWithErrOperation(prts.requestID, status))
+}
+
+func (prts *peerResponseTransactionSender) PauseRequest() {
+	prts.operations = append(prts.operations, statusOperation{prts.requestID, graphsync.RequestPaused})
+}
+
+func (prs *peerResponseSender) Transaction(requestID graphsync.RequestID, transaction Transaction) error {
+	prts := &peerResponseTransactionSender{
+		requestID: requestID,
+		prs:       prs,
 	}
+	err := transaction(prts)
+	if err == nil {
+		prs.execute(prts.operations)
+	}
+	return err
 }
 
-type blockData struct {
-	link      ipld.Link
-	blockSize uint64
+type blockOperation struct {
+	data      []byte
 	sendBlock bool
+	link      ipld.Link
+	requestID graphsync.RequestID
 }
 
-func (bd blockData) Link() ipld.Link {
-	return bd.link
+func (bo blockOperation) build(responseBuilder *responsebuilder.ResponseBuilder) {
+	if bo.sendBlock {
+		cidLink := bo.link.(cidlink.Link)
+		block, err := blocks.NewBlockWithCid(bo.data, cidLink.Cid)
+		if err != nil {
+			log.Errorf("Data did not match cid when sending link for %s", cidLink.String())
+		}
+		responseBuilder.AddBlock(block)
+	}
+	responseBuilder.AddLink(bo.requestID, bo.link, bo.data != nil)
 }
 
-func (bd blockData) BlockSize() uint64 {
-	return bd.blockSize
+func (bo blockOperation) Link() ipld.Link {
+	return bo.link
 }
 
-func (bd blockData) BlockSizeOnWire() uint64 {
-	if !bd.sendBlock {
+func (bo blockOperation) BlockSize() uint64 {
+	return uint64(len(bo.data))
+}
+
+func (bo blockOperation) BlockSizeOnWire() uint64 {
+	if !bo.sendBlock {
 		return 0
 	}
-	return bd.blockSize
+	return bo.BlockSize()
+}
+
+func (bo blockOperation) size() uint64 {
+	return bo.BlockSizeOnWire()
+}
+
+func (prs *peerResponseSender) setupBlockOperation(requestID graphsync.RequestID,
+	link ipld.Link, data []byte) blockOperation {
+	hasBlock := data != nil
+	prs.linkTrackerLk.Lock()
+	sendBlock := hasBlock && prs.linkTracker.BlockRefCount(link) == 0
+	prs.linkTracker.RecordLinkTraversal(requestID, link, hasBlock)
+	prs.linkTrackerLk.Unlock()
+	return blockOperation{
+		data, sendBlock, link, requestID,
+	}
 }
 
 // SendResponse sends a given link for a given
 // requestID across the wire, as well as its corresponding
 // block if the block is present and has not already been sent
 // it returns the number of block bytes sent
-func (prm *peerResponseSender) SendResponse(
+func (prs *peerResponseSender) SendResponse(
 	requestID graphsync.RequestID,
 	link ipld.Link,
 	data []byte,
 ) graphsync.BlockData {
-	hasBlock := data != nil
-	prm.linkTrackerLk.Lock()
-	sendBlock := hasBlock && prm.linkTracker.BlockRefCount(link) == 0
-	blkSize := uint64(len(data))
-	bd := blockData{link, blkSize, sendBlock}
-	prm.linkTracker.RecordLinkTraversal(requestID, link, hasBlock)
-	prm.linkTrackerLk.Unlock()
-
-	if prm.buildResponse(bd.BlockSizeOnWire(), func(responseBuilder *responsebuilder.ResponseBuilder) {
-		if sendBlock {
-			cidLink := link.(cidlink.Link)
-			block, err := blocks.NewBlockWithCid(data, cidLink.Cid)
-			if err != nil {
-				log.Errorf("Data did not match cid when sending link for %s", cidLink.String())
-			}
-			responseBuilder.AddBlock(block)
-		}
-		responseBuilder.AddLink(requestID, link, hasBlock)
-	}) {
-		prm.signalWork()
-	}
-	return bd
+	op := prs.setupBlockOperation(requestID, link, data)
+	prs.execute([]responseOperation{op})
+	return op
 }
 
-// FinishRequest marks the given requestID as having sent all responses
-func (prm *peerResponseSender) FinishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode {
-	prm.linkTrackerLk.Lock()
-	isComplete := prm.linkTracker.FinishRequest(requestID)
-	prm.linkTrackerLk.Unlock()
+type statusOperation struct {
+	requestID graphsync.RequestID
+	status    graphsync.ResponseStatusCode
+}
+
+func (fo statusOperation) build(responseBuilder *responsebuilder.ResponseBuilder) {
+	responseBuilder.AddResponseCode(fo.requestID, fo.status)
+}
+
+func (fo statusOperation) size() uint64 {
+	return 0
+}
+
+func (prs *peerResponseSender) setupFinishOperation(requestID graphsync.RequestID) statusOperation {
+	prs.linkTrackerLk.Lock()
+	isComplete := prs.linkTracker.FinishRequest(requestID)
+	prs.linkTrackerLk.Unlock()
 	var status graphsync.ResponseStatusCode
 	if isComplete {
 		status = graphsync.RequestCompletedFull
 	} else {
 		status = graphsync.RequestCompletedPartial
 	}
-	prm.finish(requestID, status)
-	return status
+	return statusOperation{requestID, status}
+}
+
+// FinishRequest marks the given requestID as having sent all responses
+func (prs *peerResponseSender) FinishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode {
+	op := prs.setupFinishOperation(requestID)
+	prs.execute([]responseOperation{op})
+	return op.status
+}
+
+func (prs *peerResponseSender) setupFinishWithErrOperation(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) statusOperation {
+	prs.linkTrackerLk.Lock()
+	prs.linkTracker.FinishRequest(requestID)
+	prs.linkTrackerLk.Unlock()
+	return statusOperation{requestID, status}
 }
 
 // FinishWithError marks the given requestID as having terminated with an error
-func (prm *peerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
-	prm.linkTrackerLk.Lock()
-	prm.linkTracker.FinishRequest(requestID)
-	prm.linkTrackerLk.Unlock()
-
-	prm.finish(requestID, status)
+func (prs *peerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
+	op := prs.setupFinishWithErrOperation(requestID, status)
+	prs.execute([]responseOperation{op})
 }
 
-func (prm *peerResponseSender) PauseRequest(requestID graphsync.RequestID) {
-	prm.finish(requestID, graphsync.RequestPaused)
+func (prs *peerResponseSender) PauseRequest(requestID graphsync.RequestID) {
+	prs.execute([]responseOperation{statusOperation{requestID, graphsync.RequestPaused}})
 }
 
-func (prm *peerResponseSender) finish(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
-	if prm.buildResponse(0, func(responseBuilder *responsebuilder.ResponseBuilder) {
-		responseBuilder.AddResponseCode(requestID, status)
-	}) {
-		prm.signalWork()
+func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn func(*responsebuilder.ResponseBuilder)) bool {
+	prs.responseBuildersLk.Lock()
+	defer prs.responseBuildersLk.Unlock()
+	if shouldBeginNewResponse(prs.responseBuilders, blkSize) {
+		prs.responseBuilders = append(prs.responseBuilders, responsebuilder.New())
 	}
-}
-func (prm *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn func(*responsebuilder.ResponseBuilder)) bool {
-	prm.responseBuildersLk.Lock()
-	defer prm.responseBuildersLk.Unlock()
-	if shouldBeginNewResponse(prm.responseBuilders, blkSize) {
-		prm.responseBuilders = append(prm.responseBuilders, responsebuilder.New())
-	}
-	responseBuilder := prm.responseBuilders[len(prm.responseBuilders)-1]
+	responseBuilder := prs.responseBuilders[len(prs.responseBuilders)-1]
 	buildResponseFn(responseBuilder)
 	return !responseBuilder.Empty()
 }
@@ -202,29 +317,29 @@ func shouldBeginNewResponse(responseBuilders []*responsebuilder.ResponseBuilder,
 	return responseBuilders[len(responseBuilders)-1].BlockSize()+blkSize > maxBlockSize
 }
 
-func (prm *peerResponseSender) signalWork() {
+func (prs *peerResponseSender) signalWork() {
 	select {
-	case prm.outgoingWork <- struct{}{}:
+	case prs.outgoingWork <- struct{}{}:
 	default:
 	}
 }
 
-func (prm *peerResponseSender) run() {
+func (prs *peerResponseSender) run() {
 	for {
 		select {
-		case <-prm.ctx.Done():
+		case <-prs.ctx.Done():
 			return
-		case <-prm.outgoingWork:
-			prm.sendResponseMessages()
+		case <-prs.outgoingWork:
+			prs.sendResponseMessages()
 		}
 	}
 }
 
-func (prm *peerResponseSender) sendResponseMessages() {
-	prm.responseBuildersLk.Lock()
-	builders := prm.responseBuilders
-	prm.responseBuilders = nil
-	prm.responseBuildersLk.Unlock()
+func (prs *peerResponseSender) sendResponseMessages() {
+	prs.responseBuildersLk.Lock()
+	builders := prs.responseBuilders
+	prs.responseBuilders = nil
+	prs.responseBuildersLk.Unlock()
 
 	for _, builder := range builders {
 		if builder.Empty() {
@@ -235,12 +350,12 @@ func (prm *peerResponseSender) sendResponseMessages() {
 			log.Errorf("Unable to assemble GraphSync response: %s", err.Error())
 		}
 
-		done := prm.peerHandler.SendResponse(prm.p, responses, blks)
+		done := prs.peerHandler.SendResponse(prs.p, responses, blks)
 
 		// wait for message to be processed
 		select {
 		case <-done:
-		case <-prm.ctx.Done():
+		case <-prs.ctx.Done():
 		}
 	}
 

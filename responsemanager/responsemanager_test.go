@@ -156,6 +156,36 @@ func (fprs *fakePeerResponseSender) PauseRequest(requestID graphsync.RequestID) 
 	fprs.pausedRequests <- pausedRequest{requestID}
 }
 
+func (fprs *fakePeerResponseSender) Transaction(requestID graphsync.RequestID, transaction peerresponsemanager.Transaction) error {
+	fprts := &fakePeerResponseTransactionSender{requestID, fprs}
+	return transaction(fprts)
+}
+
+type fakePeerResponseTransactionSender struct {
+	requestID graphsync.RequestID
+	prs       peerresponsemanager.PeerResponseSender
+}
+
+func (fprts *fakePeerResponseTransactionSender) SendResponse(link ipld.Link, data []byte) graphsync.BlockData {
+	return fprts.prs.SendResponse(fprts.requestID, link, data)
+}
+
+func (fprts *fakePeerResponseTransactionSender) SendExtensionData(extension graphsync.ExtensionData) {
+	fprts.prs.SendExtensionData(fprts.requestID, extension)
+}
+
+func (fprts *fakePeerResponseTransactionSender) FinishRequest() graphsync.ResponseStatusCode {
+	return fprts.prs.FinishRequest(fprts.requestID)
+}
+
+func (fprts *fakePeerResponseTransactionSender) FinishWithError(status graphsync.ResponseStatusCode) {
+	fprts.prs.FinishWithError(fprts.requestID, status)
+}
+
+func (fprts *fakePeerResponseTransactionSender) PauseRequest() {
+	fprts.prs.PauseRequest(fprts.requestID)
+}
+
 func TestIncomingQuery(t *testing.T) {
 	td := newTestData(t)
 	defer td.cancel()
