@@ -3,6 +3,7 @@ package requestmanager
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 
@@ -16,7 +17,6 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
@@ -33,6 +33,7 @@ type inProgressRequestStatus struct {
 	cancelFn     func()
 	p            peer.ID
 	networkError chan error
+	lastResponse atomic.Value
 }
 
 // PeerHandler is an interface that can send requests to peers
@@ -65,7 +66,7 @@ type RequestManager struct {
 	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
 	requestHooks              RequestHooks
 	responseHooks             ResponseHooks
-	BlockHooks                BlockHooks
+	blockHooks                BlockHooks
 }
 
 type requestManagerMessage interface {
@@ -103,6 +104,7 @@ func New(ctx context.Context,
 		inProgressRequestStatuses: make(map[graphsync.RequestID]*inProgressRequestStatus),
 		requestHooks:              requestHooks,
 		responseHooks:             responseHooks,
+		blockHooks:                blockHooks,
 	}
 }
 
@@ -258,17 +260,18 @@ type terminateRequestMessage struct {
 }
 
 func (nrm *newRequestMessage) handle(rm *RequestManager) {
-	requestID := rm.nextRequestID
+	var ipr inProgressRequest
+	ipr.requestID = rm.nextRequestID
 	rm.nextRequestID++
-
-	inProgressChan, inProgressErr := rm.setupRequest(requestID, nrm.p, nrm.root, nrm.selector, nrm.extensions)
+	request, hooksResult, selector, err := rm.validateRequest(ipr.requestID, nrm.p, nrm.root, nrm.selector, nrm.extensions)
+	if err != nil {
+		ipr.incoming, ipr.incomingError = rm.singleErrorResponse(err)
+	} else {
+		ipr.incoming, ipr.incomingError = rm.setupRequest(nrm.p, request, hooksResult, selector)
+	}
 
 	select {
-	case nrm.inProgressRequestChan <- inProgressRequest{
-		requestID:     requestID,
-		incoming:      inProgressChan,
-		incomingError: inProgressErr,
-	}:
+	case nrm.inProgressRequestChan <- ipr:
 	case <-rm.ctx.Done():
 	}
 }
@@ -292,6 +295,7 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 func (prm *processResponseMessage) handle(rm *RequestManager) {
 	filteredResponses := rm.filterResponsesForPeer(prm.responses, prm.p)
 	filteredResponses = rm.processExtensions(filteredResponses, prm.p)
+	rm.updateLastResponses(filteredResponses)
 	responseMetadata := metadataForResponses(filteredResponses)
 	rm.asyncLoader.ProcessResponse(responseMetadata, prm.blks)
 	rm.processTerminations(filteredResponses)
@@ -320,6 +324,12 @@ func (rm *RequestManager) processExtensions(responses []gsmsg.GraphSyncResponse,
 	return remainingResponses
 }
 
+func (rm *RequestManager) updateLastResponses(responses []gsmsg.GraphSyncResponse) {
+	for _, response := range responses {
+		rm.inProgressRequestStatuses[response.RequestID()].lastResponse.Store(response)
+	}
+}
+
 func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg.GraphSyncResponse) bool {
 	result := rm.responseHooks.ProcessResponseHooks(p, response)
 	if len(result.Extensions) > 0 {
@@ -333,6 +343,7 @@ func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg
 		case requestStatus.networkError <- responseError:
 		case <-requestStatus.ctx.Done():
 		}
+		rm.peerHandler.SendRequest(p, gsmsg.CancelRequest(response.RequestID()))
 		requestStatus.cancelFn()
 		return false
 	}
@@ -372,48 +383,40 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.Respo
 	}
 }
 
-func (rm *RequestManager) setupRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (chan graphsync.ResponseProgress, chan error) {
-	_, err := ipldutil.EncodeNode(selectorSpec)
-	if err != nil {
-		return rm.singleErrorResponse(err)
+func (rm *RequestManager) processBlockHooks(p peer.ID, response graphsync.ResponseData, block graphsync.BlockData) error {
+	result := rm.blockHooks.ProcessBlockHooks(p, response, block)
+	if len(result.Extensions) > 0 {
+		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
+		rm.peerHandler.SendRequest(p, updateRequest)
 	}
-	selector, err := ipldutil.ParseSelector(selectorSpec)
-	if err != nil {
-		return rm.singleErrorResponse(err)
+	if result.Err != nil {
+		select {
+		case <-rm.ctx.Done():
+		case rm.messages <- &cancelRequestMessage{response.RequestID()}:
+		}
 	}
-	asCidLink, ok := root.(cidlink.Link)
-	if !ok {
-		return rm.singleErrorResponse(fmt.Errorf("request failed: link has no cid"))
-	}
-	networkErrorChan := make(chan error, 1)
-	ctx, cancel := context.WithCancel(rm.ctx)
-	rm.inProgressRequestStatuses[requestID] = &inProgressRequestStatus{
-		ctx, cancel, p, networkErrorChan,
-	}
-	request := gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, defaultPriority, extensions...)
-	hooksResult := rm.requestHooks.ProcessRequestHooks(p, request)
-	err = rm.asyncLoader.StartRequest(requestID, hooksResult.PersistenceOption)
-	if err != nil {
-		return rm.singleErrorResponse(err)
-	}
-	rm.peerHandler.SendRequest(p, request)
-	return rm.executeTraversal(ctx, requestID, root, selector, hooksResult.CustomChooser, networkErrorChan)
+	return result.Err
 }
 
-func (rm *RequestManager) executeTraversal(
-	ctx context.Context,
-	requestID graphsync.RequestID,
-	root ipld.Link,
-	selector selector.Selector,
-	nodeBuilderChooser traversal.LinkTargetNodeStyleChooser,
-	networkErrorChan chan error,
-) (chan graphsync.ResponseProgress, chan error) {
+func (rm *RequestManager) setupRequest(p peer.ID, request gsmsg.GraphSyncRequest, hooksResult hooks.RequestResult, selector selector.Selector) (chan graphsync.ResponseProgress, chan error) {
+	networkErrorChan := make(chan error, 1)
+	ctx, cancel := context.WithCancel(rm.ctx)
+	requestStatus := &inProgressRequestStatus{
+		ctx: ctx, cancelFn: cancel, p: p, networkError: networkErrorChan,
+	}
+	lastResponse := &requestStatus.lastResponse
+	rm.inProgressRequestStatuses[request.ID()] = requestStatus
+	lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
+	rm.peerHandler.SendRequest(p, request)
 	inProgressChan := make(chan graphsync.ResponseProgress)
 	inProgressErr := make(chan error)
-	loaderFn := loader.WrapAsyncLoader(ctx, rm.asyncLoader.AsyncLoad, requestID, inProgressErr)
-	visitor := visitToChannel(ctx, inProgressChan)
 	go func() {
-		_ = ipldutil.Traverse(ctx, loaderFn, nodeBuilderChooser, root, selector, visitor)
+		loaderFn := loader.WrapAsyncLoader(ctx, rm.asyncLoader.AsyncLoad, request.ID(), inProgressErr, func(bd graphsync.BlockData) error {
+			response := lastResponse.Load().(gsmsg.GraphSyncResponse)
+			return rm.processBlockHooks(p, response, bd)
+		})
+		visitor := visitToChannel(ctx, inProgressChan)
+		_ = ipldutil.Traverse(ctx, loaderFn, hooksResult.CustomChooser, cidlink.Link{Cid: request.Root()}, selector, visitor)
 		select {
 		case networkError := <-networkErrorChan:
 			select {
@@ -424,10 +427,32 @@ func (rm *RequestManager) executeTraversal(
 		}
 		select {
 		case <-ctx.Done():
-		case rm.messages <- &terminateRequestMessage{requestID}:
+		case rm.messages <- &terminateRequestMessage{request.ID()}:
 		}
 		close(inProgressChan)
 		close(inProgressErr)
 	}()
 	return inProgressChan, inProgressErr
+}
+
+func (rm *RequestManager) validateRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, hooks.RequestResult, selector.Selector, error) {
+	_, err := ipldutil.EncodeNode(selectorSpec)
+	if err != nil {
+		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, err
+	}
+	selector, err := ipldutil.ParseSelector(selectorSpec)
+	if err != nil {
+		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, err
+	}
+	asCidLink, ok := root.(cidlink.Link)
+	if !ok {
+		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, fmt.Errorf("request failed: link has no cid")
+	}
+	request := gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, defaultPriority, extensions...)
+	hooksResult := rm.requestHooks.ProcessRequestHooks(p, request)
+	err = rm.asyncLoader.StartRequest(requestID, hooksResult.PersistenceOption)
+	if err != nil {
+		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, err
+	}
+	return request, hooksResult, selector, nil
 }
