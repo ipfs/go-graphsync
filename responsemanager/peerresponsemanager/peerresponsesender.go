@@ -52,6 +52,7 @@ type peerResponseSender struct {
 // a given peer across multiple requests.
 type PeerResponseSender interface {
 	peermanager.PeerProcess
+	IgnoreBlocks(requestID graphsync.RequestID, links []ipld.Link)
 	SendResponse(
 		requestID graphsync.RequestID,
 		link ipld.Link,
@@ -95,6 +96,14 @@ func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHa
 // Startup initiates message sending for a peer
 func (prs *peerResponseSender) Startup() {
 	go prs.run()
+}
+
+func (prs *peerResponseSender) IgnoreBlocks(requestID graphsync.RequestID, links []ipld.Link) {
+	prs.linkTrackerLk.Lock()
+	for _, link := range links {
+		prs.linkTracker.RecordLinkTraversal(requestID, link, true)
+	}
+	prs.linkTrackerLk.Unlock()
 }
 
 type responseOperation interface {
