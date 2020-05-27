@@ -317,7 +317,7 @@ func setupAttemptQueue(loader ipld.Loader, storer ipld.Storer) (*responsecache.R
 
 	unverifiedBlockStore := unverifiedblockstore.New(storer)
 	responseCache := responsecache.New(unverifiedBlockStore)
-	loadAttemptQueue := loadattemptqueue.New(func(requestID graphsync.RequestID, link ipld.Link) ([]byte, error) {
+	loadAttemptQueue := loadattemptqueue.New(func(requestID graphsync.RequestID, link ipld.Link) types.AsyncLoadResult {
 		// load from response cache
 		data, err := responseCache.AttemptLoad(requestID, link)
 		if data == nil && err == nil {
@@ -326,11 +326,19 @@ func setupAttemptQueue(loader ipld.Loader, storer ipld.Storer) (*responsecache.R
 			if stream != nil && loadErr == nil {
 				localData, loadErr := ioutil.ReadAll(stream)
 				if loadErr == nil && localData != nil {
-					return localData, nil
+					return types.AsyncLoadResult{
+						Data:  localData,
+						Err:   nil,
+						Local: true,
+					}
 				}
 			}
 		}
-		return data, err
+		return types.AsyncLoadResult{
+			Data:  data,
+			Err:   err,
+			Local: false,
+		}
 	})
 
 	return responseCache, loadAttemptQueue

@@ -25,11 +25,8 @@ func NewLoadRequest(requestID graphsync.RequestID,
 }
 
 // LoadAttempter attempts to load a link to an array of bytes
-// it has three results:
-// bytes present, error nil = success
-// bytes nil, error present = error
-// bytes nil, error nil = did not load, but try again later
-type LoadAttempter func(graphsync.RequestID, ipld.Link) ([]byte, error)
+// and returns an async load result
+type LoadAttempter func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult
 
 // LoadAttemptQueue attempts to load using the load attempter, and then can
 // place requests on a retry queue
@@ -48,14 +45,9 @@ func New(loadAttempter LoadAttempter) *LoadAttemptQueue {
 // AttemptLoad attempts to loads the given load request, and if retry is true
 // it saves the loadrequest for retrying later
 func (laq *LoadAttemptQueue) AttemptLoad(lr LoadRequest, retry bool) {
-	response, err := laq.loadAttempter(lr.requestID, lr.link)
-	if err != nil {
-		lr.resultChan <- types.AsyncLoadResult{Data: nil, Err: err}
-		close(lr.resultChan)
-		return
-	}
-	if response != nil {
-		lr.resultChan <- types.AsyncLoadResult{Data: response, Err: nil}
+	response := laq.loadAttempter(lr.requestID, lr.link)
+	if response.Err != nil || response.Data != nil {
+		lr.resultChan <- response
 		close(lr.resultChan)
 		return
 	}

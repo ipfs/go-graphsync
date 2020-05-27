@@ -39,7 +39,8 @@ func TestWrappedAsyncLoaderReturnsValues(t *testing.T) {
 	asyncLoadFn := makeAsyncLoadFn(responseChan, calls)
 	errChan := make(chan error)
 	requestID := graphsync.RequestID(rand.Int31())
-	loader := WrapAsyncLoader(ctx, asyncLoadFn, requestID, errChan)
+	onNewBlockFn := func(graphsync.BlockData) error { return nil }
+	loader := WrapAsyncLoader(ctx, asyncLoadFn, requestID, errChan, onNewBlockFn)
 
 	link := testutil.NewTestLink()
 
@@ -61,7 +62,8 @@ func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
 	asyncLoadFn := makeAsyncLoadFn(responseChan, calls)
 	errChan := make(chan error, 1)
 	requestID := graphsync.RequestID(rand.Int31())
-	loader := WrapAsyncLoader(ctx, asyncLoadFn, requestID, errChan)
+	onNewBlockFn := func(graphsync.BlockData) error { return nil }
+	loader := WrapAsyncLoader(ctx, asyncLoadFn, requestID, errChan, onNewBlockFn)
 
 	link := testutil.NewTestLink()
 	err := errors.New("something went wrong")
@@ -84,7 +86,8 @@ func TestWrappedAsyncLoaderContextCancels(t *testing.T) {
 	asyncLoadFn := makeAsyncLoadFn(responseChan, calls)
 	errChan := make(chan error, 1)
 	requestID := graphsync.RequestID(rand.Int31())
-	loader := WrapAsyncLoader(subCtx, asyncLoadFn, requestID, errChan)
+	onNewBlockFn := func(graphsync.BlockData) error { return nil }
+	loader := WrapAsyncLoader(subCtx, asyncLoadFn, requestID, errChan, onNewBlockFn)
 	link := testutil.NewTestLink()
 	resultsChan := make(chan struct {
 		io.Reader
@@ -106,4 +109,29 @@ func TestWrappedAsyncLoaderContextCancels(t *testing.T) {
 	testutil.AssertReceive(ctx, t, resultsChan, &result, "should return from sub context cancelling")
 	require.Nil(t, result.Reader)
 	require.Error(t, result.error, "should error from sub context cancelling")
+}
+
+func TestWrappedAsyncLoaderSideChannelsBlockHookErrors(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	responseChan := make(chan types.AsyncLoadResult, 1)
+	calls := make(chan callParams, 1)
+	asyncLoadFn := makeAsyncLoadFn(responseChan, calls)
+	errChan := make(chan error, 1)
+	requestID := graphsync.RequestID(rand.Int31())
+	blockHookErr := errors.New("Something went wrong")
+	onNewBlockFn := func(graphsync.BlockData) error { return blockHookErr }
+	loader := WrapAsyncLoader(ctx, asyncLoadFn, requestID, errChan, onNewBlockFn)
+
+	link := testutil.NewTestLink()
+
+	data := testutil.RandomBytes(100)
+	responseChan <- types.AsyncLoadResult{Data: data, Err: nil}
+	stream, err := loader(link, ipld.LinkContext{})
+	require.Nil(t, stream, "should return nil reader")
+	require.EqualError(t, err, blockHookErr.Error())
+	var returnedErr error
+	testutil.AssertReceive(ctx, t, errChan, &returnedErr, "should return an error on side channel")
+	require.EqualError(t, returnedErr, blockHookErr.Error())
 }

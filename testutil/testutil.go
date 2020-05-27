@@ -3,6 +3,7 @@ package testutil
 import (
 	"bytes"
 	"context"
+	"math/rand"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -224,4 +225,29 @@ func VerifyEmptyResponse(ctx context.Context, t *testing.T, responseChan <-chan 
 // NewTestLink returns a randomly generated IPLD Link
 func NewTestLink() ipld.Link {
 	return cidlink.Link{Cid: GenerateCids(1)[0]}
+}
+
+type fakeBlkData struct {
+	link ipld.Link
+	size uint64
+}
+
+func (fbd fakeBlkData) Link() ipld.Link {
+	return fbd.link
+}
+
+func (fbd fakeBlkData) BlockSize() uint64 {
+	return fbd.size
+}
+
+func (fbd fakeBlkData) BlockSizeOnWire() uint64 {
+	return fbd.size
+}
+
+// NewFakeBlockData returns a fake block that matches the block data interface
+func NewFakeBlockData() graphsync.BlockData {
+	return &fakeBlkData{
+		link: cidlink.Link{Cid: GenerateCids(1)[0]},
+		size: rand.Uint64(),
+	}
 }

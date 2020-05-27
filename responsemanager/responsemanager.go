@@ -279,12 +279,22 @@ func (rm *ResponseManager) prepareQuery(ctx context.Context,
 	request gsmsg.GraphSyncRequest) (ipld.Loader, ipldutil.Traverser, error) {
 	result := rm.requestHooks.ProcessRequestHooks(p, request)
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
-	for _, extension := range result.Extensions {
-		peerResponseSender.SendExtensionData(request.ID(), extension)
+	var validationErr error
+	err := peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+		for _, extension := range result.Extensions {
+			transaction.SendExtensionData(extension)
+		}
+		if result.Err != nil || !result.IsValidated {
+			transaction.FinishWithError(graphsync.RequestFailedUnknown)
+			validationErr = errors.New("request not valid")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
 	}
-	if result.Err != nil || !result.IsValidated {
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return nil, nil, errors.New("request not valid")
+	if validationErr != nil {
+		return nil, nil, validationErr
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
 	traverser := ipldutil.TraversalBuilder{
@@ -312,24 +322,30 @@ func (rm *ResponseManager) executeQuery(
 		if err != nil {
 			return err
 		}
-		blockData := peerResponseSender.SendResponse(request.ID(), link, data)
-		if blockData.BlockSize() > 0 {
-			result := rm.blockHooks.ProcessBlockHooks(p, request, blockData)
-			for _, extension := range result.Extensions {
-				peerResponseSender.SendExtensionData(request.ID(), extension)
+		var result hooks.BlockResult
+		err = peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+			blockData := transaction.SendResponse(link, data)
+			if blockData.BlockSize() > 0 {
+				result = rm.blockHooks.ProcessBlockHooks(p, request, blockData)
+				for _, extension := range result.Extensions {
+					transaction.SendExtensionData(extension)
+				}
+				if result.Err == hooks.ErrPaused {
+					transaction.PauseRequest()
+				}
 			}
-			if result.Err != nil {
-				return result.Err
-			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
-		return nil
+		return result.Err
 	})
 	if err != nil {
 		if err != hooks.ErrPaused {
 			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 			return graphsync.RequestFailedUnknown, err
 		}
-		peerResponseSender.PauseRequest(request.ID())
 		return graphsync.RequestPaused, err
 	}
 	return peerResponseSender.FinishRequest(request.ID()), nil
@@ -446,11 +462,19 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 	}
 	result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, update)
 	peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-	for _, extension := range result.Extensions {
-		peerResponseSender.SendExtensionData(key.requestID, extension)
+	err := peerResponseSender.Transaction(key.requestID, func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+		for _, extension := range result.Extensions {
+			transaction.SendExtensionData(extension)
+		}
+		if result.Err != nil {
+			transaction.FinishWithError(graphsync.RequestFailedUnknown)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Errorf("Error processing update: %s", err)
 	}
 	if result.Err != nil {
-		peerResponseSender.FinishWithError(key.requestID, graphsync.RequestFailedUnknown)
 		delete(rm.inProgressResponses, key)
 		response.cancelFn()
 		return
@@ -461,6 +485,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 			log.Warnf("error unpausing request: %s", err.Error())
 		}
 	}
+
 }
 
 func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.RequestID) error {
