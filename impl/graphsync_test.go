@@ -20,6 +20,7 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-blockservice"
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
@@ -34,6 +35,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 
+	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
@@ -229,6 +231,55 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	var finalResponseStatus graphsync.ResponseStatusCode
 	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
 	require.Equal(t, graphsync.RequestCompletedFull, finalResponseStatus)
+}
+
+func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+
+	firstHalf := blockChain.Blocks(0, 50)
+	set := cid.NewSet()
+	for _, blk := range firstHalf {
+		td.blockStore1[cidlink.Link{Cid: blk.Cid()}] = blk.RawData()
+		set.Add(blk.Cid())
+	}
+	encodedCidSet, err := cidset.EncodeCidSet(set)
+	require.NoError(t, err)
+	extension := graphsync.ExtensionData{
+		Name: graphsync.ExtensionDoNotSendCIDs,
+		Data: encodedCidSet,
+	}
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	totalSent := 0
+	totalSentOnWire := 0
+	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+		totalSent++
+		if blockData.BlockSizeOnWire() > 0 {
+			totalSentOnWire++
+		}
+	})
+
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), extension)
+
+	blockChain.VerifyWholeChain(ctx, progressChan)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
+
+	require.Equal(t, blockChainLength, totalSent)
+	require.Equal(t, blockChainLength-set.Len(), totalSentOnWire)
 }
 
 func TestPauseResume(t *testing.T) {

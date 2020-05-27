@@ -6,6 +6,8 @@ import (
 	"math"
 	"time"
 
+	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 
 	"github.com/ipfs/go-graphsync"
@@ -296,6 +298,9 @@ func (rm *ResponseManager) prepareQuery(ctx context.Context,
 	if validationErr != nil {
 		return nil, nil, validationErr
 	}
+	if err := rm.processDoNoSendCids(request, peerResponseSender); err != nil {
+		return nil, nil, err
+	}
 	rootLink := cidlink.Link{Cid: request.Root()}
 	traverser := ipldutil.TraversalBuilder{
 		Root:     rootLink,
@@ -307,6 +312,28 @@ func (rm *ResponseManager) prepareQuery(ctx context.Context,
 		loader = rm.loader
 	}
 	return loader, traverser, nil
+}
+
+func (rm *ResponseManager) processDoNoSendCids(request gsmsg.GraphSyncRequest, peerResponseSender peerresponsemanager.PeerResponseSender) error {
+	doNotSendCidsData, has := request.Extension(graphsync.ExtensionDoNotSendCIDs)
+	if !has {
+		return nil
+	}
+	cidSet, err := cidset.DecodeCidSet(doNotSendCidsData)
+	if err != nil {
+		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
+		return err
+	}
+	links := make([]ipld.Link, 0, cidSet.Len())
+	err = cidSet.ForEach(func(c cid.Cid) error {
+		links = append(links, cidlink.Link{Cid: c})
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	peerResponseSender.IgnoreBlocks(request.ID(), links)
+	return nil
 }
 
 func (rm *ResponseManager) executeQuery(

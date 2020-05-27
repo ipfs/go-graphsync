@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/cidset"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
@@ -105,6 +107,7 @@ type fakePeerResponseSender struct {
 	sentExtensions       chan sentExtension
 	lastCompletedRequest chan completedRequest
 	pausedRequests       chan pausedRequest
+	ignoredLinks         chan []ipld.Link
 }
 
 func (fprs *fakePeerResponseSender) Startup()  {}
@@ -113,6 +116,10 @@ func (fprs *fakePeerResponseSender) Shutdown() {}
 type fakeBlkData struct {
 	link ipld.Link
 	size uint64
+}
+
+func (fprs *fakePeerResponseSender) IgnoreBlocks(requestID graphsync.RequestID, links []ipld.Link) {
+	fprs.ignoredLinks <- links
 }
 
 func (fbd fakeBlkData) Link() ipld.Link {
@@ -453,6 +460,39 @@ func TestValidationAndExtensions(t *testing.T) {
 		require.Equal(t, 5, customChooserCallCount)
 	})
 
+	t.Run("do-not-send-cids extension", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+		})
+		set := cid.NewSet()
+		blks := td.blockChain.Blocks(0, 5)
+		for _, blk := range blks {
+			set.Add(blk.Cid())
+		}
+		data, err := cidset.EncodeCidSet(set)
+		require.NoError(t, err)
+		requests := []gsmsg.GraphSyncRequest{
+			gsmsg.NewRequest(td.requestID, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0),
+				graphsync.ExtensionData{
+					Name: graphsync.ExtensionDoNotSendCIDs,
+					Data: data,
+				}),
+		}
+		responseManager.ProcessRequests(td.ctx, td.p, requests)
+		var lastRequest completedRequest
+		testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+		var lastLinks []ipld.Link
+		testutil.AssertReceive(td.ctx, t, td.ignoredLinks, &lastLinks, "should send ignored links")
+		require.Len(t, lastLinks, set.Len())
+		for _, link := range lastLinks {
+			require.True(t, set.Has(link.(cidlink.Link).Cid))
+		}
+	})
 	t.Run("test block hook processing", func(t *testing.T) {
 		t.Run("can send extension data", func(t *testing.T) {
 			td := newTestData(t)
@@ -767,6 +807,7 @@ type testData struct {
 	sentResponses         chan sentResponse
 	sentExtensions        chan sentExtension
 	pausedRequests        chan pausedRequest
+	ignoredLinks          chan []ipld.Link
 	peerManager           *fakePeerManager
 	queryQueue            *fakeQueryQueue
 	extensionData         []byte
@@ -801,7 +842,14 @@ func newTestData(t *testing.T) testData {
 	td.sentResponses = make(chan sentResponse, td.blockChainLength*2)
 	td.sentExtensions = make(chan sentExtension, td.blockChainLength*2)
 	td.pausedRequests = make(chan pausedRequest, 1)
-	fprs := &fakePeerResponseSender{lastCompletedRequest: td.completedRequestChan, sentResponses: td.sentResponses, sentExtensions: td.sentExtensions, pausedRequests: td.pausedRequests}
+	td.ignoredLinks = make(chan []ipld.Link, 1)
+	fprs := &fakePeerResponseSender{
+		lastCompletedRequest: td.completedRequestChan,
+		sentResponses:        td.sentResponses,
+		sentExtensions:       td.sentExtensions,
+		pausedRequests:       td.pausedRequests,
+		ignoredLinks:         td.ignoredLinks,
+	}
 	td.peerManager = &fakePeerManager{peerResponseSender: fprs}
 	td.queryQueue = &fakeQueryQueue{}
 
