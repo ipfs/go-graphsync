@@ -57,72 +57,40 @@ type ChannelID struct {
 }
 
 // Channel represents all the parameters for a single data transfer
-type Channel struct {
-	// an identifier for this channel shared by request and responder, set by requester through protocol
-	transferID TransferID
-	// base CID for the piece being transferred
-	baseCid cid.Cid
-	// portion of Piece to return, specified by an IPLD selector
-	selector ipld.Node
-	// used to verify this channel
-	voucher Voucher
-	// the party that is sending the data (not who initiated the request)
-	sender peer.ID
-	// the party that is receiving the data (not who initiated the request)
-	recipient peer.ID
-	// expected amount of data to be transferred
-	totalSize uint64
+type Channel interface {
+	// TransferID returns the transfer id for this channel
+	TransferID() TransferID
+
+	// BaseCID returns the CID that is at the root of this data transfer
+	BaseCID() cid.Cid
+
+	// Selector returns the IPLD selector for this data transfer (represented as
+	// an IPLD node)
+	Selector() ipld.Node
+
+	// Voucher returns the voucher for this data transfer
+	Voucher() Voucher
+
+	// Sender returns the peer id for the node that is sending data
+	Sender() peer.ID
+
+	// Recipient returns the peer id for the node that is receiving data
+	Recipient() peer.ID
+
+	// TotalSize returns the total size for the data being transferred
+	TotalSize() uint64
 }
 
-// NewChannel makes a new channel
-func NewChannel(transferID TransferID, baseCid cid.Cid,
-	selector ipld.Node,
-	voucher Voucher,
-	sender peer.ID,
-	recipient peer.ID,
-	totalSize uint64) Channel {
-	return Channel{transferID, baseCid, selector, voucher, sender, recipient, totalSize}
-}
-
-// TransferID returns the transfer id for this channel
-func (c Channel) TransferID() TransferID { return c.transferID }
-
-// BaseCID returns the CID that is at the root of this data transfer
-func (c Channel) BaseCID() cid.Cid { return c.baseCid }
-
-// Selector returns the IPLD selector for this data transfer (represented as
-// an IPLD node)
-func (c Channel) Selector() ipld.Node { return c.selector }
-
-// Voucher returns the voucher for this data transfer
-func (c Channel) Voucher() Voucher { return c.voucher }
-
-// Sender returns the peer id for the node that is sending data
-func (c Channel) Sender() peer.ID { return c.sender }
-
-// Recipient returns the peer id for the node that is receiving data
-func (c Channel) Recipient() peer.ID { return c.recipient }
-
-// TotalSize returns the total size for the data being transferred
-func (c Channel) TotalSize() uint64 { return c.totalSize }
-
-// ChannelState is immutable channel data plus mutable state
-type ChannelState struct {
+// ChannelState is channel parameters plus it's current state
+type ChannelState interface {
 	Channel
-	// total bytes sent from this node (0 if receiver)
-	sent uint64
-	// total bytes received by this node (0 if sender)
-	received uint64
+
+	// Sent returns the number of bytes sent
+	Sent() uint64
+
+	// Received returns the number of bytes received
+	Received() uint64
 }
-
-// EmptyChannelState is the zero value for channel state, meaning not present
-var EmptyChannelState = ChannelState{}
-
-// Sent returns the number of bytes sent
-func (c ChannelState) Sent() uint64 { return c.sent }
-
-// Received returns the number of bytes received
-func (c ChannelState) Received() uint64 { return c.received }
 
 // EventCode is a name for an event that occurs on a data transfer channel
 type EventCode int

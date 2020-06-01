@@ -40,6 +40,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var allSelector ipld.Node
+
+func init() {
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	allSelector = ssb.ExploreRecursive(selector.RecursionLimitNone(),
+		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
+}
+
 const unixfsChunkSize uint64 = 1 << 10
 const unixfsLinksPerLevel = 1024
 
@@ -140,10 +148,7 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T) *GraphsyncTestin
 	gsData.GsNet2 = gsnet.NewFromLibp2pHost(gsData.Host2)
 
 	// create a selector for the whole UnixFS dag
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
-
-	gsData.AllSelector = ssb.ExploreRecursive(selector.RecursionLimitNone(),
-		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
+	gsData.AllSelector = allSelector
 
 	return gsData
 }

@@ -12,6 +12,7 @@ import (
 	"golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
+	"github.com/filecoin-project/go-data-transfer/channels"
 )
 
 // This file implements a VERY simple, incomplete version of the data transfer
@@ -61,7 +62,7 @@ func (impl *dagserviceImpl) OpenPullDataChannel(ctx context.Context, to peer.ID,
 		} else {
 			event.Code = datatransfer.Complete
 		}
-		impl.subscriber(event, datatransfer.ChannelState{Channel: datatransfer.NewChannel(0, baseCid, Selector, voucher, to, "", 0)})
+		impl.subscriber(event, channels.ChannelState{Channel: channels.NewChannel(0, baseCid, Selector, voucher, to, "", 0)})
 	}()
 	return datatransfer.ChannelID{}, nil
 }

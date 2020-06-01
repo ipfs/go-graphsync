@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ipfs/go-cid"
@@ -17,6 +18,8 @@ import (
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/channels"
+	"github.com/filecoin-project/go-data-transfer/impl/graphsync/extension"
+	"github.com/filecoin-project/go-data-transfer/impl/graphsync/hooks"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/network"
 	"github.com/filecoin-project/go-data-transfer/registry"
@@ -25,13 +28,6 @@ import (
 )
 
 var log = logging.Logger("graphsync-impl")
-
-// This file implements a VERY simple, incomplete version of the data transfer
-// module that allows us to make the necessary insertions of data transfer
-// functionality into the storage market
-// It does not:
-// -- support multiple subscribers
-// -- do any actual network coordination or use Graphsync
 
 type graphsyncImpl struct {
 	dataTransferNetwork network.DataTransferNetwork
@@ -65,79 +61,93 @@ func dispatcher(evt pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
 func NewGraphSyncDataTransfer(host host.Host, gs graphsync.GraphExchange, storedCounter *storedcounter.StoredCounter) datatransfer.Manager {
 	dataTransferNetwork := network.NewFromLibp2pHost(host)
 	impl := &graphsyncImpl{
-		dataTransferNetwork,
-		registry.NewRegistry(),
-		pubsub.New(dispatcher),
-		channels.New(),
-		gs,
-		host.ID(),
-		storedCounter,
+		dataTransferNetwork: dataTransferNetwork,
+		validatedTypes:      registry.NewRegistry(),
+		pubSub:              pubsub.New(dispatcher),
+		channels:            channels.New(),
+		gs:                  gs,
+		peerID:              host.ID(),
+		storedCounter:       storedCounter,
 	}
-	gs.RegisterIncomingRequestHook(impl.gsReqRecdHook)
-	gs.RegisterCompletedResponseListener(impl.gsCompletedResponseListener)
+
 	dtReceiver := &graphsyncReceiver{impl}
 	dataTransferNetwork.SetDelegate(dtReceiver)
+
+	hooksManager := hooks.NewManager(host.ID(), impl)
+	hooksManager.RegisterHooks(gs)
 	return impl
 }
 
-// gsReqRecdHook is a graphsync.OnRequestReceivedHook hook
-// if an incoming request does not match a previous push request, it returns an error.
-func (impl *graphsyncImpl) gsReqRecdHook(p peer.ID, request graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
-
-	// if this is a push request the sender is us.
-	transferData, err := getExtensionData(request)
-	if err != nil {
-		hookActions.TerminateWithError(err)
-		return
-	}
-
-	raw, _ := request.Extension(ExtensionDataTransfer)
-	respData := graphsync.ExtensionData{Name: ExtensionDataTransfer, Data: raw}
-
-	// extension not found; probably not our request.
-	if transferData == nil {
-		return
-	}
-
-	sender := impl.peerID
-	chid := transferData.GetChannelID()
-
-	if impl.channels.GetByIDAndSender(chid, sender) == datatransfer.EmptyChannelState {
-		hookActions.TerminateWithError(err)
-		return
-	}
-
-	hookActions.ValidateRequest()
-	hookActions.SendExtensionData(respData)
+func (impl *graphsyncImpl) OnRequestSent(chid datatransfer.ChannelID) error {
+	_, err := impl.channels.GetByID(chid)
+	return err
 }
 
-// gsCompletedResponseListener is a graphsync.OnCompletedResponseListener. We use it learn when the data transfer is complete
-// for the side that is responding to a graphsync request
-func (impl *graphsyncImpl) gsCompletedResponseListener(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
-	transferData, err := getExtensionData(request)
-	if err != nil || transferData == nil {
-		return
+func (impl *graphsyncImpl) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, size uint64) error {
+	_, err := impl.channels.IncrementReceived(chid, size)
+	if err != nil {
+		return err
 	}
+	chst, err := impl.channels.GetByID(chid)
+	if err != nil {
+		return err
+	}
+	evt := datatransfer.Event{
+		Code:      datatransfer.Progress,
+		Message:   fmt.Sprintf("Received %d more bytes", size),
+		Timestamp: time.Now(),
+	}
+	err = impl.pubSub.Publish(internalEvent{evt, chst})
+	if err != nil {
+		log.Warnf("err publishing DT event: %s", err.Error())
+	}
+	return nil
+}
 
-	sender := impl.peerID
-	chid := transferData.GetChannelID()
+func (impl *graphsyncImpl) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) error {
+	_, err := impl.channels.IncrementSent(chid, size)
+	if err != nil {
+		return err
+	}
+	chst, err := impl.channels.GetByID(chid)
+	if err != nil {
+		return err
+	}
+	evt := datatransfer.Event{
+		Code:      datatransfer.Progress,
+		Message:   fmt.Sprintf("Sent %d more bytes", size),
+		Timestamp: time.Now(),
+	}
+	err = impl.pubSub.Publish(internalEvent{evt, chst})
+	if err != nil {
+		log.Warnf("err publishing DT event: %s", err.Error())
+	}
+	return nil
+}
 
-	chst := impl.channels.GetByIDAndSender(chid, sender)
-	if chst == datatransfer.EmptyChannelState {
-		return
+func (impl *graphsyncImpl) OnRequestReceived(chid datatransfer.ChannelID) error {
+	_, err := impl.channels.GetByID(chid)
+	return err
+}
+
+func (impl *graphsyncImpl) OnResponseCompleted(chid datatransfer.ChannelID, success bool) error {
+	chst, err := impl.channels.GetByID(chid)
+	if err != nil {
+		return err
 	}
 
 	evt := datatransfer.Event{
 		Code:      datatransfer.Error,
 		Timestamp: time.Now(),
 	}
-	if status == graphsync.RequestCompletedFull {
+	if success {
 		evt.Code = datatransfer.Complete
 	}
 	err = impl.pubSub.Publish(internalEvent{evt, chst})
 	if err != nil {
 		log.Warnf("err publishing DT event: %s", err.Error())
 	}
+	return nil
 }
 
 // RegisterVoucherType registers a validator for the given voucher type
@@ -171,7 +181,10 @@ func (impl *graphsyncImpl) OpenPushDataChannel(ctx context.Context, requestTo pe
 		Message:   "New Request Initiated",
 		Timestamp: time.Now(),
 	}
-	chst := impl.channels.GetByIDAndSender(chid, impl.peerID)
+	chst, err := impl.channels.GetByID(chid)
+	if err != nil {
+		return chid, err
+	}
 	err = impl.pubSub.Publish(internalEvent{evt, chst})
 	if err != nil {
 		log.Warnf("err publishing DT event: %s", err.Error())
@@ -198,7 +211,10 @@ func (impl *graphsyncImpl) OpenPullDataChannel(ctx context.Context, requestTo pe
 		Message:   "New Request Initiated",
 		Timestamp: time.Now(),
 	}
-	chst := impl.channels.GetByIDAndSender(chid, requestTo)
+	chst, err := impl.channels.GetByID(chid)
+	if err != nil {
+		return chid, err
+	}
 	err = impl.pubSub.Publish(internalEvent{evt, chst})
 	if err != nil {
 		log.Warnf("err publishing DT event: %s", err.Error())
@@ -251,7 +267,7 @@ func (impl *graphsyncImpl) InProgressChannels() map[datatransfer.ChannelID]datat
 // sendGsRequest assembles a graphsync request and determines if the transfer was completed/successful.
 // notifies subscribers of final request status.
 func (impl *graphsyncImpl) sendGsRequest(ctx context.Context, initiator peer.ID, transferID datatransfer.TransferID, isPull bool, dataSender peer.ID, root cidlink.Link, stor ipld.Node) {
-	extDtData := newTransferData(transferID, initiator, isPull)
+	extDtData := extension.NewTransferData(transferID, initiator, isPull)
 	var buf bytes.Buffer
 	if err := extDtData.MarshalCBOR(&buf); err != nil {
 		log.Error(err)
@@ -259,7 +275,7 @@ func (impl *graphsyncImpl) sendGsRequest(ctx context.Context, initiator peer.ID,
 	extData := buf.Bytes()
 	_, errChan := impl.gs.Request(ctx, dataSender, root, stor,
 		graphsync.ExtensionData{
-			Name: ExtensionDataTransfer,
+			Name: extension.ExtensionDataTransfer,
 			Data: extData,
 		})
 	go func() {
@@ -272,8 +288,8 @@ func (impl *graphsyncImpl) sendGsRequest(ctx context.Context, initiator peer.ID,
 			Timestamp: time.Now(),
 		}
 		chid := datatransfer.ChannelID{Initiator: initiator, ID: transferID}
-		chst := impl.channels.GetByIDAndSender(chid, dataSender)
-		if chst == datatransfer.EmptyChannelState {
+		chst, err := impl.channels.GetByID(chid)
+		if err != nil {
 			msg := "cannot find a matching channel for this request"
 			evt.Message = msg
 		} else {
@@ -283,7 +299,7 @@ func (impl *graphsyncImpl) sendGsRequest(ctx context.Context, initiator peer.ID,
 				evt.Message = lastError.Error()
 			}
 		}
-		err := impl.pubSub.Publish(internalEvent{evt, chst})
+		err = impl.pubSub.Publish(internalEvent{evt, chst})
 		if err != nil {
 			log.Warnf("err publishing DT event: %s", err.Error())
 		}

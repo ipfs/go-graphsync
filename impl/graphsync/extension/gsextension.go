@@ -1,4 +1,4 @@
-package graphsyncimpl
+package extension
 
 import (
 	"bytes"
@@ -13,45 +13,46 @@ const (
 	ExtensionDataTransfer = graphsync.ExtensionName("fil/data-transfer")
 )
 
-//go:generate cbor-gen-for ExtensionDataTransferData
+//go:generate cbor-gen-for TransferData
 
-// ExtensionDataTransferData is the extension data for
+// TransferData is the extension data for
 // the graphsync extension.
-type ExtensionDataTransferData struct {
+type TransferData struct {
 	TransferID uint64
 	Initiator  peer.ID
 	IsPull     bool
 }
 
 // GetChannelID gets the channelID for this extension, given the peers on either side
-func (e ExtensionDataTransferData) GetChannelID() datatransfer.ChannelID {
+func (e TransferData) GetChannelID() datatransfer.ChannelID {
 	return datatransfer.ChannelID{Initiator: e.Initiator, ID: datatransfer.TransferID(e.TransferID)}
 }
 
-func newTransferData(transferID datatransfer.TransferID, initiator peer.ID, isPull bool) ExtensionDataTransferData {
-	return ExtensionDataTransferData{
+// NewTransferData returns transfer data to encode in a graphsync request
+func NewTransferData(transferID datatransfer.TransferID, initiator peer.ID, isPull bool) TransferData {
+	return TransferData{
 		TransferID: uint64(transferID),
 		Initiator:  initiator,
 		IsPull:     isPull,
 	}
 }
 
-// gsExtended is a small interface used by getExtensionData
-type gsExtended interface {
+// GsExtended is a small interface used by getExtensionData
+type GsExtended interface {
 	Extension(name graphsync.ExtensionName) ([]byte, bool)
 }
 
-// getExtensionData unmarshals extension data.
+// GetTransferData unmarshals extension data.
 // Returns:
 //    * nil + nil if the extension is not found
 //    * nil + error if the extendedData fails to unmarshal
 //    * unmarshaled ExtensionDataTransferData + nil if all goes well
-func getExtensionData(extendedData gsExtended) (*ExtensionDataTransferData, error) {
+func GetTransferData(extendedData GsExtended) (*TransferData, error) {
 	data, ok := extendedData.Extension(ExtensionDataTransfer)
 	if !ok {
 		return nil, nil
 	}
-	var extStruct ExtensionDataTransferData
+	var extStruct TransferData
 
 	reader := bytes.NewReader(data)
 	if err := extStruct.UnmarshalCBOR(reader); err != nil {

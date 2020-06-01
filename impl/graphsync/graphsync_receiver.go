@@ -24,14 +24,26 @@ func (receiver *graphsyncReceiver) ReceiveRequest(
 	ctx context.Context,
 	initiator peer.ID,
 	incoming message.DataTransferRequest) {
+	err := receiver.receiveRequest(initiator, incoming)
+	if err != nil {
+		log.Error(err)
+	}
+	if err == nil && !incoming.IsPull() {
+		stor, _ := incoming.Selector()
+		receiver.impl.sendGsRequest(ctx, initiator, incoming.TransferID(), incoming.IsPull(), initiator, cidlink.Link{Cid: incoming.BaseCid()}, stor)
+	}
+	receiver.impl.sendResponse(ctx, err == nil, initiator, incoming.TransferID())
+}
+
+func (receiver *graphsyncReceiver) receiveRequest(
+	initiator peer.ID,
+	incoming message.DataTransferRequest) error {
 
 	voucher, err := receiver.validateVoucher(initiator, incoming)
 	if err != nil {
-		receiver.impl.sendResponse(ctx, false, initiator, incoming.TransferID())
-		return
+		return err
 	}
 	stor, _ := incoming.Selector()
-	root := cidlink.Link{Cid: incoming.BaseCid()}
 
 	var dataSender, dataReceiver peer.ID
 	if incoming.IsPull() {
@@ -40,26 +52,26 @@ func (receiver *graphsyncReceiver) ReceiveRequest(
 	} else {
 		dataSender = initiator
 		dataReceiver = receiver.impl.peerID
-		receiver.impl.sendGsRequest(ctx, initiator, incoming.TransferID(), incoming.IsPull(), dataSender, root, stor)
 	}
 
 	chid, err := receiver.impl.channels.CreateNew(incoming.TransferID(), incoming.BaseCid(), stor, voucher, initiator, dataSender, dataReceiver)
 	if err != nil {
-		log.Error(err)
-		receiver.impl.sendResponse(ctx, false, initiator, incoming.TransferID())
-		return
+		return err
 	}
 	evt := datatransfer.Event{
 		Code:      datatransfer.Open,
 		Message:   "Incoming request accepted",
 		Timestamp: time.Now(),
 	}
-	chst := receiver.impl.channels.GetByIDAndSender(chid, dataSender)
+	chst, err := receiver.impl.channels.GetByID(chid)
+	if err != nil {
+		return err
+	}
 	err = receiver.impl.pubSub.Publish(internalEvent{evt, chst})
 	if err != nil {
 		log.Warnf("err publishing DT event: %s", err.Error())
 	}
-	receiver.impl.sendResponse(ctx, true, initiator, incoming.TransferID())
+	return nil
 }
 
 // validateVoucher converts a voucher in an incoming message to its appropriate
@@ -113,26 +125,29 @@ func (receiver *graphsyncReceiver) ReceiveResponse(
 		Message:   "",
 		Timestamp: time.Now(),
 	}
-	chst := datatransfer.EmptyChannelState
-	if incoming.Accepted() {
-		// if we are handling a response to a pull request then they are sending data and the
-		// initiator is us. construct a channel id for a pull request that we initiated and see
-		// if there is one in our saved channel list. otherwise we should not respond.
-		chid := datatransfer.ChannelID{Initiator: receiver.impl.peerID, ID: incoming.TransferID()}
-		evt.Code = datatransfer.Progress
+	chid := datatransfer.ChannelID{Initiator: receiver.impl.peerID, ID: incoming.TransferID()}
+	chst, err := receiver.impl.channels.GetByID(chid)
+	if err != nil {
+		log.Warnf("received response from unknown peer %s, transfer ID %d", sender, incoming.TransferID)
+		return
+	}
 
+	if incoming.Accepted() {
+		evt.Code = datatransfer.Progress
 		// if we are handling a response to a pull request then they are sending data and the
 		// initiator is us
-		if chst = receiver.impl.channels.GetByIDAndSender(chid, sender); chst != datatransfer.EmptyChannelState {
+		if chst.Sender() == sender {
 			baseCid := chst.BaseCID()
 			root := cidlink.Link{Cid: baseCid}
 			receiver.impl.sendGsRequest(ctx, receiver.impl.peerID, incoming.TransferID(), true, sender, root, chst.Selector())
 		}
 	}
-	err := receiver.impl.pubSub.Publish(internalEvent{evt, chst})
+	err = receiver.impl.pubSub.Publish(internalEvent{evt, chst})
 	if err != nil {
 		log.Warnf("err publishing DT event: %s", err.Error())
 	}
 }
 
-func (receiver *graphsyncReceiver) ReceiveError(error) {}
+func (receiver *graphsyncReceiver) ReceiveError(err error) {
+	log.Errorf("received error message on data transfer: %s", err.Error())
+}
