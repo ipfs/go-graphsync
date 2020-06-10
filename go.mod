@@ -3,6 +3,9 @@ module github.com/ipfs/go-graphsync
 go 1.12
 
 require (
+	github.com/TRON-US/go-btfs-chunker v0.3.0
+	github.com/TRON-US/go-btfs-files v0.2.0
+	github.com/TRON-US/go-unixfs v0.6.0
 	github.com/btcsuite/btcd v0.0.0-20190629003639-c26ffa870fd8 // indirect
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/protobuf v1.3.2 // indirect
