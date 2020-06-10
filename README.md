@@ -1,11 +1,5 @@
 # go-graphsync
 
-[![](https://img.shields.io/badge/made%20by-Protocol%20Labs-blue.svg?style=flat-square)](http://ipn.io)
-[![](https://img.shields.io/badge/project-IPFS-blue.svg?style=flat-square)](http://ipfs.io/)
-[![](https://img.shields.io/badge/freenode-%23ipfs-blue.svg?style=flat-square)](http://webchat.freenode.net/?channels=%23ipfs)
-[![Coverage Status](https://codecov.io/gh/ipfs/go-graphsync/branch/master/graph/badge.svg)](https://codecov.io/gh/ipfs/go-graphsync)
-[![Travis CI](https://travis-ci.com/ipfs/go-graphsync.svg?branch=master)](https://travis-ci.com/ipfs/go-graphsync)
-
 > An implementation of the [graphsync protocol](https://github.com/ipld/specs/blob/master/block-layer/graphsync/graphsync.md) in go!
 
 ## Table of Contents
@@ -39,9 +33,9 @@ If your existing library (i.e. `go-ipfs` or `go-filecoin`) uses these other olde
 
 ```golang
 import (
-  graphsync "github.com/ipfs/go-graphsync/impl"
-  gsnet "github.com/ipfs/go-graphsync/network"
-  gsbridge "github.com/ipfs/go-graphsync/ipldbridge"
+  graphsync "github.com/TRON-US/go-graphsync/impl"
+  gsnet "github.com/TRON-US/go-graphsync/network"
+  gsbridge "github.com/TRON-US/go-graphsync/ipldbridge"
   ipld "github.com/ipld/go-ipld-prime"
 )
 
@@ -71,10 +65,10 @@ integrating with BlockStore's from IPFS.
 
 ```golang
 import (
-  graphsync "github.com/ipfs/go-graphsync/impl"
-  gsnet "github.com/ipfs/go-graphsync/network"
-  gsbridge "github.com/ipfs/go-graphsync/ipldbridge"
-  gsbridge "github.com/ipfs/go-graphsync/storeutil"
+  graphsync "github.com/TRON-US/go-graphsync/impl"
+  gsnet "github.com/TRON-US/go-graphsync/network"
+  gsbridge "github.com/TRON-US/go-graphsync/ipldbridge"
+  gsbridge "github.com/TRON-US/go-graphsync/storeutil"
   ipld "github.com/ipld/go-ipld-prime"
   blockstore "github.com/ipfs/go-ipfs-blockstore"
 )
@@ -235,4 +229,4 @@ Small note: If editing the Readme, please conform to the [standard-readme](https
 
 This library is dual-licensed under Apache 2.0 and MIT terms.
 
-Copyright 2019. Protocol Labs, Inc.
+Copyright 2020. TRON-US.
