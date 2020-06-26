@@ -43,6 +43,7 @@ type responseKey struct {
 }
 
 type responseTaskData struct {
+	empty        bool
 	ctx          context.Context
 	request      gsmsg.GraphSyncRequest
 	loader       ipld.Loader
@@ -220,7 +221,7 @@ func (rm *ResponseManager) synchronize() {
 
 type responseDataRequest struct {
 	key          responseKey
-	taskDataChan chan *responseTaskData
+	taskDataChan chan responseTaskData
 }
 
 type finishTaskRequest struct {
@@ -368,11 +369,11 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 
 func (rdr *responseDataRequest) handle(rm *ResponseManager) {
 	response, ok := rm.inProgressResponses[rdr.key]
-	var taskData *responseTaskData
+	var taskData responseTaskData
 	if ok {
-		taskData = &responseTaskData{response.ctx, response.request, response.loader, response.traverser, response.pauseSignal, response.updateSignal}
+		taskData = responseTaskData{false, response.ctx, response.request, response.loader, response.traverser, response.pauseSignal, response.updateSignal}
 	} else {
-		taskData = nil
+		taskData = responseTaskData{empty: true}
 	}
 	select {
 	case <-rm.ctx.Done():

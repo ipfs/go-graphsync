@@ -34,8 +34,8 @@ type queryExecutor struct {
 
 func (qe *queryExecutor) processQueriesWorker() {
 	const targetWork = 1
-	taskDataChan := make(chan *responseTaskData)
-	var taskData *responseTaskData
+	taskDataChan := make(chan responseTaskData)
+	var taskData responseTaskData
 	for {
 		pid, tasks, _ := qe.queryQueue.PopTasks(targetWork)
 		for len(tasks) == 0 {
@@ -61,7 +61,7 @@ func (qe *queryExecutor) processQueriesWorker() {
 			case <-qe.ctx.Done():
 				return
 			}
-			if taskData == nil {
+			if taskData.empty {
 				log.Info("Empty task on peer request stack")
 				continue
 			}
@@ -77,7 +77,7 @@ func (qe *queryExecutor) processQueriesWorker() {
 
 }
 
-func (qe *queryExecutor) executeTask(key responseKey, taskData *responseTaskData) (graphsync.ResponseStatusCode, error) {
+func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData) (graphsync.ResponseStatusCode, error) {
 	var err error
 	loader := taskData.loader
 	traverser := taskData.traverser
