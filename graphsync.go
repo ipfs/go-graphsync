@@ -270,4 +270,7 @@ type GraphExchange interface {
 
 	// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
 	UnpauseResponse(peer.ID, RequestID) error
+
+	// PauseResponse pauses an in progress response (may take 1 or more blocks to process)
+	PauseResponse(peer.ID, RequestID) error
 }

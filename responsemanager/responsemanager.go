@@ -35,6 +35,7 @@ type inProgressResponseStatus struct {
 	request      gsmsg.GraphSyncRequest
 	loader       ipld.Loader
 	traverser    ipldutil.Traverser
+	pauseSignal  chan struct{}
 	updateSignal chan struct{}
 	updates      []gsmsg.GraphSyncRequest
 	isPaused     bool
@@ -50,6 +51,7 @@ type responseTaskData struct {
 	request      gsmsg.GraphSyncRequest
 	loader       ipld.Loader
 	traverser    ipldutil.Traverser
+	pauseSignal  chan struct{}
 	updateSignal chan struct{}
 }
 
@@ -174,6 +176,28 @@ func (rm *ResponseManager) UnpauseResponse(p peer.ID, requestID graphsync.Reques
 	}
 }
 
+type pauseRequestMessage struct {
+	p         peer.ID
+	requestID graphsync.RequestID
+	response  chan error
+}
+
+// PauseResponse pauses an in progress response (may take 1 or more blocks to process)
+func (rm *ResponseManager) PauseResponse(p peer.ID, requestID graphsync.RequestID) error {
+	response := make(chan error, 1)
+	select {
+	case <-rm.ctx.Done():
+		return errors.New("Context Cancelled")
+	case rm.messages <- &pauseRequestMessage{p, requestID, response}:
+	}
+	select {
+	case <-rm.ctx.Done():
+		return errors.New("Context Cancelled")
+	case err := <-response:
+		return err
+	}
+}
+
 type synchronizeMessage struct {
 	sync chan struct{}
 }
@@ -273,7 +297,7 @@ func (rm *ResponseManager) executeTask(key responseKey, taskData *responseTaskDa
 		case rm.messages <- &setResponseDataRequest{key, loader, traverser}:
 		}
 	}
-	return rm.executeQuery(key.p, taskData.request, loader, traverser, taskData.updateSignal)
+	return rm.executeQuery(key.p, taskData.request, loader, traverser, taskData.pauseSignal, taskData.updateSignal)
 }
 
 func (rm *ResponseManager) prepareQuery(ctx context.Context,
@@ -341,32 +365,34 @@ func (rm *ResponseManager) executeQuery(
 	request gsmsg.GraphSyncRequest,
 	loader ipld.Loader,
 	traverser ipldutil.Traverser,
+	pauseSignal chan struct{},
 	updateSignal chan struct{}) (graphsync.ResponseStatusCode, error) {
 	updateChan := make(chan []gsmsg.GraphSyncRequest)
 	peerResponseSender := rm.peerManager.SenderForPeer(p)
 	err := runtraversal.RunTraversal(loader, traverser, func(link ipld.Link, data []byte) error {
-		err := rm.checkForUpdates(p, request, updateSignal, updateChan, peerResponseSender)
-		if err != nil {
-			return err
-		}
-		var result hooks.BlockResult
-		err = peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+		var err error
+		_ = peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+			err = rm.checkForUpdates(p, request, pauseSignal, updateSignal, updateChan, transaction)
+			if err != nil {
+				if err == hooks.ErrPaused {
+					transaction.PauseRequest()
+				}
+				return nil
+			}
 			blockData := transaction.SendResponse(link, data)
 			if blockData.BlockSize() > 0 {
-				result = rm.blockHooks.ProcessBlockHooks(p, request, blockData)
+				result := rm.blockHooks.ProcessBlockHooks(p, request, blockData)
 				for _, extension := range result.Extensions {
 					transaction.SendExtensionData(extension)
 				}
 				if result.Err == hooks.ErrPaused {
 					transaction.PauseRequest()
 				}
+				err = result.Err
 			}
 			return nil
 		})
-		if err != nil {
-			return err
-		}
-		return result.Err
+		return err
 	})
 	if err != nil {
 		if err != hooks.ErrPaused {
@@ -381,31 +407,36 @@ func (rm *ResponseManager) executeQuery(
 func (rm *ResponseManager) checkForUpdates(
 	p peer.ID,
 	request gsmsg.GraphSyncRequest,
+	pauseSignal chan struct{},
 	updateSignal chan struct{},
 	updateChan chan []gsmsg.GraphSyncRequest,
-	peerResponseSender peerresponsemanager.PeerResponseSender) error {
-	select {
-	case <-updateSignal:
+	peerResponseSender peerresponsemanager.PeerResponseTransactionSender) error {
+	for {
 		select {
-		case rm.messages <- &responseUpdateRequest{responseKey{p, request.ID()}, updateChan}:
-		case <-rm.ctx.Done():
-		}
-		select {
-		case updates := <-updateChan:
-			for _, update := range updates {
-				result := rm.updateHooks.ProcessUpdateHooks(p, request, update)
-				for _, extension := range result.Extensions {
-					peerResponseSender.SendExtensionData(request.ID(), extension)
-				}
-				if result.Err != nil {
-					return result.Err
-				}
+		case <-pauseSignal:
+			return hooks.ErrPaused
+		case <-updateSignal:
+			select {
+			case rm.messages <- &responseUpdateRequest{responseKey{p, request.ID()}, updateChan}:
+			case <-rm.ctx.Done():
 			}
-		case <-rm.ctx.Done():
+			select {
+			case updates := <-updateChan:
+				for _, update := range updates {
+					result := rm.updateHooks.ProcessUpdateHooks(p, request, update)
+					for _, extension := range result.Extensions {
+						peerResponseSender.SendExtensionData(extension)
+					}
+					if result.Err != nil {
+						return result.Err
+					}
+				}
+			case <-rm.ctx.Done():
+			}
+		default:
+			return nil
 		}
-	default:
 	}
-	return nil
 }
 
 // Startup starts processing for the WantManager.
@@ -462,6 +493,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 				ctx:          ctx,
 				cancelFn:     cancelFn,
 				request:      request,
+				pauseSignal:  make(chan struct{}, 1),
 				updateSignal: make(chan struct{}, 1),
 			}
 		// TODO: Use a better work estimation metric.
@@ -537,7 +569,7 @@ func (rdr *responseDataRequest) handle(rm *ResponseManager) {
 	response, ok := rm.inProgressResponses[rdr.key]
 	var taskData *responseTaskData
 	if ok {
-		taskData = &responseTaskData{response.ctx, response.request, response.loader, response.traverser, response.updateSignal}
+		taskData = &responseTaskData{response.ctx, response.request, response.loader, response.traverser, response.pauseSignal, response.updateSignal}
 	} else {
 		taskData = nil
 	}
@@ -600,5 +632,29 @@ func (urm *unpauseRequestMessage) handle(rm *ResponseManager) {
 	select {
 	case <-rm.ctx.Done():
 	case urm.response <- err:
+	}
+}
+
+func (prm *pauseRequestMessage) pauseRequest(rm *ResponseManager) error {
+	key := responseKey{prm.p, prm.requestID}
+	inProgressResponse, ok := rm.inProgressResponses[key]
+	if !ok {
+		return errors.New("could not find request")
+	}
+	if inProgressResponse.isPaused {
+		return errors.New("request is already paused")
+	}
+	select {
+	case inProgressResponse.pauseSignal <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+func (prm *pauseRequestMessage) handle(rm *ResponseManager) {
+	err := prm.pauseRequest(rm)
+	select {
+	case <-rm.ctx.Done():
+	case prm.response <- err:
 	}
 }

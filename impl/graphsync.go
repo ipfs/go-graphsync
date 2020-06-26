@@ -182,6 +182,11 @@ func (gs *GraphSync) UnpauseResponse(p peer.ID, requestID graphsync.RequestID) e
 	return gs.responseManager.UnpauseResponse(p, requestID)
 }
 
+// PauseResponse pauses an in progress response (may take 1 or more blocks to process)
+func (gs *GraphSync) PauseResponse(p peer.ID, requestID graphsync.RequestID) error {
+	return gs.responseManager.PauseResponse(p, requestID)
+}
+
 type graphSyncReceiver GraphSync
 
 func (gsr *graphSyncReceiver) graphSync() *GraphSync {
