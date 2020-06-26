@@ -273,4 +273,7 @@ type GraphExchange interface {
 
 	// PauseResponse pauses an in progress response (may take 1 or more blocks to process)
 	PauseResponse(peer.ID, RequestID) error
+
+	// CancelResponse cancels an in progress response
+	CancelResponse(peer.ID, RequestID) error
 }

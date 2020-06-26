@@ -262,6 +262,50 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	}
 }
 
+func TestCancellationViaCommand(t *testing.T) {
+	td := newTestData(t)
+	defer td.cancel()
+	blks := td.blockChain.AllBlocks()
+	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
+	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
+	responseManager.Startup()
+	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+
+	// read one block
+	var sentResponse sentResponse
+	testutil.AssertReceive(td.ctx, t, td.sentResponses, &sentResponse, "did not send response")
+	k := sentResponse.link.(cidlink.Link)
+	blockIndex := testutil.IndexOf(blks, k.Cid)
+	require.NotEqual(t, blockIndex, -1, "sent incorrect link")
+	require.Equal(t, blks[blockIndex].RawData(), sentResponse.data, "sent incorrect data")
+	require.Equal(t, td.requestID, sentResponse.requestID, "has incorrect response id")
+
+	// send a cancellation
+	responseManager.CancelResponse(td.p, td.requestID)
+
+	responseManager.synchronize()
+
+	// at this point we should receive at most one more block, then traversal
+	// should complete
+	additionalBlocks := 0
+	for {
+		select {
+		case <-td.ctx.Done():
+			t.Fatal("should complete request before context closes")
+		case sentResponse = <-td.sentResponses:
+			k = sentResponse.link.(cidlink.Link)
+			blockIndex = testutil.IndexOf(blks, k.Cid)
+			require.NotEqual(t, blockIndex, -1, "did not send correct link")
+			require.Equal(t, blks[blockIndex].RawData(), sentResponse.data, "sent incorrect data")
+			require.Equal(t, td.requestID, sentResponse.requestID, "incorrect response id")
+			additionalBlocks++
+		case <-td.completedRequestChan:
+			require.LessOrEqual(t, additionalBlocks, 1, "should send at most 1 additional block")
+			return
+		}
+	}
+}
+
 func TestEarlyCancellation(t *testing.T) {
 	td := newTestData(t)
 	defer td.cancel()

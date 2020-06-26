@@ -187,6 +187,11 @@ func (gs *GraphSync) PauseResponse(p peer.ID, requestID graphsync.RequestID) err
 	return gs.responseManager.PauseResponse(p, requestID)
 }
 
+// CancelResponse cancels an in progress response
+func (gs *GraphSync) CancelResponse(p peer.ID, requestID graphsync.RequestID) error {
+	return gs.responseManager.CancelResponse(p, requestID)
+}
+
 type graphSyncReceiver GraphSync
 
 func (gsr *graphSyncReceiver) graphSync() *GraphSync {
