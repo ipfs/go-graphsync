@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/traversal"
 )
 
 type callParams struct {
@@ -70,7 +70,8 @@ func TestWrappedAsyncLoaderSideChannelsErrors(t *testing.T) {
 	responseChan <- types.AsyncLoadResult{Data: nil, Err: err}
 	stream, loadErr := loader(link, ipld.LinkContext{})
 	require.Nil(t, stream, "should return nil reader")
-	require.EqualError(t, loadErr, ipldutil.ErrDoNotFollow().Error())
+	_, isSkipErr := loadErr.(traversal.SkipMe)
+	require.True(t, isSkipErr)
 	var returnedErr error
 	testutil.AssertReceive(ctx, t, errChan, &returnedErr, "should return an error on side channel")
 	require.EqualError(t, returnedErr, err.Error())
@@ -111,7 +112,7 @@ func TestWrappedAsyncLoaderContextCancels(t *testing.T) {
 	require.Error(t, result.error, "should error from sub context cancelling")
 }
 
-func TestWrappedAsyncLoaderSideChannelsBlockHookErrors(t *testing.T) {
+func TestWrappedAsyncLoaderBlockHookErrors(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -131,7 +132,4 @@ func TestWrappedAsyncLoaderSideChannelsBlockHookErrors(t *testing.T) {
 	stream, err := loader(link, ipld.LinkContext{})
 	require.Nil(t, stream, "should return nil reader")
 	require.EqualError(t, err, blockHookErr.Error())
-	var returnedErr error
-	testutil.AssertReceive(ctx, t, errChan, &returnedErr, "should return an error on side channel")
-	require.EqualError(t, returnedErr, blockHookErr.Error())
 }

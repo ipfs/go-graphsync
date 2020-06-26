@@ -6,6 +6,7 @@ import (
 
 	"github.com/ipfs/go-graphsync/ipldutil"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/traversal"
 )
 
 // ResponseSender sends responses over the network
@@ -29,7 +30,7 @@ func RunTraversal(
 		result, err := loader(lnk, lnkCtx)
 		var data []byte
 		if err != nil {
-			traverser.Error(err)
+			traverser.Error(traversal.SkipMe{})
 		} else {
 			var blockBuffer bytes.Buffer
 			_, err = io.Copy(&blockBuffer, result)

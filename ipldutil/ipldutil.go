@@ -3,7 +3,6 @@ package ipldutil
 import (
 	"bytes"
 	"context"
-	"errors"
 
 	ipld "github.com/ipld/go-ipld-prime"
 	dagpb "github.com/ipld/go-ipld-prime-proto"
@@ -14,13 +13,6 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 )
-
-var errDoNotFollow = errors.New("Dont Follow Me")
-
-// ErrDoNotFollow is just a wrapper for whatever IPLD's ErrDoNotFollow ends up looking like
-func ErrDoNotFollow() error {
-	return errDoNotFollow
-}
 
 var (
 	defaultChooser traversal.LinkTargetNodeStyleChooser = dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {

@@ -11,6 +11,7 @@ import (
 
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal"
 )
 
 type fakeResponseKey struct {
@@ -171,7 +172,7 @@ func TestRunTraversal(t *testing.T) {
 			loadOutcomes: []traverseOutcome{
 				{false, nil, blks[0].RawData()},
 				{false, nil, blks[1].RawData()},
-				{true, errors.New("block not found"), nil},
+				{true, traversal.SkipMe{}, nil},
 			},
 			errorsOnSend: []error{
 				nil, nil, nil,

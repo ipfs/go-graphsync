@@ -68,7 +68,16 @@ func (re *requestExecutor) visitor(tp traversal.Progress, node ipld.Node, tr tra
 func (re *requestExecutor) run() {
 	selector, _ := ipldutil.ParseSelector(re.request.Selector())
 	loaderFn := loader.WrapAsyncLoader(re.ctx, re.loader, re.request.ID(), re.inProgressErr, re.runBlockHooks)
-	_ = ipldutil.Traverse(re.ctx, loaderFn, re.nodeStyleChooser, cidlink.Link{Cid: re.request.Root()}, selector, re.visitor)
+	err := ipldutil.Traverse(re.ctx, loaderFn, re.nodeStyleChooser, cidlink.Link{Cid: re.request.Root()}, selector, re.visitor)
+	if err != nil {
+		_, isContextErr := err.(loader.ContextCancelError)
+		if !isContextErr {
+			select {
+			case <-re.ctx.Done():
+			case re.inProgressErr <- err:
+			}
+		}
+	}
 	re.terminateRequest()
 	close(re.inProgressChan)
 	close(re.inProgressErr)
