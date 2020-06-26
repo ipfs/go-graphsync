@@ -178,8 +178,8 @@ func (gs *GraphSync) RegisterIncomingBlockHook(hook graphsync.OnIncomingBlockHoo
 }
 
 // UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
-func (gs *GraphSync) UnpauseResponse(p peer.ID, requestID graphsync.RequestID) error {
-	return gs.responseManager.UnpauseResponse(p, requestID)
+func (gs *GraphSync) UnpauseResponse(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+	return gs.responseManager.UnpauseResponse(p, requestID, extensions...)
 }
 
 // PauseResponse pauses an in progress response (may take 1 or more blocks to process)

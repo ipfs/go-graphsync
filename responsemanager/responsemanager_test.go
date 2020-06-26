@@ -602,8 +602,11 @@ func TestValidationAndExtensions(t *testing.T) {
 			testutil.AssertChannelEmpty(t, td.sentResponses, "should not send more blocks")
 			var pausedRequest pausedRequest
 			testutil.AssertReceive(td.ctx, t, td.pausedRequests, &pausedRequest, "should pause request")
-			err := responseManager.UnpauseResponse(td.p, td.requestID)
+			err := responseManager.UnpauseResponse(td.p, td.requestID, td.extensionResponse)
 			require.NoError(t, err)
+			var sentExtension sentExtension
+			testutil.AssertReceive(td.ctx, t, td.sentExtensions, &sentExtension, "should send additional response")
+			require.Equal(t, td.extensionResponse, sentExtension.extension)
 			var lastRequest completedRequest
 			testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
 			require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")

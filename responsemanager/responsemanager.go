@@ -160,15 +160,16 @@ func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, reque
 }
 
 type unpauseRequestMessage struct {
-	p         peer.ID
-	requestID graphsync.RequestID
-	response  chan error
+	p          peer.ID
+	requestID  graphsync.RequestID
+	response   chan error
+	extensions []graphsync.ExtensionData
 }
 
 // UnpauseResponse unpauses a response that was previously paused
-func (rm *ResponseManager) UnpauseResponse(p peer.ID, requestID graphsync.RequestID) error {
+func (rm *ResponseManager) UnpauseResponse(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	response := make(chan error, 1)
-	return rm.sendSyncMessage(&unpauseRequestMessage{p, requestID, response}, response)
+	return rm.sendSyncMessage(&unpauseRequestMessage{p, requestID, response, extensions}, response)
 }
 
 type pauseRequestMessage struct {
@@ -315,7 +316,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 
 }
 
-func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.RequestID) error {
+func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	key := responseKey{p, requestID}
 	inProgressResponse, ok := rm.inProgressResponses[key]
 	if !ok {
@@ -325,6 +326,15 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 		return errors.New("request is not paused")
 	}
 	inProgressResponse.isPaused = false
+	if len(extensions) > 0 {
+		peerResponseSender := rm.peerManager.SenderForPeer(key.p)
+		_ = peerResponseSender.Transaction(requestID, func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+			for _, extension := range extensions {
+				transaction.SendExtensionData(extension)
+			}
+			return nil
+		})
+	}
 	rm.queryQueue.PushTasks(p, peertask.Task{Topic: key, Priority: math.MaxInt32, Work: 1})
 	select {
 	case rm.workSignal <- struct{}{}:
@@ -430,7 +440,7 @@ func (sm *synchronizeMessage) handle(rm *ResponseManager) {
 }
 
 func (urm *unpauseRequestMessage) handle(rm *ResponseManager) {
-	err := rm.unpauseRequest(urm.p, urm.requestID)
+	err := rm.unpauseRequest(urm.p, urm.requestID, urm.extensions...)
 	select {
 	case <-rm.ctx.Done():
 	case urm.response <- err:
