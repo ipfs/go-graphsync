@@ -281,9 +281,8 @@ func TestCancellationViaCommand(t *testing.T) {
 	require.Equal(t, td.requestID, sentResponse.requestID, "has incorrect response id")
 
 	// send a cancellation
-	responseManager.CancelResponse(td.p, td.requestID)
-
-	responseManager.synchronize()
+	err := responseManager.CancelResponse(td.p, td.requestID)
+	require.NoError(t, err)
 
 	// at this point we should receive at most one more block, then traversal
 	// should complete
