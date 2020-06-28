@@ -169,7 +169,7 @@ func (qe *queryExecutor) executeQuery(
 		_ = peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
 			err = qe.checkForUpdates(p, request, pauseSignal, updateSignal, updateChan, transaction)
 			if err != nil {
-				if err == hooks.ErrPaused {
+				if _, ok := err.(hooks.ErrPaused); ok {
 					transaction.PauseRequest()
 				}
 				return nil
@@ -180,7 +180,7 @@ func (qe *queryExecutor) executeQuery(
 				for _, extension := range result.Extensions {
 					transaction.SendExtensionData(extension)
 				}
-				if result.Err == hooks.ErrPaused {
+				if _, ok := result.Err.(hooks.ErrPaused); ok {
 					transaction.PauseRequest()
 				}
 				err = result.Err
@@ -190,7 +190,7 @@ func (qe *queryExecutor) executeQuery(
 		return err
 	})
 	if err != nil {
-		if err != hooks.ErrPaused {
+		if _, ok := err.(hooks.ErrPaused); !ok {
 			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 			return graphsync.RequestFailedUnknown, err
 		}
@@ -209,7 +209,7 @@ func (qe *queryExecutor) checkForUpdates(
 	for {
 		select {
 		case <-pauseSignal:
-			return hooks.ErrPaused
+			return hooks.ErrPaused{}
 		case <-updateSignal:
 			select {
 			case qe.messages <- &responseUpdateRequest{responseKey{p, request.ID()}, updateChan}:

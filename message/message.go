@@ -388,3 +388,44 @@ func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) ([]byte, bo
 	return val, true
 
 }
+
+// ReplaceExtensions merges the extensions given extensions into the request to create a new request,
+// but always uses new data
+func (gsr GraphSyncRequest) ReplaceExtensions(extensions []graphsync.ExtensionData) GraphSyncRequest {
+	req, _ := gsr.MergeExtensions(extensions, func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error) {
+		return newData, nil
+	})
+	return req
+}
+
+// MergeExtensions merges the given list of extensions to produce a new request with the combination of the old request
+// plus the new extensions. When an old extension and a new extension are both present, mergeFunc is called to produce
+// the result
+func (gsr GraphSyncRequest) MergeExtensions(extensions []graphsync.ExtensionData, mergeFunc func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error)) (GraphSyncRequest, error) {
+	if gsr.extensions == nil {
+		return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.isCancel, gsr.isUpdate, toExtensionsMap(extensions)), nil
+	}
+	newExtensionMap := toExtensionsMap(extensions)
+	combinedExtensions := make(map[string][]byte)
+	for name, newData := range newExtensionMap {
+		oldData, ok := gsr.extensions[name]
+		if !ok {
+			combinedExtensions[name] = newData
+			continue
+		}
+		resultData, err := mergeFunc(graphsync.ExtensionName(name), oldData, newData)
+		if err != nil {
+			return GraphSyncRequest{}, err
+		}
+		combinedExtensions[name] = resultData
+	}
+
+	for name, oldData := range gsr.extensions {
+		_, ok := combinedExtensions[name]
+		if ok {
+			continue
+		}
+		combinedExtensions[name] = oldData
+	}
+	return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.isCancel, gsr.isUpdate, combinedExtensions), nil
+}

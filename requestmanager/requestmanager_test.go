@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/ipfs/go-graphsync/requestmanager/testloader"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
@@ -39,111 +40,6 @@ func (fph *fakePeerHandler) SendRequest(p peer.ID,
 	fph.requestRecordChan <- requestRecord{
 		gsr: graphSyncRequest,
 		p:   p,
-	}
-}
-
-type requestKey struct {
-	requestID graphsync.RequestID
-	link      ipld.Link
-}
-
-type storeKey struct {
-	requestID graphsync.RequestID
-	storeName string
-}
-
-type fakeAsyncLoader struct {
-	responseChannelsLk sync.RWMutex
-	responseChannels   map[requestKey]chan types.AsyncLoadResult
-	responses          chan map[graphsync.RequestID]metadata.Metadata
-	blks               chan []blocks.Block
-	storesRequestedLk  sync.RWMutex
-	storesRequested    map[storeKey]struct{}
-}
-
-func newFakeAsyncLoader() *fakeAsyncLoader {
-	return &fakeAsyncLoader{
-		responseChannels: make(map[requestKey]chan types.AsyncLoadResult),
-		responses:        make(chan map[graphsync.RequestID]metadata.Metadata, 1),
-		blks:             make(chan []blocks.Block, 1),
-		storesRequested:  make(map[storeKey]struct{}),
-	}
-}
-
-func (fal *fakeAsyncLoader) StartRequest(requestID graphsync.RequestID, name string) error {
-	fal.storesRequestedLk.Lock()
-	fal.storesRequested[storeKey{requestID, name}] = struct{}{}
-	fal.storesRequestedLk.Unlock()
-	return nil
-}
-
-func (fal *fakeAsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
-	blks []blocks.Block) {
-	fal.responses <- responses
-	fal.blks <- blks
-}
-func (fal *fakeAsyncLoader) verifyLastProcessedBlocks(ctx context.Context, t *testing.T, expectedBlocks []blocks.Block) {
-	var processedBlocks []blocks.Block
-	testutil.AssertReceive(ctx, t, fal.blks, &processedBlocks, "did not process blocks")
-	require.Equal(t, expectedBlocks, processedBlocks, "did not process correct blocks")
-}
-
-func (fal *fakeAsyncLoader) verifyLastProcessedResponses(ctx context.Context, t *testing.T,
-	expectedResponses map[graphsync.RequestID]metadata.Metadata) {
-	var responses map[graphsync.RequestID]metadata.Metadata
-	testutil.AssertReceive(ctx, t, fal.responses, &responses, "did not process responses")
-	require.Equal(t, expectedResponses, responses, "did not process correct responses")
-}
-
-func (fal *fakeAsyncLoader) verifyNoRemainingData(t *testing.T, requestID graphsync.RequestID) {
-	fal.responseChannelsLk.Lock()
-	for key := range fal.responseChannels {
-		require.NotEqual(t, key.requestID, requestID, "did not clean up request properly")
-	}
-	fal.responseChannelsLk.Unlock()
-}
-
-func (fal *fakeAsyncLoader) verifyStoreUsed(t *testing.T, requestID graphsync.RequestID, storeName string) {
-	fal.storesRequestedLk.RLock()
-	_, ok := fal.storesRequested[storeKey{requestID, storeName}]
-	require.True(t, ok, "request should load from correct store")
-	fal.storesRequestedLk.RUnlock()
-}
-
-func (fal *fakeAsyncLoader) asyncLoad(requestID graphsync.RequestID, link ipld.Link) chan types.AsyncLoadResult {
-	fal.responseChannelsLk.Lock()
-	responseChannel, ok := fal.responseChannels[requestKey{requestID, link}]
-	if !ok {
-		responseChannel = make(chan types.AsyncLoadResult, 1)
-		fal.responseChannels[requestKey{requestID, link}] = responseChannel
-	}
-	fal.responseChannelsLk.Unlock()
-	return responseChannel
-}
-
-func (fal *fakeAsyncLoader) AsyncLoad(requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
-	return fal.asyncLoad(requestID, link)
-}
-func (fal *fakeAsyncLoader) CompleteResponsesFor(requestID graphsync.RequestID) {}
-func (fal *fakeAsyncLoader) CleanupRequest(requestID graphsync.RequestID) {
-	fal.responseChannelsLk.Lock()
-	for key := range fal.responseChannels {
-		if key.requestID == requestID {
-			delete(fal.responseChannels, key)
-		}
-	}
-	fal.responseChannelsLk.Unlock()
-}
-
-func (fal *fakeAsyncLoader) responseOn(requestID graphsync.RequestID, link ipld.Link, result types.AsyncLoadResult) {
-	responseChannel := fal.asyncLoad(requestID, link)
-	responseChannel <- result
-	close(responseChannel)
-}
-
-func (fal *fakeAsyncLoader) successResponseOn(requestID graphsync.RequestID, blks []blocks.Block) {
-	for _, block := range blks {
-		fal.responseOn(requestID, cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: block.RawData(), Local: false, Err: nil})
 	}
 }
 
@@ -225,13 +121,13 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	}
 
 	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-	td.fal.verifyLastProcessedBlocks(ctx, t, firstBlocks)
-	td.fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+	td.fal.VerifyLastProcessedBlocks(ctx, t, firstBlocks)
+	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 		requestRecords[0].gsr.ID(): firstMetadata1,
 		requestRecords[1].gsr.ID(): firstMetadata2,
 	})
-	td.fal.successResponseOn(requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
-	td.fal.successResponseOn(requestRecords[1].gsr.ID(), blockChain2.Blocks(0, 3))
+	td.fal.SuccessResponseOn(requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(requestRecords[1].gsr.ID(), blockChain2.Blocks(0, 3))
 
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan1)
 	blockChain2.VerifyResponseRange(requestCtx, returnedResponseChan2, 0, 3)
@@ -248,12 +144,12 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	}
 
 	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	td.fal.verifyLastProcessedBlocks(ctx, t, moreBlocks)
-	td.fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+	td.fal.VerifyLastProcessedBlocks(ctx, t, moreBlocks)
+	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 		requestRecords[1].gsr.ID(): moreMetadata,
 	})
 
-	td.fal.successResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
+	td.fal.SuccessResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
 
 	blockChain2.VerifyRemainder(requestCtx, returnedResponseChan2, 3)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
@@ -284,8 +180,8 @@ func TestCancelRequestInProgress(t *testing.T) {
 
 	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
 
-	td.fal.successResponseOn(requestRecords[0].gsr.ID(), firstBlocks)
-	td.fal.successResponseOn(requestRecords[1].gsr.ID(), firstBlocks)
+	td.fal.SuccessResponseOn(requestRecords[0].gsr.ID(), firstBlocks)
+	td.fal.SuccessResponseOn(requestRecords[1].gsr.ID(), firstBlocks)
 	td.blockChain.VerifyResponseRange(requestCtx1, returnedResponseChan1, 0, 3)
 	cancel1()
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
@@ -300,8 +196,8 @@ func TestCancelRequestInProgress(t *testing.T) {
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
 	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	td.fal.successResponseOn(requestRecords[0].gsr.ID(), moreBlocks)
-	td.fal.successResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
+	td.fal.SuccessResponseOn(requestRecords[0].gsr.ID(), moreBlocks)
+	td.fal.SuccessResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
 
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan1)
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
@@ -327,7 +223,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.PartialResponse, firstMetadata),
 	}
 	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-	td.fal.successResponseOn(rr.gsr.ID(), firstBlocks)
+	td.fal.SuccessResponseOn(rr.gsr.ID(), firstBlocks)
 	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, 3)
 	managerCancel()
 
@@ -337,7 +233,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
 	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	td.fal.successResponseOn(rr.gsr.ID(), moreBlocks)
+	td.fal.SuccessResponseOn(rr.gsr.ID(), moreBlocks)
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan)
 }
@@ -374,7 +270,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	// async loaded response responds immediately
-	td.fal.successResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
@@ -401,7 +297,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	// async loaded response responds immediately
-	td.fal.successResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
@@ -411,7 +307,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	}
 	td.requestManager.ProcessResponses(peers[0], firstResponses, td.blockChain.AllBlocks())
 
-	td.fal.verifyNoRemainingData(t, rr.gsr.ID())
+	td.fal.VerifyNoRemainingData(t, rr.gsr.ID())
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 }
 
@@ -433,7 +329,7 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	}
 	td.requestManager.ProcessResponses(peers[0], firstResponses, nil)
 	for _, block := range td.blockChain.AllBlocks() {
-		td.fal.responseOn(rr.gsr.ID(), cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: nil, Err: fmt.Errorf("Terrible Thing")})
+		td.fal.ResponseOn(rr.gsr.ID(), cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: nil, Err: fmt.Errorf("Terrible Thing")})
 	}
 	testutil.VerifyEmptyResponse(ctx, t, returnedResponseChan)
 	errs := testutil.CollectErrors(ctx, t, returnedErrorChan)
@@ -653,11 +549,11 @@ func TestBlockHooks(t *testing.T) {
 		}
 
 		td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-		td.fal.verifyLastProcessedBlocks(ctx, t, firstBlocks)
-		td.fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+		td.fal.VerifyLastProcessedBlocks(ctx, t, firstBlocks)
+		td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 			rr.gsr.ID(): firstMetadata,
 		})
-		td.fal.successResponseOn(rr.gsr.ID(), firstBlocks)
+		td.fal.SuccessResponseOn(rr.gsr.ID(), firstBlocks)
 
 		ur := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 		receivedUpdateData, has := ur.gsr.Extension(extensionName1)
@@ -717,11 +613,11 @@ func TestBlockHooks(t *testing.T) {
 			expectedUpdateChan <- update
 		}
 		td.requestManager.ProcessResponses(peers[0], secondResponses, nextBlocks)
-		td.fal.verifyLastProcessedBlocks(ctx, t, nextBlocks)
-		td.fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+		td.fal.VerifyLastProcessedBlocks(ctx, t, nextBlocks)
+		td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 			rr.gsr.ID(): nextMetadata,
 		})
-		td.fal.successResponseOn(rr.gsr.ID(), nextBlocks)
+		td.fal.SuccessResponseOn(rr.gsr.ID(), nextBlocks)
 
 		ur = readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 		receivedUpdateData, has = ur.gsr.Extension(extensionName1)
@@ -792,26 +688,26 @@ func TestOutgoingRequestHooks(t *testing.T) {
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, mdExt),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
-	td.fal.verifyLastProcessedBlocks(ctx, t, td.blockChain.AllBlocks())
-	td.fal.verifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+	td.fal.VerifyLastProcessedBlocks(ctx, t, td.blockChain.AllBlocks())
+	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 		requestRecords[0].gsr.ID(): md,
 		requestRecords[1].gsr.ID(): md,
 	})
-	td.fal.successResponseOn(requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
-	td.fal.successResponseOn(requestRecords[1].gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(requestRecords[1].gsr.ID(), td.blockChain.AllBlocks())
 
 	td.blockChain.VerifyWholeChainWithTypes(requestCtx, returnedResponseChan1)
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan1)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan2)
-	td.fal.verifyStoreUsed(t, requestRecords[0].gsr.ID(), "chainstore")
-	td.fal.verifyStoreUsed(t, requestRecords[1].gsr.ID(), "")
+	td.fal.VerifyStoreUsed(t, requestRecords[0].gsr.ID(), "chainstore")
+	td.fal.VerifyStoreUsed(t, requestRecords[1].gsr.ID(), "")
 }
 
 type testData struct {
 	requestRecordChan chan requestRecord
 	fph               *fakePeerHandler
-	fal               *fakeAsyncLoader
+	fal               *testloader.FakeAsyncLoader
 	requestHooks      *hooks.OutgoingRequestHooks
 	responseHooks     *hooks.IncomingResponseHooks
 	blockHooks        *hooks.IncomingBlockHooks
@@ -826,7 +722,7 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td := &testData{}
 	td.requestRecordChan = make(chan requestRecord, 3)
 	td.fph = &fakePeerHandler{td.requestRecordChan}
-	td.fal = newFakeAsyncLoader()
+	td.fal = testloader.NewFakeAsyncLoader()
 	td.requestHooks = hooks.NewRequestHooks()
 	td.responseHooks = hooks.NewResponseHooks()
 	td.blockHooks = hooks.NewBlockHooks()

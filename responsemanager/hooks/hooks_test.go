@@ -262,7 +262,7 @@ func TestBlockHookProcessing(t *testing.T) {
 			},
 			assert: func(t *testing.T, result hooks.BlockResult) {
 				require.Empty(t, result.Extensions)
-				require.EqualError(t, result.Err, hooks.ErrPaused.Error())
+				require.EqualError(t, result.Err, hooks.ErrPaused{}.Error())
 			},
 		},
 	}

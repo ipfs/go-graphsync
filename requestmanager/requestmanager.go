@@ -280,7 +280,7 @@ func (nrm *newRequestMessage) handle(rm *RequestManager) {
 			Loader:      rm.asyncLoader.AsyncLoad,
 			RunBlockHooks: func(bd graphsync.BlockData) error {
 				response := lastResponse.Load().(gsmsg.GraphSyncResponse)
-				return rm.processBlockHooks(p, response, bd)
+				return rm.processBlockHooks(p, response, bd, cancel)
 			},
 			TerminateRequest: func() {
 				select {
@@ -406,13 +406,14 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.Respo
 	}
 }
 
-func (rm *RequestManager) processBlockHooks(p peer.ID, response graphsync.ResponseData, block graphsync.BlockData) error {
+func (rm *RequestManager) processBlockHooks(p peer.ID, response graphsync.ResponseData, block graphsync.BlockData, cancelRequest func()) error {
 	result := rm.blockHooks.ProcessBlockHooks(p, response, block)
 	if len(result.Extensions) > 0 {
 		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
 		rm.peerHandler.SendRequest(p, updateRequest)
 	}
 	if result.Err != nil {
+		cancelRequest()
 		select {
 		case <-rm.ctx.Done():
 		case rm.messages <- &cancelRequestMessage{response.RequestID()}:

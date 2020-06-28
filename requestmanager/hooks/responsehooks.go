@@ -7,6 +7,11 @@ import (
 	"github.com/ipfs/go-graphsync"
 )
 
+// ErrPaused indicates a request should stop processing, but only cause it's paused
+type ErrPaused struct{}
+
+func (e ErrPaused) Error() string { return "request has been paused" }
+
 // IncomingResponseHooks is a set of incoming response hooks that can be processed
 type IncomingResponseHooks struct {
 	pubSub *pubsub.PubSub
@@ -66,4 +71,8 @@ func (rha *updateHookActions) TerminateWithError(err error) {
 
 func (rha *updateHookActions) UpdateRequestWithExtensions(extensions ...graphsync.ExtensionData) {
 	rha.extensions = append(rha.extensions, extensions...)
+}
+
+func (rha *updateHookActions) PauseRequest() {
+	rha.err = ErrPaused{}
 }

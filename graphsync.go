@@ -187,6 +187,7 @@ type IncomingResponseHookActions interface {
 type IncomingBlockHookActions interface {
 	TerminateWithError(error)
 	UpdateRequestWithExtensions(...ExtensionData)
+	PauseRequest()
 }
 
 // RequestUpdatedHookActions are actions that can be taken in a request updated hook to

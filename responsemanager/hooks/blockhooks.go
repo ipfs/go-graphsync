@@ -1,15 +1,15 @@
 package hooks
 
 import (
-	"errors"
-
 	"github.com/hannahhoward/go-pubsub"
 	"github.com/ipfs/go-graphsync"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 // ErrPaused indicates a request should stop processing, but only cause it's paused
-var ErrPaused = errors.New("request has been paused")
+type ErrPaused struct{}
+
+func (e ErrPaused) Error() string { return "request has been paused" }
 
 // OutgoingBlockHooks is a set of outgoing block hooks that can be processed
 type OutgoingBlockHooks struct {
@@ -71,5 +71,5 @@ func (bha *blockHookActions) TerminateWithError(err error) {
 }
 
 func (bha *blockHookActions) PauseResponse() {
-	bha.err = ErrPaused
+	bha.err = ErrPaused{}
 }

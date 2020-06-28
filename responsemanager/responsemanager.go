@@ -396,7 +396,7 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 	if !ok {
 		return
 	}
-	if ftr.err == hooks.ErrPaused {
+	if _, ok := ftr.err.(hooks.ErrPaused); ok {
 		response.isPaused = true
 		return
 	}
