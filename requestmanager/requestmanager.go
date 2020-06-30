@@ -36,6 +36,7 @@ type inProgressRequestStatus struct {
 	p              peer.ID
 	networkError   chan error
 	resumeMessages chan []graphsync.ExtensionData
+	pauseMessages  chan struct{}
 	paused         bool
 	lastResponse   atomic.Value
 }
@@ -243,6 +244,17 @@ func (rm *RequestManager) UnpauseRequest(requestID graphsync.RequestID, extensio
 	return rm.sendSyncMessage(&unpauseRequestMessage{requestID, extensions, response}, response)
 }
 
+type pauseRequestMessage struct {
+	id       graphsync.RequestID
+	response chan error
+}
+
+// PauseRequest pauses an in progress request (may take 1 or more blocks to process)
+func (rm *RequestManager) PauseRequest(requestID graphsync.RequestID) error {
+	response := make(chan error, 1)
+	return rm.sendSyncMessage(&pauseRequestMessage{requestID, response}, response)
+}
+
 func (rm *RequestManager) sendSyncMessage(message requestManagerMessage, response chan error) error {
 	select {
 	case <-rm.ctx.Done():
@@ -309,9 +321,10 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 	}
 	ctx, cancel := context.WithCancel(rm.ctx)
 	p := nrm.p
-	resumeMessages := make(chan []graphsync.ExtensionData)
+	resumeMessages := make(chan []graphsync.ExtensionData, 1)
+	pauseMessages := make(chan struct{}, 1)
 	requestStatus := &inProgressRequestStatus{
-		ctx: ctx, cancelFn: cancel, p: p, resumeMessages: resumeMessages,
+		ctx: ctx, cancelFn: cancel, p: p, resumeMessages: resumeMessages, pauseMessages: pauseMessages,
 	}
 	lastResponse := &requestStatus.lastResponse
 	lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
@@ -330,6 +343,7 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 			DoNotSendCids:    doNotSendCids,
 			NodeStyleChooser: hooksResult.CustomChooser,
 			ResumeMessages:   resumeMessages,
+			PauseMessages:    pauseMessages,
 		})
 	requestStatus.networkError = incomingError
 	return incoming, incomingError
@@ -522,5 +536,29 @@ func (urm *unpauseRequestMessage) handle(rm *RequestManager) {
 	select {
 	case <-rm.ctx.Done():
 	case urm.response <- err:
+	}
+}
+func (prm *pauseRequestMessage) pause(rm *RequestManager) error {
+	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[prm.id]
+	if !ok {
+		return errors.New("request not found")
+	}
+	if inProgressRequestStatus.paused {
+		return errors.New("request is already paused")
+	}
+	rm.peerHandler.SendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(prm.id))
+	inProgressRequestStatus.paused = true
+	select {
+	case <-rm.ctx.Done():
+		return errors.New("context cancelled")
+	case inProgressRequestStatus.pauseMessages <- struct{}{}:
+		return nil
+	}
+}
+func (prm *pauseRequestMessage) handle(rm *RequestManager) {
+	err := prm.pause(rm)
+	select {
+	case <-rm.ctx.Done():
+	case prm.response <- err:
 	}
 }

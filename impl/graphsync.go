@@ -183,6 +183,11 @@ func (gs *GraphSync) UnpauseRequest(requestID graphsync.RequestID, extensions ..
 	return gs.requestManager.UnpauseRequest(requestID, extensions...)
 }
 
+// PauseRequest pauses an in progress request (may take 1 or more blocks to process)
+func (gs *GraphSync) PauseRequest(requestID graphsync.RequestID) error {
+	return gs.requestManager.PauseRequest(requestID)
+}
+
 // UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
 func (gs *GraphSync) UnpauseResponse(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	return gs.responseManager.UnpauseResponse(p, requestID, extensions...)

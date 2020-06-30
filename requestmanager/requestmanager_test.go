@@ -762,6 +762,85 @@ func TestPauseResume(t *testing.T) {
 	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt-1)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 }
+func TestPauseResumeExternal(t *testing.T) {
+	ctx := context.Background()
+	td := newTestData(ctx, t)
+
+	requestCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	peers := testutil.GeneratePeers(1)
+
+	blocksReceived := 0
+	holdForPause := make(chan struct{})
+	pauseAt := 3
+
+	// setup hook to pause at 3rd block (and wait on second block for resume while unpaused test)
+	hook := func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
+		blocksReceived++
+		if blocksReceived == pauseAt {
+			td.requestManager.PauseRequest(responseData.RequestID())
+			close(holdForPause)
+		}
+	}
+	td.blockHooks.Register(hook)
+
+	// Start request
+	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
+
+	// Start processing responses
+	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
+	mdEncoded, err := metadata.EncodeMetadata(md)
+	require.NoError(t, err)
+	responses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
+			Name: graphsync.ExtensionMetadata,
+			Data: mdEncoded,
+		}),
+	}
+	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+	// verify responses sent read ONLY for blocks BEFORE the pause
+	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, pauseAt-1)
+	// wait for the pause to occur
+	<-holdForPause
+
+	// read the outgoing cancel request
+	pauseCancel := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
+	require.True(t, pauseCancel.gsr.IsCancel())
+
+	// verify no further responses come through
+	time.Sleep(100 * time.Millisecond)
+	testutil.AssertChannelEmpty(t, returnedResponseChan, "no response should be sent request is paused")
+	td.fal.CleanupRequest(rr.gsr.ID())
+
+	// unpause
+	err = td.requestManager.UnpauseRequest(rr.gsr.ID(), td.extension1, td.extension2)
+	require.NoError(t, err)
+
+	// verify the correct new request with Do-no-send-cids & other extensions
+	resumedRequest := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
+	doNotSendCidsData, has := resumedRequest.gsr.Extension(graphsync.ExtensionDoNotSendCIDs)
+	doNotSendCids, err := cidset.DecodeCidSet(doNotSendCidsData)
+	require.NoError(t, err)
+	require.Equal(t, pauseAt, doNotSendCids.Len())
+	require.True(t, has)
+	ext1Data, has := resumedRequest.gsr.Extension(td.extensionName1)
+	require.True(t, has)
+	require.Equal(t, td.extensionData1, ext1Data)
+	ext2Data, has := resumedRequest.gsr.Extension(td.extensionName2)
+	require.True(t, has)
+	require.Equal(t, td.extensionData2, ext2Data)
+
+	// process responses
+	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.RemainderBlocks(pauseAt))
+	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+
+	// verify the correct results are returned, picking up after where there request was paused
+	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt-1)
+	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
+}
 
 type testData struct {
 	requestRecordChan chan requestRecord

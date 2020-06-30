@@ -273,6 +273,9 @@ type GraphExchange interface {
 	// Can also send extensions with unpause
 	UnpauseRequest(RequestID, ...ExtensionData) error
 
+	// PauseRequest pauses an in progress request (may take 1 or more blocks to process)
+	PauseRequest(RequestID) error
+
 	// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
 	// Can also send extensions with unpause
 	UnpauseResponse(peer.ID, RequestID, ...ExtensionData) error

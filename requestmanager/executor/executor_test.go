@@ -16,6 +16,7 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/loader"
 	"github.com/ipfs/go-graphsync/requestmanager/testloader"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -193,6 +194,53 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.True(t, ree.nodeStyleChooserCalled)
 			},
 		},
+		"pause externally": {
+			configureRequestExecution: func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
+				ree.externalPauses = append(ree.externalPauses, pauseKey{requestID, tbc.LinkTipIndex(5)})
+				ree.waitForResumeResults = append(ree.waitForResumeResults, nil)
+			},
+			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
+				tbc.VerifyWholeChainSync(responses)
+				require.Empty(t, receivedErrors)
+				require.Equal(t, 1, ree.currentPauseResult)
+				require.Equal(t, 1, ree.currentWaitForResumeResult)
+				require.Equal(t, ree.request, ree.requestsSent[0].request)
+				doNotSendCidsExt, has := ree.requestsSent[1].request.Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, has)
+				cidSet, err := cidset.DecodeCidSet(doNotSendCidsExt)
+				require.NoError(t, err)
+				require.Equal(t, 6, cidSet.Len())
+				require.Len(t, ree.blookHooksCalled, 10)
+				require.Equal(t, ree.request.ID(), ree.terminateRequested)
+				require.True(t, ree.nodeStyleChooserCalled)
+			},
+		},
+		"pause externally multiple": {
+			configureRequestExecution: func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
+				ree.externalPauses = append(ree.externalPauses, pauseKey{requestID, tbc.LinkTipIndex(5)}, pauseKey{requestID, tbc.LinkTipIndex(3)})
+				ree.waitForResumeResults = append(ree.waitForResumeResults, nil, nil)
+			},
+			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
+				tbc.VerifyWholeChainSync(responses)
+				require.Empty(t, receivedErrors)
+				require.Equal(t, 2, ree.currentPauseResult)
+				require.Equal(t, 2, ree.currentWaitForResumeResult)
+				require.Equal(t, ree.request, ree.requestsSent[0].request)
+				doNotSendCidsExt, has := ree.requestsSent[1].request.Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, has)
+				cidSet, err := cidset.DecodeCidSet(doNotSendCidsExt)
+				require.NoError(t, err)
+				require.Equal(t, 6, cidSet.Len())
+				doNotSendCidsExt, has = ree.requestsSent[2].request.Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, has)
+				cidSet, err = cidset.DecodeCidSet(doNotSendCidsExt)
+				require.NoError(t, err)
+				require.Equal(t, 6, cidSet.Len())
+				require.Len(t, ree.blookHooksCalled, 10)
+				require.Equal(t, ree.request.ID(), ree.terminateRequested)
+				require.True(t, ree.nodeStyleChooserCalled)
+			},
+		},
 	}
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
@@ -217,6 +265,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				cancelFn:         requestCancel,
 				p:                p,
 				resumeMessages:   make(chan []graphsync.ExtensionData, 1),
+				pauseMessages:    make(chan struct{}, 1),
 				blockHookResults: make(map[blockHookKey]error),
 				doNotSendCids:    cid.NewSet(),
 				request:          gsmsg.NewRequest(requestID, tbc.TipLink.(cidlink.Link).Cid, tbc.Selector(), graphsync.Priority(rand.Int31())),
@@ -224,6 +273,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				tbc:              tbc,
 				configureLoader:  configureLoader,
 			}
+			fal.OnAsyncLoad(ree.checkPause)
 			if data.configureRequestExecution != nil {
 				data.configureRequestExecution(p, requestID, tbc, ree)
 			}
@@ -267,6 +317,11 @@ type blockHookKey struct {
 	link      ipld.Link
 }
 
+type pauseKey struct {
+	requestID graphsync.RequestID
+	link      ipld.Link
+}
+
 type requestExecutionEnv struct {
 	// params
 	ctx                  context.Context
@@ -277,7 +332,11 @@ type requestExecutionEnv struct {
 	doNotSendCids        *cid.Set
 	waitForResumeResults [][]graphsync.ExtensionData
 	resumeMessages       chan []graphsync.ExtensionData
+	pauseMessages        chan struct{}
+	externalPauses       []pauseKey
+
 	// results
+	currentPauseResult         int
 	currentWaitForResumeResult int
 	requestsSent               []requestSent
 	blookHooksCalled           []blockHookKey
@@ -314,6 +373,23 @@ func (ree *requestExecutionEnv) nodeStyleChooser(ipld.Link, ipld.LinkContext) (i
 	return basicnode.Style.Any, nil
 }
 
+func (ree *requestExecutionEnv) checkPause(requestID graphsync.RequestID, link ipld.Link, result <-chan types.AsyncLoadResult) {
+	if ree.currentPauseResult >= len(ree.externalPauses) {
+		return
+	}
+	currentPause := ree.externalPauses[ree.currentPauseResult]
+	if currentPause.link == link && currentPause.requestID == requestID {
+		ree.currentPauseResult++
+		ree.pauseMessages <- struct{}{}
+		extensions, err := ree.waitForResume()
+		if err != nil {
+			ree.cancelFn()
+		} else {
+			ree.resumeMessages <- extensions
+		}
+	}
+}
+
 func (ree *requestExecutionEnv) runBlockHooks(p peer.ID, response graphsync.ResponseData, blk graphsync.BlockData) error {
 	bhk := blockHookKey{p, response.RequestID(), blk.Link()}
 	ree.blookHooksCalled = append(ree.blookHooksCalled, bhk)
@@ -345,5 +421,6 @@ func (ree *requestExecutionEnv) requestExecution() (chan graphsync.ResponseProgr
 		DoNotSendCids:    ree.doNotSendCids,
 		NodeStyleChooser: ree.nodeStyleChooser,
 		ResumeMessages:   ree.resumeMessages,
+		PauseMessages:    ree.pauseMessages,
 	})
 }

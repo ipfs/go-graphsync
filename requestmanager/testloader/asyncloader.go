@@ -36,6 +36,7 @@ type FakeAsyncLoader struct {
 	blks               chan []blocks.Block
 	storesRequestedLk  sync.RWMutex
 	storesRequested    map[storeKey]struct{}
+	cb                 func(graphsync.RequestID, ipld.Link, <-chan types.AsyncLoadResult)
 }
 
 // NewFakeAsyncLoader returns a new FakeAsyncLoader instance
@@ -109,9 +110,18 @@ func (fal *FakeAsyncLoader) asyncLoad(requestID graphsync.RequestID, link ipld.L
 	return responseChannel
 }
 
+// OnAsyncLoad allows you to listen for load requests to the loader and perform other actions or tests
+func (fal *FakeAsyncLoader) OnAsyncLoad(cb func(graphsync.RequestID, ipld.Link, <-chan types.AsyncLoadResult)) {
+	fal.cb = cb
+}
+
 // AsyncLoad simulates an asynchronous load with responses stubbed by ResponseOn & SuccessResponseOn
 func (fal *FakeAsyncLoader) AsyncLoad(requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
-	return fal.asyncLoad(requestID, link)
+	res := fal.asyncLoad(requestID, link)
+	if fal.cb != nil {
+		fal.cb(requestID, link, res)
+	}
+	return res
 }
 
 // CompleteResponsesFor in the case of the test loader does nothing

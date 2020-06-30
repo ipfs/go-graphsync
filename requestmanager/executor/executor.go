@@ -37,6 +37,7 @@ type RequestExecution struct {
 	DoNotSendCids    *cid.Set
 	NodeStyleChooser traversal.LinkTargetNodeStyleChooser
 	ResumeMessages   chan []graphsync.ExtensionData
+	PauseMessages    chan struct{}
 }
 
 // Start begins execution of a request in a go routine
@@ -51,6 +52,7 @@ func (ee ExecutionEnv) Start(re RequestExecution) (chan graphsync.ResponseProgre
 		doNotSendCids:    re.DoNotSendCids,
 		nodeStyleChooser: re.NodeStyleChooser,
 		resumeMessages:   re.ResumeMessages,
+		pauseMessages:    re.PauseMessages,
 		env:              ee,
 	}
 	executor.sendRequest(executor.request)
@@ -67,6 +69,7 @@ type requestExecutor struct {
 	lastResponse      *atomic.Value
 	nodeStyleChooser  traversal.LinkTargetNodeStyleChooser
 	resumeMessages    chan []graphsync.ExtensionData
+	pauseMessages     chan struct{}
 	blocksReceived    uint64
 	maxBlocksReceived uint64
 	doNotSendCids     *cid.Set
@@ -85,6 +88,18 @@ func (re *requestExecutor) visitor(tp traversal.Progress, node ipld.Node, tr tra
 		}
 	}
 	return nil
+}
+
+func (re *requestExecutor) onNewBlockWithPause(block graphsync.BlockData) error {
+	err := re.onNewBlock(block)
+	select {
+	case <-re.pauseMessages:
+		if err == nil {
+			err = hooks.ErrPaused{}
+		}
+	default:
+	}
+	return err
 }
 
 func (re *requestExecutor) onNewBlock(block graphsync.BlockData) error {
@@ -119,7 +134,7 @@ func (re *requestExecutor) executeOnce(selector selector.Selector, loaderFn ipld
 
 func (re *requestExecutor) run() {
 	selector, _ := ipldutil.ParseSelector(re.request.Selector())
-	loaderFn := loader.WrapAsyncLoader(re.ctx, re.env.Loader, re.request.ID(), re.inProgressErr, re.onNewBlock)
+	loaderFn := loader.WrapAsyncLoader(re.ctx, re.env.Loader, re.request.ID(), re.inProgressErr, re.onNewBlockWithPause)
 	var err error
 	var finished bool
 	for !finished {
