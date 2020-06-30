@@ -72,7 +72,6 @@ type RequestManager struct {
 	requestHooks              RequestHooks
 	responseHooks             ResponseHooks
 	blockHooks                BlockHooks
-	executionEnv              executor.ExecutionEnv
 }
 
 type requestManagerMessage interface {

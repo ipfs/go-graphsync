@@ -778,7 +778,8 @@ func TestPauseResumeExternal(t *testing.T) {
 	hook := func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
 		blocksReceived++
 		if blocksReceived == pauseAt {
-			td.requestManager.PauseRequest(responseData.RequestID())
+			err := td.requestManager.PauseRequest(responseData.RequestID())
+			require.NoError(t, err)
 			close(holdForPause)
 		}
 	}
