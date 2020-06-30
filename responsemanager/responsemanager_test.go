@@ -102,11 +102,16 @@ type pausedRequest struct {
 	requestID graphsync.RequestID
 }
 
+type cancelledRequest struct {
+	requestID graphsync.RequestID
+}
+
 type fakePeerResponseSender struct {
 	sentResponses        chan sentResponse
 	sentExtensions       chan sentExtension
 	lastCompletedRequest chan completedRequest
 	pausedRequests       chan pausedRequest
+	cancelledRequests    chan cancelledRequest
 	ignoredLinks         chan []ipld.Link
 }
 
@@ -163,6 +168,10 @@ func (fprs *fakePeerResponseSender) PauseRequest(requestID graphsync.RequestID) 
 	fprs.pausedRequests <- pausedRequest{requestID}
 }
 
+func (fprs *fakePeerResponseSender) FinishWithCancel(requestID graphsync.RequestID) {
+	fprs.cancelledRequests <- cancelledRequest{requestID}
+}
+
 func (fprs *fakePeerResponseSender) Transaction(requestID graphsync.RequestID, transaction peerresponsemanager.Transaction) error {
 	fprts := &fakePeerResponseTransactionSender{requestID, fprs}
 	return transaction(fprts)
@@ -193,6 +202,9 @@ func (fprts *fakePeerResponseTransactionSender) PauseRequest() {
 	fprts.prs.PauseRequest(fprts.requestID)
 }
 
+func (fprts *fakePeerResponseTransactionSender) FinishWithCancel() {
+	fprts.prs.FinishWithCancel(fprts.requestID)
+}
 func TestIncomingQuery(t *testing.T) {
 	td := newTestData(t)
 	defer td.cancel()
@@ -255,7 +267,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 			require.Equal(t, blks[blockIndex].RawData(), sentResponse.data, "sent incorrect data")
 			require.Equal(t, td.requestID, sentResponse.requestID, "incorrect response id")
 			additionalBlocks++
-		case <-td.completedRequestChan:
+		case <-td.cancelledRequests:
 			require.LessOrEqual(t, additionalBlocks, 1, "should send at most 1 additional block")
 			return
 		}
@@ -324,7 +336,7 @@ func TestEarlyCancellation(t *testing.T) {
 	// unblock popping from queue
 	td.queryQueue.popWait.Done()
 
-	timer := time.NewTimer(time.Second)
+	timer := time.NewTimer(200 * time.Millisecond)
 	// verify no responses processed
 	testutil.AssertDoesReceiveFirst(t, timer.C, "should not process more responses", td.sentResponses, td.completedRequestChan)
 }
@@ -885,6 +897,7 @@ type testData struct {
 	sentResponses         chan sentResponse
 	sentExtensions        chan sentExtension
 	pausedRequests        chan pausedRequest
+	cancelledRequests     chan cancelledRequest
 	ignoredLinks          chan []ipld.Link
 	peerManager           *fakePeerManager
 	queryQueue            *fakeQueryQueue
@@ -920,12 +933,14 @@ func newTestData(t *testing.T) testData {
 	td.sentResponses = make(chan sentResponse, td.blockChainLength*2)
 	td.sentExtensions = make(chan sentExtension, td.blockChainLength*2)
 	td.pausedRequests = make(chan pausedRequest, 1)
+	td.cancelledRequests = make(chan cancelledRequest, 1)
 	td.ignoredLinks = make(chan []ipld.Link, 1)
 	fprs := &fakePeerResponseSender{
 		lastCompletedRequest: td.completedRequestChan,
 		sentResponses:        td.sentResponses,
 		sentExtensions:       td.sentExtensions,
 		pausedRequests:       td.pausedRequests,
+		cancelledRequests:    td.cancelledRequests,
 		ignoredLinks:         td.ignoredLinks,
 	}
 	td.peerManager = &fakePeerManager{peerResponseSender: fprs}

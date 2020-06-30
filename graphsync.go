@@ -269,6 +269,10 @@ type GraphExchange interface {
 	// RegisterCompletedResponseListener adds a listener on the responder for completed responses
 	RegisterCompletedResponseListener(listener OnResponseCompletedListener) UnregisterHookFunc
 
+	// UnpauseRequest unpauses a request that was paused in a block hook based request ID
+	// Can also send extensions with unpause
+	UnpauseRequest(RequestID, ...ExtensionData) error
+
 	// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
 	// Can also send extensions with unpause
 	UnpauseResponse(peer.ID, RequestID, ...ExtensionData) error

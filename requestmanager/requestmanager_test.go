@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/requestmanager/testloader"
 
 	"github.com/ipfs/go-graphsync"
@@ -344,24 +345,11 @@ func TestEncodingExtensions(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	extensionData1 := testutil.RandomBytes(100)
-	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
-	extension1 := graphsync.ExtensionData{
-		Name: extensionName1,
-		Data: extensionData1,
-	}
-	extensionData2 := testutil.RandomBytes(100)
-	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
-	extension2 := graphsync.ExtensionData{
-		Name: extensionName2,
-		Data: extensionData2,
-	}
-
 	expectedError := make(chan error, 2)
 	receivedExtensionData := make(chan []byte, 2)
 	expectedUpdateChan := make(chan []graphsync.ExtensionData, 2)
 	hook := func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
-		data, has := responseData.Extension(extensionName1)
+		data, has := responseData.Extension(td.extensionName1)
 		require.True(t, has, "did not receive extension data in response")
 		receivedExtensionData <- data
 		err := <-expectedError
@@ -374,18 +362,18 @@ func TestEncodingExtensions(t *testing.T) {
 		}
 	}
 	td.responseHooks.Register(hook)
-	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), extension1, extension2)
+	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1, td.extension2)
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	gsr := rr.gsr
-	returnedData1, found := gsr.Extension(extensionName1)
+	returnedData1, found := gsr.Extension(td.extensionName1)
 	require.True(t, found)
-	require.Equal(t, extensionData1, returnedData1, "did not encode first extension correctly")
+	require.Equal(t, td.extensionData1, returnedData1, "did not encode first extension correctly")
 
-	returnedData2, found := gsr.Extension(extensionName2)
+	returnedData2, found := gsr.Extension(td.extensionName2)
 	require.True(t, found)
-	require.Equal(t, extensionData2, returnedData2, "did not encode second extension correctly")
+	require.Equal(t, td.extensionData2, returnedData2, "did not encode second extension correctly")
 
 	t.Run("responding to extensions", func(t *testing.T) {
 		expectedData := testutil.RandomBytes(100)
@@ -397,7 +385,7 @@ func TestEncodingExtensions(t *testing.T) {
 					Data: nil,
 				},
 				graphsync.ExtensionData{
-					Name: extensionName1,
+					Name: td.extensionName1,
 					Data: expectedData,
 				},
 			),
@@ -405,7 +393,7 @@ func TestEncodingExtensions(t *testing.T) {
 		expectedError <- nil
 		expectedUpdateChan <- []graphsync.ExtensionData{
 			{
-				Name: extensionName1,
+				Name: td.extensionName1,
 				Data: expectedUpdate,
 			},
 		}
@@ -415,7 +403,7 @@ func TestEncodingExtensions(t *testing.T) {
 		require.Equal(t, expectedData, received, "did not receive correct extension data from resposne")
 
 		rr = readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
-		receivedUpdateData, has := rr.gsr.Extension(extensionName1)
+		receivedUpdateData, has := rr.gsr.Extension(td.extensionName1)
 		require.True(t, has)
 		require.Equal(t, expectedUpdate, receivedUpdateData, "should have updated with correct extension")
 
@@ -430,7 +418,7 @@ func TestEncodingExtensions(t *testing.T) {
 					Data: nil,
 				},
 				graphsync.ExtensionData{
-					Name: extensionName1,
+					Name: td.extensionName1,
 					Data: nextExpectedData,
 				},
 			),
@@ -438,11 +426,11 @@ func TestEncodingExtensions(t *testing.T) {
 		expectedError <- errors.New("a terrible thing happened")
 		expectedUpdateChan <- []graphsync.ExtensionData{
 			{
-				Name: extensionName1,
+				Name: td.extensionName1,
 				Data: nextExpectedUpdate1,
 			},
 			{
-				Name: extensionName2,
+				Name: td.extensionName2,
 				Data: nextExpectedUpdate2,
 			},
 		}
@@ -451,10 +439,10 @@ func TestEncodingExtensions(t *testing.T) {
 		require.Equal(t, nextExpectedData, received, "did not receive correct extension data from resposne")
 
 		rr = readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
-		receivedUpdateData, has = rr.gsr.Extension(extensionName1)
+		receivedUpdateData, has = rr.gsr.Extension(td.extensionName1)
 		require.True(t, has)
 		require.Equal(t, nextExpectedUpdate1, receivedUpdateData, "should have updated with correct extension")
-		receivedUpdateData, has = rr.gsr.Extension(extensionName2)
+		receivedUpdateData, has = rr.gsr.Extension(td.extensionName2)
 		require.True(t, has)
 		require.Equal(t, nextExpectedUpdate2, receivedUpdateData, "should have updated with correct extension")
 
@@ -470,19 +458,6 @@ func TestBlockHooks(t *testing.T) {
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
-
-	extensionData1 := testutil.RandomBytes(100)
-	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
-	extension1 := graphsync.ExtensionData{
-		Name: extensionName1,
-		Data: extensionData1,
-	}
-	extensionData2 := testutil.RandomBytes(100)
-	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
-	extension2 := graphsync.ExtensionData{
-		Name: extensionName2,
-		Data: extensionData2,
-	}
 
 	receivedBlocks := make(chan graphsync.BlockData, 4)
 	receivedResponses := make(chan graphsync.ResponseData, 4)
@@ -501,18 +476,18 @@ func TestBlockHooks(t *testing.T) {
 		}
 	}
 	td.blockHooks.Register(hook)
-	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), extension1, extension2)
+	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1, td.extension2)
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	gsr := rr.gsr
-	returnedData1, found := gsr.Extension(extensionName1)
+	returnedData1, found := gsr.Extension(td.extensionName1)
 	require.True(t, found)
-	require.Equal(t, extensionData1, returnedData1, "did not encode first extension correctly")
+	require.Equal(t, td.extensionData1, returnedData1, "did not encode first extension correctly")
 
-	returnedData2, found := gsr.Extension(extensionName2)
+	returnedData2, found := gsr.Extension(td.extensionName2)
 	require.True(t, found)
-	require.Equal(t, extensionData2, returnedData2, "did not encode second extension correctly")
+	require.Equal(t, td.extensionData2, returnedData2, "did not encode second extension correctly")
 
 	t.Run("responding to extensions", func(t *testing.T) {
 		expectedData := testutil.RandomBytes(100)
@@ -529,7 +504,7 @@ func TestBlockHooks(t *testing.T) {
 					Data: firstMetadataEncoded,
 				},
 				graphsync.ExtensionData{
-					Name: extensionName1,
+					Name: td.extensionName1,
 					Data: expectedData,
 				},
 			),
@@ -540,7 +515,7 @@ func TestBlockHooks(t *testing.T) {
 			if i == len(firstBlocks)-1 {
 				update = []graphsync.ExtensionData{
 					{
-						Name: extensionName1,
+						Name: td.extensionName1,
 						Data: expectedUpdate,
 					},
 				}
@@ -556,7 +531,7 @@ func TestBlockHooks(t *testing.T) {
 		td.fal.SuccessResponseOn(rr.gsr.ID(), firstBlocks)
 
 		ur := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
-		receivedUpdateData, has := ur.gsr.Extension(extensionName1)
+		receivedUpdateData, has := ur.gsr.Extension(td.extensionName1)
 		require.True(t, has)
 		require.Equal(t, expectedUpdate, receivedUpdateData, "should have updated with correct extension")
 
@@ -568,7 +543,7 @@ func TestBlockHooks(t *testing.T) {
 			metadata, has := receivedResponse.Extension(graphsync.ExtensionMetadata)
 			require.True(t, has)
 			require.Equal(t, firstMetadataEncoded, metadata, "should receive correct metadata")
-			receivedExtensionData, _ := receivedResponse.Extension(extensionName1)
+			receivedExtensionData, _ := receivedResponse.Extension(td.extensionName1)
 			require.Equal(t, expectedData, receivedExtensionData, "should receive correct response extension data")
 			var receivedBlock graphsync.BlockData
 			testutil.AssertReceive(ctx, t, receivedBlocks, &receivedBlock, "did not receive block data")
@@ -590,7 +565,7 @@ func TestBlockHooks(t *testing.T) {
 					Data: nextMetadataEncoded,
 				},
 				graphsync.ExtensionData{
-					Name: extensionName1,
+					Name: td.extensionName1,
 					Data: nextExpectedData,
 				},
 			),
@@ -601,11 +576,11 @@ func TestBlockHooks(t *testing.T) {
 			if i == len(nextBlocks)-1 {
 				update = []graphsync.ExtensionData{
 					{
-						Name: extensionName1,
+						Name: td.extensionName1,
 						Data: nextExpectedUpdate1,
 					},
 					{
-						Name: extensionName2,
+						Name: td.extensionName2,
 						Data: nextExpectedUpdate2,
 					},
 				}
@@ -620,10 +595,10 @@ func TestBlockHooks(t *testing.T) {
 		td.fal.SuccessResponseOn(rr.gsr.ID(), nextBlocks)
 
 		ur = readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
-		receivedUpdateData, has = ur.gsr.Extension(extensionName1)
+		receivedUpdateData, has = ur.gsr.Extension(td.extensionName1)
 		require.True(t, has)
 		require.Equal(t, nextExpectedUpdate1, receivedUpdateData, "should have updated with correct extension")
-		receivedUpdateData, has = ur.gsr.Extension(extensionName2)
+		receivedUpdateData, has = ur.gsr.Extension(td.extensionName2)
 		require.True(t, has)
 		require.Equal(t, nextExpectedUpdate2, receivedUpdateData, "should have updated with correct extension")
 
@@ -635,7 +610,7 @@ func TestBlockHooks(t *testing.T) {
 			metadata, has := receivedResponse.Extension(graphsync.ExtensionMetadata)
 			require.True(t, has)
 			require.Equal(t, nextMetadataEncoded, metadata, "should receive correct metadata")
-			receivedExtensionData, _ := receivedResponse.Extension(extensionName1)
+			receivedExtensionData, _ := receivedResponse.Extension(td.extensionName1)
 			require.Equal(t, nextExpectedData, receivedExtensionData, "should receive correct response extension data")
 			var receivedBlock graphsync.BlockData
 			testutil.AssertReceive(ctx, t, receivedBlocks, &receivedBlock, "did not receive block data")
@@ -656,14 +631,8 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	extensionName1 := graphsync.ExtensionName("blockchain")
-	extension1 := graphsync.ExtensionData{
-		Name: extensionName1,
-		Data: nil,
-	}
-
 	hook := func(p peer.ID, r graphsync.RequestData, ha graphsync.OutgoingRequestHookActions) {
-		_, has := r.Extension(extensionName1)
+		_, has := r.Extension(td.extensionName1)
 		if has {
 			ha.UseLinkTargetNodeStyleChooser(td.blockChain.Chooser)
 			ha.UsePersistenceOption("chainstore")
@@ -671,7 +640,7 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	}
 	td.requestHooks.Register(hook)
 
-	returnedResponseChan1, returnedErrorChan1 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), extension1)
+	returnedResponseChan1, returnedErrorChan1 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1)
 	returnedResponseChan2, returnedErrorChan2 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
@@ -704,6 +673,96 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	td.fal.VerifyStoreUsed(t, requestRecords[1].gsr.ID(), "")
 }
 
+func TestPauseResume(t *testing.T) {
+	ctx := context.Background()
+	td := newTestData(ctx, t)
+
+	requestCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	peers := testutil.GeneratePeers(1)
+
+	blocksReceived := 0
+	holdForResumeAttempt := make(chan struct{})
+	holdForPause := make(chan struct{})
+	pauseAt := 3
+
+	// setup hook to pause at 3rd block (and wait on second block for resume while unpaused test)
+	hook := func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
+		blocksReceived++
+		if blocksReceived == pauseAt-1 {
+			<-holdForResumeAttempt
+		}
+		if blocksReceived == pauseAt {
+			hookActions.PauseRequest()
+			close(holdForPause)
+		}
+	}
+	td.blockHooks.Register(hook)
+
+	// Start request
+	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
+
+	// Start processing responses
+	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
+	mdEncoded, err := metadata.EncodeMetadata(md)
+	require.NoError(t, err)
+	responses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
+			Name: graphsync.ExtensionMetadata,
+			Data: mdEncoded,
+		}),
+	}
+	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+
+	// attempt to unpause while request is not paused (note: hook on second block will keep it from
+	// reaching pause point)
+	err = td.requestManager.UnpauseRequest(rr.gsr.ID())
+	require.EqualError(t, err, "request is not paused")
+	close(holdForResumeAttempt)
+	// verify responses sent read ONLY for blocks BEFORE the pause
+	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, pauseAt-1)
+	// wait for the pause to occur
+	<-holdForPause
+
+	// read the outgoing cancel request
+	pauseCancel := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
+	require.True(t, pauseCancel.gsr.IsCancel())
+
+	// verify no further responses come through
+	time.Sleep(100 * time.Millisecond)
+	testutil.AssertChannelEmpty(t, returnedResponseChan, "no response should be sent request is paused")
+	td.fal.CleanupRequest(rr.gsr.ID())
+
+	// unpause
+	err = td.requestManager.UnpauseRequest(rr.gsr.ID(), td.extension1, td.extension2)
+	require.NoError(t, err)
+
+	// verify the correct new request with Do-no-send-cids & other extensions
+	resumedRequest := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
+	doNotSendCidsData, has := resumedRequest.gsr.Extension(graphsync.ExtensionDoNotSendCIDs)
+	doNotSendCids, err := cidset.DecodeCidSet(doNotSendCidsData)
+	require.NoError(t, err)
+	require.Equal(t, pauseAt, doNotSendCids.Len())
+	require.True(t, has)
+	ext1Data, has := resumedRequest.gsr.Extension(td.extensionName1)
+	require.True(t, has)
+	require.Equal(t, td.extensionData1, ext1Data)
+	ext2Data, has := resumedRequest.gsr.Extension(td.extensionName2)
+	require.True(t, has)
+	require.Equal(t, td.extensionData2, ext2Data)
+
+	// process responses
+	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.RemainderBlocks(pauseAt))
+	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+
+	// verify the correct results are returned, picking up after where there request was paused
+	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt-1)
+	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
+}
+
 type testData struct {
 	requestRecordChan chan requestRecord
 	fph               *fakePeerHandler
@@ -716,6 +775,12 @@ type testData struct {
 	loader            ipld.Loader
 	storer            ipld.Storer
 	blockChain        *testutil.TestBlockChain
+	extensionName1    graphsync.ExtensionName
+	extensionData1    []byte
+	extension1        graphsync.ExtensionData
+	extensionName2    graphsync.ExtensionName
+	extensionData2    []byte
+	extension2        graphsync.ExtensionData
 }
 
 func newTestData(ctx context.Context, t *testing.T) *testData {
@@ -732,5 +797,17 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.blockStore = make(map[ipld.Link][]byte)
 	td.loader, td.storer = testutil.NewTestStore(td.blockStore)
 	td.blockChain = testutil.SetupBlockChain(ctx, t, td.loader, td.storer, 100, 5)
+	td.extensionData1 = testutil.RandomBytes(100)
+	td.extensionName1 = graphsync.ExtensionName("AppleSauce/McGee")
+	td.extension1 = graphsync.ExtensionData{
+		Name: td.extensionName1,
+		Data: td.extensionData1,
+	}
+	td.extensionData2 = testutil.RandomBytes(100)
+	td.extensionName2 = graphsync.ExtensionName("HappyLand/Happenstance")
+	td.extension2 = graphsync.ExtensionData{
+		Name: td.extensionName2,
+		Data: td.extensionData2,
+	}
 	return td
 }

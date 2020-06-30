@@ -384,7 +384,65 @@ func TestPauseResume(t *testing.T) {
 	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
 
 }
+func TestPauseResumeRequest(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
 
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockSize := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, uint64(blockSize), blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	totalSentAfterPause := 0
+	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+		data, has := requestData.Extension(td.extensionName)
+		if has {
+			hookActions.SendExtensionData(td.extensionResponse)
+			if bytes.Equal(data, td.extensionUpdateData) && block.BlockSizeOnWire() > 0 {
+				totalSentAfterPause++
+			}
+		}
+	})
+
+	stopPoint := 50
+	blocksReceived := 0
+	requestIDChan := make(chan graphsync.RequestID, 1)
+	requestor.RegisterIncomingBlockHook(func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
+		select {
+		case requestIDChan <- responseData.RequestID():
+		default:
+		}
+		blocksReceived++
+		if blocksReceived == stopPoint {
+			hookActions.PauseRequest()
+		}
+	})
+
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	blockChain.VerifyResponseRange(ctx, progressChan, 0, stopPoint-1)
+	timer := time.NewTimer(100 * time.Millisecond)
+	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
+
+	requestID := <-requestIDChan
+	err := requestor.UnpauseRequest(requestID, td.extensionUpdate)
+	require.NoError(t, err)
+
+	blockChain.VerifyRemainder(ctx, progressChan, stopPoint-1)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
+
+	require.Equal(t, (100 - stopPoint), totalSentAfterPause)
+}
 func TestPauseResumeViaUpdate(t *testing.T) {
 	// create network
 	ctx := context.Background()

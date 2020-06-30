@@ -5,12 +5,13 @@ import (
 	"errors"
 	"math/rand"
 	"testing"
-	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/cidset"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
+	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/loader"
 	"github.com/ipfs/go-graphsync/requestmanager/testloader"
 	"github.com/ipfs/go-graphsync/testutil"
@@ -44,10 +45,147 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyResponseRangeSync(responses, 0, 5)
 				require.Len(t, receivedErrors, 1)
-				require.True(t, errors.Is(receivedErrors[0], errors.New("something went wrong")))
+				require.Regexp(t, "something went wrong", receivedErrors[0].Error())
 				require.Equal(t, 0, ree.currentWaitForResumeResult)
 				require.Equal(t, []gsmsg.GraphSyncRequest{ree.request}, ree.requestsSent)
-				require.Len(t, ree.blookHooksCalled, 5)
+				require.Len(t, ree.blookHooksCalled, 6)
+				require.True(t, ree.terminateRequested)
+				require.True(t, ree.nodeStyleChooserCalled)
+			},
+		},
+		"context cancelled": {
+			configureRequestExecution: func(requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
+				ree.blockHookResults[tbc.LinkTipIndex(5)] = loader.ContextCancelError{}
+			},
+			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
+				tbc.VerifyResponseRangeSync(responses, 0, 5)
+				require.Empty(t, receivedErrors)
+				require.Equal(t, 0, ree.currentWaitForResumeResult)
+				require.Equal(t, []gsmsg.GraphSyncRequest{ree.request}, ree.requestsSent)
+				require.Len(t, ree.blookHooksCalled, 6)
+				require.True(t, ree.terminateRequested)
+				require.True(t, ree.nodeStyleChooserCalled)
+			},
+		},
+		"simple pause": {
+			configureRequestExecution: func(requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
+				ree.blockHookResults[tbc.LinkTipIndex(5)] = hooks.ErrPaused{}
+				ree.waitForResumeResults = append(ree.waitForResumeResults, nil)
+			},
+			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
+				tbc.VerifyWholeChainSync(responses)
+				require.Empty(t, receivedErrors)
+				require.Equal(t, 1, ree.currentWaitForResumeResult)
+				require.Equal(t, ree.request, ree.requestsSent[0])
+				doNotSendCidsExt, has := ree.requestsSent[1].Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, has)
+				cidSet, err := cidset.DecodeCidSet(doNotSendCidsExt)
+				require.NoError(t, err)
+				require.Equal(t, 6, cidSet.Len())
+				require.Len(t, ree.blookHooksCalled, 10)
+				require.True(t, ree.terminateRequested)
+				require.True(t, ree.nodeStyleChooserCalled)
+			},
+		},
+		"multiple pause": {
+			configureRequestExecution: func(requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
+				ree.blockHookResults[tbc.LinkTipIndex(5)] = hooks.ErrPaused{}
+				ree.blockHookResults[tbc.LinkTipIndex(7)] = hooks.ErrPaused{}
+				ree.waitForResumeResults = append(ree.waitForResumeResults, nil, nil)
+			},
+			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
+				tbc.VerifyWholeChainSync(responses)
+				require.Empty(t, receivedErrors)
+				require.Equal(t, 2, ree.currentWaitForResumeResult)
+				require.Equal(t, ree.request, ree.requestsSent[0])
+				doNotSendCidsExt, has := ree.requestsSent[1].Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, has)
+				cidSet, err := cidset.DecodeCidSet(doNotSendCidsExt)
+				require.NoError(t, err)
+				require.Equal(t, 6, cidSet.Len())
+				doNotSendCidsExt, has = ree.requestsSent[2].Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, has)
+				cidSet, err = cidset.DecodeCidSet(doNotSendCidsExt)
+				require.NoError(t, err)
+				require.Equal(t, 8, cidSet.Len())
+				require.Len(t, ree.blookHooksCalled, 10)
+				require.True(t, ree.terminateRequested)
+				require.True(t, ree.nodeStyleChooserCalled)
+			},
+		},
+		"multiple pause with extensions": {
+			configureRequestExecution: func(requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
+				ree.blockHookResults[tbc.LinkTipIndex(5)] = hooks.ErrPaused{}
+				ree.blockHookResults[tbc.LinkTipIndex(7)] = hooks.ErrPaused{}
+				ree.waitForResumeResults = append(ree.waitForResumeResults, []graphsync.ExtensionData{
+					{
+						Name: graphsync.ExtensionName("applesauce"),
+						Data: []byte("cheese 1"),
+					},
+				}, []graphsync.ExtensionData{
+					{
+						Name: graphsync.ExtensionName("applesauce"),
+						Data: []byte("cheese 2"),
+					},
+				})
+			},
+			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
+				tbc.VerifyWholeChainSync(responses)
+				require.Empty(t, receivedErrors)
+				require.Equal(t, 2, ree.currentWaitForResumeResult)
+				require.Equal(t, ree.request, ree.requestsSent[0])
+				testExtData, has := ree.requestsSent[1].Extension(graphsync.ExtensionName("applesauce"))
+				require.True(t, has)
+				require.Equal(t, "cheese 1", string(testExtData))
+				doNotSendCidsExt, has := ree.requestsSent[1].Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, has)
+				cidSet, err := cidset.DecodeCidSet(doNotSendCidsExt)
+				require.NoError(t, err)
+				require.Equal(t, 6, cidSet.Len())
+				testExtData, has = ree.requestsSent[2].Extension(graphsync.ExtensionName("applesauce"))
+				require.True(t, has)
+				require.Equal(t, "cheese 2", string(testExtData))
+				doNotSendCidsExt, has = ree.requestsSent[2].Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, has)
+				cidSet, err = cidset.DecodeCidSet(doNotSendCidsExt)
+				require.NoError(t, err)
+				require.Equal(t, 8, cidSet.Len())
+				require.Len(t, ree.blookHooksCalled, 10)
+				require.True(t, ree.terminateRequested)
+				require.True(t, ree.nodeStyleChooserCalled)
+			},
+		},
+		"preexisting do not send cids": {
+			configureRequestExecution: func(requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
+				ree.doNotSendCids.Add(tbc.GenisisLink.(cidlink.Link).Cid)
+				ree.blockHookResults[tbc.LinkTipIndex(5)] = hooks.ErrPaused{}
+				ree.waitForResumeResults = append(ree.waitForResumeResults, nil)
+			},
+			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
+				tbc.VerifyWholeChainSync(responses)
+				require.Empty(t, receivedErrors)
+				require.Equal(t, 1, ree.currentWaitForResumeResult)
+				require.Equal(t, ree.request, ree.requestsSent[0])
+				doNotSendCidsExt, has := ree.requestsSent[1].Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, has)
+				cidSet, err := cidset.DecodeCidSet(doNotSendCidsExt)
+				require.NoError(t, err)
+				require.Equal(t, 7, cidSet.Len())
+				require.Len(t, ree.blookHooksCalled, 10)
+				require.True(t, ree.terminateRequested)
+				require.True(t, ree.nodeStyleChooserCalled)
+			},
+		},
+		"pause but request is cancelled": {
+			configureRequestExecution: func(requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
+				ree.blockHookResults[tbc.LinkTipIndex(5)] = hooks.ErrPaused{}
+			},
+			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
+				tbc.VerifyResponseRangeSync(responses, 0, 5)
+				require.Empty(t, receivedErrors)
+				require.Equal(t, 0, ree.currentWaitForResumeResult)
+				require.Equal(t, []gsmsg.GraphSyncRequest{ree.request}, ree.requestsSent)
+				require.Len(t, ree.blookHooksCalled, 6)
 				require.True(t, ree.terminateRequested)
 				require.True(t, ree.nodeStyleChooserCalled)
 			},
@@ -56,22 +194,26 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
 			ctx := context.Background()
-			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
+			//ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			//defer cancel()
 			loader, storer := testutil.NewTestStore(make(map[ipld.Link][]byte))
 			tbc := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 10)
 			fal := testloader.NewFakeAsyncLoader()
 			requestID := graphsync.RequestID(rand.Int31())
-			if data.configureLoader == nil {
-				fal.SuccessResponseOn(requestID, tbc.AllBlocks())
-			} else {
-				data.configureLoader(requestID, tbc, fal)
+			configureLoader := data.configureLoader
+			if configureLoader == nil {
+				configureLoader = func(requestID graphsync.RequestID, tbc *testutil.TestBlockChain, fal *testloader.FakeAsyncLoader) {
+					fal.SuccessResponseOn(requestID, tbc.AllBlocks())
+				}
 			}
+			configureLoader(requestID, tbc, fal)
 			ree := &requestExecutionEnv{
 				blockHookResults: make(map[ipld.Link]error),
 				doNotSendCids:    cid.NewSet(),
 				request:          gsmsg.NewRequest(requestID, tbc.TipLink.(cidlink.Link).Cid, tbc.Selector(), graphsync.Priority(rand.Int31())),
-				loader:           fal.AsyncLoad,
+				fal:              fal,
+				tbc:              tbc,
+				configureLoader:  configureLoader,
 			}
 			if data.configureRequestExecution != nil {
 				data.configureRequestExecution(requestID, tbc, ree)
@@ -119,8 +261,10 @@ type requestExecutionEnv struct {
 	terminateRequested         bool
 	nodeStyleChooserCalled     bool
 
-	// loader tracks seperately
-	loader loader.AsyncLoadFn
+	// deps
+	configureLoader func(requestID graphsync.RequestID, tbc *testutil.TestBlockChain, fal *testloader.FakeAsyncLoader)
+	tbc             *testutil.TestBlockChain
+	fal             *testloader.FakeAsyncLoader
 }
 
 func (ree *requestExecutionEnv) terminateRequest() {
@@ -133,6 +277,8 @@ func (ree *requestExecutionEnv) waitForResume() ([]graphsync.ExtensionData, erro
 	}
 	extensions := ree.waitForResumeResults[ree.currentWaitForResumeResult]
 	ree.currentWaitForResumeResult++
+	ree.fal.CleanupRequest(ree.request.ID())
+	ree.configureLoader(ree.request.ID(), ree.tbc, ree.fal)
 	return extensions, nil
 }
 
@@ -154,7 +300,7 @@ func (ree *requestExecutionEnv) requestExecution() executor.RequestExecution {
 	return executor.RequestExecution{
 		Request:          ree.request,
 		SendRequest:      ree.sendRequest,
-		Loader:           ree.loader,
+		Loader:           ree.fal.AsyncLoad,
 		RunBlockHooks:    ree.runBlockHooks,
 		DoNotSendCids:    ree.doNotSendCids,
 		TerminateRequest: ree.terminateRequest,

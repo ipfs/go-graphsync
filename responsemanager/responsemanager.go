@@ -26,15 +26,14 @@ const (
 )
 
 type inProgressResponseStatus struct {
-	ctx          context.Context
-	cancelFn     func()
-	request      gsmsg.GraphSyncRequest
-	loader       ipld.Loader
-	traverser    ipldutil.Traverser
-	pauseSignal  chan struct{}
-	updateSignal chan struct{}
-	updates      []gsmsg.GraphSyncRequest
-	isPaused     bool
+	ctx       context.Context
+	cancelFn  func()
+	request   gsmsg.GraphSyncRequest
+	loader    ipld.Loader
+	traverser ipldutil.Traverser
+	signals   signals
+	updates   []gsmsg.GraphSyncRequest
+	isPaused  bool
 }
 
 type responseKey struct {
@@ -42,14 +41,19 @@ type responseKey struct {
 	requestID graphsync.RequestID
 }
 
-type responseTaskData struct {
-	empty        bool
-	ctx          context.Context
-	request      gsmsg.GraphSyncRequest
-	loader       ipld.Loader
-	traverser    ipldutil.Traverser
+type signals struct {
 	pauseSignal  chan struct{}
 	updateSignal chan struct{}
+	stopSignal   chan struct{}
+}
+
+type responseTaskData struct {
+	empty     bool
+	ctx       context.Context
+	request   gsmsg.GraphSyncRequest
+	loader    ipld.Loader
+	traverser ipldutil.Traverser
+	signals   signals
 }
 
 // QueryQueue is an interface that can receive new selector query tasks
@@ -283,7 +287,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 	if !response.isPaused {
 		response.updates = append(response.updates, update)
 		select {
-		case response.updateSignal <- struct{}{}:
+		case response.signals.updateSignal <- struct{}{}:
 		default:
 		}
 		return
@@ -362,11 +366,14 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 		ctx, cancelFn := context.WithCancel(rm.ctx)
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
-				ctx:          ctx,
-				cancelFn:     cancelFn,
-				request:      request,
-				pauseSignal:  make(chan struct{}, 1),
-				updateSignal: make(chan struct{}, 1),
+				ctx:      ctx,
+				cancelFn: cancelFn,
+				request:  request,
+				signals: signals{
+					pauseSignal:  make(chan struct{}, 1),
+					updateSignal: make(chan struct{}, 1),
+					stopSignal:   make(chan struct{}, 1),
+				},
 			}
 		// TODO: Use a better work estimation metric.
 		rm.queryQueue.PushTasks(prm.p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
@@ -381,7 +388,7 @@ func (rdr *responseDataRequest) handle(rm *ResponseManager) {
 	response, ok := rm.inProgressResponses[rdr.key]
 	var taskData responseTaskData
 	if ok {
-		taskData = responseTaskData{false, response.ctx, response.request, response.loader, response.traverser, response.pauseSignal, response.updateSignal}
+		taskData = responseTaskData{false, response.ctx, response.request, response.loader, response.traverser, response.signals}
 	} else {
 		taskData = responseTaskData{empty: true}
 	}
@@ -457,7 +464,7 @@ func (prm *pauseRequestMessage) pauseRequest(rm *ResponseManager) error {
 		return errors.New("request is already paused")
 	}
 	select {
-	case inProgressResponse.pauseSignal <- struct{}{}:
+	case inProgressResponse.signals.pauseSignal <- struct{}{}:
 	default:
 	}
 	return nil
@@ -471,16 +478,24 @@ func (prm *pauseRequestMessage) handle(rm *ResponseManager) {
 	}
 }
 
-func (crm *cancelRequestMessage) handle(rm *ResponseManager) {
+func (crm *cancelRequestMessage) cancel(rm *ResponseManager) error {
 	key := responseKey{crm.p, crm.requestID}
 	rm.queryQueue.Remove(key, key.p)
 	inProgressResponse, ok := rm.inProgressResponses[key]
-	if ok {
-		inProgressResponse.cancelFn()
-		delete(rm.inProgressResponses, key)
+	if !ok {
+		return errors.New("could not find request")
 	}
 	select {
+	case inProgressResponse.signals.stopSignal <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+func (crm *cancelRequestMessage) handle(rm *ResponseManager) {
+	err := crm.cancel(rm)
+	select {
 	case <-rm.ctx.Done():
-	case crm.response <- nil:
+	case crm.response <- err:
 	}
 }

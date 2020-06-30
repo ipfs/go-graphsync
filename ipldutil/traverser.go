@@ -12,6 +12,14 @@ import (
 
 var defaultVisitor traversal.AdvVisitFn = func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil }
 
+// ContextCancelError is a sentinel that indicates the passed in context
+// was cancelled
+type ContextCancelError struct{}
+
+func (cp ContextCancelError) Error() string {
+	return "Context cancelled"
+}
+
 // TraversalBuilder defines parameters for an iterative traversal
 type TraversalBuilder struct {
 	Root     ipld.Link
@@ -91,7 +99,7 @@ func (t *traverser) checkState() {
 		select {
 		case <-t.ctx.Done():
 			t.isDone = true
-			t.completionErr = errors.New("Context cancelled")
+			t.completionErr = ContextCancelError{}
 		case newState := <-t.stateChan:
 			t.isDone = newState.isDone
 			t.completionErr = newState.completionErr
@@ -119,12 +127,12 @@ func (t *traverser) start() {
 		loader := func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
 			select {
 			case <-t.ctx.Done():
-				return nil, errors.New("Context cancelled")
+				return nil, ContextCancelError{}
 			case t.stateChan <- state{false, nil, lnk, lnkCtx}:
 			}
 			select {
 			case <-t.ctx.Done():
-				return nil, errors.New("Context cancelled")
+				return nil, ContextCancelError{}
 			case response := <-t.responses:
 				return response.input, response.err
 			}
@@ -179,12 +187,12 @@ func (t *traverser) Advance(reader io.Reader) error {
 	}
 	select {
 	case <-t.ctx.Done():
-		return errors.New("context cancelled")
+		return ContextCancelError{}
 	case t.awaitRequest <- struct{}{}:
 	}
 	select {
 	case <-t.ctx.Done():
-		return errors.New("context cancelled")
+		return ContextCancelError{}
 	case t.responses <- nextResponse{reader, nil}:
 	}
 	return nil

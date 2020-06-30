@@ -92,7 +92,7 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 		case qe.messages <- &setResponseDataRequest{key, loader, traverser}:
 		}
 	}
-	return qe.executeQuery(key.p, taskData.request, loader, traverser, taskData.pauseSignal, taskData.updateSignal)
+	return qe.executeQuery(key.p, taskData.request, loader, traverser, taskData.signals)
 }
 
 func (qe *queryExecutor) prepareQuery(ctx context.Context,
@@ -160,14 +160,13 @@ func (qe *queryExecutor) executeQuery(
 	request gsmsg.GraphSyncRequest,
 	loader ipld.Loader,
 	traverser ipldutil.Traverser,
-	pauseSignal chan struct{},
-	updateSignal chan struct{}) (graphsync.ResponseStatusCode, error) {
+	signals signals) (graphsync.ResponseStatusCode, error) {
 	updateChan := make(chan []gsmsg.GraphSyncRequest)
 	peerResponseSender := qe.peerManager.SenderForPeer(p)
 	err := runtraversal.RunTraversal(loader, traverser, func(link ipld.Link, data []byte) error {
 		var err error
 		_ = peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
-			err = qe.checkForUpdates(p, request, pauseSignal, updateSignal, updateChan, transaction)
+			err = qe.checkForUpdates(p, request, signals, updateChan, transaction)
 			if err != nil {
 				if _, ok := err.(hooks.ErrPaused); ok {
 					transaction.PauseRequest()
@@ -190,11 +189,17 @@ func (qe *queryExecutor) executeQuery(
 		return err
 	})
 	if err != nil {
-		if _, ok := err.(hooks.ErrPaused); !ok {
-			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
+		_, isPaused := err.(hooks.ErrPaused)
+		if isPaused {
+			return graphsync.RequestPaused, err
+		}
+		_, isCancelled := err.(ipldutil.ContextCancelError)
+		if isCancelled {
+			peerResponseSender.FinishWithCancel(request.ID())
 			return graphsync.RequestFailedUnknown, err
 		}
-		return graphsync.RequestPaused, err
+		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
+		return graphsync.RequestFailedUnknown, err
 	}
 	return peerResponseSender.FinishRequest(request.ID()), nil
 }
@@ -202,15 +207,16 @@ func (qe *queryExecutor) executeQuery(
 func (qe *queryExecutor) checkForUpdates(
 	p peer.ID,
 	request gsmsg.GraphSyncRequest,
-	pauseSignal chan struct{},
-	updateSignal chan struct{},
+	signals signals,
 	updateChan chan []gsmsg.GraphSyncRequest,
 	peerResponseSender peerresponsemanager.PeerResponseTransactionSender) error {
 	for {
 		select {
-		case <-pauseSignal:
+		case <-signals.stopSignal:
+			return errors.New("response cancelled by responder")
+		case <-signals.pauseSignal:
 			return hooks.ErrPaused{}
-		case <-updateSignal:
+		case <-signals.updateSignal:
 			select {
 			case qe.messages <- &responseUpdateRequest{responseKey{p, request.ID()}, updateChan}:
 			case <-qe.ctx.Done():

@@ -177,6 +177,12 @@ func (gs *GraphSync) RegisterIncomingBlockHook(hook graphsync.OnIncomingBlockHoo
 	return gs.incomingBlockHooks.Register(hook)
 }
 
+// UnpauseRequest unpauses a request that was paused in a block hook based request ID
+// Can also send extensions with unpause
+func (gs *GraphSync) UnpauseRequest(requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+	return gs.requestManager.UnpauseRequest(requestID, extensions...)
+}
+
 // UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
 func (gs *GraphSync) UnpauseResponse(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	return gs.responseManager.UnpauseResponse(p, requestID, extensions...)
