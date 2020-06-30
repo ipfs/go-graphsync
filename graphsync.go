@@ -158,6 +158,7 @@ type IncomingRequestHookActions interface {
 	UseLinkTargetNodeStyleChooser(traversal.LinkTargetNodeStyleChooser)
 	TerminateWithError(error)
 	ValidateRequest()
+	PauseResponse()
 }
 
 // OutgoingBlockHookActions are actions that an outgoing block hook can take to

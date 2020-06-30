@@ -548,6 +548,27 @@ func TestValidationAndExtensions(t *testing.T) {
 			require.True(t, set.Has(link.(cidlink.Link).Cid))
 		}
 	})
+	t.Run("test pause/resume", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+			hookActions.PauseResponse()
+		})
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		var pauseRequest pausedRequest
+		testutil.AssertReceive(td.ctx, t, td.pausedRequests, &pauseRequest, "should pause immediately")
+		timer := time.NewTimer(100 * time.Millisecond)
+		testutil.AssertDoesReceiveFirst(t, timer.C, "should not complete request while paused", td.completedRequestChan)
+		testutil.AssertChannelEmpty(t, td.sentResponses, "should not send more blocks")
+		err := responseManager.UnpauseResponse(td.p, td.requestID)
+		require.NoError(t, err)
+		var lastRequest completedRequest
+		testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+	})
 	t.Run("test block hook processing", func(t *testing.T) {
 		t.Run("can send extension data", func(t *testing.T) {
 			td := newTestData(t)

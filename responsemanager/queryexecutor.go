@@ -82,7 +82,8 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 	loader := taskData.loader
 	traverser := taskData.traverser
 	if loader == nil || traverser == nil {
-		loader, traverser, err = qe.prepareQuery(taskData.ctx, key.p, taskData.request)
+		var isPaused bool
+		loader, traverser, isPaused, err = qe.prepareQuery(taskData.ctx, key.p, taskData.request)
 		if err != nil {
 			return graphsync.RequestFailedUnknown, err
 		}
@@ -91,34 +92,41 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 			return graphsync.RequestFailedUnknown, errors.New("context cancelled")
 		case qe.messages <- &setResponseDataRequest{key, loader, traverser}:
 		}
+		if isPaused {
+			return graphsync.RequestPaused, hooks.ErrPaused{}
+		}
 	}
 	return qe.executeQuery(key.p, taskData.request, loader, traverser, taskData.signals)
 }
 
 func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	p peer.ID,
-	request gsmsg.GraphSyncRequest) (ipld.Loader, ipldutil.Traverser, error) {
+	request gsmsg.GraphSyncRequest) (ipld.Loader, ipldutil.Traverser, bool, error) {
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
 	peerResponseSender := qe.peerManager.SenderForPeer(p)
-	var validationErr error
+	var transactionError error
+	var isPaused bool
 	err := peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
 		for _, extension := range result.Extensions {
 			transaction.SendExtensionData(extension)
 		}
 		if result.Err != nil || !result.IsValidated {
 			transaction.FinishWithError(graphsync.RequestFailedUnknown)
-			validationErr = errors.New("request not valid")
+			transactionError = errors.New("request not valid")
+		} else if result.IsPaused {
+			transaction.PauseRequest()
+			isPaused = true
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
-	if validationErr != nil {
-		return nil, nil, validationErr
+	if transactionError != nil {
+		return nil, nil, false, transactionError
 	}
 	if err := qe.processDoNoSendCids(request, peerResponseSender); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
 	traverser := ipldutil.TraversalBuilder{
@@ -130,7 +138,7 @@ func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	if loader == nil {
 		loader = qe.loader
 	}
-	return loader, traverser, nil
+	return loader, traverser, isPaused, nil
 }
 
 func (qe *queryExecutor) processDoNoSendCids(request gsmsg.GraphSyncRequest, peerResponseSender peerresponsemanager.PeerResponseSender) error {
