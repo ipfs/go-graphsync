@@ -28,6 +28,7 @@ require (
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-libp2p v0.6.0
 	github.com/libp2p/go-libp2p-core v0.5.0
+	github.com/libp2p/go-libp2p-peer v0.2.0
 	github.com/libp2p/go-libp2p-record v0.1.1 // indirect
 	github.com/multiformats/go-multiaddr v0.2.1
 	github.com/multiformats/go-multihash v0.0.13
@@ -39,5 +40,4 @@ require (
 	go.uber.org/multierr v1.4.0 // indirect
 	golang.org/x/net v0.0.0-20190724013045-ca1201d0de80 // indirect
 	golang.org/x/tools v0.0.0-20191216173652-a0e659d51361 // indirect
-	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
 )

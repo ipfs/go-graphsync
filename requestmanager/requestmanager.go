@@ -10,7 +10,6 @@ import (
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
-	"github.com/ipfs/go-graphsync/requestmanager/loader"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
@@ -72,6 +71,7 @@ type RequestManager struct {
 	requestHooks              RequestHooks
 	responseHooks             ResponseHooks
 	blockHooks                BlockHooks
+	executionEnv              executor.ExecutionEnv
 }
 
 type requestManagerMessage interface {
@@ -316,31 +316,21 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 	lastResponse := &requestStatus.lastResponse
 	lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
 	rm.inProgressRequestStatuses[request.ID()] = requestStatus
-	incoming, incomingError := executor.RequestExecution{
-		Request:       request,
-		DoNotSendCids: doNotSendCids,
-		SendRequest:   func(gsRequest gsmsg.GraphSyncRequest) { rm.peerHandler.SendRequest(p, gsRequest) },
-		Loader:        rm.asyncLoader.AsyncLoad,
-		RunBlockHooks: func(bd graphsync.BlockData) error {
-			response := lastResponse.Load().(gsmsg.GraphSyncResponse)
-			return rm.processBlockHooks(p, response, bd)
-		},
-		WaitForResume: func() ([]graphsync.ExtensionData, error) {
-			select {
-			case <-rm.ctx.Done():
-				return nil, loader.ContextCancelError{}
-			case extensions := <-resumeMessages:
-				return extensions, nil
-			}
-		},
-		TerminateRequest: func() {
-			select {
-			case <-ctx.Done():
-			case rm.messages <- &terminateRequestMessage{request.ID()}:
-			}
-		},
-		NodeStyleChooser: hooksResult.CustomChooser,
-	}.Start(ctx)
+	incoming, incomingError := executor.ExecutionEnv{
+		SendRequest:      rm.peerHandler.SendRequest,
+		TerminateRequest: rm.terminateRequest,
+		RunBlockHooks:    rm.processBlockHooks,
+		Loader:           rm.asyncLoader.AsyncLoad,
+	}.Start(
+		executor.RequestExecution{
+			Ctx:              ctx,
+			P:                p,
+			Request:          request,
+			LastResponse:     lastResponse,
+			DoNotSendCids:    doNotSendCids,
+			NodeStyleChooser: hooksResult.CustomChooser,
+			ResumeMessages:   resumeMessages,
+		})
 	requestStatus.networkError = incomingError
 	return incoming, incomingError
 }
@@ -372,7 +362,6 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 	if crm.isPause {
 		inProgressRequestStatus.paused = true
 	} else {
-		delete(rm.inProgressRequestStatuses, crm.requestID)
 		inProgressRequestStatus.cancelFn()
 	}
 }
@@ -481,6 +470,13 @@ func (rm *RequestManager) processBlockHooks(p peer.ID, response graphsync.Respon
 		}
 	}
 	return result.Err
+}
+
+func (rm *RequestManager) terminateRequest(requestID graphsync.RequestID) {
+	select {
+	case <-rm.ctx.Done():
+	case rm.messages <- &terminateRequestMessage{requestID}:
+	}
 }
 
 func (rm *RequestManager) validateRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, hooks.RequestResult, error) {

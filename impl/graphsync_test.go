@@ -443,6 +443,7 @@ func TestPauseResumeRequest(t *testing.T) {
 
 	require.Equal(t, (100 - stopPoint), totalSentAfterPause)
 }
+
 func TestPauseResumeViaUpdate(t *testing.T) {
 	// create network
 	ctx := context.Background()

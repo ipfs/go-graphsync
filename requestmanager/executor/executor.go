@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"regexp"
+	"sync/atomic"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
@@ -15,35 +16,42 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
+	peer "github.com/libp2p/go-libp2p-peer"
 )
 
-// RequestExecution runs a single graphsync request with data loaded from the
-// asynchronous loader
-type RequestExecution struct {
-	Request          gsmsg.GraphSyncRequest
-	SendRequest      func(gsmsg.GraphSyncRequest)
+// ExecutionEnv are request parameters that last between requests
+type ExecutionEnv struct {
+	SendRequest      func(peer.ID, gsmsg.GraphSyncRequest)
+	RunBlockHooks    func(p peer.ID, response graphsync.ResponseData, blk graphsync.BlockData) error
+	TerminateRequest func(graphsync.RequestID)
+	WaitForMessages  func(ctx context.Context, resumeMessages chan graphsync.ExtensionData) ([]graphsync.ExtensionData, error)
 	Loader           loader.AsyncLoadFn
-	RunBlockHooks    func(blk graphsync.BlockData) error
+}
+
+// RequestExecution are parameters for a single request execution
+type RequestExecution struct {
+	Ctx              context.Context
+	P                peer.ID
+	Request          gsmsg.GraphSyncRequest
+	LastResponse     *atomic.Value
 	DoNotSendCids    *cid.Set
-	TerminateRequest func()
-	WaitForResume    func() ([]graphsync.ExtensionData, error)
 	NodeStyleChooser traversal.LinkTargetNodeStyleChooser
+	ResumeMessages   chan []graphsync.ExtensionData
 }
 
 // Start begins execution of a request in a go routine
-func (re RequestExecution) Start(ctx context.Context) (chan graphsync.ResponseProgress, chan error) {
+func (ee ExecutionEnv) Start(re RequestExecution) (chan graphsync.ResponseProgress, chan error) {
 	executor := &requestExecutor{
 		inProgressChan:   make(chan graphsync.ResponseProgress),
 		inProgressErr:    make(chan error),
-		ctx:              ctx,
+		ctx:              re.Ctx,
+		p:                re.P,
 		request:          re.Request,
-		sendRequest:      re.SendRequest,
-		loader:           re.Loader,
-		runBlockHooks:    re.RunBlockHooks,
-		terminateRequest: re.TerminateRequest,
-		nodeStyleChooser: re.NodeStyleChooser,
-		waitForResume:    re.WaitForResume,
+		lastResponse:     re.LastResponse,
 		doNotSendCids:    re.DoNotSendCids,
+		nodeStyleChooser: re.NodeStyleChooser,
+		resumeMessages:   re.ResumeMessages,
+		env:              ee,
 	}
 	executor.sendRequest(executor.request)
 	go executor.run()
@@ -54,16 +62,15 @@ type requestExecutor struct {
 	inProgressChan    chan graphsync.ResponseProgress
 	inProgressErr     chan error
 	ctx               context.Context
+	p                 peer.ID
 	request           gsmsg.GraphSyncRequest
-	sendRequest       func(gsmsg.GraphSyncRequest)
-	loader            loader.AsyncLoadFn
-	runBlockHooks     func(blk graphsync.BlockData) error
-	terminateRequest  func()
+	lastResponse      *atomic.Value
 	nodeStyleChooser  traversal.LinkTargetNodeStyleChooser
+	resumeMessages    chan []graphsync.ExtensionData
 	blocksReceived    uint64
 	maxBlocksReceived uint64
 	doNotSendCids     *cid.Set
-	waitForResume     func() ([]graphsync.ExtensionData, error)
+	env               ExecutionEnv
 }
 
 func (re *requestExecutor) visitor(tp traversal.Progress, node ipld.Node, tr traversal.VisitReason) error {
@@ -112,7 +119,7 @@ func (re *requestExecutor) executeOnce(selector selector.Selector, loaderFn ipld
 
 func (re *requestExecutor) run() {
 	selector, _ := ipldutil.ParseSelector(re.request.Selector())
-	loaderFn := loader.WrapAsyncLoader(re.ctx, re.loader, re.request.ID(), re.inProgressErr, re.onNewBlock)
+	loaderFn := loader.WrapAsyncLoader(re.ctx, re.env.Loader, re.request.ID(), re.inProgressErr, re.onNewBlock)
 	var err error
 	var finished bool
 	for !finished {
@@ -131,6 +138,27 @@ func (re *requestExecutor) run() {
 	close(re.inProgressErr)
 }
 
+func (re *requestExecutor) sendRequest(request gsmsg.GraphSyncRequest) {
+	re.env.SendRequest(re.p, request)
+}
+
+func (re *requestExecutor) terminateRequest() {
+	re.env.TerminateRequest(re.request.ID())
+}
+
+func (re *requestExecutor) runBlockHooks(blk graphsync.BlockData) error {
+	response := re.lastResponse.Load().(gsmsg.GraphSyncResponse)
+	return re.env.RunBlockHooks(re.p, response, blk)
+}
+
+func (re *requestExecutor) waitForResume() ([]graphsync.ExtensionData, error) {
+	select {
+	case <-re.ctx.Done():
+		return nil, loader.ContextCancelError{}
+	case extensions := <-re.resumeMessages:
+		return extensions, nil
+	}
+}
 func isPausedErr(err error) bool {
 	// TODO: Match with errors.Is when https://github.com/ipld/go-ipld-prime/issues/58 is resolved
 	match, _ := regexp.MatchString(hooks.ErrPaused{}.Error(), err.Error())

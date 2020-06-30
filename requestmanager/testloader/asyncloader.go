@@ -83,11 +83,11 @@ func (fal *FakeAsyncLoader) VerifyLastProcessedResponses(ctx context.Context, t 
 // VerifyNoRemainingData verifies no outstanding response channels are open for the given
 // RequestID (CleanupRequest was called last)
 func (fal *FakeAsyncLoader) VerifyNoRemainingData(t *testing.T, requestID graphsync.RequestID) {
-	fal.responseChannelsLk.Lock()
+	fal.responseChannelsLk.RLock()
 	for key := range fal.responseChannels {
 		require.NotEqual(t, key.requestID, requestID, "did not clean up request properly")
 	}
-	fal.responseChannelsLk.Unlock()
+	fal.responseChannelsLk.RUnlock()
 }
 
 // VerifyStoreUsed verifies the given store was used for the given request
