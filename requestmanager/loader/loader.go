@@ -3,14 +3,21 @@ package loader
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/traversal"
 )
+
+// ContextCancelError is a sentinel that indicates the passed in request context
+// was cancelled
+type ContextCancelError struct{}
+
+func (ContextCancelError) Error() string {
+	return "request context cancelled"
+}
 
 // AsyncLoadFn is a function which given a request id and an ipld.Link, returns
 // a channel which will eventually return data for the link or an err
@@ -33,22 +40,18 @@ func WrapAsyncLoader(
 		resultChan := asyncLoadFn(requestID, link)
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("request finished")
+			return nil, ContextCancelError{}
 		case result := <-resultChan:
 			if result.Err != nil {
 				select {
 				case <-ctx.Done():
-					return nil, fmt.Errorf("request finished")
+					return nil, ContextCancelError{}
 				case errorChan <- result.Err:
-					return nil, ipldutil.ErrDoNotFollow()
+					return nil, traversal.SkipMe{}
 				}
 			}
 			err := onNewBlockFn(&blockData{link, result.Local, uint64(len(result.Data))})
 			if err != nil {
-				select {
-				case <-ctx.Done():
-				case errorChan <- err:
-				}
 				return nil, err
 			}
 			return bytes.NewReader(result.Data), nil

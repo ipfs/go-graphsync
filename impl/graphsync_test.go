@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
@@ -41,6 +42,7 @@ import (
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/testutil"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -231,6 +233,55 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	var finalResponseStatus graphsync.ResponseStatusCode
 	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
 	require.Equal(t, graphsync.RequestCompletedFull, finalResponseStatus)
+}
+
+func TestGraphsyncRoundTripPartial(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup an IPLD tree and put all but 1 node into the second nodes block store
+	tree := testutil.NewTestIPLDTree()
+	td.blockStore2[tree.LeafAlphaLnk] = tree.LeafAlphaBlock.RawData()
+	td.blockStore2[tree.MiddleMapNodeLnk] = tree.MiddleMapBlock.RawData()
+	td.blockStore2[tree.MiddleListNodeLnk] = tree.MiddleListBlock.RawData()
+	td.blockStore2[tree.RootNodeLnk] = tree.RootBlock.RawData()
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
+	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+		select {
+		case finalResponseStatusChan <- status:
+		default:
+		}
+	})
+	// create a selector to traverse the whole tree
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	allSelector := ssb.ExploreRecursive(selector.RecursionLimitDepth(10),
+		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
+
+	_, errChan := requestor.Request(ctx, td.host2.ID(), tree.RootNodeLnk, allSelector)
+
+	for err := range errChan {
+		// verify the error is received for leaf beta node being missing
+		require.EqualError(t, err, fmt.Sprintf("Remote Peer Is Missing Block: %s", tree.LeafBetaLnk.String()))
+	}
+	require.Equal(t, tree.LeafAlphaBlock.RawData(), td.blockStore1[tree.LeafAlphaLnk])
+	require.Equal(t, tree.MiddleListBlock.RawData(), td.blockStore1[tree.MiddleListNodeLnk])
+	require.Equal(t, tree.MiddleMapBlock.RawData(), td.blockStore1[tree.MiddleMapNodeLnk])
+	require.Equal(t, tree.RootBlock.RawData(), td.blockStore1[tree.RootNodeLnk])
+
+	// verify listener
+	var finalResponseStatus graphsync.ResponseStatusCode
+	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
+	require.Equal(t, graphsync.RequestCompletedPartial, finalResponseStatus)
 }
 
 func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
