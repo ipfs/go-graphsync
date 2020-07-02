@@ -262,6 +262,49 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	}
 }
 
+func TestCancellationViaCommand(t *testing.T) {
+	td := newTestData(t)
+	defer td.cancel()
+	blks := td.blockChain.AllBlocks()
+	responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
+	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
+	responseManager.Startup()
+	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+
+	// read one block
+	var sentResponse sentResponse
+	testutil.AssertReceive(td.ctx, t, td.sentResponses, &sentResponse, "did not send response")
+	k := sentResponse.link.(cidlink.Link)
+	blockIndex := testutil.IndexOf(blks, k.Cid)
+	require.NotEqual(t, blockIndex, -1, "sent incorrect link")
+	require.Equal(t, blks[blockIndex].RawData(), sentResponse.data, "sent incorrect data")
+	require.Equal(t, td.requestID, sentResponse.requestID, "has incorrect response id")
+
+	// send a cancellation
+	err := responseManager.CancelResponse(td.p, td.requestID)
+	require.NoError(t, err)
+
+	// at this point we should receive at most one more block, then traversal
+	// should complete
+	additionalBlocks := 0
+	for {
+		select {
+		case <-td.ctx.Done():
+			t.Fatal("should complete request before context closes")
+		case sentResponse = <-td.sentResponses:
+			k = sentResponse.link.(cidlink.Link)
+			blockIndex = testutil.IndexOf(blks, k.Cid)
+			require.NotEqual(t, blockIndex, -1, "did not send correct link")
+			require.Equal(t, blks[blockIndex].RawData(), sentResponse.data, "sent incorrect data")
+			require.Equal(t, td.requestID, sentResponse.requestID, "incorrect response id")
+			additionalBlocks++
+		case <-td.completedRequestChan:
+			require.LessOrEqual(t, additionalBlocks, 1, "should send at most 1 additional block")
+			return
+		}
+	}
+}
+
 func TestEarlyCancellation(t *testing.T) {
 	td := newTestData(t)
 	defer td.cancel()
@@ -550,7 +593,43 @@ func TestValidationAndExtensions(t *testing.T) {
 				}
 			})
 			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
-			timer := time.NewTimer(500 * time.Millisecond)
+			timer := time.NewTimer(100 * time.Millisecond)
+			testutil.AssertDoesReceiveFirst(t, timer.C, "should not complete request while paused", td.completedRequestChan)
+			for i := 0; i < blockCount; i++ {
+				testutil.AssertDoesReceive(td.ctx, t, td.sentResponses, "should sent block")
+			}
+			testutil.AssertChannelEmpty(t, td.sentResponses, "should not send more blocks")
+			var pausedRequest pausedRequest
+			testutil.AssertReceive(td.ctx, t, td.pausedRequests, &pausedRequest, "should pause request")
+			err := responseManager.UnpauseResponse(td.p, td.requestID, td.extensionResponse)
+			require.NoError(t, err)
+			var sentExtension sentExtension
+			testutil.AssertReceive(td.ctx, t, td.sentExtensions, &sentExtension, "should send additional response")
+			require.Equal(t, td.extensionResponse, sentExtension.extension)
+			var lastRequest completedRequest
+			testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
+			require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+		})
+
+		t.Run("can pause/unpause externally", func(t *testing.T) {
+			td := newTestData(t)
+			defer td.cancel()
+			responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners)
+			responseManager.Startup()
+			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+				hookActions.ValidateRequest()
+			})
+			blkIndex := 0
+			blockCount := 3
+			td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+				blkIndex++
+				if blkIndex == blockCount {
+					err := responseManager.PauseResponse(p, requestData.ID())
+					require.NoError(t, err)
+				}
+			})
+			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+			timer := time.NewTimer(100 * time.Millisecond)
 			testutil.AssertDoesReceiveFirst(t, timer.C, "should not complete request while paused", td.completedRequestChan)
 			for i := 0; i < blockCount; i++ {
 				testutil.AssertDoesReceive(td.ctx, t, td.sentResponses, "should sent block")
@@ -564,7 +643,6 @@ func TestValidationAndExtensions(t *testing.T) {
 			testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
 			require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
 		})
-
 	})
 
 	t.Run("test update hook processing", func(t *testing.T) {
@@ -591,7 +669,7 @@ func TestValidationAndExtensions(t *testing.T) {
 				}
 			})
 			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
-			timer := time.NewTimer(500 * time.Millisecond)
+			timer := time.NewTimer(100 * time.Millisecond)
 			testutil.AssertDoesReceiveFirst(t, timer.C, "should not complete request while paused", td.completedRequestChan)
 			var sentResponses []sentResponse
 			for i := 0; i < blockCount; i++ {
@@ -684,7 +762,7 @@ func TestValidationAndExtensions(t *testing.T) {
 				testutil.AssertReceive(td.ctx, t, td.sentExtensions, &receivedExtension, "should send extension response")
 
 				// should still be paused
-				timer := time.NewTimer(500 * time.Millisecond)
+				timer := time.NewTimer(100 * time.Millisecond)
 				testutil.AssertDoesReceiveFirst(t, timer.C, "should not complete request while paused", td.completedRequestChan)
 			})
 		})

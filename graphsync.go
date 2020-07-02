@@ -269,5 +269,12 @@ type GraphExchange interface {
 	RegisterCompletedResponseListener(listener OnResponseCompletedListener) UnregisterHookFunc
 
 	// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
-	UnpauseResponse(peer.ID, RequestID) error
+	// Can also send extensions with unpause
+	UnpauseResponse(peer.ID, RequestID, ...ExtensionData) error
+
+	// PauseResponse pauses an in progress response (may take 1 or more blocks to process)
+	PauseResponse(peer.ID, RequestID) error
+
+	// CancelResponse cancels an in progress response
+	CancelResponse(peer.ID, RequestID) error
 }
