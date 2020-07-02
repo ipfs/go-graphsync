@@ -184,7 +184,7 @@ func TestRequestUpdate(t *testing.T) {
 	}
 
 	gsm := New()
-	gsm.AddRequest(UpdateRequest(id, extension))
+	gsm.AddRequest(UpdateRequest(id, false, extension))
 
 	requests := gsm.Requests()
 	require.Len(t, requests, 1, "did not add cancel request")

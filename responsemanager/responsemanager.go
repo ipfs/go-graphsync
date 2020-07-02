@@ -293,16 +293,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		return
 	}
 	result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, update)
-	peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-	err := peerResponseSender.Transaction(key.requestID, func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
-		for _, extension := range result.Extensions {
-			transaction.SendExtensionData(extension)
-		}
-		if result.Err != nil {
-			transaction.FinishWithError(graphsync.RequestFailedUnknown)
-		}
-		return nil
-	})
+	err := rm.sendUpdateData(key, result)
 	if err != nil {
 		log.Errorf("Error processing update: %s", err)
 	}
@@ -318,6 +309,20 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		}
 	}
 
+}
+
+func (rm *ResponseManager) sendUpdateData(key responseKey, result hooks.UpdateResult) error {
+	peerResponseSender := rm.peerManager.SenderForPeer(key.p)
+	err := peerResponseSender.Transaction(key.requestID, func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+		for _, extension := range result.Extensions {
+			transaction.SendExtensionData(extension)
+		}
+		if result.Err != nil {
+			transaction.FinishWithError(graphsync.RequestFailedUnknown)
+		}
+		return nil
+	})
+	return err
 }
 
 func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
@@ -355,6 +360,10 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			response, ok := rm.inProgressResponses[key]
 			if ok {
 				response.cancelFn()
+				if request.IsUpdate() {
+					result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, request)
+					rm.sendUpdateData(key, result)
+				}
 				delete(rm.inProgressResponses, key)
 			}
 			continue

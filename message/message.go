@@ -120,8 +120,8 @@ func CancelRequest(id graphsync.RequestID) GraphSyncRequest {
 }
 
 // UpdateRequest generates a new request to update an in progress request with the given extensions
-func UpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionData) GraphSyncRequest {
-	return newRequest(id, cid.Cid{}, nil, 0, false, true, toExtensionsMap(extensions))
+func UpdateRequest(id graphsync.RequestID, isCancel bool, extensions ...graphsync.ExtensionData) GraphSyncRequest {
+	return newRequest(id, cid.Cid{}, nil, 0, isCancel, true, toExtensionsMap(extensions))
 }
 
 func toExtensionsMap(extensions []graphsync.ExtensionData) (extensionsMap map[string][]byte) {

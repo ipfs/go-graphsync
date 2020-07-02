@@ -412,7 +412,16 @@ func TestPauseResumeRequest(t *testing.T) {
 			}
 		}
 	})
-
+	updateDataChan := make(chan []byte, 1)
+	responder.RegisterRequestUpdatedHook(func(p peer.ID, requestData graphsync.RequestData, updateData graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+		data, has := updateData.Extension(td.extensionName)
+		if has {
+			select {
+			case updateDataChan <- data:
+			default:
+			}
+		}
+	})
 	stopPoint := 50
 	blocksReceived := 0
 	requestIDChan := make(chan graphsync.RequestID, 1)
@@ -423,6 +432,7 @@ func TestPauseResumeRequest(t *testing.T) {
 		}
 		blocksReceived++
 		if blocksReceived == stopPoint {
+			hookActions.UpdateRequestWithExtensions(td.extensionUpdate)
 			hookActions.PauseRequest()
 		}
 	})
@@ -433,7 +443,8 @@ func TestPauseResumeRequest(t *testing.T) {
 	timer := time.NewTimer(100 * time.Millisecond)
 	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
 
-	requestID := <-requestIDChan
+	var requestID graphsync.RequestID
+	testutil.AssertReceive(ctx, t, requestIDChan, &requestID, "receives request ID")
 	err := requestor.UnpauseRequest(requestID, td.extensionUpdate)
 	require.NoError(t, err)
 
@@ -442,6 +453,10 @@ func TestPauseResumeRequest(t *testing.T) {
 	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
 
 	require.Equal(t, (100 - stopPoint), totalSentAfterPause)
+
+	var updateDataReceived []byte
+	testutil.AssertReceive(ctx, t, updateDataChan, &updateDataReceived, "receives update")
+	require.Equal(t, td.extensionUpdateData, updateDataReceived)
 }
 
 func TestPauseResumeViaUpdate(t *testing.T) {

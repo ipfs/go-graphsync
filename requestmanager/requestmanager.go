@@ -186,8 +186,9 @@ func (rm *RequestManager) singleErrorResponse(err error) (chan graphsync.Respons
 }
 
 type cancelRequestMessage struct {
-	requestID graphsync.RequestID
-	isPause   bool
+	requestID  graphsync.RequestID
+	isPause    bool
+	extensions []graphsync.ExtensionData
 }
 
 func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID,
@@ -196,7 +197,7 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID,
 	cancelMessageChannel := rm.messages
 	for cancelMessageChannel != nil || incomingResponses != nil || incomingErrors != nil {
 		select {
-		case cancelMessageChannel <- &cancelRequestMessage{requestID, false}:
+		case cancelMessageChannel <- &cancelRequestMessage{requestID, false, nil}:
 			cancelMessageChannel = nil
 		// clear out any remaining responses, in case and "incoming reponse"
 		// messages get processed before our cancel message
@@ -365,13 +366,20 @@ func (trm *terminateRequestMessage) handle(rm *RequestManager) {
 	rm.asyncLoader.CleanupRequest(trm.requestID)
 }
 
+func (crm *cancelRequestMessage) request() gsmsg.GraphSyncRequest {
+	if crm.extensions == nil {
+		return gsmsg.CancelRequest(crm.requestID)
+	}
+	return gsmsg.UpdateRequest(crm.requestID, true, crm.extensions...)
+}
+
 func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[crm.requestID]
 	if !ok {
 		return
 	}
 
-	rm.peerHandler.SendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(crm.requestID))
+	rm.peerHandler.SendRequest(inProgressRequestStatus.p, crm.request())
 	if crm.isPause {
 		inProgressRequestStatus.paused = true
 	} else {
@@ -420,7 +428,7 @@ func (rm *RequestManager) updateLastResponses(responses []gsmsg.GraphSyncRespons
 func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg.GraphSyncResponse) bool {
 	result := rm.responseHooks.ProcessResponseHooks(p, response)
 	if len(result.Extensions) > 0 {
-		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
+		updateRequest := gsmsg.UpdateRequest(response.RequestID(), false, result.Extensions...)
 		rm.peerHandler.SendRequest(p, updateRequest)
 	}
 	if result.Err != nil {
@@ -471,18 +479,19 @@ func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.Respo
 
 func (rm *RequestManager) processBlockHooks(p peer.ID, response graphsync.ResponseData, block graphsync.BlockData) error {
 	result := rm.blockHooks.ProcessBlockHooks(p, response, block)
-	if len(result.Extensions) > 0 {
-		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
-		rm.peerHandler.SendRequest(p, updateRequest)
-	}
 	if result.Err != nil {
 		_, isPause := result.Err.(hooks.ErrPaused)
 		select {
 		case <-rm.ctx.Done():
-		case rm.messages <- &cancelRequestMessage{response.RequestID(), isPause}:
+		case rm.messages <- &cancelRequestMessage{response.RequestID(), isPause, result.Extensions}:
 		}
+		return result.Err
 	}
-	return result.Err
+	if len(result.Extensions) > 0 {
+		updateRequest := gsmsg.UpdateRequest(response.RequestID(), false, result.Extensions...)
+		rm.peerHandler.SendRequest(p, updateRequest)
+	}
+	return nil
 }
 
 func (rm *RequestManager) terminateRequest(requestID graphsync.RequestID) {
