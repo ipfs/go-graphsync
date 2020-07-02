@@ -362,7 +362,10 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 				response.cancelFn()
 				if request.IsUpdate() {
 					result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, request)
-					rm.sendUpdateData(key, result)
+					err := rm.sendUpdateData(key, result)
+					if err != nil {
+						log.Warn("Error transmitting response for extension processing during cancel: %s", err.Error())
+					}
 				}
 				delete(rm.inProgressResponses, key)
 			}
