@@ -457,13 +457,15 @@ func (rm *RequestManager) processTerminations(responses []gsmsg.GraphSyncRespons
 func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.ResponseStatusCode) error {
 	switch status {
 	case graphsync.RequestFailedBusy:
-		return fmt.Errorf("Request Failed - Peer Is Busy")
+		return graphsync.RequestFailedBusyErr{}
 	case graphsync.RequestFailedContentNotFound:
-		return fmt.Errorf("Request Failed - Content Not Found")
+		return graphsync.RequestFailedContentNotFoundErr{}
 	case graphsync.RequestFailedLegal:
-		return fmt.Errorf("Request Failed - For Legal Reasons")
+		return graphsync.RequestFailedLegalErr{}
 	case graphsync.RequestFailedUnknown:
-		return fmt.Errorf("Request Failed - Unknown Reason")
+		return graphsync.RequestFailedUnknownErr{}
+	case graphsync.RequestCancelled:
+		return graphsync.RequestCancelledErr{}
 	default:
 		return fmt.Errorf("Unknown")
 	}

@@ -90,6 +90,41 @@ const (
 	RequestCancelled = ResponseStatusCode(35)
 )
 
+// RequestFailedBusyErr is an error message received on the error channel when the peer is busy
+type RequestFailedBusyErr struct{}
+
+func (e RequestFailedBusyErr) Error() string {
+	return "Request Failed - Peer Is Busy"
+}
+
+// RequestFailedContentNotFoundErr is an error message received on the error channel when the content is not found
+type RequestFailedContentNotFoundErr struct{}
+
+func (e RequestFailedContentNotFoundErr) Error() string {
+	return "Request Failed - Content Not Found"
+}
+
+// RequestFailedLegalErr is an error message received on the error channel when the request fails for legal reasons
+type RequestFailedLegalErr struct{}
+
+func (e RequestFailedLegalErr) Error() string {
+	return "Request Failed - For Legal Reasons"
+}
+
+// RequestFailedUnknownErr is an error message received on the error channel when the request fails for unknown reasons
+type RequestFailedUnknownErr struct{}
+
+func (e RequestFailedUnknownErr) Error() string {
+	return "Request Failed - Unknown Reason"
+}
+
+// RequestCancelledErr is an error message received on the error channel that indicates the responder cancelled a request
+type RequestCancelledErr struct{}
+
+func (e RequestCancelledErr) Error() string {
+	return "Request Failed - Responder Cancelled"
+}
+
 var (
 	// ErrExtensionAlreadyRegistered means a user extension can be registered only once
 	ErrExtensionAlreadyRegistered = errors.New("extension already registered")
