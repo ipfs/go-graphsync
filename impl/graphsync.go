@@ -29,26 +29,27 @@ const maxRecursionDepth = 100
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
 type GraphSync struct {
-	network                    gsnet.GraphSyncNetwork
-	loader                     ipld.Loader
-	storer                     ipld.Storer
-	requestManager             *requestmanager.RequestManager
-	responseManager            *responsemanager.ResponseManager
-	asyncLoader                *asyncloader.AsyncLoader
-	peerResponseManager        *peerresponsemanager.PeerResponseManager
-	peerTaskQueue              *peertaskqueue.PeerTaskQueue
-	peerManager                *peermanager.PeerMessageManager
-	incomingRequestHooks       *responderhooks.IncomingRequestHooks
-	outgoingBlockHooks         *responderhooks.OutgoingBlockHooks
-	requestUpdatedHooks        *responderhooks.RequestUpdatedHooks
-	completedResponseListeners *responderhooks.CompletedResponseListeners
-	incomingResponseHooks      *requestorhooks.IncomingResponseHooks
-	outgoingRequestHooks       *requestorhooks.OutgoingRequestHooks
-	incomingBlockHooks         *requestorhooks.IncomingBlockHooks
-	persistenceOptions         *persistenceoptions.PersistenceOptions
-	ctx                        context.Context
-	cancel                     context.CancelFunc
-	unregisterDefaultValidator graphsync.UnregisterHookFunc
+	network                     gsnet.GraphSyncNetwork
+	loader                      ipld.Loader
+	storer                      ipld.Storer
+	requestManager              *requestmanager.RequestManager
+	responseManager             *responsemanager.ResponseManager
+	asyncLoader                 *asyncloader.AsyncLoader
+	peerResponseManager         *peerresponsemanager.PeerResponseManager
+	peerTaskQueue               *peertaskqueue.PeerTaskQueue
+	peerManager                 *peermanager.PeerMessageManager
+	incomingRequestHooks        *responderhooks.IncomingRequestHooks
+	outgoingBlockHooks          *responderhooks.OutgoingBlockHooks
+	requestUpdatedHooks         *responderhooks.RequestUpdatedHooks
+	completedResponseListeners  *responderhooks.CompletedResponseListeners
+	requestorCancelledListeners *responderhooks.RequestorCancelledListeners
+	incomingResponseHooks       *requestorhooks.IncomingResponseHooks
+	outgoingRequestHooks        *requestorhooks.OutgoingRequestHooks
+	incomingBlockHooks          *requestorhooks.IncomingBlockHooks
+	persistenceOptions          *persistenceoptions.PersistenceOptions
+	ctx                         context.Context
+	cancel                      context.CancelFunc
+	unregisterDefaultValidator  graphsync.UnregisterHookFunc
 }
 
 // Option defines the functional option type that can be used to configure
@@ -88,29 +89,31 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	outgoingBlockHooks := responderhooks.NewBlockHooks()
 	requestUpdatedHooks := responderhooks.NewUpdateHooks()
 	completedResponseListeners := responderhooks.NewCompletedResponseListeners()
-	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners)
+	requestorCancelledListeners := responderhooks.NewRequestorCancelledListeners()
+	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners)
 	unregisterDefaultValidator := incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
-		network:                    network,
-		loader:                     loader,
-		storer:                     storer,
-		asyncLoader:                asyncLoader,
-		requestManager:             requestManager,
-		peerManager:                peerManager,
-		persistenceOptions:         persistenceOptions,
-		incomingRequestHooks:       incomingRequestHooks,
-		outgoingBlockHooks:         outgoingBlockHooks,
-		requestUpdatedHooks:        requestUpdatedHooks,
-		completedResponseListeners: completedResponseListeners,
-		incomingResponseHooks:      incomingResponseHooks,
-		outgoingRequestHooks:       outgoingRequestHooks,
-		incomingBlockHooks:         incomingBlockHooks,
-		peerTaskQueue:              peerTaskQueue,
-		peerResponseManager:        peerResponseManager,
-		responseManager:            responseManager,
-		ctx:                        ctx,
-		cancel:                     cancel,
-		unregisterDefaultValidator: unregisterDefaultValidator,
+		network:                     network,
+		loader:                      loader,
+		storer:                      storer,
+		asyncLoader:                 asyncLoader,
+		requestManager:              requestManager,
+		peerManager:                 peerManager,
+		persistenceOptions:          persistenceOptions,
+		incomingRequestHooks:        incomingRequestHooks,
+		outgoingBlockHooks:          outgoingBlockHooks,
+		requestUpdatedHooks:         requestUpdatedHooks,
+		completedResponseListeners:  completedResponseListeners,
+		requestorCancelledListeners: requestorCancelledListeners,
+		incomingResponseHooks:       incomingResponseHooks,
+		outgoingRequestHooks:        outgoingRequestHooks,
+		incomingBlockHooks:          incomingBlockHooks,
+		peerTaskQueue:               peerTaskQueue,
+		peerResponseManager:         peerResponseManager,
+		responseManager:             responseManager,
+		ctx:                         ctx,
+		cancel:                      cancel,
+		unregisterDefaultValidator:  unregisterDefaultValidator,
 	}
 
 	for _, option := range options {
@@ -175,6 +178,12 @@ func (gs *GraphSync) RegisterCompletedResponseListener(listener graphsync.OnResp
 // RegisterIncomingBlockHook adds a hook that runs when a block is received and validated (put in block store)
 func (gs *GraphSync) RegisterIncomingBlockHook(hook graphsync.OnIncomingBlockHook) graphsync.UnregisterHookFunc {
 	return gs.incomingBlockHooks.Register(hook)
+}
+
+// RegisterRequestorCancelledListener adds a listener on the responder for
+// responses cancelled by the requestor
+func (gs *GraphSync) RegisterRequestorCancelledListener(listener graphsync.OnRequestorCancelledListener) graphsync.UnregisterHookFunc {
+	return gs.requestorCancelledListeners.Register(listener)
 }
 
 // UnpauseRequest unpauses a request that was paused in a block hook based request ID

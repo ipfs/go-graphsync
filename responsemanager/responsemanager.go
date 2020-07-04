@@ -86,6 +86,11 @@ type CompletedListeners interface {
 	NotifyCompletedListeners(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode)
 }
 
+// CancelledListeners is an interface for notifying listeners that requestor cancelled
+type CancelledListeners interface {
+	NotifyCancelledListeners(p peer.ID, request graphsync.RequestData)
+}
+
 // PeerManager is an interface that returns sender interfaces for peer responses.
 type PeerManager interface {
 	SenderForPeer(p peer.ID) peerresponsemanager.PeerResponseSender
@@ -104,6 +109,7 @@ type ResponseManager struct {
 	queryQueue          QueryQueue
 	updateHooks         UpdateHooks
 	completedListeners  CompletedListeners
+	cancelledListeners  CancelledListeners
 	messages            chan responseManagerMessage
 	workSignal          chan struct{}
 	qe                  *queryExecutor
@@ -119,7 +125,9 @@ func New(ctx context.Context,
 	requestHooks RequestHooks,
 	blockHooks BlockHooks,
 	updateHooks UpdateHooks,
-	completedListeners CompletedListeners) *ResponseManager {
+	completedListeners CompletedListeners,
+	cancelledListeners CancelledListeners,
+) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
 	messages := make(chan responseManagerMessage, 16)
 	workSignal := make(chan struct{}, 1)
@@ -142,6 +150,7 @@ func New(ctx context.Context,
 		queryQueue:          queryQueue,
 		updateHooks:         updateHooks,
 		completedListeners:  completedListeners,
+		cancelledListeners:  cancelledListeners,
 		messages:            messages,
 		workSignal:          workSignal,
 		qe:                  qe,
@@ -354,6 +363,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			rm.queryQueue.Remove(key, key.p)
 			response, ok := rm.inProgressResponses[key]
 			if ok {
+				rm.cancelledListeners.NotifyCancelledListeners(prm.p, response.request)
 				response.cancelFn()
 				delete(rm.inProgressResponses, key)
 			}

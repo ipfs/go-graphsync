@@ -18,6 +18,8 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
+var errCancelledByCommand = errors.New("response cancelled by responder")
+
 // TODO: Move this into a seperate module and fully seperate from the ResponseManager
 type queryExecutor struct {
 	requestHooks RequestHooks
@@ -204,7 +206,11 @@ func (qe *queryExecutor) executeQuery(
 		_, isCancelled := err.(ipldutil.ContextCancelError)
 		if isCancelled {
 			peerResponseSender.FinishWithCancel(request.ID())
-			return graphsync.RequestFailedUnknown, err
+			return graphsync.RequestCancelled, err
+		}
+		if err == errCancelledByCommand {
+			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestCancelled)
+			return graphsync.RequestCancelled, err
 		}
 		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
 		return graphsync.RequestFailedUnknown, err
@@ -221,7 +227,7 @@ func (qe *queryExecutor) checkForUpdates(
 	for {
 		select {
 		case <-signals.stopSignal:
-			return errors.New("response cancelled by responder")
+			return errCancelledByCommand
 		case <-signals.pauseSignal:
 			return hooks.ErrPaused{}
 		case <-signals.updateSignal:

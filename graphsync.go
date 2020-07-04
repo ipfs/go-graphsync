@@ -86,6 +86,8 @@ const (
 	RequestFailedLegal = ResponseStatusCode(33)
 	// RequestFailedContentNotFound means the respondent does not have the content.
 	RequestFailedContentNotFound = ResponseStatusCode(34)
+	// RequestCancelled means the responder was processing the request but decided to top, for whatever reason
+	RequestCancelled = ResponseStatusCode(35)
 )
 
 var (
@@ -238,6 +240,9 @@ type OnRequestUpdatedHook func(p peer.ID, request RequestData, updateRequest Req
 // OnResponseCompletedListener provides a way to listen for when responder has finished serving a response
 type OnResponseCompletedListener func(p peer.ID, request RequestData, status ResponseStatusCode)
 
+// OnRequestorCancelledListener provides a way to listen for responses the requestor canncels
+type OnRequestorCancelledListener func(p peer.ID, request RequestData)
+
 // UnregisterHookFunc is a function call to unregister a hook that was previously registered
 type UnregisterHookFunc func()
 
@@ -269,6 +274,10 @@ type GraphExchange interface {
 
 	// RegisterCompletedResponseListener adds a listener on the responder for completed responses
 	RegisterCompletedResponseListener(listener OnResponseCompletedListener) UnregisterHookFunc
+
+	// RegisterRequestorCancelledListener adds a listener on the responder for
+	// responses cancelled by the requestor
+	RegisterRequestorCancelledListener(listener OnRequestorCancelledListener) UnregisterHookFunc
 
 	// UnpauseRequest unpauses a request that was paused in a block hook based request ID
 	// Can also send extensions with unpause
