@@ -3,6 +3,7 @@ package executor_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"sync/atomic"
 	"testing"
@@ -11,10 +12,10 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
-	"github.com/ipfs/go-graphsync/requestmanager/loader"
 	"github.com/ipfs/go-graphsync/requestmanager/testloader"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
@@ -25,9 +26,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type configureLoaderFn func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, fal *testloader.FakeAsyncLoader, startStop [2]int)
+
 func TestRequestExecutionBlockChain(t *testing.T) {
 	testCases := map[string]struct {
-		configureLoader           func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, fal *testloader.FakeAsyncLoader)
+		configureLoader           configureLoaderFn
 		configureRequestExecution func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv)
 		verifyResults             func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error)
 	}{
@@ -59,7 +62,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 		},
 		"context cancelled": {
 			configureRequestExecution: func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
-				ree.blockHookResults[blockHookKey{p, requestID, tbc.LinkTipIndex(5)}] = loader.ContextCancelError{}
+				ree.blockHookResults[blockHookKey{p, requestID, tbc.LinkTipIndex(5)}] = ipldutil.ContextCancelError{}
 			},
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyResponseRangeSync(responses, 0, 5)
@@ -75,6 +78,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			configureRequestExecution: func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
 				ree.blockHookResults[blockHookKey{p, requestID, tbc.LinkTipIndex(5)}] = hooks.ErrPaused{}
 				ree.waitForResumeResults = append(ree.waitForResumeResults, nil)
+				ree.loaderRanges = [][2]int{{0, 6}, {6, 10}}
 			},
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyWholeChainSync(responses)
@@ -96,6 +100,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				ree.blockHookResults[blockHookKey{p, requestID, tbc.LinkTipIndex(5)}] = hooks.ErrPaused{}
 				ree.blockHookResults[blockHookKey{p, requestID, tbc.LinkTipIndex(7)}] = hooks.ErrPaused{}
 				ree.waitForResumeResults = append(ree.waitForResumeResults, nil, nil)
+				ree.loaderRanges = [][2]int{{0, 6}, {6, 8}, {8, 10}}
 			},
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyWholeChainSync(responses)
@@ -132,6 +137,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 						Data: []byte("cheese 2"),
 					},
 				})
+				ree.loaderRanges = [][2]int{{0, 6}, {6, 8}, {8, 10}}
 			},
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyWholeChainSync(responses)
@@ -164,6 +170,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				ree.doNotSendCids.Add(tbc.GenisisLink.(cidlink.Link).Cid)
 				ree.blockHookResults[blockHookKey{p, requestID, tbc.LinkTipIndex(5)}] = hooks.ErrPaused{}
 				ree.waitForResumeResults = append(ree.waitForResumeResults, nil)
+				ree.loaderRanges = [][2]int{{0, 6}, {6, 10}}
 			},
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyWholeChainSync(responses)
@@ -198,6 +205,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			configureRequestExecution: func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
 				ree.externalPauses = append(ree.externalPauses, pauseKey{requestID, tbc.LinkTipIndex(5)})
 				ree.waitForResumeResults = append(ree.waitForResumeResults, nil)
+				ree.loaderRanges = [][2]int{{0, 6}, {6, 10}}
 			},
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyWholeChainSync(responses)
@@ -217,8 +225,9 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 		},
 		"pause externally multiple": {
 			configureRequestExecution: func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
-				ree.externalPauses = append(ree.externalPauses, pauseKey{requestID, tbc.LinkTipIndex(5)}, pauseKey{requestID, tbc.LinkTipIndex(3)})
+				ree.externalPauses = append(ree.externalPauses, pauseKey{requestID, tbc.LinkTipIndex(5)}, pauseKey{requestID, tbc.LinkTipIndex(7)})
 				ree.waitForResumeResults = append(ree.waitForResumeResults, nil, nil)
+				ree.loaderRanges = [][2]int{{0, 6}, {6, 8}, {8, 10}}
 			},
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyWholeChainSync(responses)
@@ -235,7 +244,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.True(t, has)
 				cidSet, err = cidset.DecodeCidSet(doNotSendCidsExt)
 				require.NoError(t, err)
-				require.Equal(t, 6, cidSet.Len())
+				require.Equal(t, 8, cidSet.Len())
 				require.Len(t, ree.blookHooksCalled, 10)
 				require.Equal(t, ree.request.ID(), ree.terminateRequested)
 				require.True(t, ree.nodeStyleChooserCalled)
@@ -254,11 +263,10 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			p := testutil.GeneratePeers(1)[0]
 			configureLoader := data.configureLoader
 			if configureLoader == nil {
-				configureLoader = func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, fal *testloader.FakeAsyncLoader) {
-					fal.SuccessResponseOn(requestID, tbc.AllBlocks())
+				configureLoader = func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, fal *testloader.FakeAsyncLoader, startStop [2]int) {
+					fal.SuccessResponseOn(requestID, tbc.Blocks(startStop[0], startStop[1]))
 				}
 			}
-			configureLoader(p, requestID, tbc, fal)
 			requestCtx, requestCancel := context.WithCancel(ctx)
 			ree := &requestExecutionEnv{
 				ctx:              requestCtx,
@@ -276,6 +284,9 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			fal.OnAsyncLoad(ree.checkPause)
 			if data.configureRequestExecution != nil {
 				data.configureRequestExecution(p, requestID, tbc, ree)
+			}
+			if len(ree.loaderRanges) == 0 {
+				ree.loaderRanges = [][2]int{{0, 10}}
 			}
 			inProgress, inProgressErr := ree.requestExecution()
 			var responsesReceived []graphsync.ResponseProgress
@@ -334,6 +345,7 @@ type requestExecutionEnv struct {
 	resumeMessages       chan []graphsync.ExtensionData
 	pauseMessages        chan struct{}
 	externalPauses       []pauseKey
+	loaderRanges         [][2]int
 
 	// results
 	currentPauseResult         int
@@ -344,7 +356,7 @@ type requestExecutionEnv struct {
 	nodeStyleChooserCalled     bool
 
 	// deps
-	configureLoader func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, fal *testloader.FakeAsyncLoader)
+	configureLoader configureLoaderFn
 	tbc             *testutil.TestBlockChain
 	fal             *testloader.FakeAsyncLoader
 }
@@ -355,17 +367,19 @@ func (ree *requestExecutionEnv) terminateRequest(requestID graphsync.RequestID) 
 
 func (ree *requestExecutionEnv) waitForResume() ([]graphsync.ExtensionData, error) {
 	if len(ree.waitForResumeResults) <= ree.currentWaitForResumeResult {
-		return nil, loader.ContextCancelError{}
+		return nil, ipldutil.ContextCancelError{}
 	}
 	extensions := ree.waitForResumeResults[ree.currentWaitForResumeResult]
 	ree.currentWaitForResumeResult++
-	ree.fal.CleanupRequest(ree.request.ID())
-	ree.configureLoader(ree.p, ree.request.ID(), ree.tbc, ree.fal)
 	return extensions, nil
 }
 
 func (ree *requestExecutionEnv) sendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
 	ree.requestsSent = append(ree.requestsSent, requestSent{p, request})
+	if ree.currentWaitForResumeResult < len(ree.loaderRanges) {
+		fmt.Println(ree.currentWaitForResumeResult)
+		ree.configureLoader(ree.p, ree.request.ID(), ree.tbc, ree.fal, ree.loaderRanges[ree.currentWaitForResumeResult])
+	}
 }
 
 func (ree *requestExecutionEnv) nodeStyleChooser(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {

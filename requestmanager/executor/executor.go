@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"bytes"
 	"context"
 	"regexp"
 	"sync/atomic"
@@ -11,13 +12,16 @@ import (
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
-	"github.com/ipfs/go-graphsync/requestmanager/loader"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
-	"github.com/ipld/go-ipld-prime/traversal/selector"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
+
+// AsyncLoadFn is a function which given a request id and an ipld.Link, returns
+// a channel which will eventually return data for the link or an err
+type AsyncLoadFn func(graphsync.RequestID, ipld.Link) <-chan types.AsyncLoadResult
 
 // ExecutionEnv are request parameters that last between requests
 type ExecutionEnv struct {
@@ -25,7 +29,7 @@ type ExecutionEnv struct {
 	RunBlockHooks    func(p peer.ID, response graphsync.ResponseData, blk graphsync.BlockData) error
 	TerminateRequest func(graphsync.RequestID)
 	WaitForMessages  func(ctx context.Context, resumeMessages chan graphsync.ExtensionData) ([]graphsync.ExtensionData, error)
-	Loader           loader.AsyncLoadFn
+	Loader           AsyncLoadFn
 }
 
 // RequestExecution are parameters for a single request execution
@@ -70,76 +74,68 @@ type requestExecutor struct {
 	nodeStyleChooser  traversal.LinkTargetNodeStyleChooser
 	resumeMessages    chan []graphsync.ExtensionData
 	pauseMessages     chan struct{}
-	blocksReceived    uint64
-	maxBlocksReceived uint64
 	doNotSendCids     *cid.Set
 	env               ExecutionEnv
+	restartNeeded     bool
+	pendingExtensions []graphsync.ExtensionData
 }
 
 func (re *requestExecutor) visitor(tp traversal.Progress, node ipld.Node, tr traversal.VisitReason) error {
-	if re.blocksReceived >= re.maxBlocksReceived {
-		select {
-		case <-re.ctx.Done():
-		case re.inProgressChan <- graphsync.ResponseProgress{
-			Node:      node,
-			Path:      tp.Path,
-			LastBlock: tp.LastBlock,
-		}:
-		}
-	}
-	return nil
-}
-
-func (re *requestExecutor) onNewBlockWithPause(block graphsync.BlockData) error {
-	err := re.onNewBlock(block)
 	select {
-	case <-re.pauseMessages:
-		if err == nil {
-			err = hooks.ErrPaused{}
-		}
-	default:
-	}
-	return err
-}
-
-func (re *requestExecutor) onNewBlock(block graphsync.BlockData) error {
-	re.blocksReceived++
-	re.doNotSendCids.Add(block.Link().(cidlink.Link).Cid)
-	if re.blocksReceived > re.maxBlocksReceived {
-		re.maxBlocksReceived = re.blocksReceived
-		return re.runBlockHooks(block)
+	case <-re.ctx.Done():
+	case re.inProgressChan <- graphsync.ResponseProgress{
+		Node:      node,
+		Path:      tp.Path,
+		LastBlock: tp.LastBlock,
+	}:
 	}
 	return nil
 }
 
-func (re *requestExecutor) executeOnce(selector selector.Selector, loaderFn ipld.Loader) (bool, error) {
-	err := ipldutil.Traverse(re.ctx, loaderFn, re.nodeStyleChooser, cidlink.Link{Cid: re.request.Root()}, selector, re.visitor)
-	if err == nil || !isPausedErr(err) {
-		return true, err
+func (re *requestExecutor) traverse() error {
+	traverser := ipldutil.TraversalBuilder{
+		Root:     cidlink.Link{Cid: re.request.Root()},
+		Selector: re.request.Selector(),
+		Visitor:  re.visitor,
+		Chooser:  re.nodeStyleChooser,
+	}.Start(re.ctx)
+
+	for {
+		isComplete, err := traverser.IsComplete()
+		if isComplete {
+			return err
+		}
+		lnk, _ := traverser.CurrentRequest()
+		resultChan := re.env.Loader(re.request.ID(), lnk)
+		var result types.AsyncLoadResult
+		select {
+		case result = <-resultChan:
+		default:
+			err := re.sendRestartAsNeeded()
+			if err != nil {
+				return err
+			}
+			select {
+			case <-re.ctx.Done():
+				return ipldutil.ContextCancelError{}
+			case result = <-resultChan:
+			}
+		}
+		err = re.processResult(traverser, lnk, result)
+		if _, ok := err.(hooks.ErrPaused); ok {
+			err = re.waitForResume()
+			if err != nil {
+				return err
+			}
+			traverser.Advance(bytes.NewReader(result.Data))
+		} else if err != nil {
+			return err
+		}
 	}
-	re.blocksReceived = 0
-	extensions, err := re.waitForResume()
-	if err != nil {
-		return true, err
-	}
-	cidsData, err := cidset.EncodeCidSet(re.doNotSendCids)
-	if err != nil {
-		return true, err
-	}
-	extensions = append(extensions, graphsync.ExtensionData{Name: graphsync.ExtensionDoNotSendCIDs, Data: cidsData})
-	re.request = re.request.ReplaceExtensions(extensions)
-	re.sendRequest(re.request)
-	return false, nil
 }
 
 func (re *requestExecutor) run() {
-	selector, _ := ipldutil.ParseSelector(re.request.Selector())
-	loaderFn := loader.WrapAsyncLoader(re.ctx, re.env.Loader, re.request.ID(), re.inProgressErr, re.onNewBlockWithPause)
-	var err error
-	var finished bool
-	for !finished {
-		finished, err = re.executeOnce(selector, loaderFn)
-	}
+	err := re.traverse()
 	if err != nil {
 		if !isContextErr(err) {
 			select {
@@ -166,14 +162,71 @@ func (re *requestExecutor) runBlockHooks(blk graphsync.BlockData) error {
 	return re.env.RunBlockHooks(re.p, response, blk)
 }
 
-func (re *requestExecutor) waitForResume() ([]graphsync.ExtensionData, error) {
+func (re *requestExecutor) waitForResume() error {
 	select {
 	case <-re.ctx.Done():
-		return nil, loader.ContextCancelError{}
-	case extensions := <-re.resumeMessages:
-		return extensions, nil
+		return ipldutil.ContextCancelError{}
+	case re.pendingExtensions = <-re.resumeMessages:
+		re.restartNeeded = true
+		return nil
 	}
 }
+
+func (re *requestExecutor) onNewBlockWithPause(block graphsync.BlockData) error {
+	err := re.onNewBlock(block)
+	select {
+	case <-re.pauseMessages:
+		if err == nil {
+			err = hooks.ErrPaused{}
+		}
+	default:
+	}
+	return err
+}
+
+func (re *requestExecutor) onNewBlock(block graphsync.BlockData) error {
+	re.doNotSendCids.Add(block.Link().(cidlink.Link).Cid)
+	return re.runBlockHooks(block)
+}
+
+func (re *requestExecutor) processResult(traverser ipldutil.Traverser, link ipld.Link, result types.AsyncLoadResult) error {
+	if result.Err != nil {
+		select {
+		case <-re.ctx.Done():
+			return ipldutil.ContextCancelError{}
+		case re.inProgressErr <- result.Err:
+			traverser.Error(traversal.SkipMe{})
+			return nil
+		}
+	}
+	err := re.onNewBlockWithPause(&blockData{link, result.Local, uint64(len(result.Data))})
+	if err != nil {
+		return err
+	}
+	err = traverser.Advance(bytes.NewReader(result.Data))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (re *requestExecutor) sendRestartAsNeeded() error {
+	if !re.restartNeeded {
+		return nil
+	}
+	extensions := re.pendingExtensions
+	re.pendingExtensions = nil
+	re.restartNeeded = false
+	cidsData, err := cidset.EncodeCidSet(re.doNotSendCids)
+	if err != nil {
+		return err
+	}
+	extensions = append(extensions, graphsync.ExtensionData{Name: graphsync.ExtensionDoNotSendCIDs, Data: cidsData})
+	re.request = re.request.ReplaceExtensions(extensions)
+	re.sendRequest(re.request)
+	return nil
+}
+
 func isPausedErr(err error) bool {
 	// TODO: Match with errors.Is when https://github.com/ipld/go-ipld-prime/issues/58 is resolved
 	match, _ := regexp.MatchString(hooks.ErrPaused{}.Error(), err.Error())
@@ -182,6 +235,30 @@ func isPausedErr(err error) bool {
 
 func isContextErr(err error) bool {
 	// TODO: Match with errors.Is when https://github.com/ipld/go-ipld-prime/issues/58 is resolved
-	match, _ := regexp.MatchString(loader.ContextCancelError{}.Error(), err.Error())
+	match, _ := regexp.MatchString(ipldutil.ContextCancelError{}.Error(), err.Error())
 	return match
+}
+
+type blockData struct {
+	link  ipld.Link
+	local bool
+	size  uint64
+}
+
+// Link is the link/cid for the block
+func (bd *blockData) Link() ipld.Link {
+	return bd.link
+}
+
+// BlockSize specifies the size of the block
+func (bd *blockData) BlockSize() uint64 {
+	return bd.size
+}
+
+// BlockSize specifies the amount of data actually transmitted over the network
+func (bd *blockData) BlockSizeOnWire() uint64 {
+	if bd.local {
+		return 0
+	}
+	return bd.size
 }

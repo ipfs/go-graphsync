@@ -400,18 +400,7 @@ func TestPauseResumeRequest(t *testing.T) {
 	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, uint64(blockSize), blockChainLength)
 
 	// initialize graphsync on second node to response to requests
-	responder := td.GraphSyncHost2()
-
-	totalSentAfterPause := 0
-	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-		data, has := requestData.Extension(td.extensionName)
-		if has {
-			hookActions.SendExtensionData(td.extensionResponse)
-			if bytes.Equal(data, td.extensionUpdateData) && block.BlockSizeOnWire() > 0 {
-				totalSentAfterPause++
-			}
-		}
-	})
+	_ = td.GraphSyncHost2()
 
 	stopPoint := 50
 	blocksReceived := 0
@@ -440,8 +429,6 @@ func TestPauseResumeRequest(t *testing.T) {
 	blockChain.VerifyRemainder(ctx, progressChan, stopPoint-1)
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
 	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
-
-	require.Equal(t, (100 - stopPoint), totalSentAfterPause)
 }
 
 func TestPauseResumeViaUpdate(t *testing.T) {

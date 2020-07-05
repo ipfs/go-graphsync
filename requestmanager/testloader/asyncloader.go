@@ -27,7 +27,7 @@ type storeKey struct {
 
 // FakeAsyncLoader simultates the requestmanager.AsyncLoader interface
 // with mocked responses and can also be used to simulate a
-// loader.AsycLoadFn -- all responses are stubbed and no actual processing is
+// executor.AsycLoadFn -- all responses are stubbed and no actual processing is
 // done
 type FakeAsyncLoader struct {
 	responseChannelsLk sync.RWMutex
