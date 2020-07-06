@@ -3,7 +3,6 @@ package executor_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/rand"
 	"sync/atomic"
 	"testing"
@@ -377,7 +376,6 @@ func (ree *requestExecutionEnv) waitForResume() ([]graphsync.ExtensionData, erro
 func (ree *requestExecutionEnv) sendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
 	ree.requestsSent = append(ree.requestsSent, requestSent{p, request})
 	if ree.currentWaitForResumeResult < len(ree.loaderRanges) {
-		fmt.Println(ree.currentWaitForResumeResult)
 		ree.configureLoader(ree.p, ree.request.ID(), ree.tbc, ree.fal, ree.loaderRanges[ree.currentWaitForResumeResult])
 	}
 }

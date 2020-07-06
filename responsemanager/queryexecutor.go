@@ -3,6 +3,7 @@ package responsemanager
 import (
 	"context"
 	"errors"
+	"regexp"
 	"time"
 
 	"github.com/ipfs/go-cid"
@@ -70,7 +71,7 @@ func (qe *queryExecutor) processQueriesWorker() {
 			}
 			status, err := qe.executeTask(key, taskData)
 			_, isPaused := err.(hooks.ErrPaused)
-			_, isCancelled := err.(ipldutil.ContextCancelError)
+			isCancelled := err != nil && isContextErr(err)
 			if !isPaused && !isCancelled {
 				qe.completedListeners.NotifyCompletedListeners(key.p, taskData.request, status)
 			}
@@ -208,8 +209,7 @@ func (qe *queryExecutor) executeQuery(
 		if isPaused {
 			return graphsync.RequestPaused, err
 		}
-		_, isCancelled := err.(ipldutil.ContextCancelError)
-		if isCancelled {
+		if isContextErr(err) {
 			peerResponseSender.FinishWithCancel(request.ID())
 			return graphsync.RequestCancelled, err
 		}
@@ -258,4 +258,10 @@ func (qe *queryExecutor) checkForUpdates(
 			return nil
 		}
 	}
+}
+
+func isContextErr(err error) bool {
+	// TODO: Match with errors.Is when https://github.com/ipld/go-ipld-prime/issues/58 is resolved
+	match, _ := regexp.MatchString(ipldutil.ContextCancelError{}.Error(), err.Error())
+	return match
 }
