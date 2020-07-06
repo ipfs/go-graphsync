@@ -108,7 +108,6 @@ type ResponseManager struct {
 	peerManager         PeerManager
 	queryQueue          QueryQueue
 	updateHooks         UpdateHooks
-	completedListeners  CompletedListeners
 	cancelledListeners  CancelledListeners
 	messages            chan responseManagerMessage
 	workSignal          chan struct{}
@@ -132,16 +131,17 @@ func New(ctx context.Context,
 	messages := make(chan responseManagerMessage, 16)
 	workSignal := make(chan struct{}, 1)
 	qe := &queryExecutor{
-		requestHooks: requestHooks,
-		blockHooks:   blockHooks,
-		updateHooks:  updateHooks,
-		peerManager:  peerManager,
-		loader:       loader,
-		queryQueue:   queryQueue,
-		messages:     messages,
-		ctx:          ctx,
-		workSignal:   workSignal,
-		ticker:       time.NewTicker(thawSpeed),
+		requestHooks:       requestHooks,
+		blockHooks:         blockHooks,
+		updateHooks:        updateHooks,
+		completedListeners: completedListeners,
+		peerManager:        peerManager,
+		loader:             loader,
+		queryQueue:         queryQueue,
+		messages:           messages,
+		ctx:                ctx,
+		workSignal:         workSignal,
+		ticker:             time.NewTicker(thawSpeed),
 	}
 	return &ResponseManager{
 		ctx:                 ctx,
@@ -149,7 +149,6 @@ func New(ctx context.Context,
 		peerManager:         peerManager,
 		queryQueue:          queryQueue,
 		updateHooks:         updateHooks,
-		completedListeners:  completedListeners,
 		cancelledListeners:  cancelledListeners,
 		messages:            messages,
 		workSignal:          workSignal,
@@ -417,7 +416,6 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 		response.isPaused = true
 		return
 	}
-	rm.completedListeners.NotifyCompletedListeners(ftr.key.p, response.request, ftr.status)
 	if ftr.err != nil {
 		log.Infof("response failed: %w", ftr.err)
 	}

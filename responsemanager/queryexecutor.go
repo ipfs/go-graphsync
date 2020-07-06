@@ -22,16 +22,17 @@ var errCancelledByCommand = errors.New("response cancelled by responder")
 
 // TODO: Move this into a seperate module and fully seperate from the ResponseManager
 type queryExecutor struct {
-	requestHooks RequestHooks
-	blockHooks   BlockHooks
-	updateHooks  UpdateHooks
-	peerManager  PeerManager
-	loader       ipld.Loader
-	queryQueue   QueryQueue
-	messages     chan responseManagerMessage
-	ctx          context.Context
-	workSignal   chan struct{}
-	ticker       *time.Ticker
+	requestHooks       RequestHooks
+	blockHooks         BlockHooks
+	updateHooks        UpdateHooks
+	completedListeners CompletedListeners
+	peerManager        PeerManager
+	loader             ipld.Loader
+	queryQueue         QueryQueue
+	messages           chan responseManagerMessage
+	ctx                context.Context
+	workSignal         chan struct{}
+	ticker             *time.Ticker
 }
 
 func (qe *queryExecutor) processQueriesWorker() {
@@ -68,6 +69,11 @@ func (qe *queryExecutor) processQueriesWorker() {
 				continue
 			}
 			status, err := qe.executeTask(key, taskData)
+			_, isPaused := err.(hooks.ErrPaused)
+			_, isCancelled := err.(ipldutil.ContextCancelError)
+			if !isPaused && !isCancelled {
+				qe.completedListeners.NotifyCompletedListeners(key.p, taskData.request, status)
+			}
 			select {
 			case qe.messages <- &finishTaskRequest{key, status, err}:
 			case <-qe.ctx.Done():
