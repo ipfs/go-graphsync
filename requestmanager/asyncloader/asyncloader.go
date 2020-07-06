@@ -123,12 +123,17 @@ func (al *AsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadat
 // for errors -- only one message will be sent over either.
 func (al *AsyncLoader) AsyncLoad(requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
 	resultChan := make(chan types.AsyncLoadResult, 1)
+	response := make(chan struct{}, 1)
 	lr := loadattemptqueue.NewLoadRequest(requestID, link, resultChan)
 	select {
 	case <-al.ctx.Done():
 		resultChan <- types.AsyncLoadResult{Data: nil, Err: errors.New("Context closed")}
 		close(resultChan)
-	case al.incomingMessages <- &loadRequestMessage{requestID, lr}:
+	case al.incomingMessages <- &loadRequestMessage{response, requestID, lr}:
+	}
+	select {
+	case <-al.ctx.Done():
+	case <-response:
 	}
 	return resultChan
 }
@@ -154,6 +159,7 @@ func (al *AsyncLoader) CleanupRequest(requestID graphsync.RequestID) {
 }
 
 type loadRequestMessage struct {
+	response    chan struct{}
 	requestID   graphsync.RequestID
 	loadRequest loadattemptqueue.LoadRequest
 }
@@ -239,6 +245,10 @@ func (lrm *loadRequestMessage) handle(al *AsyncLoader) {
 	_, retry := al.activeRequests[lrm.requestID]
 	loadAttemptQueue := al.getLoadAttemptQueue(al.requestQueues[lrm.requestID])
 	loadAttemptQueue.AttemptLoad(lrm.loadRequest, retry)
+	select {
+	case <-al.ctx.Done():
+	case lrm.response <- struct{}{}:
+	}
 }
 
 func (rpom *registerPersistenceOptionMessage) register(al *AsyncLoader) error {
