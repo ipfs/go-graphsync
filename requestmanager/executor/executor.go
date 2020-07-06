@@ -127,7 +127,10 @@ func (re *requestExecutor) traverse() error {
 			if err != nil {
 				return err
 			}
-			traverser.Advance(bytes.NewReader(result.Data))
+			err = traverser.Advance(bytes.NewReader(result.Data))
+			if err != nil {
+				return err
+			}
 		} else if err != nil {
 			return err
 		}
@@ -226,12 +229,6 @@ func (re *requestExecutor) sendRestartAsNeeded() error {
 	re.request = re.request.ReplaceExtensions(extensions)
 	re.sendRequest(re.request)
 	return nil
-}
-
-func isPausedErr(err error) bool {
-	// TODO: Match with errors.Is when https://github.com/ipld/go-ipld-prime/issues/58 is resolved
-	match, _ := regexp.MatchString(hooks.ErrPaused{}.Error(), err.Error())
-	return match
 }
 
 func isContextErr(err error) bool {

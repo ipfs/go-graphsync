@@ -237,9 +237,8 @@ func (qe *queryExecutor) checkForUpdates(
 		case selfCancelled := <-signals.stopSignal:
 			if selfCancelled {
 				return errCancelledByCommand
-			} else {
-				return ipldutil.ContextCancelError{}
 			}
+			return ipldutil.ContextCancelError{}
 		case <-signals.pauseSignal:
 			peerResponseSender.PauseRequest()
 			return hooks.ErrPaused{}

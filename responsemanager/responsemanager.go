@@ -108,6 +108,8 @@ type ResponseManager struct {
 	peerManager         PeerManager
 	queryQueue          QueryQueue
 	updateHooks         UpdateHooks
+	cancelledListeners  CancelledListeners
+	completedListeners  CompletedListeners
 	messages            chan responseManagerMessage
 	workSignal          chan struct{}
 	qe                  *queryExecutor
@@ -149,6 +151,8 @@ func New(ctx context.Context,
 		peerManager:         peerManager,
 		queryQueue:          queryQueue,
 		updateHooks:         updateHooks,
+		completedListeners:  completedListeners,
+		cancelledListeners:  cancelledListeners,
 		messages:            messages,
 		workSignal:          workSignal,
 		qe:                  qe,
@@ -354,18 +358,39 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	return nil
 }
 
+func (rm *ResponseManager) cancelRequest(p peer.ID, requestID graphsync.RequestID, selfCancel bool) error {
+	key := responseKey{p, requestID}
+	rm.queryQueue.Remove(key, key.p)
+	response, ok := rm.inProgressResponses[key]
+	if !ok {
+		return errors.New("could not find request")
+	}
+
+	if response.isPaused {
+		peerResponseSender := rm.peerManager.SenderForPeer(key.p)
+		if selfCancel {
+			rm.completedListeners.NotifyCompletedListeners(p, response.request, graphsync.RequestCancelled)
+			peerResponseSender.FinishWithError(requestID, graphsync.RequestCancelled)
+		} else {
+			rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
+			peerResponseSender.FinishWithCancel(requestID)
+		}
+		delete(rm.inProgressResponses, key)
+		response.cancelFn()
+		return nil
+	}
+	select {
+	case response.signals.stopSignal <- selfCancel:
+	default:
+	}
+	return nil
+}
+
 func (prm *processRequestMessage) handle(rm *ResponseManager) {
 	for _, request := range prm.requests {
 		key := responseKey{p: prm.p, requestID: request.ID()}
 		if request.IsCancel() {
-			rm.queryQueue.Remove(key, key.p)
-			response, ok := rm.inProgressResponses[key]
-			if ok {
-				select {
-				case response.signals.stopSignal <- false:
-				default:
-				}
-			}
+			_ = rm.cancelRequest(prm.p, request.ID(), false)
 			continue
 		}
 		if request.IsUpdate() {
@@ -486,22 +511,8 @@ func (prm *pauseRequestMessage) handle(rm *ResponseManager) {
 	}
 }
 
-func (crm *cancelRequestMessage) cancel(rm *ResponseManager) error {
-	key := responseKey{crm.p, crm.requestID}
-	rm.queryQueue.Remove(key, key.p)
-	inProgressResponse, ok := rm.inProgressResponses[key]
-	if !ok {
-		return errors.New("could not find request")
-	}
-	select {
-	case inProgressResponse.signals.stopSignal <- true:
-	default:
-	}
-	return nil
-}
-
 func (crm *cancelRequestMessage) handle(rm *ResponseManager) {
-	err := crm.cancel(rm)
+	err := rm.cancelRequest(crm.p, crm.requestID, true)
 	select {
 	case <-rm.ctx.Done():
 	case crm.response <- err:
