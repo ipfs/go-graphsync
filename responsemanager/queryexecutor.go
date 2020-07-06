@@ -177,10 +177,7 @@ func (qe *queryExecutor) executeQuery(
 		var err error
 		_ = peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
 			err = qe.checkForUpdates(p, request, signals, updateChan, transaction)
-			if err != nil {
-				if _, ok := err.(hooks.ErrPaused); ok {
-					transaction.PauseRequest()
-				}
+			if _, ok := err.(hooks.ErrPaused); !ok && err != nil {
 				return nil
 			}
 			blockData := transaction.SendResponse(link, data)
@@ -192,7 +189,9 @@ func (qe *queryExecutor) executeQuery(
 				if _, ok := result.Err.(hooks.ErrPaused); ok {
 					transaction.PauseRequest()
 				}
-				err = result.Err
+				if result.Err != nil {
+					err = result.Err
+				}
 			}
 			return nil
 		})
@@ -229,6 +228,7 @@ func (qe *queryExecutor) checkForUpdates(
 		case <-signals.stopSignal:
 			return errCancelledByCommand
 		case <-signals.pauseSignal:
+			peerResponseSender.PauseRequest()
 			return hooks.ErrPaused{}
 		case <-signals.updateSignal:
 			select {

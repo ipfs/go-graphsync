@@ -671,7 +671,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 			timer := time.NewTimer(100 * time.Millisecond)
 			testutil.AssertDoesReceiveFirst(t, timer.C, "should not complete request while paused", td.completedRequestChan)
-			for i := 0; i < blockCount; i++ {
+			for i := 0; i < blockCount+1; i++ {
 				testutil.AssertDoesReceive(td.ctx, t, td.sentResponses, "should sent block")
 			}
 			testutil.AssertChannelEmpty(t, td.sentResponses, "should not send more blocks")
@@ -679,6 +679,9 @@ func TestValidationAndExtensions(t *testing.T) {
 			testutil.AssertReceive(td.ctx, t, td.pausedRequests, &pausedRequest, "should pause request")
 			err := responseManager.UnpauseResponse(td.p, td.requestID)
 			require.NoError(t, err)
+			for i := blockCount + 1; i < td.blockChainLength; i++ {
+				testutil.AssertDoesReceive(td.ctx, t, td.sentResponses, "should send block")
+			}
 			var lastRequest completedRequest
 			testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
 			require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
