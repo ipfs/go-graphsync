@@ -27,6 +27,7 @@ type queryExecutor struct {
 	blockHooks         BlockHooks
 	updateHooks        UpdateHooks
 	completedListeners CompletedListeners
+	cancelledListeners CancelledListeners
 	peerManager        PeerManager
 	loader             ipld.Loader
 	queryQueue         QueryQueue
@@ -72,7 +73,9 @@ func (qe *queryExecutor) processQueriesWorker() {
 			status, err := qe.executeTask(key, taskData)
 			_, isPaused := err.(hooks.ErrPaused)
 			isCancelled := err != nil && isContextErr(err)
-			if !isPaused && !isCancelled {
+			if isCancelled {
+				qe.cancelledListeners.NotifyCancelledListeners(key.p, taskData.request)
+			} else if !isPaused {
 				qe.completedListeners.NotifyCompletedListeners(key.p, taskData.request, status)
 			}
 			select {
@@ -231,8 +234,12 @@ func (qe *queryExecutor) checkForUpdates(
 	peerResponseSender peerresponsemanager.PeerResponseTransactionSender) error {
 	for {
 		select {
-		case <-signals.stopSignal:
-			return errCancelledByCommand
+		case selfCancelled := <-signals.stopSignal:
+			if selfCancelled {
+				return errCancelledByCommand
+			} else {
+				return ipldutil.ContextCancelError{}
+			}
 		case <-signals.pauseSignal:
 			peerResponseSender.PauseRequest()
 			return hooks.ErrPaused{}

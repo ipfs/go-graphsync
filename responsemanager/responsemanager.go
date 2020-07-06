@@ -44,7 +44,7 @@ type responseKey struct {
 type signals struct {
 	pauseSignal  chan struct{}
 	updateSignal chan struct{}
-	stopSignal   chan struct{}
+	stopSignal   chan bool
 }
 
 type responseTaskData struct {
@@ -108,7 +108,6 @@ type ResponseManager struct {
 	peerManager         PeerManager
 	queryQueue          QueryQueue
 	updateHooks         UpdateHooks
-	cancelledListeners  CancelledListeners
 	messages            chan responseManagerMessage
 	workSignal          chan struct{}
 	qe                  *queryExecutor
@@ -135,6 +134,7 @@ func New(ctx context.Context,
 		blockHooks:         blockHooks,
 		updateHooks:        updateHooks,
 		completedListeners: completedListeners,
+		cancelledListeners: cancelledListeners,
 		peerManager:        peerManager,
 		loader:             loader,
 		queryQueue:         queryQueue,
@@ -149,7 +149,6 @@ func New(ctx context.Context,
 		peerManager:         peerManager,
 		queryQueue:          queryQueue,
 		updateHooks:         updateHooks,
-		cancelledListeners:  cancelledListeners,
 		messages:            messages,
 		workSignal:          workSignal,
 		qe:                  qe,
@@ -362,9 +361,10 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			rm.queryQueue.Remove(key, key.p)
 			response, ok := rm.inProgressResponses[key]
 			if ok {
-				rm.cancelledListeners.NotifyCancelledListeners(prm.p, response.request)
-				response.cancelFn()
-				delete(rm.inProgressResponses, key)
+				select {
+				case response.signals.stopSignal <- false:
+				default:
+				}
 			}
 			continue
 		}
@@ -381,7 +381,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 				signals: signals{
 					pauseSignal:  make(chan struct{}, 1),
 					updateSignal: make(chan struct{}, 1),
-					stopSignal:   make(chan struct{}, 1),
+					stopSignal:   make(chan bool, 1),
 				},
 			}
 		// TODO: Use a better work estimation metric.
@@ -494,7 +494,7 @@ func (crm *cancelRequestMessage) cancel(rm *ResponseManager) error {
 		return errors.New("could not find request")
 	}
 	select {
-	case inProgressResponse.signals.stopSignal <- struct{}{}:
+	case inProgressResponse.signals.stopSignal <- true:
 	default:
 	}
 	return nil
