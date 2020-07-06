@@ -212,7 +212,8 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.Equal(t, 1, ree.currentPauseResult)
 				require.Equal(t, 1, ree.currentWaitForResumeResult)
 				require.Equal(t, ree.request, ree.requestsSent[0].request)
-				doNotSendCidsExt, has := ree.requestsSent[1].request.Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, ree.requestsSent[1].request.IsCancel())
+				doNotSendCidsExt, has := ree.requestsSent[2].request.Extension(graphsync.ExtensionDoNotSendCIDs)
 				require.True(t, has)
 				cidSet, err := cidset.DecodeCidSet(doNotSendCidsExt)
 				require.NoError(t, err)
@@ -234,12 +235,14 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.Equal(t, 2, ree.currentPauseResult)
 				require.Equal(t, 2, ree.currentWaitForResumeResult)
 				require.Equal(t, ree.request, ree.requestsSent[0].request)
-				doNotSendCidsExt, has := ree.requestsSent[1].request.Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, ree.requestsSent[1].request.IsCancel())
+				doNotSendCidsExt, has := ree.requestsSent[2].request.Extension(graphsync.ExtensionDoNotSendCIDs)
 				require.True(t, has)
 				cidSet, err := cidset.DecodeCidSet(doNotSendCidsExt)
 				require.NoError(t, err)
 				require.Equal(t, 6, cidSet.Len())
-				doNotSendCidsExt, has = ree.requestsSent[2].request.Extension(graphsync.ExtensionDoNotSendCIDs)
+				require.True(t, ree.requestsSent[3].request.IsCancel())
+				doNotSendCidsExt, has = ree.requestsSent[4].request.Extension(graphsync.ExtensionDoNotSendCIDs)
 				require.True(t, has)
 				cidSet, err = cidset.DecodeCidSet(doNotSendCidsExt)
 				require.NoError(t, err)
@@ -375,7 +378,7 @@ func (ree *requestExecutionEnv) waitForResume() ([]graphsync.ExtensionData, erro
 
 func (ree *requestExecutionEnv) sendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
 	ree.requestsSent = append(ree.requestsSent, requestSent{p, request})
-	if ree.currentWaitForResumeResult < len(ree.loaderRanges) {
+	if ree.currentWaitForResumeResult < len(ree.loaderRanges) && !request.IsCancel() {
 		ree.configureLoader(ree.p, ree.request.ID(), ree.tbc, ree.fal, ree.loaderRanges[ree.currentWaitForResumeResult])
 	}
 }

@@ -526,6 +526,9 @@ func (urm *unpauseRequestMessage) unpause(rm *RequestManager) error {
 	}
 	inProgressRequestStatus.paused = false
 	select {
+	case <-inProgressRequestStatus.pauseMessages:
+		rm.peerHandler.SendRequest(inProgressRequestStatus.p, gsmsg.UpdateRequest(urm.id, urm.extensions...))
+		return nil
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
 	case inProgressRequestStatus.resumeMessages <- urm.extensions:
@@ -547,7 +550,6 @@ func (prm *pauseRequestMessage) pause(rm *RequestManager) error {
 	if inProgressRequestStatus.paused {
 		return errors.New("request is already paused")
 	}
-	rm.peerHandler.SendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(prm.id))
 	inProgressRequestStatus.paused = true
 	select {
 	case <-rm.ctx.Done():

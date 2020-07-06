@@ -176,6 +176,7 @@ func (re *requestExecutor) onNewBlockWithPause(block graphsync.BlockData) error 
 	err := re.onNewBlock(block)
 	select {
 	case <-re.pauseMessages:
+		re.sendRequest(gsmsg.CancelRequest(re.request.ID()))
 		if err == nil {
 			err = hooks.ErrPaused{}
 		}
