@@ -16,6 +16,8 @@ var (
 
 // DataTransferNetwork provides network connectivity for GraphSync.
 type DataTransferNetwork interface {
+	Protect(id peer.ID, tag string)
+	Unprotect(id peer.ID, tag string) bool
 
 	// SendMessage sends a GraphSync message to a peer.
 	SendMessage(
@@ -30,14 +32,8 @@ type DataTransferNetwork interface {
 	// ConnectTo establishes a connection to the given peer
 	ConnectTo(context.Context, peer.ID) error
 
-	NewMessageSender(context.Context, peer.ID) (MessageSender, error)
-}
-
-// MessageSender is an interface to send messages to a peer
-type MessageSender interface {
-	SendMsg(context.Context, message.DataTransferMessage) error
-	Close() error
-	Reset() error
+	// ID returns the peer id of this libp2p host
+	ID() peer.ID
 }
 
 // Receiver is an interface for receiving messages from the GraphSyncNetwork.

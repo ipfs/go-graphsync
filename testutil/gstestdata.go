@@ -12,6 +12,9 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/filecoin-project/go-data-transfer/network"
+	"github.com/filecoin-project/go-data-transfer/transport"
+	gstransport "github.com/filecoin-project/go-data-transfer/transport/graphsync"
 	"github.com/filecoin-project/go-storedcounter"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-blockservice"
@@ -57,6 +60,8 @@ type GraphsyncTestingData struct {
 	Ctx            context.Context
 	StoredCounter1 *storedcounter.StoredCounter
 	StoredCounter2 *storedcounter.StoredCounter
+	DtDs1          datastore.Datastore
+	DtDs2          datastore.Datastore
 	Bs1            bstore.Blockstore
 	Bs2            bstore.Blockstore
 	DagService1    ipldformat.DAGService
@@ -69,6 +74,8 @@ type GraphsyncTestingData struct {
 	Host2          host.Host
 	GsNet1         gsnet.GraphSyncNetwork
 	GsNet2         gsnet.GraphSyncNetwork
+	DtNet1         network.DataTransferNetwork
+	DtNet2         network.DataTransferNetwork
 	AllSelector    ipld.Node
 	OrigBytes      []byte
 }
@@ -112,6 +119,10 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T) *GraphsyncTestin
 	}
 	ds1 := dss.MutexWrap(datastore.NewMapDatastore())
 	ds2 := dss.MutexWrap(datastore.NewMapDatastore())
+
+	gsData.DtDs1 = namespace.Wrap(ds1, datastore.NewKey("datatransfer"))
+	gsData.DtDs2 = namespace.Wrap(ds2, datastore.NewKey("datatransfer"))
+
 	// make a blockstore and dag service
 	gsData.Bs1 = bstore.NewBlockstore(namespace.Wrap(ds1, datastore.NewKey("blockstore")))
 	gsData.Bs2 = bstore.NewBlockstore(namespace.Wrap(ds2, datastore.NewKey("blockstore")))
@@ -147,6 +158,9 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T) *GraphsyncTestin
 	gsData.GsNet1 = gsnet.NewFromLibp2pHost(gsData.Host1)
 	gsData.GsNet2 = gsnet.NewFromLibp2pHost(gsData.Host2)
 
+	gsData.DtNet1 = network.NewFromLibp2pHost(gsData.Host1)
+	gsData.DtNet2 = network.NewFromLibp2pHost(gsData.Host2)
+
 	// create a selector for the whole UnixFS dag
 	gsData.AllSelector = allSelector
 
@@ -159,10 +173,24 @@ func (gsData *GraphsyncTestingData) SetupGraphsyncHost1() graphsync.GraphExchang
 	return gsimpl.New(gsData.Ctx, gsData.GsNet1, gsData.Loader1, gsData.Storer1)
 }
 
+// SetupGSTransportHost1 sets up a new grapshync transport over real graphsync on the first host
+func (gsData *GraphsyncTestingData) SetupGSTransportHost1() transport.Transport {
+	// setup graphsync
+	gs := gsData.SetupGraphsyncHost1()
+	return gstransport.NewTransport(gsData.Host1.ID(), gs)
+}
+
 // SetupGraphsyncHost2 sets up a new, real graphsync instance on top of the second host
 func (gsData *GraphsyncTestingData) SetupGraphsyncHost2() graphsync.GraphExchange {
 	// setup graphsync
 	return gsimpl.New(gsData.Ctx, gsData.GsNet2, gsData.Loader2, gsData.Storer2)
+}
+
+// SetupGSTransportHost2 sets up a new grapshync transport over real graphsync on the second host
+func (gsData *GraphsyncTestingData) SetupGSTransportHost2() transport.Transport {
+	// setup graphsync
+	gs := gsData.SetupGraphsyncHost2()
+	return gstransport.NewTransport(gsData.Host2.ID(), gs)
 }
 
 // LoadUnixFSFile loads a fixtures file we can test dag transfer with

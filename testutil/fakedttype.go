@@ -44,6 +44,28 @@ func AssertEqualFakeDTVoucher(t *testing.T, expectedRequest message.DataTransfer
 	require.Equal(t, expectedDecoded, decoded)
 }
 
+// AssertFakeDTVoucherResult asserts that a data transfer response contains the expected fake data transfer voucher result type
+func AssertFakeDTVoucherResult(t *testing.T, response message.DataTransferResponse, expected *FakeDTType) {
+	require.Equal(t, datatransfer.TypeIdentifier("FakeDTType"), response.VoucherResultType())
+	fakeDTDecoder, err := encoding.NewDecoder(&FakeDTType{})
+	require.NoError(t, err)
+	decoded, err := response.VoucherResult(fakeDTDecoder)
+	require.NoError(t, err)
+	require.Equal(t, expected, decoded)
+}
+
+// AssertEqualFakeDTVoucherResult asserts that two responses have the same fake data transfer voucher result
+func AssertEqualFakeDTVoucherResult(t *testing.T, expectedResponse message.DataTransferResponse, response message.DataTransferResponse) {
+	require.Equal(t, expectedResponse.VoucherResultType(), response.VoucherResultType())
+	fakeDTDecoder, err := encoding.NewDecoder(&FakeDTType{})
+	require.NoError(t, err)
+	expectedDecoded, err := response.VoucherResult(fakeDTDecoder)
+	require.NoError(t, err)
+	decoded, err := response.VoucherResult(fakeDTDecoder)
+	require.NoError(t, err)
+	require.Equal(t, expectedDecoded, decoded)
+}
+
 // NewFakeDTType returns a fake dt type with random data
 func NewFakeDTType() *FakeDTType {
 	return &FakeDTType{Data: string(RandomBytes(100))}

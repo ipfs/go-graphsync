@@ -20,7 +20,8 @@ import (
 // its members are exported to be used by cbor-gen
 type transferRequest struct {
 	BCid   *cid.Cid
-	Canc   bool
+	Type   uint64
+	Paus   bool
 	Part   bool
 	Pull   bool
 	Stor   *cbg.Deferred
@@ -32,6 +33,22 @@ type transferRequest struct {
 // IsRequest always returns true in this case because this is a transfer request
 func (trq *transferRequest) IsRequest() bool {
 	return true
+}
+
+func (trq *transferRequest) IsNew() bool {
+	return trq.Type == uint64(newMessage)
+}
+
+func (trq *transferRequest) IsUpdate() bool {
+	return trq.Type == uint64(updateMessage)
+}
+
+func (trq *transferRequest) IsVoucher() bool {
+	return trq.Type == uint64(voucherMessage) || trq.Type == uint64(newMessage)
+}
+
+func (trq *transferRequest) IsPaused() bool {
+	return trq.Paus
 }
 
 func (trq *transferRequest) TransferID() datatransfer.TransferID {
@@ -55,6 +72,10 @@ func (trq *transferRequest) Voucher(decoder encoding.Decoder) (encoding.Encodabl
 		return nil, xerrors.New("No voucher present to read")
 	}
 	return decoder.DecodeFromCbor(trq.Vouch.Raw)
+}
+
+func (trq *transferRequest) EmptyVoucher() bool {
+	return trq.VTyp == datatransfer.EmptyTypeIdentifier
 }
 
 // BaseCid returns the Base CID
@@ -81,19 +102,12 @@ func (trq *transferRequest) Selector() (ipld.Node, error) {
 
 // IsCancel returns true if this is a cancel request
 func (trq *transferRequest) IsCancel() bool {
-	return trq.Canc
+	return trq.Type == uint64(cancelMessage)
 }
 
 // IsPartial returns true if this is a partial request
 func (trq *transferRequest) IsPartial() bool {
 	return trq.Part
-}
-
-// Cancel cancels a transfer request
-func (trq *transferRequest) Cancel() error {
-	// do other stuff ?
-	trq.Canc = true
-	return nil
 }
 
 // ToNet serializes a transfer request. It's a wrapper for MarshalCBOR to provide

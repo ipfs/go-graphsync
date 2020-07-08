@@ -115,7 +115,9 @@ func TestMessageSendAndReceive(t *testing.T) {
 	t.Run("Send Response", func(t *testing.T) {
 		accepted := false
 		id := datatransfer.TransferID(rand.Int31())
-		response := message.NewResponse(id, accepted)
+		voucherResult := testutil.NewFakeDTType()
+		response, err := message.NewResponse(id, accepted, false, voucherResult.Type(), voucherResult)
+		require.NoError(t, err)
 		require.NoError(t, dtnet2.SendMessage(ctx, host1.ID(), response))
 
 		select {
@@ -133,6 +135,6 @@ func TestMessageSendAndReceive(t *testing.T) {
 		assert.Equal(t, response.TransferID(), receivedResponse.TransferID())
 		assert.Equal(t, response.Accepted(), receivedResponse.Accepted())
 		assert.Equal(t, response.IsRequest(), receivedResponse.IsRequest())
-
+		testutil.AssertEqualFakeDTVoucherResult(t, response, receivedResponse)
 	})
 }

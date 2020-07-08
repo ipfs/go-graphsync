@@ -66,3 +66,16 @@ func (r *Registry) Processor(identifier datatransfer.TypeIdentifier) (Processor,
 	r.registryLk.RUnlock()
 	return entry.processor, has
 }
+
+// Each iterates through all of the entries in this registry
+func (r *Registry) Each(process func(datatransfer.TypeIdentifier, encoding.Decoder, Processor) error) error {
+	r.registryLk.RLock()
+	defer r.registryLk.RUnlock()
+	for identifier, entry := range r.entries {
+		err := process(identifier, entry.decoder, entry.processor)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
