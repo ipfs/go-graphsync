@@ -39,6 +39,8 @@ type Traverser interface {
 	Advance(reader io.Reader) error
 	// Error errors the traversal by returning the given error as the result of the next IPLD load
 	Error(err error)
+	// Shutdown cancels the traversal
+	Shutdown(ctx context.Context)
 }
 
 type state struct {
@@ -55,9 +57,12 @@ type nextResponse struct {
 
 // Start initiates the traversal (run in a go routine because the regular
 // selector traversal expects a call back)
-func (tb TraversalBuilder) Start(ctx context.Context) Traverser {
+func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
+	ctx, cancel := context.WithCancel(parentCtx)
 	t := &traverser{
+		parentCtx:    parentCtx,
 		ctx:          ctx,
+		cancel:       cancel,
 		root:         tb.Root,
 		selector:     tb.Selector,
 		visitor:      defaultVisitor,
@@ -65,6 +70,7 @@ func (tb TraversalBuilder) Start(ctx context.Context) Traverser {
 		awaitRequest: make(chan struct{}, 1),
 		stateChan:    make(chan state, 1),
 		responses:    make(chan nextResponse),
+		stopped:      make(chan struct{}),
 	}
 	if tb.Visitor != nil {
 		t.visitor = tb.Visitor
@@ -79,7 +85,9 @@ func (tb TraversalBuilder) Start(ctx context.Context) Traverser {
 // traverser is a class to perform a selector traversal that stops every time a new block is loaded
 // and waits for manual input (in the form of advance or error)
 type traverser struct {
+	parentCtx      context.Context
 	ctx            context.Context
+	cancel         func()
 	root           ipld.Link
 	selector       ipld.Node
 	visitor        traversal.AdvVisitFn
@@ -91,6 +99,7 @@ type traverser struct {
 	awaitRequest   chan struct{}
 	stateChan      chan state
 	responses      chan nextResponse
+	stopped        chan struct{}
 }
 
 func (t *traverser) checkState() {
@@ -124,6 +133,7 @@ func (t *traverser) start() {
 	case t.awaitRequest <- struct{}{}:
 	}
 	go func() {
+		defer close(t.stopped)
 		loader := func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
 			select {
 			case <-t.ctx.Done():
@@ -164,6 +174,14 @@ func (t *traverser) start() {
 		}.WalkAdv(nd, sel, t.visitor)
 		t.writeDone(err)
 	}()
+}
+
+func (t *traverser) Shutdown(ctx context.Context) {
+	t.cancel()
+	select {
+	case <-ctx.Done():
+	case <-t.stopped:
+	}
 }
 
 // IsComplete returns true if a traversal is complete

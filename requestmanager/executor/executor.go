@@ -99,7 +99,7 @@ func (re *requestExecutor) traverse() error {
 		Visitor:  re.visitor,
 		Chooser:  re.nodeStyleChooser,
 	}.Start(re.ctx)
-
+	defer traverser.Shutdown(context.Background())
 	for {
 		isComplete, err := traverser.IsComplete()
 		if isComplete {
