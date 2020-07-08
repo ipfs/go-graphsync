@@ -322,13 +322,15 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 	p := nrm.p
 	resumeMessages := make(chan []graphsync.ExtensionData, 1)
 	pauseMessages := make(chan struct{}, 1)
+	networkError := make(chan error, 1)
 	requestStatus := &inProgressRequestStatus{
-		ctx: ctx, cancelFn: cancel, p: p, resumeMessages: resumeMessages, pauseMessages: pauseMessages,
+		ctx: ctx, cancelFn: cancel, p: p, resumeMessages: resumeMessages, pauseMessages: pauseMessages, networkError: networkError,
 	}
 	lastResponse := &requestStatus.lastResponse
 	lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
 	rm.inProgressRequestStatuses[request.ID()] = requestStatus
 	incoming, incomingError := executor.ExecutionEnv{
+		Ctx:              rm.ctx,
 		SendRequest:      rm.peerHandler.SendRequest,
 		TerminateRequest: rm.terminateRequest,
 		RunBlockHooks:    rm.processBlockHooks,
@@ -338,13 +340,13 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 			Ctx:              ctx,
 			P:                p,
 			Request:          request,
+			NetworkError:     networkError,
 			LastResponse:     lastResponse,
 			DoNotSendCids:    doNotSendCids,
 			NodeStyleChooser: hooksResult.CustomChooser,
 			ResumeMessages:   resumeMessages,
 			PauseMessages:    pauseMessages,
 		})
-	requestStatus.networkError = incomingError
 	return incoming, incomingError
 }
 

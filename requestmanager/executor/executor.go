@@ -25,6 +25,7 @@ type AsyncLoadFn func(graphsync.RequestID, ipld.Link) <-chan types.AsyncLoadResu
 
 // ExecutionEnv are request parameters that last between requests
 type ExecutionEnv struct {
+	Ctx              context.Context
 	SendRequest      func(peer.ID, gsmsg.GraphSyncRequest)
 	RunBlockHooks    func(p peer.ID, response graphsync.ResponseData, blk graphsync.BlockData) error
 	TerminateRequest func(graphsync.RequestID)
@@ -36,6 +37,7 @@ type ExecutionEnv struct {
 type RequestExecution struct {
 	Ctx              context.Context
 	P                peer.ID
+	NetworkError     chan error
 	Request          gsmsg.GraphSyncRequest
 	LastResponse     *atomic.Value
 	DoNotSendCids    *cid.Set
@@ -51,6 +53,7 @@ func (ee ExecutionEnv) Start(re RequestExecution) (chan graphsync.ResponseProgre
 		inProgressErr:    make(chan error),
 		ctx:              re.Ctx,
 		p:                re.P,
+		networkError:     re.NetworkError,
 		request:          re.Request,
 		lastResponse:     re.LastResponse,
 		doNotSendCids:    re.DoNotSendCids,
@@ -69,6 +72,7 @@ type requestExecutor struct {
 	inProgressErr     chan error
 	ctx               context.Context
 	p                 peer.ID
+	networkError      chan error
 	request           gsmsg.GraphSyncRequest
 	lastResponse      *atomic.Value
 	nodeStyleChooser  traversal.LinkTargetNodeStyleChooser
@@ -146,6 +150,14 @@ func (re *requestExecutor) run() {
 			case re.inProgressErr <- err:
 			}
 		}
+	}
+	select {
+	case networkError := <-re.networkError:
+		select {
+		case re.inProgressErr <- networkError:
+		case <-re.env.Ctx.Done():
+		}
+	default:
 	}
 	re.terminateRequest()
 	close(re.inProgressChan)
