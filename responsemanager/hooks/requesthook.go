@@ -50,6 +50,7 @@ func (irh *IncomingRequestHooks) Register(hook graphsync.OnIncomingRequestHook) 
 // RequestResult is the outcome of running requesthooks
 type RequestResult struct {
 	IsValidated   bool
+	IsPaused      bool
 	CustomLoader  ipld.Loader
 	CustomChooser traversal.LinkTargetNodeStyleChooser
 	Err           error
@@ -68,6 +69,7 @@ func (irh *IncomingRequestHooks) ProcessRequestHooks(p peer.ID, request graphsyn
 type requestHookActions struct {
 	persistenceOptions PersistenceOptions
 	isValidated        bool
+	isPaused           bool
 	err                error
 	loader             ipld.Loader
 	chooser            traversal.LinkTargetNodeStyleChooser
@@ -77,6 +79,7 @@ type requestHookActions struct {
 func (ha *requestHookActions) result() RequestResult {
 	return RequestResult{
 		IsValidated:   ha.isValidated,
+		IsPaused:      ha.isPaused,
 		CustomLoader:  ha.loader,
 		CustomChooser: ha.chooser,
 		Err:           ha.err,
@@ -107,4 +110,8 @@ func (ha *requestHookActions) UsePersistenceOption(name string) {
 
 func (ha *requestHookActions) UseLinkTargetNodeStyleChooser(chooser traversal.LinkTargetNodeStyleChooser) {
 	ha.chooser = chooser
+}
+
+func (ha *requestHookActions) PauseResponse() {
+	ha.isPaused = true
 }

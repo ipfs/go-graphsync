@@ -2,6 +2,7 @@ package runtraversal
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"testing"
@@ -95,6 +96,9 @@ func (ft *fakeTraverser) Advance(reader io.Reader) error {
 func (ft *fakeTraverser) Error(err error) {
 	ft.receivedOutcomes = append(ft.receivedOutcomes, traverseOutcome{true, err, nil})
 }
+
+// Shutdown cancels the traversal if still in progress
+func (ft *fakeTraverser) Shutdown(ctx context.Context) {}
 
 func (ft *fakeTraverser) verifyExpectations(t *testing.T) {
 	require.Equal(t, ft.expectedOutcomes, ft.receivedOutcomes)

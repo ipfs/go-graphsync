@@ -86,7 +86,44 @@ const (
 	RequestFailedLegal = ResponseStatusCode(33)
 	// RequestFailedContentNotFound means the respondent does not have the content.
 	RequestFailedContentNotFound = ResponseStatusCode(34)
+	// RequestCancelled means the responder was processing the request but decided to top, for whatever reason
+	RequestCancelled = ResponseStatusCode(35)
 )
+
+// RequestFailedBusyErr is an error message received on the error channel when the peer is busy
+type RequestFailedBusyErr struct{}
+
+func (e RequestFailedBusyErr) Error() string {
+	return "Request Failed - Peer Is Busy"
+}
+
+// RequestFailedContentNotFoundErr is an error message received on the error channel when the content is not found
+type RequestFailedContentNotFoundErr struct{}
+
+func (e RequestFailedContentNotFoundErr) Error() string {
+	return "Request Failed - Content Not Found"
+}
+
+// RequestFailedLegalErr is an error message received on the error channel when the request fails for legal reasons
+type RequestFailedLegalErr struct{}
+
+func (e RequestFailedLegalErr) Error() string {
+	return "Request Failed - For Legal Reasons"
+}
+
+// RequestFailedUnknownErr is an error message received on the error channel when the request fails for unknown reasons
+type RequestFailedUnknownErr struct{}
+
+func (e RequestFailedUnknownErr) Error() string {
+	return "Request Failed - Unknown Reason"
+}
+
+// RequestCancelledErr is an error message received on the error channel that indicates the responder cancelled a request
+type RequestCancelledErr struct{}
+
+func (e RequestCancelledErr) Error() string {
+	return "Request Failed - Responder Cancelled"
+}
 
 var (
 	// ErrExtensionAlreadyRegistered means a user extension can be registered only once
@@ -158,6 +195,7 @@ type IncomingRequestHookActions interface {
 	UseLinkTargetNodeStyleChooser(traversal.LinkTargetNodeStyleChooser)
 	TerminateWithError(error)
 	ValidateRequest()
+	PauseResponse()
 }
 
 // OutgoingBlockHookActions are actions that an outgoing block hook can take to
@@ -187,6 +225,7 @@ type IncomingResponseHookActions interface {
 type IncomingBlockHookActions interface {
 	TerminateWithError(error)
 	UpdateRequestWithExtensions(...ExtensionData)
+	PauseRequest()
 }
 
 // RequestUpdatedHookActions are actions that can be taken in a request updated hook to
@@ -236,6 +275,9 @@ type OnRequestUpdatedHook func(p peer.ID, request RequestData, updateRequest Req
 // OnResponseCompletedListener provides a way to listen for when responder has finished serving a response
 type OnResponseCompletedListener func(p peer.ID, request RequestData, status ResponseStatusCode)
 
+// OnRequestorCancelledListener provides a way to listen for responses the requestor canncels
+type OnRequestorCancelledListener func(p peer.ID, request RequestData)
+
 // UnregisterHookFunc is a function call to unregister a hook that was previously registered
 type UnregisterHookFunc func()
 
@@ -267,6 +309,17 @@ type GraphExchange interface {
 
 	// RegisterCompletedResponseListener adds a listener on the responder for completed responses
 	RegisterCompletedResponseListener(listener OnResponseCompletedListener) UnregisterHookFunc
+
+	// RegisterRequestorCancelledListener adds a listener on the responder for
+	// responses cancelled by the requestor
+	RegisterRequestorCancelledListener(listener OnRequestorCancelledListener) UnregisterHookFunc
+
+	// UnpauseRequest unpauses a request that was paused in a block hook based request ID
+	// Can also send extensions with unpause
+	UnpauseRequest(RequestID, ...ExtensionData) error
+
+	// PauseRequest pauses an in progress request (may take 1 or more blocks to process)
+	PauseRequest(RequestID) error
 
 	// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
 	// Can also send extensions with unpause

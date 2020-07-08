@@ -172,6 +172,19 @@ func TestRequestHookProcessing(t *testing.T) {
 		"hooks alter the node builder chooser": {
 			configure: func(t *testing.T, requestHooks *hooks.IncomingRequestHooks) {
 				requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+					hookActions.PauseResponse()
+					hookActions.ValidateRequest()
+				})
+			},
+			assert: func(t *testing.T, result hooks.RequestResult) {
+				require.True(t, result.IsValidated)
+				require.True(t, result.IsPaused)
+				require.NoError(t, result.Err)
+			},
+		},
+		"hooks start request paused": {
+			configure: func(t *testing.T, requestHooks *hooks.IncomingRequestHooks) {
+				requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 					if _, found := requestData.Extension(extensionName); found {
 						hookActions.UseLinkTargetNodeStyleChooser(fakeChooser)
 						hookActions.SendExtensionData(extensionResponse)
@@ -262,7 +275,7 @@ func TestBlockHookProcessing(t *testing.T) {
 			},
 			assert: func(t *testing.T, result hooks.BlockResult) {
 				require.Empty(t, result.Extensions)
-				require.EqualError(t, result.Err, hooks.ErrPaused.Error())
+				require.EqualError(t, result.Err, hooks.ErrPaused{}.Error())
 			},
 		},
 	}

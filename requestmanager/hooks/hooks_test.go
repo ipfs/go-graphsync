@@ -140,6 +140,17 @@ func TestBlockHookProcessing(t *testing.T) {
 				require.EqualError(t, result.Err, "something went wrong")
 			},
 		},
+		"pause request": {
+			configure: func(t *testing.T, hooks *hooks.IncomingBlockHooks) {
+				hooks.Register(func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
+					hookActions.PauseRequest()
+				})
+			},
+			assert: func(t *testing.T, result hooks.UpdateResult) {
+				require.Empty(t, result.Extensions)
+				require.EqualError(t, result.Err, hooks.ErrPaused{}.Error())
+			},
+		},
 		"hooks update with extensions": {
 			configure: func(t *testing.T, hooks *hooks.IncomingBlockHooks) {
 				hooks.Register(func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {

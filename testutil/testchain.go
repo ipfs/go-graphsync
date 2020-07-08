@@ -206,6 +206,22 @@ func (tbc *TestBlockChain) VerifyResponseRange(ctx context.Context, responseChan
 	tbc.checkResponses(responses, from, to, false)
 }
 
+// VerifyWholeChainSync verifies the given set of read responses are the expected responses for the whole chain
+func (tbc *TestBlockChain) VerifyWholeChainSync(responses []graphsync.ResponseProgress) {
+	tbc.VerifyRemainderSync(responses, 0)
+}
+
+// VerifyRemainderSync verifies the given set of read responses are the remainder of the chain starting at the nth block from the tip
+func (tbc *TestBlockChain) VerifyRemainderSync(responses []graphsync.ResponseProgress, from int) {
+	tbc.checkResponses(responses, from, tbc.blockChainLength, false)
+}
+
+// VerifyResponseRangeSync verifies given set of read responses match responses for the given range of the blockchain, indexed from the tip
+// (with possibly more data left in the channel)
+func (tbc *TestBlockChain) VerifyResponseRangeSync(responses []graphsync.ResponseProgress, from int, to int) {
+	tbc.checkResponses(responses, from, to, false)
+}
+
 // VerifyWholeChainWithTypes verifies the given response channel returns the expected responses for the whole chain
 // and that the types in the response are the expected types for a block chain
 func (tbc *TestBlockChain) VerifyWholeChainWithTypes(ctx context.Context, responseChan <-chan graphsync.ResponseProgress) {

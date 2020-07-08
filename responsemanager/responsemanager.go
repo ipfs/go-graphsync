@@ -26,15 +26,14 @@ const (
 )
 
 type inProgressResponseStatus struct {
-	ctx          context.Context
-	cancelFn     func()
-	request      gsmsg.GraphSyncRequest
-	loader       ipld.Loader
-	traverser    ipldutil.Traverser
-	pauseSignal  chan struct{}
-	updateSignal chan struct{}
-	updates      []gsmsg.GraphSyncRequest
-	isPaused     bool
+	ctx       context.Context
+	cancelFn  func()
+	request   gsmsg.GraphSyncRequest
+	loader    ipld.Loader
+	traverser ipldutil.Traverser
+	signals   signals
+	updates   []gsmsg.GraphSyncRequest
+	isPaused  bool
 }
 
 type responseKey struct {
@@ -42,14 +41,19 @@ type responseKey struct {
 	requestID graphsync.RequestID
 }
 
-type responseTaskData struct {
-	empty        bool
-	ctx          context.Context
-	request      gsmsg.GraphSyncRequest
-	loader       ipld.Loader
-	traverser    ipldutil.Traverser
+type signals struct {
 	pauseSignal  chan struct{}
 	updateSignal chan struct{}
+	stopSignal   chan bool
+}
+
+type responseTaskData struct {
+	empty     bool
+	ctx       context.Context
+	request   gsmsg.GraphSyncRequest
+	loader    ipld.Loader
+	traverser ipldutil.Traverser
+	signals   signals
 }
 
 // QueryQueue is an interface that can receive new selector query tasks
@@ -82,6 +86,11 @@ type CompletedListeners interface {
 	NotifyCompletedListeners(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode)
 }
 
+// CancelledListeners is an interface for notifying listeners that requestor cancelled
+type CancelledListeners interface {
+	NotifyCancelledListeners(p peer.ID, request graphsync.RequestData)
+}
+
 // PeerManager is an interface that returns sender interfaces for peer responses.
 type PeerManager interface {
 	SenderForPeer(p peer.ID) peerresponsemanager.PeerResponseSender
@@ -99,6 +108,7 @@ type ResponseManager struct {
 	peerManager         PeerManager
 	queryQueue          QueryQueue
 	updateHooks         UpdateHooks
+	cancelledListeners  CancelledListeners
 	completedListeners  CompletedListeners
 	messages            chan responseManagerMessage
 	workSignal          chan struct{}
@@ -115,21 +125,25 @@ func New(ctx context.Context,
 	requestHooks RequestHooks,
 	blockHooks BlockHooks,
 	updateHooks UpdateHooks,
-	completedListeners CompletedListeners) *ResponseManager {
+	completedListeners CompletedListeners,
+	cancelledListeners CancelledListeners,
+) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
 	messages := make(chan responseManagerMessage, 16)
 	workSignal := make(chan struct{}, 1)
 	qe := &queryExecutor{
-		requestHooks: requestHooks,
-		blockHooks:   blockHooks,
-		updateHooks:  updateHooks,
-		peerManager:  peerManager,
-		loader:       loader,
-		queryQueue:   queryQueue,
-		messages:     messages,
-		ctx:          ctx,
-		workSignal:   workSignal,
-		ticker:       time.NewTicker(thawSpeed),
+		requestHooks:       requestHooks,
+		blockHooks:         blockHooks,
+		updateHooks:        updateHooks,
+		completedListeners: completedListeners,
+		cancelledListeners: cancelledListeners,
+		peerManager:        peerManager,
+		loader:             loader,
+		queryQueue:         queryQueue,
+		messages:           messages,
+		ctx:                ctx,
+		workSignal:         workSignal,
+		ticker:             time.NewTicker(thawSpeed),
 	}
 	return &ResponseManager{
 		ctx:                 ctx,
@@ -138,6 +152,7 @@ func New(ctx context.Context,
 		queryQueue:          queryQueue,
 		updateHooks:         updateHooks,
 		completedListeners:  completedListeners,
+		cancelledListeners:  cancelledListeners,
 		messages:            messages,
 		workSignal:          workSignal,
 		qe:                  qe,
@@ -283,7 +298,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 	if !response.isPaused {
 		response.updates = append(response.updates, update)
 		select {
-		case response.updateSignal <- struct{}{}:
+		case response.signals.updateSignal <- struct{}{}:
 		default:
 		}
 		return
@@ -343,16 +358,39 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	return nil
 }
 
+func (rm *ResponseManager) cancelRequest(p peer.ID, requestID graphsync.RequestID, selfCancel bool) error {
+	key := responseKey{p, requestID}
+	rm.queryQueue.Remove(key, key.p)
+	response, ok := rm.inProgressResponses[key]
+	if !ok {
+		return errors.New("could not find request")
+	}
+
+	if response.isPaused {
+		peerResponseSender := rm.peerManager.SenderForPeer(key.p)
+		if selfCancel {
+			rm.completedListeners.NotifyCompletedListeners(p, response.request, graphsync.RequestCancelled)
+			peerResponseSender.FinishWithError(requestID, graphsync.RequestCancelled)
+		} else {
+			rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
+			peerResponseSender.FinishWithCancel(requestID)
+		}
+		delete(rm.inProgressResponses, key)
+		response.cancelFn()
+		return nil
+	}
+	select {
+	case response.signals.stopSignal <- selfCancel:
+	default:
+	}
+	return nil
+}
+
 func (prm *processRequestMessage) handle(rm *ResponseManager) {
 	for _, request := range prm.requests {
 		key := responseKey{p: prm.p, requestID: request.ID()}
 		if request.IsCancel() {
-			rm.queryQueue.Remove(key, key.p)
-			response, ok := rm.inProgressResponses[key]
-			if ok {
-				response.cancelFn()
-				delete(rm.inProgressResponses, key)
-			}
+			_ = rm.cancelRequest(prm.p, request.ID(), false)
 			continue
 		}
 		if request.IsUpdate() {
@@ -362,11 +400,14 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 		ctx, cancelFn := context.WithCancel(rm.ctx)
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
-				ctx:          ctx,
-				cancelFn:     cancelFn,
-				request:      request,
-				pauseSignal:  make(chan struct{}, 1),
-				updateSignal: make(chan struct{}, 1),
+				ctx:      ctx,
+				cancelFn: cancelFn,
+				request:  request,
+				signals: signals{
+					pauseSignal:  make(chan struct{}, 1),
+					updateSignal: make(chan struct{}, 1),
+					stopSignal:   make(chan bool, 1),
+				},
 			}
 		// TODO: Use a better work estimation metric.
 		rm.queryQueue.PushTasks(prm.p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
@@ -381,7 +422,7 @@ func (rdr *responseDataRequest) handle(rm *ResponseManager) {
 	response, ok := rm.inProgressResponses[rdr.key]
 	var taskData responseTaskData
 	if ok {
-		taskData = responseTaskData{false, response.ctx, response.request, response.loader, response.traverser, response.pauseSignal, response.updateSignal}
+		taskData = responseTaskData{false, response.ctx, response.request, response.loader, response.traverser, response.signals}
 	} else {
 		taskData = responseTaskData{empty: true}
 	}
@@ -396,11 +437,10 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 	if !ok {
 		return
 	}
-	if ftr.err == hooks.ErrPaused {
+	if _, ok := ftr.err.(hooks.ErrPaused); ok {
 		response.isPaused = true
 		return
 	}
-	rm.completedListeners.NotifyCompletedListeners(ftr.key.p, response.request, ftr.status)
 	if ftr.err != nil {
 		log.Infof("response failed: %w", ftr.err)
 	}
@@ -457,7 +497,7 @@ func (prm *pauseRequestMessage) pauseRequest(rm *ResponseManager) error {
 		return errors.New("request is already paused")
 	}
 	select {
-	case inProgressResponse.pauseSignal <- struct{}{}:
+	case inProgressResponse.signals.pauseSignal <- struct{}{}:
 	default:
 	}
 	return nil
@@ -472,15 +512,9 @@ func (prm *pauseRequestMessage) handle(rm *ResponseManager) {
 }
 
 func (crm *cancelRequestMessage) handle(rm *ResponseManager) {
-	key := responseKey{crm.p, crm.requestID}
-	rm.queryQueue.Remove(key, key.p)
-	inProgressResponse, ok := rm.inProgressResponses[key]
-	if ok {
-		inProgressResponse.cancelFn()
-		delete(rm.inProgressResponses, key)
-	}
+	err := rm.cancelRequest(crm.p, crm.requestID, true)
 	select {
 	case <-rm.ctx.Done():
-	case crm.response <- nil:
+	case crm.response <- err:
 	}
 }

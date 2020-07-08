@@ -59,6 +59,7 @@ type PeerResponseSender interface {
 		data []byte,
 	) graphsync.BlockData
 	SendExtensionData(graphsync.RequestID, graphsync.ExtensionData)
+	FinishWithCancel(requestID graphsync.RequestID)
 	FinishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode
 	FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode)
 	// Transaction calls multiple operations at once so they end up in a single response
@@ -74,6 +75,7 @@ type PeerResponseTransactionSender interface {
 		data []byte,
 	) graphsync.BlockData
 	SendExtensionData(graphsync.ExtensionData)
+	FinishWithCancel()
 	FinishRequest() graphsync.ResponseStatusCode
 	FinishWithError(status graphsync.ResponseStatusCode)
 	PauseRequest()
@@ -177,6 +179,10 @@ func (prts *peerResponseTransactionSender) PauseRequest() {
 	prts.operations = append(prts.operations, statusOperation{prts.requestID, graphsync.RequestPaused})
 }
 
+func (prts *peerResponseTransactionSender) FinishWithCancel() {
+	_ = prts.prs.finishTracking(prts.requestID)
+}
+
 func (prs *peerResponseSender) Transaction(requestID graphsync.RequestID, transaction Transaction) error {
 	prts := &peerResponseTransactionSender{
 		requestID: requestID,
@@ -266,10 +272,14 @@ func (fo statusOperation) size() uint64 {
 	return 0
 }
 
-func (prs *peerResponseSender) setupFinishOperation(requestID graphsync.RequestID) statusOperation {
+func (prs *peerResponseSender) finishTracking(requestID graphsync.RequestID) bool {
 	prs.linkTrackerLk.Lock()
-	isComplete := prs.linkTracker.FinishRequest(requestID)
-	prs.linkTrackerLk.Unlock()
+	defer prs.linkTrackerLk.Unlock()
+	return prs.linkTracker.FinishRequest(requestID)
+}
+
+func (prs *peerResponseSender) setupFinishOperation(requestID graphsync.RequestID) statusOperation {
+	isComplete := prs.finishTracking(requestID)
 	var status graphsync.ResponseStatusCode
 	if isComplete {
 		status = graphsync.RequestCompletedFull
@@ -301,6 +311,10 @@ func (prs *peerResponseSender) FinishWithError(requestID graphsync.RequestID, st
 
 func (prs *peerResponseSender) PauseRequest(requestID graphsync.RequestID) {
 	prs.execute([]responseOperation{statusOperation{requestID, graphsync.RequestPaused}})
+}
+
+func (prs *peerResponseSender) FinishWithCancel(requestID graphsync.RequestID) {
+	_ = prs.finishTracking(requestID)
 }
 
 func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn func(*responsebuilder.ResponseBuilder)) bool {

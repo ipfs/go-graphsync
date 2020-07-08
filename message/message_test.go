@@ -2,6 +2,7 @@ package message
 
 import (
 	"bytes"
+	"errors"
 	"math/rand"
 	"testing"
 
@@ -280,4 +281,96 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 		_, ok := keys[b.Cid()]
 		require.True(t, ok)
 	}
+}
+
+func TestMergeExtensions(t *testing.T) {
+	extensionName1 := graphsync.ExtensionName("graphsync/1")
+	extensionName2 := graphsync.ExtensionName("graphsync/2")
+	extensionName3 := graphsync.ExtensionName("graphsync/3")
+	initialExtensions := []graphsync.ExtensionData{
+		{
+			Name: extensionName1,
+			Data: []byte("applesauce"),
+		},
+		{
+			Name: extensionName2,
+			Data: []byte("hello"),
+		},
+	}
+	replacementExtensions := []graphsync.ExtensionData{
+		{
+			Name: extensionName2,
+			Data: []byte("world"),
+		},
+		{
+			Name: extensionName3,
+			Data: []byte("cheese"),
+		},
+	}
+	defaultMergeFunc := func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error) {
+		return []byte(string(oldData) + " " + string(newData)), nil
+	}
+	root := testutil.GenerateCids(1)[0]
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	selector := ssb.Matcher().Node()
+	id := graphsync.RequestID(rand.Int31())
+	priority := graphsync.Priority(rand.Int31())
+	defaultRequest := NewRequest(id, root, selector, priority, initialExtensions...)
+	t.Run("when merging into empty", func(t *testing.T) {
+		emptyRequest := NewRequest(id, root, selector, priority)
+		resultRequest, err := emptyRequest.MergeExtensions(replacementExtensions, defaultMergeFunc)
+		require.NoError(t, err)
+		require.Equal(t, emptyRequest.ID(), resultRequest.ID())
+		require.Equal(t, emptyRequest.Priority(), resultRequest.Priority())
+		require.Equal(t, emptyRequest.Root().String(), resultRequest.Root().String())
+		require.Equal(t, emptyRequest.Selector(), resultRequest.Selector())
+		_, has := resultRequest.Extension(extensionName1)
+		require.False(t, has)
+		extData2, has := resultRequest.Extension(extensionName2)
+		require.True(t, has)
+		require.Equal(t, []byte("world"), extData2)
+		extData3, has := resultRequest.Extension(extensionName3)
+		require.True(t, has)
+		require.Equal(t, []byte("cheese"), extData3)
+	})
+	t.Run("when merging two requests", func(t *testing.T) {
+		resultRequest, err := defaultRequest.MergeExtensions(replacementExtensions, defaultMergeFunc)
+		require.NoError(t, err)
+		require.Equal(t, defaultRequest.ID(), resultRequest.ID())
+		require.Equal(t, defaultRequest.Priority(), resultRequest.Priority())
+		require.Equal(t, defaultRequest.Root().String(), resultRequest.Root().String())
+		require.Equal(t, defaultRequest.Selector(), resultRequest.Selector())
+		extData1, has := resultRequest.Extension(extensionName1)
+		require.True(t, has)
+		require.Equal(t, []byte("applesauce"), extData1)
+		extData2, has := resultRequest.Extension(extensionName2)
+		require.True(t, has)
+		require.Equal(t, []byte("hello world"), extData2)
+		extData3, has := resultRequest.Extension(extensionName3)
+		require.True(t, has)
+		require.Equal(t, []byte("cheese"), extData3)
+	})
+	t.Run("when merging errors", func(t *testing.T) {
+		errorMergeFunc := func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error) {
+			return nil, errors.New("something went wrong")
+		}
+		_, err := defaultRequest.MergeExtensions(replacementExtensions, errorMergeFunc)
+		require.Error(t, err)
+	})
+	t.Run("when merging with replace", func(t *testing.T) {
+		resultRequest := defaultRequest.ReplaceExtensions(replacementExtensions)
+		require.Equal(t, defaultRequest.ID(), resultRequest.ID())
+		require.Equal(t, defaultRequest.Priority(), resultRequest.Priority())
+		require.Equal(t, defaultRequest.Root().String(), resultRequest.Root().String())
+		require.Equal(t, defaultRequest.Selector(), resultRequest.Selector())
+		extData1, has := resultRequest.Extension(extensionName1)
+		require.True(t, has)
+		require.Equal(t, []byte("applesauce"), extData1)
+		extData2, has := resultRequest.Extension(extensionName2)
+		require.True(t, has)
+		require.Equal(t, []byte("world"), extData2)
+		extData3, has := resultRequest.Extension(extensionName3)
+		require.True(t, has)
+		require.Equal(t, []byte("cheese"), extData3)
+	})
 }
