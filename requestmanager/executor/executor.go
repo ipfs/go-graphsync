@@ -3,7 +3,7 @@ package executor
 import (
 	"bytes"
 	"context"
-	"regexp"
+	"strings"
 	"sync/atomic"
 
 	"github.com/ipfs/go-cid"
@@ -233,8 +233,7 @@ func (re *requestExecutor) sendRestartAsNeeded() error {
 
 func isContextErr(err error) bool {
 	// TODO: Match with errors.Is when https://github.com/ipld/go-ipld-prime/issues/58 is resolved
-	match, _ := regexp.MatchString(ipldutil.ContextCancelError{}.Error(), err.Error())
-	return match
+	return strings.Contains(err.Error(), ipldutil.ContextCancelError{}.Error())
 }
 
 type blockData struct {
