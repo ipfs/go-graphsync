@@ -52,6 +52,16 @@ func (m *manager) response(isNew bool, err error, tid datatransfer.TransferID, v
 	return message.VoucherResultResponse(tid, isAccepted, isPaused, resultType, voucherResult)
 }
 
+func (m *manager) completeResponse(err error, tid datatransfer.TransferID, voucherResult datatransfer.VoucherResult) (message.DataTransferResponse, error) {
+	isAccepted := err == nil || err == datatransfer.ErrPause
+	isPaused := err == datatransfer.ErrPause
+	resultType := datatransfer.EmptyTypeIdentifier
+	if voucherResult != nil {
+		resultType = voucherResult.Type()
+	}
+	return message.CompleteResponse(tid, isAccepted, isPaused, resultType, voucherResult)
+}
+
 func (m *manager) resume(chid datatransfer.ChannelID) error {
 	if chid.Initiator == m.peerID {
 		return m.channels.ResumeInitiator(chid)

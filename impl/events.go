@@ -104,15 +104,6 @@ func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response messa
 	if response.IsCancel() {
 		return m.channels.Cancel(chid)
 	}
-	if response.IsComplete() && response.Accepted() {
-		if !response.IsPaused() {
-			return m.channels.ResponderCompletes(chid)
-		}
-		err := m.channels.ResponderBeginsFinalization(chid)
-		if err != nil {
-			return nil
-		}
-	}
 	if response.IsVoucherResult() {
 		if !response.EmptyVoucherResult() {
 			vresult, err := m.decodeVoucherResult(response)
@@ -132,6 +123,15 @@ func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response messa
 			if err != nil {
 				return err
 			}
+		}
+	}
+	if response.IsComplete() && response.Accepted() {
+		if !response.IsPaused() {
+			return m.channels.ResponderCompletes(chid)
+		}
+		err := m.channels.ResponderBeginsFinalization(chid)
+		if err != nil {
+			return nil
 		}
 	}
 	if response.IsPaused() {
@@ -286,12 +286,23 @@ func (m *manager) processUpdateVoucher(chid datatransfer.ChannelID, request mess
 	return m.processRevalidationResult(chid, result, voucherErr)
 }
 
-func (m *manager) processRevalidationResult(chid datatransfer.ChannelID, result datatransfer.VoucherResult, resultErr error) (message.DataTransferResponse, error) {
-	vresMessage, err := m.response(false, resultErr, chid.ID, result)
+func (m *manager) revalidationResponse(chid datatransfer.ChannelID, result datatransfer.VoucherResult, resultErr error) (message.DataTransferResponse, error) {
+	chst, err := m.channels.GetByID(context.TODO(), chid)
 	if err != nil {
 		return nil, err
 	}
+	if chst.Status() == datatransfer.Finalizing {
+		return m.completeResponse(resultErr, chid.ID, result)
+	}
+	return m.response(false, resultErr, chid.ID, result)
+}
 
+func (m *manager) processRevalidationResult(chid datatransfer.ChannelID, result datatransfer.VoucherResult, resultErr error) (message.DataTransferResponse, error) {
+	vresMessage, err := m.revalidationResponse(chid, result, resultErr)
+
+	if err != nil {
+		return nil, err
+	}
 	if result != nil {
 		err := m.channels.NewVoucherResult(chid, result)
 		if err != nil {
@@ -324,16 +335,12 @@ func (m *manager) completeMessage(chid datatransfer.ChannelID) (message.DataTran
 		result, resultErr = revalidator.OnComplete(chid)
 		return resultErr
 	})
-	vtype := datatransfer.EmptyTypeIdentifier
 	if result != nil {
-		vtype = result.Type()
 		err := m.channels.NewVoucherResult(chid, result)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return message.CompleteResponse(chid.ID,
-		resultErr == nil || resultErr == datatransfer.ErrPause,
-		resultErr == datatransfer.ErrPause, vtype, result)
+	return m.completeResponse(resultErr, chid.ID, result)
 }

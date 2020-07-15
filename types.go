@@ -18,6 +18,8 @@ func (es errorString) Error() string {
 	return string(es)
 }
 
+//go:generate cbor-gen-for ChannelID
+
 // ErrChannelNotFound indicates the given channel does not exist
 const ErrChannelNotFound = errorString("channel not found")
 
@@ -180,8 +182,11 @@ type Channel interface {
 	// TotalSize returns the total size for the data being transferred
 	TotalSize() uint64
 
-	// IsPull returns whether this is a pull request based on who initiated it
-	IsPull(initiator peer.ID) bool
+	// IsPull returns whether this is a pull request
+	IsPull() bool
+
+	// ChannelID returns the ChannelID for this request
+	ChannelID() ChannelID
 
 	// OtherParty returns the opposite party in the channel to the passed in party
 	OtherParty(thisParty peer.ID) peer.ID

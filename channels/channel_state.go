@@ -28,6 +28,8 @@ type channelState struct {
 	totalSize uint64
 	// current status of this deal
 	status datatransfer.Status
+	// isPull indicates if this is a push or pull request
+	isPull bool
 	// total bytes sent from this node (0 if receiver)
 	sent uint64
 	// total bytes received by this node (0 if sender)
@@ -89,8 +91,16 @@ func (c channelState) Recipient() peer.ID { return c.recipient }
 func (c channelState) TotalSize() uint64 { return c.totalSize }
 
 // IsPull returns whether this is a pull request based on who initiated it
-func (c channelState) IsPull(initiator peer.ID) bool {
-	return initiator == c.recipient
+func (c channelState) IsPull() bool {
+	return c.isPull
+}
+
+func (c channelState) ChannelID() datatransfer.ChannelID {
+	if c.isPull {
+		return datatransfer.ChannelID{ID: c.transferID, Initiator: c.recipient, Responder: c.sender}
+	} else {
+		return datatransfer.ChannelID{ID: c.transferID, Initiator: c.sender, Responder: c.recipient}
+	}
 }
 
 func (c channelState) Message() string {

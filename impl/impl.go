@@ -15,6 +15,7 @@ import (
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/channels"
+	"github.com/filecoin-project/go-data-transfer/encoding"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/network"
 	"github.com/filecoin-project/go-data-transfer/registry"
@@ -67,12 +68,20 @@ func NewDataTransfer(ds datastore.Datastore, dataTransferNetwork network.DataTra
 		transport:           transport,
 		storedCounter:       storedCounter,
 	}
-	channels, err := channels.New(ds, m.notifier, m.validatedTypes.Decoder, m.resultTypes.Decoder, dataTransferNetwork)
+	channels, err := channels.New(ds, m.notifier, m.voucherDecoder, m.resultTypes.Decoder, &channelEnvironment{m})
 	if err != nil {
 		return nil, err
 	}
 	m.channels = channels
 	return m, nil
+}
+
+func (m *manager) voucherDecoder(voucherType datatransfer.TypeIdentifier) (encoding.Decoder, bool) {
+	decoder, has := m.validatedTypes.Decoder(voucherType)
+	if !has {
+		return m.revalidators.Decoder(voucherType)
+	}
+	return decoder, true
 }
 
 func (m *manager) notifier(evt datatransfer.Event, chst datatransfer.ChannelState) {

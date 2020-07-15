@@ -110,15 +110,6 @@ func (t *Transport) executeGsRequest(ctx context.Context, channelID datatransfer
 			log.Error(err)
 		}
 	}
-	t.dataLock.Lock()
-	gsKey, ok := t.channelIDMap[channelID]
-	delete(t.channelIDMap, channelID)
-	delete(t.contextCancelMap, channelID)
-	delete(t.pending, channelID)
-	if ok {
-		delete(t.graphsyncRequestMap, gsKey)
-	}
-	t.dataLock.Unlock()
 }
 
 func (t *Transport) gsKeyFromChannelID(ctx context.Context, chid datatransfer.ChannelID) (graphsyncKey, error) {
@@ -221,7 +212,6 @@ func (t *Transport) CloseChannel(ctx context.Context, chid datatransfer.ChannelI
 	t.dataLock.Lock()
 	defer t.dataLock.Unlock()
 	if _, ok := t.requestorCancelledMap[chid]; ok {
-		t.cleanupChannel(chid, gsKey)
 		return nil
 	}
 	return t.gs.CancelResponse(gsKey.p, gsKey.requestID)
@@ -432,9 +422,6 @@ func (t *Transport) gsCompletedResponseListener(p peer.ID, request graphsync.Req
 			log.Error(err)
 		}
 	}
-	t.dataLock.Lock()
-	t.cleanupChannel(chid, graphsyncKey{request.ID(), p})
-	t.dataLock.Unlock()
 }
 
 func (t *Transport) cleanupChannel(chid datatransfer.ChannelID, gsKey graphsyncKey) {

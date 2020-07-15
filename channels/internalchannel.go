@@ -54,6 +54,7 @@ type internalChannelState struct {
 
 func (c internalChannelState) ToChannelState(voucherDecoder DecoderByTypeFunc, voucherResultDecoder DecoderByTypeFunc) datatransfer.ChannelState {
 	return channelState{
+		isPull:               c.Initiator == c.Recipient,
 		transferID:           c.TransferID,
 		baseCid:              c.BaseCid,
 		selector:             c.Selector,

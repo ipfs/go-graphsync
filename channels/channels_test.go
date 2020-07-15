@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,8 +36,8 @@ func TestChannels(t *testing.T) {
 	notifier := func(evt datatransfer.Event, chst datatransfer.ChannelState) {
 		received <- event{evt, chst}
 	}
-	net := testutil.NewFakeNetwork(testutil.GeneratePeers(1)[0])
-	channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, net)
+
+	channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, &fakeEnv{})
 	require.NoError(t, err)
 
 	tid1 := datatransfer.TransferID(0)
@@ -255,4 +256,21 @@ func checkEvent(ctx context.Context, t *testing.T, received chan event, code dat
 	}
 	require.Equal(t, code, evt.event.Code)
 	return evt.state
+}
+
+type fakeEnv struct {
+}
+
+func (fe *fakeEnv) Protect(id peer.ID, tag string) {
+}
+
+func (fe *fakeEnv) Unprotect(id peer.ID, tag string) bool {
+	return false
+}
+
+func (fe *fakeEnv) ID() peer.ID {
+	return peer.ID("")
+}
+
+func (fe *fakeEnv) CleanupChannel(chid datatransfer.ChannelID) {
 }
