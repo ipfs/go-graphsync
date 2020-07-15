@@ -81,9 +81,9 @@ type UpdateHooks interface {
 	ProcessUpdateHooks(p peer.ID, request graphsync.RequestData, update graphsync.RequestData) hooks.UpdateResult
 }
 
-// CompletedListeners is an interface for notifying listeners that responses are complete
-type CompletedListeners interface {
-	NotifyCompletedListeners(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode)
+// CompletedHooks is an interface for processing complete hooks
+type CompletedHooks interface {
+	ProcessCompleteHooks(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) hooks.CompleteResult
 }
 
 // CancelledListeners is an interface for notifying listeners that requestor cancelled
@@ -109,7 +109,7 @@ type ResponseManager struct {
 	queryQueue          QueryQueue
 	updateHooks         UpdateHooks
 	cancelledListeners  CancelledListeners
-	completedListeners  CompletedListeners
+	completedHooks      CompletedHooks
 	messages            chan responseManagerMessage
 	workSignal          chan struct{}
 	qe                  *queryExecutor
@@ -125,7 +125,7 @@ func New(ctx context.Context,
 	requestHooks RequestHooks,
 	blockHooks BlockHooks,
 	updateHooks UpdateHooks,
-	completedListeners CompletedListeners,
+	completedHooks CompletedHooks,
 	cancelledListeners CancelledListeners,
 ) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
@@ -135,7 +135,7 @@ func New(ctx context.Context,
 		requestHooks:       requestHooks,
 		blockHooks:         blockHooks,
 		updateHooks:        updateHooks,
-		completedListeners: completedListeners,
+		completedHooks:     completedHooks,
 		cancelledListeners: cancelledListeners,
 		peerManager:        peerManager,
 		loader:             loader,
@@ -151,7 +151,7 @@ func New(ctx context.Context,
 		peerManager:         peerManager,
 		queryQueue:          queryQueue,
 		updateHooks:         updateHooks,
-		completedListeners:  completedListeners,
+		completedHooks:      completedHooks,
 		cancelledListeners:  cancelledListeners,
 		messages:            messages,
 		workSignal:          workSignal,
@@ -368,13 +368,19 @@ func (rm *ResponseManager) cancelRequest(p peer.ID, requestID graphsync.RequestI
 
 	if response.isPaused {
 		peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-		if selfCancel {
-			rm.completedListeners.NotifyCompletedListeners(p, response.request, graphsync.RequestCancelled)
-			peerResponseSender.FinishWithError(requestID, graphsync.RequestCancelled)
-		} else {
-			rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
-			peerResponseSender.FinishWithCancel(requestID)
-		}
+		_ = peerResponseSender.Transaction(requestID, func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+			if selfCancel {
+				result := rm.completedHooks.ProcessCompleteHooks(p, response.request, graphsync.RequestCancelled)
+				for _, extension := range result.Extensions {
+					transaction.SendExtensionData(extension)
+				}
+				transaction.FinishWithError(graphsync.RequestCancelled)
+			} else {
+				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
+				transaction.FinishWithCancel()
+			}
+			return nil
+		})
 		delete(rm.inProgressResponses, key)
 		response.cancelFn()
 		return nil

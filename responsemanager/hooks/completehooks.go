@@ -6,8 +6,8 @@ import (
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
-// CompletedResponseListeners is a set of listeners for completed responses
-type CompletedResponseListeners struct {
+// CompletedResponseHooks is a set of hooks for completed responses
+type CompletedResponseHooks struct {
 	pubSub *pubsub.PubSub
 }
 
@@ -15,28 +15,50 @@ type internalCompletedResponseEvent struct {
 	p       peer.ID
 	request graphsync.RequestData
 	status  graphsync.ResponseStatusCode
+	cha     *completeHookActions
 }
 
 func completedResponseDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
 	ie := event.(internalCompletedResponseEvent)
-	listener := subscriberFn.(graphsync.OnResponseCompletedListener)
-	listener(ie.p, ie.request, ie.status)
+	hook := subscriberFn.(graphsync.OnResponseCompletedHook)
+	hook(ie.p, ie.request, ie.status, ie.cha)
 	return nil
 }
 
-// NewCompletedResponseListeners returns a new list of completed response listeners
-func NewCompletedResponseListeners() *CompletedResponseListeners {
-	return &CompletedResponseListeners{pubSub: pubsub.New(completedResponseDispatcher)}
+// NewCompletedResponseHooks returns a new list of completed response hooks
+func NewCompletedResponseHooks() *CompletedResponseHooks {
+	return &CompletedResponseHooks{pubSub: pubsub.New(completedResponseDispatcher)}
 }
 
-// Register registers an listener for completed responses
-func (crl *CompletedResponseListeners) Register(listener graphsync.OnResponseCompletedListener) graphsync.UnregisterHookFunc {
-	return graphsync.UnregisterHookFunc(crl.pubSub.Subscribe(listener))
+// Register registers an hook for completed responses
+func (crl *CompletedResponseHooks) Register(hook graphsync.OnResponseCompletedHook) graphsync.UnregisterHookFunc {
+	return graphsync.UnregisterHookFunc(crl.pubSub.Subscribe(hook))
 }
 
-// NotifyCompletedListeners runs notifies all completed listeners that a response has completed
-func (crl *CompletedResponseListeners) NotifyCompletedListeners(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
-	_ = crl.pubSub.Publish(internalCompletedResponseEvent{p, request, status})
+// ProcessCompleteHooks runs notifies all completed hooks that a response has completed
+func (crl *CompletedResponseHooks) ProcessCompleteHooks(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) CompleteResult {
+	ha := &completeHookActions{}
+	_ = crl.pubSub.Publish(internalCompletedResponseEvent{p, request, status, ha})
+	return ha.result()
+}
+
+// CompleteResult is the outcome of running complete response hooks
+type CompleteResult struct {
+	Extensions []graphsync.ExtensionData
+}
+
+type completeHookActions struct {
+	extensions []graphsync.ExtensionData
+}
+
+func (ha *completeHookActions) result() CompleteResult {
+	return CompleteResult{
+		Extensions: ha.extensions,
+	}
+}
+
+func (ha *completeHookActions) SendExtensionData(ext graphsync.ExtensionData) {
+	ha.extensions = append(ha.extensions, ext)
 }
 
 // RequestorCancelledListeners is a set of listeners for when requestors cancel
