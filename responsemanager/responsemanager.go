@@ -81,7 +81,7 @@ type UpdateHooks interface {
 	ProcessUpdateHooks(p peer.ID, request graphsync.RequestData, update graphsync.RequestData) hooks.UpdateResult
 }
 
-// CompletedHooks is an interface for notifying listeners that responses are complete
+// CompletedHooks is an interface for processing complete hooks
 type CompletedHooks interface {
 	ProcessCompleteHooks(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) hooks.CompleteResult
 }

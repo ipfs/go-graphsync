@@ -41,7 +41,7 @@ type GraphSync struct {
 	incomingRequestHooks        *responderhooks.IncomingRequestHooks
 	outgoingBlockHooks          *responderhooks.OutgoingBlockHooks
 	requestUpdatedHooks         *responderhooks.RequestUpdatedHooks
-	completedResponseListeners  *responderhooks.CompletedResponseHooks
+	completedResponseHooks      *responderhooks.CompletedResponseHooks
 	requestorCancelledListeners *responderhooks.RequestorCancelledListeners
 	incomingResponseHooks       *requestorhooks.IncomingResponseHooks
 	outgoingRequestHooks        *requestorhooks.OutgoingRequestHooks
@@ -103,7 +103,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		incomingRequestHooks:        incomingRequestHooks,
 		outgoingBlockHooks:          outgoingBlockHooks,
 		requestUpdatedHooks:         requestUpdatedHooks,
-		completedResponseListeners:  completedResponseHooks,
+		completedResponseHooks:      completedResponseHooks,
 		requestorCancelledListeners: requestorCancelledListeners,
 		incomingResponseHooks:       incomingResponseHooks,
 		outgoingRequestHooks:        outgoingRequestHooks,
@@ -170,9 +170,9 @@ func (gs *GraphSync) RegisterRequestUpdatedHook(hook graphsync.OnRequestUpdatedH
 	return gs.requestUpdatedHooks.Register(hook)
 }
 
-// RegisterCompletedResponseHook adds a listener on the responder for completed responses
-func (gs *GraphSync) RegisterCompletedResponseHook(listener graphsync.OnResponseCompletedHook) graphsync.UnregisterHookFunc {
-	return gs.completedResponseListeners.Register(listener)
+// RegisterCompletedResponseHook adds a hook on the responder for completed responses
+func (gs *GraphSync) RegisterCompletedResponseHook(hook graphsync.OnResponseCompletedHook) graphsync.UnregisterHookFunc {
+	return gs.completedResponseHooks.Register(hook)
 }
 
 // RegisterIncomingBlockHook adds a hook that runs when a block is received and validated (put in block store)

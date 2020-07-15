@@ -232,7 +232,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	require.Equal(t, td.extensionResponseData, receivedResponseData[0], "did not receive correct extension response data")
 	require.Equal(t, td.extensionFinalData, receivedResponseData[1], "did not receive correct extension response data")
 
-	// verify listener
+	// verify completed hook
 	var finalResponseStatus graphsync.ResponseStatusCode
 	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
 	require.Equal(t, graphsync.RequestCompletedFull, finalResponseStatus)
@@ -281,7 +281,7 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 	require.Equal(t, tree.MiddleMapBlock.RawData(), td.blockStore1[tree.MiddleMapNodeLnk])
 	require.Equal(t, tree.RootBlock.RawData(), td.blockStore1[tree.RootNodeLnk])
 
-	// verify listener
+	// verify completed hook
 	var finalResponseStatus graphsync.ResponseStatusCode
 	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
 	require.Equal(t, graphsync.RequestCompletedPartial, finalResponseStatus)

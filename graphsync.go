@@ -313,7 +313,7 @@ type GraphExchange interface {
 	// RegisterRequestUpdatedHook adds a hook that runs every time an update to a request is received
 	RegisterRequestUpdatedHook(hook OnRequestUpdatedHook) UnregisterHookFunc
 
-	// RegisterCompletedResponseHook adds a listener on the responder for completed responses
+	// RegisterCompletedResponseHook adds a hook on the responder for completed responses
 	RegisterCompletedResponseHook(hook OnResponseCompletedHook) UnregisterHookFunc
 
 	// RegisterRequestorCancelledListener adds a listener on the responder for

@@ -6,7 +6,7 @@ import (
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
-// CompletedResponseHooks is a set of listeners for completed responses
+// CompletedResponseHooks is a set of hooks for completed responses
 type CompletedResponseHooks struct {
 	pubSub *pubsub.PubSub
 }
@@ -20,22 +20,22 @@ type internalCompletedResponseEvent struct {
 
 func completedResponseDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
 	ie := event.(internalCompletedResponseEvent)
-	listener := subscriberFn.(graphsync.OnResponseCompletedHook)
-	listener(ie.p, ie.request, ie.status, ie.cha)
+	hook := subscriberFn.(graphsync.OnResponseCompletedHook)
+	hook(ie.p, ie.request, ie.status, ie.cha)
 	return nil
 }
 
-// NewCompletedResponseHooks returns a new list of completed response listeners
+// NewCompletedResponseHooks returns a new list of completed response hooks
 func NewCompletedResponseHooks() *CompletedResponseHooks {
 	return &CompletedResponseHooks{pubSub: pubsub.New(completedResponseDispatcher)}
 }
 
-// Register registers an listener for completed responses
-func (crl *CompletedResponseHooks) Register(listener graphsync.OnResponseCompletedHook) graphsync.UnregisterHookFunc {
-	return graphsync.UnregisterHookFunc(crl.pubSub.Subscribe(listener))
+// Register registers an hook for completed responses
+func (crl *CompletedResponseHooks) Register(hook graphsync.OnResponseCompletedHook) graphsync.UnregisterHookFunc {
+	return graphsync.UnregisterHookFunc(crl.pubSub.Subscribe(hook))
 }
 
-// ProcessCompleteHooks runs notifies all completed listeners that a response has completed
+// ProcessCompleteHooks runs notifies all completed hooks that a response has completed
 func (crl *CompletedResponseHooks) ProcessCompleteHooks(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) CompleteResult {
 	ha := &completeHookActions{}
 	_ = crl.pubSub.Publish(internalCompletedResponseEvent{p, request, status, ha})
