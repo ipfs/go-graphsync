@@ -900,13 +900,17 @@ func TestValidationAndExtensions(t *testing.T) {
 			hookActions.ValidateRequest()
 		})
 		statusChan := make(chan graphsync.ResponseStatusCode, 1)
-		td.completedListeners.Register(func(p peer.ID, requestData graphsync.RequestData, status graphsync.ResponseStatusCode) {
+		td.completedListeners.Register(func(p peer.ID, requestData graphsync.RequestData, status graphsync.ResponseStatusCode, hookActions graphsync.ResponseCompletedHookActions) {
+			hookActions.SendExtensionData(td.extensionResponse)
 			select {
 			case statusChan <- status:
 			default:
 			}
 		})
 		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		var receivedExtension sentExtension
+		testutil.AssertReceive(td.ctx, t, td.sentExtensions, &receivedExtension, "should send extension response")
+		require.Equal(t, td.extensionResponse, receivedExtension.extension, "incorrect extension response sent")
 		var lastRequest completedRequest
 		testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
 		require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
@@ -947,7 +951,7 @@ type testData struct {
 	requestHooks          *hooks.IncomingRequestHooks
 	blockHooks            *hooks.OutgoingBlockHooks
 	updateHooks           *hooks.RequestUpdatedHooks
-	completedListeners    *hooks.CompletedResponseListeners
+	completedListeners    *hooks.CompletedResponseHooks
 	cancelledListeners    *hooks.RequestorCancelledListeners
 }
 
@@ -1006,7 +1010,7 @@ func newTestData(t *testing.T) testData {
 	td.requestHooks = hooks.NewRequestHooks(td.peristenceOptions)
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()
-	td.completedListeners = hooks.NewCompletedResponseListeners()
+	td.completedListeners = hooks.NewCompletedResponseHooks()
 	td.cancelledListeners = hooks.NewRequestorCancelledListeners()
 	return td
 }

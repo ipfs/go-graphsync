@@ -26,7 +26,7 @@ type queryExecutor struct {
 	requestHooks       RequestHooks
 	blockHooks         BlockHooks
 	updateHooks        UpdateHooks
-	completedListeners CompletedListeners
+	completedHooks     CompletedHooks
 	cancelledListeners CancelledListeners
 	peerManager        PeerManager
 	loader             ipld.Loader
@@ -71,13 +71,6 @@ func (qe *queryExecutor) processQueriesWorker() {
 				continue
 			}
 			status, err := qe.executeTask(key, taskData)
-			_, isPaused := err.(hooks.ErrPaused)
-			isCancelled := err != nil && isContextErr(err)
-			if isCancelled {
-				qe.cancelledListeners.NotifyCancelledListeners(key.p, taskData.request)
-			} else if !isPaused {
-				qe.completedListeners.NotifyCompletedListeners(key.p, taskData.request, status)
-			}
 			select {
 			case qe.messages <- &finishTaskRequest{key, status, err}:
 			case <-qe.ctx.Done():
@@ -207,23 +200,41 @@ func (qe *queryExecutor) executeQuery(
 		})
 		return err
 	})
-	if err != nil {
-		_, isPaused := err.(hooks.ErrPaused)
-		if isPaused {
-			return graphsync.RequestPaused, err
-		}
+
+	var status graphsync.ResponseStatusCode
+	_ = peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+		status = qe.closeRequest(transaction, err)
 		if isContextErr(err) {
-			peerResponseSender.FinishWithCancel(request.ID())
-			return graphsync.RequestCancelled, err
+			qe.cancelledListeners.NotifyCancelledListeners(p, request)
+		} else if status != graphsync.RequestPaused {
+			result := qe.completedHooks.ProcessCompleteHooks(p, request, status)
+			for _, extension := range result.Extensions {
+				transaction.SendExtensionData(extension)
+			}
 		}
-		if err == errCancelledByCommand {
-			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestCancelled)
-			return graphsync.RequestCancelled, err
-		}
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return graphsync.RequestFailedUnknown, err
+		return nil
+	})
+	return status, err
+}
+
+func (qe *queryExecutor) closeRequest(peerResponseSender peerresponsemanager.PeerResponseTransactionSender, err error) graphsync.ResponseStatusCode {
+	_, isPaused := err.(hooks.ErrPaused)
+	if isPaused {
+		return graphsync.RequestPaused
 	}
-	return peerResponseSender.FinishRequest(request.ID()), nil
+	if isContextErr(err) {
+		peerResponseSender.FinishWithCancel()
+		return graphsync.RequestCancelled
+	}
+	if err == errCancelledByCommand {
+		peerResponseSender.FinishWithError(graphsync.RequestCancelled)
+		return graphsync.RequestCancelled
+	}
+	if err != nil {
+		peerResponseSender.FinishWithError(graphsync.RequestFailedUnknown)
+		return graphsync.RequestFailedUnknown
+	}
+	return peerResponseSender.FinishRequest()
 }
 
 func (qe *queryExecutor) checkForUpdates(
@@ -268,5 +279,5 @@ func (qe *queryExecutor) checkForUpdates(
 
 func isContextErr(err error) bool {
 	// TODO: Match with errors.Is when https://github.com/ipld/go-ipld-prime/issues/58 is resolved
-	return strings.Contains(err.Error(), ipldutil.ContextCancelError{}.Error())
+	return err != nil && strings.Contains(err.Error(), ipldutil.ContextCancelError{}.Error())
 }
