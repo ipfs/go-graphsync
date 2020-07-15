@@ -382,8 +382,8 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 }
 
 func (prm *processResponseMessage) handle(rm *RequestManager) {
-	filteredResponses := rm.filterResponsesForPeer(prm.responses, prm.p)
-	filteredResponses = rm.processExtensions(filteredResponses, prm.p)
+	filteredResponses := rm.processExtensions(prm.responses, prm.p)
+	filteredResponses = rm.filterResponsesForPeer(filteredResponses, prm.p)
 	rm.updateLastResponses(filteredResponses)
 	responseMetadata := metadataForResponses(filteredResponses)
 	rm.asyncLoader.ProcessResponse(responseMetadata, prm.blks)
@@ -426,7 +426,10 @@ func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg
 		rm.peerHandler.SendRequest(p, updateRequest)
 	}
 	if result.Err != nil {
-		requestStatus := rm.inProgressRequestStatuses[response.RequestID()]
+		requestStatus, ok := rm.inProgressRequestStatuses[response.RequestID()]
+		if !ok {
+			return false
+		}
 		responseError := rm.generateResponseErrorFromStatus(graphsync.RequestFailedUnknown)
 		select {
 		case requestStatus.networkError <- responseError:
