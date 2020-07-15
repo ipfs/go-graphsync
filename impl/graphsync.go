@@ -41,7 +41,7 @@ type GraphSync struct {
 	incomingRequestHooks        *responderhooks.IncomingRequestHooks
 	outgoingBlockHooks          *responderhooks.OutgoingBlockHooks
 	requestUpdatedHooks         *responderhooks.RequestUpdatedHooks
-	completedResponseHooks      *responderhooks.CompletedResponseHooks
+	completedResponseListeners  *responderhooks.CompletedResponseListeners
 	requestorCancelledListeners *responderhooks.RequestorCancelledListeners
 	incomingResponseHooks       *requestorhooks.IncomingResponseHooks
 	outgoingRequestHooks        *requestorhooks.OutgoingRequestHooks
@@ -88,9 +88,9 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	incomingRequestHooks := responderhooks.NewRequestHooks(persistenceOptions)
 	outgoingBlockHooks := responderhooks.NewBlockHooks()
 	requestUpdatedHooks := responderhooks.NewUpdateHooks()
-	completedResponseHooks := responderhooks.NewCompletedResponseHooks()
+	completedResponseListeners := responderhooks.NewCompletedResponseListeners()
 	requestorCancelledListeners := responderhooks.NewRequestorCancelledListeners()
-	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseHooks, requestorCancelledListeners)
+	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners)
 	unregisterDefaultValidator := incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
 		network:                     network,
@@ -103,7 +103,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		incomingRequestHooks:        incomingRequestHooks,
 		outgoingBlockHooks:          outgoingBlockHooks,
 		requestUpdatedHooks:         requestUpdatedHooks,
-		completedResponseHooks:      completedResponseHooks,
+		completedResponseListeners:  completedResponseListeners,
 		requestorCancelledListeners: requestorCancelledListeners,
 		incomingResponseHooks:       incomingResponseHooks,
 		outgoingRequestHooks:        outgoingRequestHooks,
@@ -170,9 +170,9 @@ func (gs *GraphSync) RegisterRequestUpdatedHook(hook graphsync.OnRequestUpdatedH
 	return gs.requestUpdatedHooks.Register(hook)
 }
 
-// RegisterCompletedResponseHook adds a hook on the responder for completed responses
-func (gs *GraphSync) RegisterCompletedResponseHook(hook graphsync.OnResponseCompletedHook) graphsync.UnregisterHookFunc {
-	return gs.completedResponseHooks.Register(hook)
+// RegisterCompletedResponseListener adds a listener on the responder for completed responses
+func (gs *GraphSync) RegisterCompletedResponseListener(listener graphsync.OnResponseCompletedListener) graphsync.UnregisterHookFunc {
+	return gs.completedResponseListeners.Register(listener)
 }
 
 // RegisterIncomingBlockHook adds a hook that runs when a block is received and validated (put in block store)

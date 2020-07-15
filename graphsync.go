@@ -236,12 +236,6 @@ type RequestUpdatedHookActions interface {
 	UnpauseResponse()
 }
 
-// ResponseCompletedHookActions are actions that can be taken in response completed hook to add a
-// final extension on a response
-type ResponseCompletedHookActions interface {
-	SendExtensionData(ExtensionData)
-}
-
 // OnIncomingRequestHook is a hook that runs each time a new request is received.
 // It receives the peer that sent the request and all data about the request.
 // It receives an interface for customizing the response to this request
@@ -278,8 +272,8 @@ type OnOutgoingBlockHook func(p peer.ID, request RequestData, block BlockData, h
 // It receives an interface to taking further action on the response
 type OnRequestUpdatedHook func(p peer.ID, request RequestData, updateRequest RequestData, hookActions RequestUpdatedHookActions)
 
-// OnResponseCompletedHook provides a way to listen for when responder has finished serving a response
-type OnResponseCompletedHook func(p peer.ID, request RequestData, status ResponseStatusCode, hookActions ResponseCompletedHookActions)
+// OnResponseCompletedListener provides a way to listen for when responder has finished serving a response
+type OnResponseCompletedListener func(p peer.ID, request RequestData, status ResponseStatusCode)
 
 // OnRequestorCancelledListener provides a way to listen for responses the requestor canncels
 type OnRequestorCancelledListener func(p peer.ID, request RequestData)
@@ -313,8 +307,8 @@ type GraphExchange interface {
 	// RegisterRequestUpdatedHook adds a hook that runs every time an update to a request is received
 	RegisterRequestUpdatedHook(hook OnRequestUpdatedHook) UnregisterHookFunc
 
-	// RegisterCompletedResponseHook adds a hook on the responder for completed responses
-	RegisterCompletedResponseHook(hook OnResponseCompletedHook) UnregisterHookFunc
+	// RegisterCompletedResponseListener adds a listener on the responder for completed responses
+	RegisterCompletedResponseListener(listener OnResponseCompletedListener) UnregisterHookFunc
 
 	// RegisterRequestorCancelledListener adds a listener on the responder for
 	// responses cancelled by the requestor

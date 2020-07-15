@@ -191,14 +191,14 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
 
-	var receivedResponseData [][]byte
+	var receivedResponseData []byte
 	var receivedRequestData []byte
 
 	requestor.RegisterIncomingResponseHook(
 		func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
 			data, has := responseData.Extension(td.extensionName)
 			if has {
-				receivedResponseData = append(receivedResponseData, data)
+				receivedResponseData = data
 			}
 		})
 
@@ -213,8 +213,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	})
 
 	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
-	responder.RegisterCompletedResponseHook(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode, hookActions graphsync.ResponseCompletedHookActions) {
-		hookActions.SendExtensionData(td.extensionFinal)
+	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
 		select {
 		case finalResponseStatusChan <- status:
 		default:
@@ -228,11 +227,9 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 
 	// verify extension roundtrip
 	require.Equal(t, td.extensionData, receivedRequestData, "did not receive correct extension request data")
-	require.Len(t, receivedResponseData, 2)
-	require.Equal(t, td.extensionResponseData, receivedResponseData[0], "did not receive correct extension response data")
-	require.Equal(t, td.extensionFinalData, receivedResponseData[1], "did not receive correct extension response data")
+	require.Equal(t, td.extensionResponseData, receivedResponseData, "did not receive correct extension response data")
 
-	// verify completed hook
+	// verify listener
 	var finalResponseStatus graphsync.ResponseStatusCode
 	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
 	require.Equal(t, graphsync.RequestCompletedFull, finalResponseStatus)
@@ -259,7 +256,7 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 	responder := td.GraphSyncHost2()
 
 	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
-	responder.RegisterCompletedResponseHook(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode, hookActions graphsync.ResponseCompletedHookActions) {
+	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
 		select {
 		case finalResponseStatusChan <- status:
 		default:
@@ -281,7 +278,7 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 	require.Equal(t, tree.MiddleMapBlock.RawData(), td.blockStore1[tree.MiddleMapNodeLnk])
 	require.Equal(t, tree.RootBlock.RawData(), td.blockStore1[tree.RootNodeLnk])
 
-	// verify completed hook
+	// verify listener
 	var finalResponseStatus graphsync.ResponseStatusCode
 	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
 	require.Equal(t, graphsync.RequestCompletedPartial, finalResponseStatus)
@@ -823,8 +820,6 @@ type gsTestData struct {
 	extensionResponse        graphsync.ExtensionData
 	extensionUpdateData      []byte
 	extensionUpdate          graphsync.ExtensionData
-	extensionFinalData       []byte
-	extensionFinal           graphsync.ExtensionData
 }
 
 func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
@@ -862,11 +857,7 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 		Name: td.extensionName,
 		Data: td.extensionUpdateData,
 	}
-	td.extensionFinalData = testutil.RandomBytes(100)
-	td.extensionFinal = graphsync.ExtensionData{
-		Name: td.extensionName,
-		Data: td.extensionFinalData,
-	}
+
 	return td
 }
 
