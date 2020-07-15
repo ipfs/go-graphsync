@@ -293,6 +293,10 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
+	called := make(chan struct{})
+	td.responseHooks.Register(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+		close(called)
+	})
 	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
@@ -310,6 +314,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 
 	td.fal.VerifyNoRemainingData(t, rr.gsr.ID())
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
+	testutil.AssertDoesReceive(requestCtx, t, called, "response hooks called for response")
 }
 
 func TestRequestReturnsMissingBlocks(t *testing.T) {
