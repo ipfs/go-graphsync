@@ -289,6 +289,9 @@ type GraphExchange interface {
 	// RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
 	RegisterPersistenceOption(name string, loader ipld.Loader, storer ipld.Storer) error
 
+	// UnregisterPersistenceOption unregisters an alternate loader/storer combo
+	UnregisterPersistenceOption(name string) error
+
 	// RegisterIncomingRequestHook adds a hook that runs when a request is received
 	RegisterIncomingRequestHook(hook OnIncomingRequestHook) UnregisterHookFunc
 
