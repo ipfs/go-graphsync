@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/filecoin-project/go-data-transfer/message"
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
@@ -90,7 +90,7 @@ func ContainsBlock(blks []blocks.Block, block blocks.Block) bool {
 }
 
 // AssertEqualSelector asserts two requests have the same valid selector
-func AssertEqualSelector(t *testing.T, expectedRequest message.DataTransferRequest, request message.DataTransferRequest) {
+func AssertEqualSelector(t *testing.T, expectedRequest datatransfer.Request, request datatransfer.Request) {
 	expectedSelector, err := expectedRequest.Selector()
 	require.NoError(t, err)
 	selector, err := request.Selector()

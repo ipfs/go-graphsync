@@ -22,8 +22,8 @@ import (
 // Receiver is an interface for receiving messages from the DataTransferNetwork.
 type receiver struct {
 	messageReceived chan struct{}
-	lastRequest     message.DataTransferRequest
-	lastResponse    message.DataTransferResponse
+	lastRequest     datatransfer.Request
+	lastResponse    datatransfer.Response
 	lastSender      peer.ID
 	connectedPeers  chan peer.ID
 }
@@ -31,7 +31,7 @@ type receiver struct {
 func (r *receiver) ReceiveRequest(
 	ctx context.Context,
 	sender peer.ID,
-	incoming message.DataTransferRequest) {
+	incoming datatransfer.Request) {
 	r.lastSender = sender
 	r.lastRequest = incoming
 	select {
@@ -43,7 +43,7 @@ func (r *receiver) ReceiveRequest(
 func (r *receiver) ReceiveResponse(
 	ctx context.Context,
 	sender peer.ID,
-	incoming message.DataTransferResponse) {
+	incoming datatransfer.Response) {
 	r.lastSender = sender
 	r.lastResponse = incoming
 	select {

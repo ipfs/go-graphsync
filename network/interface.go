@@ -6,7 +6,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 
-	"github.com/filecoin-project/go-data-transfer/message"
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 )
 
 var (
@@ -23,7 +23,7 @@ type DataTransferNetwork interface {
 	SendMessage(
 		context.Context,
 		peer.ID,
-		message.DataTransferMessage) error
+		datatransfer.Message) error
 
 	// SetDelegate registers the Reciver to handle messages received from the
 	// network.
@@ -41,12 +41,12 @@ type Receiver interface {
 	ReceiveRequest(
 		ctx context.Context,
 		sender peer.ID,
-		incoming message.DataTransferRequest)
+		incoming datatransfer.Request)
 
 	ReceiveResponse(
 		ctx context.Context,
 		sender peer.ID,
-		incoming message.DataTransferResponse)
+		incoming datatransfer.Response)
 
 	ReceiveError(error)
 }

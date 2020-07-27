@@ -3,6 +3,7 @@ package extension
 import (
 	"bytes"
 
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/ipfs/go-graphsync"
 )
@@ -13,7 +14,7 @@ const (
 )
 
 // ToExtensionData converts a message to a graphsync extension
-func ToExtensionData(msg message.DataTransferMessage) (graphsync.ExtensionData, error) {
+func ToExtensionData(msg datatransfer.Message) (graphsync.ExtensionData, error) {
 	buf := new(bytes.Buffer)
 	err := msg.ToNet(buf)
 	if err != nil {
@@ -35,7 +36,7 @@ type GsExtended interface {
 //    * nil + nil if the extension is not found
 //    * nil + error if the extendedData fails to unmarshal
 //    * unmarshaled ExtensionDataTransferData + nil if all goes well
-func GetTransferData(extendedData GsExtended) (message.DataTransferMessage, error) {
+func GetTransferData(extendedData GsExtended) (datatransfer.Message, error) {
 	data, ok := extendedData.Extension(ExtensionDataTransfer)
 	if !ok {
 		return nil, nil

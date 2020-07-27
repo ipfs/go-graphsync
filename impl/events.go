@@ -6,9 +6,7 @@ import (
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/encoding"
-	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/registry"
-	"github.com/filecoin-project/go-data-transfer/transport"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -51,7 +49,7 @@ func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, si
 	return nil
 }
 
-func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) (message.DataTransferMessage, error) {
+func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) (datatransfer.Message, error) {
 	err := m.channels.IncrementSent(chid, size)
 	if err != nil {
 		return nil, err
@@ -71,7 +69,7 @@ func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size u
 	return nil, nil
 }
 
-func (m *manager) OnRequestReceived(chid datatransfer.ChannelID, request message.DataTransferRequest) (message.DataTransferResponse, error) {
+func (m *manager) OnRequestReceived(chid datatransfer.ChannelID, request datatransfer.Request) (datatransfer.Response, error) {
 	if request.IsNew() {
 		return m.receiveNewRequest(chid.Initiator, request)
 	}
@@ -95,12 +93,12 @@ func (m *manager) OnRequestReceived(chid datatransfer.ChannelID, request message
 	}
 	if chst.Status() == datatransfer.ResponderPaused ||
 		chst.Status() == datatransfer.ResponderFinalizing {
-		return nil, transport.ErrPause
+		return nil, datatransfer.ErrPause
 	}
 	return nil, nil
 }
 
-func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response message.DataTransferResponse) error {
+func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response datatransfer.Response) error {
 	if response.IsCancel() {
 		return m.channels.Cancel(chid)
 	}
@@ -168,22 +166,18 @@ func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, success bool) 
 
 func (m *manager) receiveNewRequest(
 	initiator peer.ID,
-	incoming message.DataTransferRequest) (message.DataTransferResponse, error) {
+	incoming datatransfer.Request) (datatransfer.Response, error) {
 	result, err := m.acceptRequest(initiator, incoming)
 	msg, msgErr := m.response(true, err, incoming.TransferID(), result)
 	if msgErr != nil {
 		return nil, msgErr
-	}
-	// convert to the transport error for pauses
-	if err == datatransfer.ErrPause {
-		err = transport.ErrPause
 	}
 	return msg, err
 }
 
 func (m *manager) acceptRequest(
 	initiator peer.ID,
-	incoming message.DataTransferRequest) (datatransfer.VoucherResult, error) {
+	incoming datatransfer.Request) (datatransfer.VoucherResult, error) {
 
 	stor, err := incoming.Selector()
 	if err != nil {
@@ -218,6 +212,11 @@ func (m *manager) acceptRequest(
 	if err := m.channels.Accept(chid); err != nil {
 		return result, err
 	}
+	processor, has := m.transportConfigurers.Processor(voucher.Type())
+	if has {
+		transportConfigurer := processor.(datatransfer.TransportConfigurer)
+		transportConfigurer(chid, voucher, m.transport)
+	}
 	m.dataTransferNetwork.Protect(initiator, chid.String())
 	if voucherErr == datatransfer.ErrPause {
 		err := m.channels.PauseResponder(chid)
@@ -235,7 +234,7 @@ func (m *manager) acceptRequest(
 //   * deserialization of selector fails
 //   * validation fails
 func (m *manager) validateVoucher(sender peer.ID,
-	incoming message.DataTransferRequest,
+	incoming datatransfer.Request,
 	isPull bool,
 	baseCid cid.Cid,
 	stor ipld.Node) (datatransfer.Voucher, datatransfer.VoucherResult, error) {
@@ -263,7 +262,7 @@ func (m *manager) validateVoucher(sender peer.ID,
 //   * deserialization of selector fails
 //   * validation fails
 func (m *manager) revalidateVoucher(chid datatransfer.ChannelID,
-	incoming message.DataTransferRequest) (datatransfer.Voucher, datatransfer.VoucherResult, error) {
+	incoming datatransfer.Request) (datatransfer.Voucher, datatransfer.VoucherResult, error) {
 	vouch, err := m.decodeVoucher(incoming, m.revalidators)
 	if err != nil {
 		return nil, nil, err
@@ -275,7 +274,7 @@ func (m *manager) revalidateVoucher(chid datatransfer.ChannelID,
 	return vouch, result, err
 }
 
-func (m *manager) processUpdateVoucher(chid datatransfer.ChannelID, request message.DataTransferRequest) (message.DataTransferResponse, error) {
+func (m *manager) processUpdateVoucher(chid datatransfer.ChannelID, request datatransfer.Request) (datatransfer.Response, error) {
 	vouch, result, voucherErr := m.revalidateVoucher(chid, request)
 	if vouch != nil {
 		err := m.channels.NewVoucher(chid, vouch)
@@ -286,7 +285,7 @@ func (m *manager) processUpdateVoucher(chid datatransfer.ChannelID, request mess
 	return m.processRevalidationResult(chid, result, voucherErr)
 }
 
-func (m *manager) revalidationResponse(chid datatransfer.ChannelID, result datatransfer.VoucherResult, resultErr error) (message.DataTransferResponse, error) {
+func (m *manager) revalidationResponse(chid datatransfer.ChannelID, result datatransfer.VoucherResult, resultErr error) (datatransfer.Response, error) {
 	chst, err := m.channels.GetByID(context.TODO(), chid)
 	if err != nil {
 		return nil, err
@@ -297,7 +296,7 @@ func (m *manager) revalidationResponse(chid datatransfer.ChannelID, result datat
 	return m.response(false, resultErr, chid.ID, result)
 }
 
-func (m *manager) processRevalidationResult(chid datatransfer.ChannelID, result datatransfer.VoucherResult, resultErr error) (message.DataTransferResponse, error) {
+func (m *manager) processRevalidationResult(chid datatransfer.ChannelID, result datatransfer.VoucherResult, resultErr error) (datatransfer.Response, error) {
 	vresMessage, err := m.revalidationResponse(chid, result, resultErr)
 
 	if err != nil {
@@ -314,7 +313,7 @@ func (m *manager) processRevalidationResult(chid datatransfer.ChannelID, result 
 		if err != nil {
 			return nil, err
 		}
-		return vresMessage, transport.ErrPause
+		return vresMessage, datatransfer.ErrPause
 	}
 
 	if resultErr == nil {
@@ -322,12 +321,12 @@ func (m *manager) processRevalidationResult(chid datatransfer.ChannelID, result 
 		if err != nil {
 			return nil, err
 		}
-		return vresMessage, transport.ErrResume
+		return vresMessage, datatransfer.ErrResume
 	}
 	return vresMessage, resultErr
 }
 
-func (m *manager) completeMessage(chid datatransfer.ChannelID) (message.DataTransferResponse, error) {
+func (m *manager) completeMessage(chid datatransfer.ChannelID) (datatransfer.Response, error) {
 	var result datatransfer.VoucherResult
 	var resultErr error
 	_ = m.revalidators.Each(func(_ datatransfer.TypeIdentifier, _ encoding.Decoder, processor registry.Processor) error {

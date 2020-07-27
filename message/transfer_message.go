@@ -3,7 +3,7 @@ package message
 import (
 	"io"
 
-	"github.com/filecoin-project/go-data-transfer"
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 )
 
 //go:generate cbor-gen-for transferMessage
@@ -14,7 +14,7 @@ type transferMessage struct {
 	Response *transferResponse
 }
 
-// ========= DataTransferMessage interface
+// ========= datatransfer.Message interface
 
 // IsRequest returns true if this message is a data request
 func (tm *transferMessage) IsRequest() bool {

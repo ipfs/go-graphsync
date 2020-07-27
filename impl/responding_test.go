@@ -19,7 +19,6 @@ import (
 	. "github.com/filecoin-project/go-data-transfer/impl"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/testutil"
-	"github.com/filecoin-project/go-data-transfer/transport"
 	"github.com/filecoin-project/go-storedcounter"
 )
 
@@ -55,7 +54,7 @@ func TestDataTransferResponding(t *testing.T) {
 				require.Equal(t, openChannel.Root, cidlink.Link{Cid: h.baseCid})
 				require.Equal(t, openChannel.Selector, h.stor)
 				require.False(t, openChannel.Message.IsRequest())
-				response, ok := openChannel.Message.(message.DataTransferResponse)
+				response, ok := openChannel.Message.(datatransfer.Response)
 				require.True(t, ok)
 				require.True(t, response.Accepted())
 				require.Equal(t, response.TransferID(), h.id)
@@ -76,7 +75,7 @@ func TestDataTransferResponding(t *testing.T) {
 				require.Len(t, h.network.SentMessages, 1)
 				responseMessage := h.network.SentMessages[0].Message
 				require.False(t, responseMessage.IsRequest())
-				response, ok := responseMessage.(message.DataTransferResponse)
+				response, ok := responseMessage.(datatransfer.Response)
 				require.True(t, ok)
 				require.False(t, response.Accepted())
 				require.Equal(t, response.TransferID(), h.id)
@@ -102,7 +101,7 @@ func TestDataTransferResponding(t *testing.T) {
 				require.Equal(t, openChannel.Root, cidlink.Link{Cid: h.baseCid})
 				require.Equal(t, openChannel.Selector, h.stor)
 				require.False(t, openChannel.Message.IsRequest())
-				response, ok := openChannel.Message.(message.DataTransferResponse)
+				response, ok := openChannel.Message.(datatransfer.Response)
 				require.True(t, ok)
 				require.True(t, response.Accepted())
 				require.Equal(t, response.TransferID(), h.id)
@@ -161,7 +160,7 @@ func TestDataTransferResponding(t *testing.T) {
 			},
 			verify: func(t *testing.T, h *receiverHarness) {
 				response, err := h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.pullRequest)
-				require.EqualError(t, err, transport.ErrPause.Error())
+				require.EqualError(t, err, datatransfer.ErrPause.Error())
 
 				require.True(t, response.Accepted())
 				require.Equal(t, response.TransferID(), h.id)
@@ -198,7 +197,7 @@ func TestDataTransferResponding(t *testing.T) {
 			verify: func(t *testing.T, h *receiverHarness) {
 				h.network.Delegate.ReceiveRequest(h.ctx, h.peers[1], h.pushRequest)
 				_, err := h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.voucherUpdate)
-				require.EqualError(t, err, transport.ErrResume.Error())
+				require.EqualError(t, err, datatransfer.ErrResume.Error())
 			},
 		},
 		"receive pause, unpause": {
@@ -239,7 +238,7 @@ func TestDataTransferResponding(t *testing.T) {
 				err = h.dt.PauseDataTransferChannel(h.ctx, channelID(h.id, h.peers))
 				require.NoError(t, err)
 				_, err = h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.resumeUpdate)
-				require.EqualError(t, err, transport.ErrPause.Error())
+				require.EqualError(t, err, datatransfer.ErrPause.Error())
 			},
 		},
 		"receive cancel": {
@@ -284,9 +283,9 @@ func TestDataTransferResponding(t *testing.T) {
 					channelID(h.id, h.peers),
 					cidlink.Link{Cid: testutil.GenerateCids(1)[0]},
 					12345)
-				require.EqualError(t, err, transport.ErrPause.Error())
+				require.EqualError(t, err, datatransfer.ErrPause.Error())
 				require.Len(t, h.network.SentMessages, 1)
-				response, ok := h.network.SentMessages[0].Message.(message.DataTransferResponse)
+				response, ok := h.network.SentMessages[0].Message.(datatransfer.Response)
 				require.True(t, ok)
 				require.True(t, response.Accepted())
 				require.Equal(t, response.TransferID(), h.id)
@@ -296,7 +295,7 @@ func TestDataTransferResponding(t *testing.T) {
 				require.True(t, response.IsVoucherResult())
 				require.False(t, response.EmptyVoucherResult())
 				response, err = h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.voucherUpdate)
-				require.EqualError(t, err, transport.ErrResume.Error())
+				require.EqualError(t, err, datatransfer.ErrResume.Error())
 				require.True(t, response.Accepted())
 				require.Equal(t, response.TransferID(), h.id)
 				require.False(t, response.IsUpdate())
@@ -330,7 +329,7 @@ func TestDataTransferResponding(t *testing.T) {
 					12345)
 				require.Error(t, err)
 				require.Len(t, h.network.SentMessages, 1)
-				response, ok := h.network.SentMessages[0].Message.(message.DataTransferResponse)
+				response, ok := h.network.SentMessages[0].Message.(datatransfer.Response)
 				require.True(t, ok)
 				require.False(t, response.Accepted())
 				require.Equal(t, response.TransferID(), h.id)
@@ -368,9 +367,9 @@ func TestDataTransferResponding(t *testing.T) {
 					channelID(h.id, h.peers),
 					cidlink.Link{Cid: testutil.GenerateCids(1)[0]},
 					12345)
-				require.EqualError(t, err, transport.ErrPause.Error())
+				require.EqualError(t, err, datatransfer.ErrPause.Error())
 				require.Len(t, h.network.SentMessages, 1)
-				response, ok := h.network.SentMessages[0].Message.(message.DataTransferResponse)
+				response, ok := h.network.SentMessages[0].Message.(datatransfer.Response)
 				require.True(t, ok)
 				require.True(t, response.Accepted())
 				require.Equal(t, response.TransferID(), h.id)
@@ -419,8 +418,8 @@ func TestDataTransferResponding(t *testing.T) {
 					channelID(h.id, h.peers),
 					cidlink.Link{Cid: testutil.GenerateCids(1)[0]},
 					12345)
-				require.EqualError(t, err, transport.ErrPause.Error())
-				response, ok := msg.(message.DataTransferResponse)
+				require.EqualError(t, err, datatransfer.ErrPause.Error())
+				response, ok := msg.(datatransfer.Response)
 				require.True(t, ok)
 				require.True(t, response.Accepted())
 				require.Equal(t, response.TransferID(), h.id)
@@ -430,7 +429,7 @@ func TestDataTransferResponding(t *testing.T) {
 				require.True(t, response.IsVoucherResult())
 				require.False(t, response.EmptyVoucherResult())
 				response, err = h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.voucherUpdate)
-				require.EqualError(t, err, transport.ErrResume.Error())
+				require.EqualError(t, err, datatransfer.ErrResume.Error())
 				require.True(t, response.Accepted())
 				require.Equal(t, response.TransferID(), h.id)
 				require.False(t, response.IsUpdate())
@@ -466,7 +465,7 @@ func TestDataTransferResponding(t *testing.T) {
 				err = h.transport.EventHandler.OnChannelCompleted(channelID(h.id, h.peers), true)
 				require.NoError(t, err)
 				require.Len(t, h.network.SentMessages, 1)
-				response, ok := h.network.SentMessages[0].Message.(message.DataTransferResponse)
+				response, ok := h.network.SentMessages[0].Message.(datatransfer.Response)
 				require.True(t, ok)
 				require.True(t, response.Accepted())
 				require.Equal(t, response.TransferID(), h.id)
@@ -476,10 +475,54 @@ func TestDataTransferResponding(t *testing.T) {
 				require.True(t, response.IsVoucherResult())
 				require.False(t, response.EmptyVoucherResult())
 				response, err = h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.voucherUpdate)
-				require.EqualError(t, err, transport.ErrResume.Error())
+				require.EqualError(t, err, datatransfer.ErrResume.Error())
 				require.Equal(t, response.TransferID(), h.id)
 				require.True(t, response.IsVoucherResult())
 				require.False(t, response.IsPaused())
+			},
+		},
+		"new push request, customized transport": {
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.NewVoucherResult, datatransfer.Accept},
+			configureValidator: func(sv *testutil.StubbedValidator) {
+				sv.ExpectSuccessPush()
+				sv.StubResult(testutil.NewFakeDTType())
+			},
+			verify: func(t *testing.T, h *receiverHarness) {
+				err := h.dt.RegisterTransportConfigurer(h.voucher, func(channelID datatransfer.ChannelID, voucher datatransfer.Voucher, transport datatransfer.Transport) {
+					ft, ok := transport.(*testutil.FakeTransport)
+					if !ok {
+						return
+					}
+					ft.RecordCustomizedTransfer(channelID, voucher)
+				})
+				require.NoError(t, err)
+				h.network.Delegate.ReceiveRequest(h.ctx, h.peers[1], h.pushRequest)
+				require.Len(t, h.transport.CustomizedTransfers, 1)
+				customizedTransfer := h.transport.CustomizedTransfers[0]
+				require.Equal(t, channelID(h.id, h.peers), customizedTransfer.ChannelID)
+				require.Equal(t, h.voucher, customizedTransfer.Voucher)
+			},
+		},
+		"new pull request, customized transport": {
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.Accept},
+			configureValidator: func(sv *testutil.StubbedValidator) {
+				sv.ExpectSuccessPull()
+			},
+			verify: func(t *testing.T, h *receiverHarness) {
+				err := h.dt.RegisterTransportConfigurer(h.voucher, func(channelID datatransfer.ChannelID, voucher datatransfer.Voucher, transport datatransfer.Transport) {
+					ft, ok := transport.(*testutil.FakeTransport)
+					if !ok {
+						return
+					}
+					ft.RecordCustomizedTransfer(channelID, voucher)
+				})
+				require.NoError(t, err)
+				_, err = h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.pullRequest)
+				require.NoError(t, err)
+				require.Len(t, h.transport.CustomizedTransfers, 1)
+				customizedTransfer := h.transport.CustomizedTransfers[0]
+				require.Equal(t, channelID(h.id, h.peers), customizedTransfer.ChannelID)
+				require.Equal(t, h.voucher, customizedTransfer.Voucher)
 			},
 		},
 	}
@@ -541,12 +584,12 @@ func TestDataTransferResponding(t *testing.T) {
 
 type receiverHarness struct {
 	id            datatransfer.TransferID
-	pushRequest   message.DataTransferRequest
-	pullRequest   message.DataTransferRequest
-	voucherUpdate message.DataTransferRequest
-	pauseUpdate   message.DataTransferRequest
-	resumeUpdate  message.DataTransferRequest
-	cancelUpdate  message.DataTransferRequest
+	pushRequest   datatransfer.Request
+	pullRequest   datatransfer.Request
+	voucherUpdate datatransfer.Request
+	pauseUpdate   datatransfer.Request
+	resumeUpdate  datatransfer.Request
+	cancelUpdate  datatransfer.Request
 	ctx           context.Context
 	peers         []peer.ID
 	network       *testutil.FakeNetwork

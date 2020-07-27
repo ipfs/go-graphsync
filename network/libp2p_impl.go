@@ -12,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/message"
 )
 
@@ -48,11 +49,11 @@ func (s *streamMessageSender) Reset() error {
 	return s.s.Reset()
 }
 
-func (s *streamMessageSender) SendMsg(ctx context.Context, msg message.DataTransferMessage) error {
+func (s *streamMessageSender) SendMsg(ctx context.Context, msg datatransfer.Message) error {
 	return msgToStream(ctx, s.s, msg)
 }
 
-func msgToStream(ctx context.Context, s network.Stream, msg message.DataTransferMessage) error {
+func msgToStream(ctx context.Context, s network.Stream, msg datatransfer.Message) error {
 	if msg.IsRequest() {
 		log.Debugf("Outgoing request message for transfer ID: %d", msg.TransferID())
 	}
@@ -88,7 +89,7 @@ func (dtnet *libp2pDataTransferNetwork) newStreamToPeer(ctx context.Context, p p
 func (dtnet *libp2pDataTransferNetwork) SendMessage(
 	ctx context.Context,
 	p peer.ID,
-	outgoing message.DataTransferMessage) error {
+	outgoing datatransfer.Message) error {
 
 	s, err := dtnet.newStreamToPeer(ctx, p)
 	if err != nil {
@@ -142,12 +143,12 @@ func (dtnet *libp2pDataTransferNetwork) handleNewStream(s network.Stream) {
 		ctx := context.Background()
 		log.Debugf("graphsync net handleNewStream from %s", s.Conn().RemotePeer())
 		if received.IsRequest() {
-			receivedRequest, ok := received.(message.DataTransferRequest)
+			receivedRequest, ok := received.(datatransfer.Request)
 			if ok {
 				dtnet.receiver.ReceiveRequest(ctx, p, receivedRequest)
 			}
 		} else {
-			receivedResponse, ok := received.(message.DataTransferResponse)
+			receivedResponse, ok := received.(datatransfer.Response)
 			if ok {
 				dtnet.receiver.ReceiveResponse(ctx, p, receivedResponse)
 			}

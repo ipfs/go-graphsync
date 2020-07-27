@@ -7,7 +7,6 @@ import (
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/encoding"
-	"github.com/filecoin-project/go-data-transfer/message"
 )
 
 //go:generate cbor-gen-for FakeDTType
@@ -23,7 +22,7 @@ func (ft FakeDTType) Type() datatransfer.TypeIdentifier {
 }
 
 // AssertFakeDTVoucher asserts that a data transfer requests contains the expected fake data transfer voucher type
-func AssertFakeDTVoucher(t *testing.T, request message.DataTransferRequest, expected *FakeDTType) {
+func AssertFakeDTVoucher(t *testing.T, request datatransfer.Request, expected *FakeDTType) {
 	require.Equal(t, datatransfer.TypeIdentifier("FakeDTType"), request.VoucherType())
 	fakeDTDecoder, err := encoding.NewDecoder(&FakeDTType{})
 	require.NoError(t, err)
@@ -33,7 +32,7 @@ func AssertFakeDTVoucher(t *testing.T, request message.DataTransferRequest, expe
 }
 
 // AssertEqualFakeDTVoucher asserts that two requests have the same fake data transfer voucher
-func AssertEqualFakeDTVoucher(t *testing.T, expectedRequest message.DataTransferRequest, request message.DataTransferRequest) {
+func AssertEqualFakeDTVoucher(t *testing.T, expectedRequest datatransfer.Request, request datatransfer.Request) {
 	require.Equal(t, expectedRequest.VoucherType(), request.VoucherType())
 	fakeDTDecoder, err := encoding.NewDecoder(&FakeDTType{})
 	require.NoError(t, err)
@@ -45,7 +44,7 @@ func AssertEqualFakeDTVoucher(t *testing.T, expectedRequest message.DataTransfer
 }
 
 // AssertFakeDTVoucherResult asserts that a data transfer response contains the expected fake data transfer voucher result type
-func AssertFakeDTVoucherResult(t *testing.T, response message.DataTransferResponse, expected *FakeDTType) {
+func AssertFakeDTVoucherResult(t *testing.T, response datatransfer.Response, expected *FakeDTType) {
 	require.Equal(t, datatransfer.TypeIdentifier("FakeDTType"), response.VoucherResultType())
 	fakeDTDecoder, err := encoding.NewDecoder(&FakeDTType{})
 	require.NoError(t, err)
@@ -55,7 +54,7 @@ func AssertFakeDTVoucherResult(t *testing.T, response message.DataTransferRespon
 }
 
 // AssertEqualFakeDTVoucherResult asserts that two responses have the same fake data transfer voucher result
-func AssertEqualFakeDTVoucherResult(t *testing.T, expectedResponse message.DataTransferResponse, response message.DataTransferResponse) {
+func AssertEqualFakeDTVoucherResult(t *testing.T, expectedResponse datatransfer.Response, response datatransfer.Response) {
 	require.Equal(t, expectedResponse.VoucherResultType(), response.VoucherResultType())
 	fakeDTDecoder, err := encoding.NewDecoder(&FakeDTType{})
 	require.NoError(t, err)

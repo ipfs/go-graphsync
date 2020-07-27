@@ -30,7 +30,7 @@ var resumeTransportStatesResponder = statusList{
 }
 
 // newRequest encapsulates message creation
-func (m *manager) newRequest(ctx context.Context, selector ipld.Node, isPull bool, voucher datatransfer.Voucher, baseCid cid.Cid, to peer.ID) (message.DataTransferRequest, error) {
+func (m *manager) newRequest(ctx context.Context, selector ipld.Node, isPull bool, voucher datatransfer.Voucher, baseCid cid.Cid, to peer.ID) (datatransfer.Request, error) {
 	next, err := m.storedCounter.Next()
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func (m *manager) newRequest(ctx context.Context, selector ipld.Node, isPull boo
 	return message.NewRequest(tid, isPull, voucher.Type(), voucher, baseCid, selector)
 }
 
-func (m *manager) response(isNew bool, err error, tid datatransfer.TransferID, voucherResult datatransfer.VoucherResult) (message.DataTransferResponse, error) {
+func (m *manager) response(isNew bool, err error, tid datatransfer.TransferID, voucherResult datatransfer.VoucherResult) (datatransfer.Response, error) {
 	isAccepted := err == nil || err == datatransfer.ErrPause
 	isPaused := err == datatransfer.ErrPause
 	resultType := datatransfer.EmptyTypeIdentifier
@@ -52,7 +52,7 @@ func (m *manager) response(isNew bool, err error, tid datatransfer.TransferID, v
 	return message.VoucherResultResponse(tid, isAccepted, isPaused, resultType, voucherResult)
 }
 
-func (m *manager) completeResponse(err error, tid datatransfer.TransferID, voucherResult datatransfer.VoucherResult) (message.DataTransferResponse, error) {
+func (m *manager) completeResponse(err error, tid datatransfer.TransferID, voucherResult datatransfer.VoucherResult) (datatransfer.Response, error) {
 	isAccepted := err == nil || err == datatransfer.ErrPause
 	isPaused := err == datatransfer.ErrPause
 	resultType := datatransfer.EmptyTypeIdentifier
@@ -90,28 +90,28 @@ func (m *manager) pauseOther(chid datatransfer.ChannelID) error {
 	return m.channels.PauseResponder(chid)
 }
 
-func (m *manager) resumeMessage(chid datatransfer.ChannelID) message.DataTransferMessage {
+func (m *manager) resumeMessage(chid datatransfer.ChannelID) datatransfer.Message {
 	if chid.Initiator == m.peerID {
 		return message.UpdateRequest(chid.ID, false)
 	}
 	return message.UpdateResponse(chid.ID, false)
 }
 
-func (m *manager) pauseMessage(chid datatransfer.ChannelID) message.DataTransferMessage {
+func (m *manager) pauseMessage(chid datatransfer.ChannelID) datatransfer.Message {
 	if chid.Initiator == m.peerID {
 		return message.UpdateRequest(chid.ID, true)
 	}
 	return message.UpdateResponse(chid.ID, true)
 }
 
-func (m *manager) cancelMessage(chid datatransfer.ChannelID) message.DataTransferMessage {
+func (m *manager) cancelMessage(chid datatransfer.ChannelID) datatransfer.Message {
 	if chid.Initiator == m.peerID {
 		return message.CancelRequest(chid.ID)
 	}
 	return message.CancelResponse(chid.ID)
 }
 
-func (m *manager) decodeVoucherResult(response message.DataTransferResponse) (datatransfer.VoucherResult, error) {
+func (m *manager) decodeVoucherResult(response datatransfer.Response) (datatransfer.VoucherResult, error) {
 	vtypStr := datatransfer.TypeIdentifier(response.VoucherResultType())
 	decoder, has := m.resultTypes.Decoder(vtypStr)
 	if !has {
@@ -124,7 +124,7 @@ func (m *manager) decodeVoucherResult(response message.DataTransferResponse) (da
 	return encodable.(datatransfer.Registerable), nil
 }
 
-func (m *manager) decodeVoucher(request message.DataTransferRequest, registry *registry.Registry) (datatransfer.Voucher, error) {
+func (m *manager) decodeVoucher(request datatransfer.Request, registry *registry.Registry) (datatransfer.Voucher, error) {
 	vtypStr := datatransfer.TypeIdentifier(request.VoucherType())
 	decoder, has := registry.Decoder(vtypStr)
 	if !has {

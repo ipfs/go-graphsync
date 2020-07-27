@@ -16,7 +16,7 @@ import (
 
 //go:generate cbor-gen-for transferRequest
 
-// transferRequest is a struct that fulfills the DataTransferRequest interface.
+// transferRequest is a struct that fulfills the datatransfer.Request interface.
 // its members are exported to be used by cbor-gen
 type transferRequest struct {
 	BCid   *cid.Cid
@@ -55,7 +55,7 @@ func (trq *transferRequest) TransferID() datatransfer.TransferID {
 	return datatransfer.TransferID(trq.XferID)
 }
 
-// ========= DataTransferRequest interface
+// ========= datatransfer.Request interface
 // IsPull returns true if this is a data pull request
 func (trq *transferRequest) IsPull() bool {
 	return trq.Pull

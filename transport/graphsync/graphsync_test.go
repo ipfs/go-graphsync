@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"math/rand"
 	"testing"
 	"time"
@@ -11,11 +12,10 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/testutil"
-	"github.com/filecoin-project/go-data-transfer/transport"
 	. "github.com/filecoin-project/go-data-transfer/transport/graphsync"
 	"github.com/filecoin-project/go-data-transfer/transport/graphsync/extension"
 	"github.com/ipfs/go-graphsync"
-	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
@@ -347,7 +347,7 @@ func TestManager(t *testing.T) {
 		},
 		"outgoing data send error == pause will pause request": {
 			events: fakeEvents{
-				OnDataSentError: transport.ErrPause,
+				OnDataSentError: datatransfer.ErrPause,
 			},
 			action: func(gsData *harness) {
 				gsData.incomingRequestHook()
@@ -661,6 +661,44 @@ func TestManager(t *testing.T) {
 				}
 			},
 		},
+		"UseStore can change store used for outgoing requests": {
+			action: func(gsData *harness) {
+				loader := func(ipld.Link, ipld.LinkContext) (io.Reader, error) {
+					return nil, nil
+				}
+				storer := func(ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
+					return nil, nil, nil
+				}
+				_ = gsData.transport.UseStore(datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self}, loader, storer)
+				gsData.outgoingRequestHook()
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				expectedChannel := "data-transfer-" + datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self}.String()
+				gsData.fgs.AssertHasPersistenceOption(t, expectedChannel)
+				require.Equal(t, expectedChannel, gsData.outgoingRequestHookActions.PersistenceOption)
+				gsData.transport.CleanupChannel(datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self})
+				gsData.fgs.AssertDoesNotHavePersistenceOption(t, expectedChannel)
+			},
+		},
+		"UseStore can change store used for incoming requests": {
+			action: func(gsData *harness) {
+				loader := func(ipld.Link, ipld.LinkContext) (io.Reader, error) {
+					return nil, nil
+				}
+				storer := func(ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
+					return nil, nil, nil
+				}
+				_ = gsData.transport.UseStore(datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other}, loader, storer)
+				gsData.incomingRequestHook()
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				expectedChannel := "data-transfer-" + datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other}.String()
+				gsData.fgs.AssertHasPersistenceOption(t, expectedChannel)
+				require.Equal(t, expectedChannel, gsData.incomingRequestHookActions.PersistenceOption)
+				gsData.transport.CleanupChannel(datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other})
+				gsData.fgs.AssertDoesNotHavePersistenceOption(t, expectedChannel)
+			},
+		},
 	}
 	ctx := context.Background()
 	for testCase, data := range testCases {
@@ -723,10 +761,10 @@ type fakeEvents struct {
 	OnChannelCompletedCalled    bool
 	OnChannelCompletedErr       error
 	ChannelCompletedSuccess     bool
-	DataSentMessage             message.DataTransferMessage
-	RequestReceivedRequest      message.DataTransferRequest
-	RequestReceivedResponse     message.DataTransferResponse
-	ResponseReceivedResponse    message.DataTransferResponse
+	DataSentMessage             datatransfer.Message
+	RequestReceivedRequest      datatransfer.Request
+	RequestReceivedResponse     datatransfer.Response
+	ResponseReceivedResponse    datatransfer.Response
 }
 
 func (fe *fakeEvents) OnChannelOpened(chid datatransfer.ChannelID) error {
@@ -739,12 +777,12 @@ func (fe *fakeEvents) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link
 	return fe.OnDataReceivedError
 }
 
-func (fe *fakeEvents) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) (message.DataTransferMessage, error) {
+func (fe *fakeEvents) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) (datatransfer.Message, error) {
 	fe.OnDataSentCalled = true
 	return fe.DataSentMessage, fe.OnDataSentError
 }
 
-func (fe *fakeEvents) OnRequestReceived(chid datatransfer.ChannelID, request message.DataTransferRequest) (message.DataTransferResponse, error) {
+func (fe *fakeEvents) OnRequestReceived(chid datatransfer.ChannelID, request datatransfer.Request) (datatransfer.Response, error) {
 	fe.OnRequestReceivedCallCount++
 	fe.RequestReceivedChannelID = chid
 	fe.RequestReceivedRequest = request
@@ -755,7 +793,7 @@ func (fe *fakeEvents) OnRequestReceived(chid datatransfer.ChannelID, request mes
 	return fe.RequestReceivedResponse, err
 }
 
-func (fe *fakeEvents) OnResponseReceived(chid datatransfer.ChannelID, response message.DataTransferResponse) error {
+func (fe *fakeEvents) OnResponseReceived(chid datatransfer.ChannelID, response datatransfer.Response) error {
 	fe.OnResponseReceivedCallCount++
 	fe.ResponseReceivedResponse = response
 	fe.ResponseReceivedChannelID = chid
@@ -773,8 +811,8 @@ func (fe *fakeEvents) OnChannelCompleted(chid datatransfer.ChannelID, success bo
 }
 
 type harness struct {
-	outgoing                    message.DataTransferRequest
-	incoming                    message.DataTransferResponse
+	outgoing                    datatransfer.Request
+	incoming                    datatransfer.Response
 	ctx                         context.Context
 	transport                   *Transport
 	fgs                         *testutil.FakeGraphSync
@@ -830,7 +868,7 @@ func (dtc *dtConfig) extensions(t *testing.T, transferID datatransfer.TransferID
 		if dtc.dtExtensionMalformed {
 			extensions[extension.ExtensionDataTransfer] = testutil.RandomBytes(100)
 		} else {
-			var msg message.DataTransferMessage
+			var msg datatransfer.Message
 			if dtc.dtIsResponse {
 				msg = testutil.NewDTResponse(t, transferID)
 			} else {
@@ -878,14 +916,14 @@ func (grc *gsResponseConfig) makeResponse(t *testing.T, transferID datatransfer.
 	return testutil.NewFakeResponse(requestID, extensions, grc.status)
 }
 
-func assertDecodesToMessage(t *testing.T, data []byte, expected message.DataTransferMessage) {
+func assertDecodesToMessage(t *testing.T, data []byte, expected datatransfer.Message) {
 	buf := bytes.NewReader(data)
 	actual, err := message.FromNet(buf)
 	require.NoError(t, err)
 	require.Equal(t, expected, actual)
 }
 
-func assertHasOutgoingMessage(t *testing.T, extensions []graphsync.ExtensionData, expected message.DataTransferMessage) {
+func assertHasOutgoingMessage(t *testing.T, extensions []graphsync.ExtensionData, expected datatransfer.Message) {
 	buf := new(bytes.Buffer)
 	err := expected.ToNet(buf)
 	require.NoError(t, err)

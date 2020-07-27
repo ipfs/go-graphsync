@@ -3,7 +3,7 @@ package testutil
 import (
 	"context"
 
-	"github.com/filecoin-project/go-data-transfer/message"
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
@@ -11,7 +11,7 @@ import (
 // FakeSentMessage is a recording of a message sent on the FakeNetwork
 type FakeSentMessage struct {
 	PeerID  peer.ID
-	Message message.DataTransferMessage
+	Message datatransfer.Message
 }
 
 // FakeNetwork is a network that satisfies the DataTransferNetwork interface but
@@ -28,7 +28,7 @@ func NewFakeNetwork(id peer.ID) *FakeNetwork {
 }
 
 // SendMessage sends a GraphSync message to a peer.
-func (fn *FakeNetwork) SendMessage(ctx context.Context, p peer.ID, m message.DataTransferMessage) error {
+func (fn *FakeNetwork) SendMessage(ctx context.Context, p peer.ID, m datatransfer.Message) error {
 	fn.SentMessages = append(fn.SentMessages, FakeSentMessage{p, m})
 	return nil
 }

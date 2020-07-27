@@ -23,48 +23,8 @@ const (
 	voucherResultMessage
 )
 
-// Reference file: https://github.com/ipfs/go-graphsync/blob/master/message/message.go
-// though here we have a simpler message type that serializes/deserializes to two
-// different types that share an interface, and we serialize to CBOR and not Protobuf.
-
-// DataTransferMessage is a message for the data transfer protocol
-// (either request or response) that can serialize to a protobuf
-type DataTransferMessage interface {
-	IsRequest() bool
-	IsNew() bool
-	IsUpdate() bool
-	IsPaused() bool
-	IsCancel() bool
-	TransferID() datatransfer.TransferID
-	cborgen.CBORMarshaler
-	cborgen.CBORUnmarshaler
-	ToNet(w io.Writer) error
-}
-
-// DataTransferRequest is a response message for the data transfer protocol
-type DataTransferRequest interface {
-	DataTransferMessage
-	IsPull() bool
-	IsVoucher() bool
-	VoucherType() datatransfer.TypeIdentifier
-	Voucher(decoder encoding.Decoder) (encoding.Encodable, error)
-	BaseCid() cid.Cid
-	Selector() (ipld.Node, error)
-}
-
-// DataTransferResponse is a response message for the data transfer protocol
-type DataTransferResponse interface {
-	DataTransferMessage
-	IsVoucherResult() bool
-	IsComplete() bool
-	Accepted() bool
-	VoucherResultType() datatransfer.TypeIdentifier
-	VoucherResult(decoder encoding.Decoder) (encoding.Encodable, error)
-	EmptyVoucherResult() bool
-}
-
 // NewRequest generates a new request for the data transfer protocol
-func NewRequest(id datatransfer.TransferID, isPull bool, vtype datatransfer.TypeIdentifier, voucher encoding.Encodable, baseCid cid.Cid, selector ipld.Node) (DataTransferRequest, error) {
+func NewRequest(id datatransfer.TransferID, isPull bool, vtype datatransfer.TypeIdentifier, voucher encoding.Encodable, baseCid cid.Cid, selector ipld.Node) (datatransfer.Request, error) {
 	vbytes, err := encoding.Encode(voucher)
 	if err != nil {
 		return nil, xerrors.Errorf("Creating request: %w", err)
@@ -88,7 +48,7 @@ func NewRequest(id datatransfer.TransferID, isPull bool, vtype datatransfer.Type
 }
 
 // CancelRequest request generates a request to cancel an in progress request
-func CancelRequest(id datatransfer.TransferID) DataTransferRequest {
+func CancelRequest(id datatransfer.TransferID) datatransfer.Request {
 	return &transferRequest{
 		Type:   uint64(cancelMessage),
 		XferID: uint64(id),
@@ -96,7 +56,7 @@ func CancelRequest(id datatransfer.TransferID) DataTransferRequest {
 }
 
 // UpdateRequest generates a new request update
-func UpdateRequest(id datatransfer.TransferID, isPaused bool) DataTransferRequest {
+func UpdateRequest(id datatransfer.TransferID, isPaused bool) datatransfer.Request {
 	return &transferRequest{
 		Type:   uint64(updateMessage),
 		Paus:   isPaused,
@@ -105,7 +65,7 @@ func UpdateRequest(id datatransfer.TransferID, isPaused bool) DataTransferReques
 }
 
 // VoucherRequest generates a new request for the data transfer protocol
-func VoucherRequest(id datatransfer.TransferID, vtype datatransfer.TypeIdentifier, voucher encoding.Encodable) (DataTransferRequest, error) {
+func VoucherRequest(id datatransfer.TransferID, vtype datatransfer.TypeIdentifier, voucher encoding.Encodable) (datatransfer.Request, error) {
 	vbytes, err := encoding.Encode(voucher)
 	if err != nil {
 		return nil, xerrors.Errorf("Creating request: %w", err)
@@ -119,7 +79,7 @@ func VoucherRequest(id datatransfer.TransferID, vtype datatransfer.TypeIdentifie
 }
 
 // NewResponse builds a new Data Transfer response
-func NewResponse(id datatransfer.TransferID, accepted bool, isPaused bool, voucherResultType datatransfer.TypeIdentifier, voucherResult encoding.Encodable) (DataTransferResponse, error) {
+func NewResponse(id datatransfer.TransferID, accepted bool, isPaused bool, voucherResultType datatransfer.TypeIdentifier, voucherResult encoding.Encodable) (datatransfer.Response, error) {
 	vbytes, err := encoding.Encode(voucherResult)
 	if err != nil {
 		return nil, xerrors.Errorf("Creating request: %w", err)
@@ -135,7 +95,7 @@ func NewResponse(id datatransfer.TransferID, accepted bool, isPaused bool, vouch
 }
 
 // VoucherResultResponse builds a new response for a voucher result
-func VoucherResultResponse(id datatransfer.TransferID, accepted bool, isPaused bool, voucherResultType datatransfer.TypeIdentifier, voucherResult encoding.Encodable) (DataTransferResponse, error) {
+func VoucherResultResponse(id datatransfer.TransferID, accepted bool, isPaused bool, voucherResultType datatransfer.TypeIdentifier, voucherResult encoding.Encodable) (datatransfer.Response, error) {
 	vbytes, err := encoding.Encode(voucherResult)
 	if err != nil {
 		return nil, xerrors.Errorf("Creating request: %w", err)
@@ -151,7 +111,7 @@ func VoucherResultResponse(id datatransfer.TransferID, accepted bool, isPaused b
 }
 
 // UpdateResponse returns a new update response
-func UpdateResponse(id datatransfer.TransferID, isPaused bool) DataTransferResponse {
+func UpdateResponse(id datatransfer.TransferID, isPaused bool) datatransfer.Response {
 	return &transferResponse{
 		Type:   uint64(updateMessage),
 		Paus:   isPaused,
@@ -160,7 +120,7 @@ func UpdateResponse(id datatransfer.TransferID, isPaused bool) DataTransferRespo
 }
 
 // CancelResponse makes a new cancel response message
-func CancelResponse(id datatransfer.TransferID) DataTransferResponse {
+func CancelResponse(id datatransfer.TransferID) datatransfer.Response {
 	return &transferResponse{
 		Type:   uint64(cancelMessage),
 		XferID: uint64(id),
@@ -168,7 +128,7 @@ func CancelResponse(id datatransfer.TransferID) DataTransferResponse {
 }
 
 // CompleteResponse returns a new complete response message
-func CompleteResponse(id datatransfer.TransferID, isAccepted bool, isPaused bool, voucherResultType datatransfer.TypeIdentifier, voucherResult encoding.Encodable) (DataTransferResponse, error) {
+func CompleteResponse(id datatransfer.TransferID, isAccepted bool, isPaused bool, voucherResultType datatransfer.TypeIdentifier, voucherResult encoding.Encodable) (datatransfer.Response, error) {
 	vbytes, err := encoding.Encode(voucherResult)
 	if err != nil {
 		return nil, xerrors.Errorf("Creating request: %w", err)
@@ -184,7 +144,7 @@ func CompleteResponse(id datatransfer.TransferID, isAccepted bool, isPaused bool
 }
 
 // FromNet can read a network stream to deserialize a GraphSyncMessage
-func FromNet(r io.Reader) (DataTransferMessage, error) {
+func FromNet(r io.Reader) (datatransfer.Message, error) {
 	tresp := transferMessage{}
 	err := tresp.UnmarshalCBOR(r)
 	if tresp.IsRequest() {

@@ -11,7 +11,7 @@ import (
 )
 
 // NewDTRequest makes a new DT Request message
-func NewDTRequest(t *testing.T, transferID datatransfer.TransferID) message.DataTransferRequest {
+func NewDTRequest(t *testing.T, transferID datatransfer.TransferID) datatransfer.Request {
 	voucher := NewFakeDTType()
 	baseCid := GenerateCids(1)[0]
 	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
@@ -21,7 +21,7 @@ func NewDTRequest(t *testing.T, transferID datatransfer.TransferID) message.Data
 }
 
 // NewDTResponse makes a new DT Request message
-func NewDTResponse(t *testing.T, transferID datatransfer.TransferID) message.DataTransferResponse {
+func NewDTResponse(t *testing.T, transferID datatransfer.TransferID) datatransfer.Response {
 	vresult := NewFakeDTType()
 	r, err := message.NewResponse(transferID, false, false, vresult.Type(), vresult)
 	require.NoError(t, err)

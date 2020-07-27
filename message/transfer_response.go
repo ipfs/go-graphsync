@@ -11,7 +11,7 @@ import (
 
 //go:generate cbor-gen-for transferResponse
 
-// transferResponse is a private struct that satisfies the DataTransferResponse interface
+// transferResponse is a private struct that satisfies the datatransfer.Response interface
 type transferResponse struct {
 	Type   uint64
 	Acpt   bool

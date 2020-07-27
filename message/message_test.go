@@ -33,8 +33,8 @@ func TestNewRequest(t *testing.T) {
 	receivedSelector, err := request.Selector()
 	require.NoError(t, err)
 	require.Equal(t, selector, receivedSelector)
-	// Sanity check to make sure we can cast to DataTransferMessage
-	msg, ok := request.(DataTransferMessage)
+	// Sanity check to make sure we can cast to datatransfer.Message
+	msg, ok := request.(datatransfer.Message)
 	require.True(t, ok)
 
 	assert.True(t, msg.IsRequest())
@@ -62,7 +62,7 @@ func TestTransferRequest_UnmarshalCBOR(t *testing.T) {
 	assert.Equal(t, req.TransferID(), desMsg.TransferID())
 	assert.Equal(t, req.IsRequest(), desMsg.IsRequest())
 
-	desReq := desMsg.(DataTransferRequest)
+	desReq := desMsg.(datatransfer.Request)
 	assert.Equal(t, req.IsPull(), desReq.IsPull())
 	assert.Equal(t, req.IsCancel(), desReq.IsCancel())
 	assert.Equal(t, req.BaseCid(), desReq.BaseCid())
@@ -82,8 +82,8 @@ func TestResponses(t *testing.T) {
 	assert.True(t, response.IsPaused())
 	assert.False(t, response.IsRequest())
 	testutil.AssertFakeDTVoucherResult(t, response, voucherResult)
-	// Sanity check to make sure we can cast to DataTransferMessage
-	msg, ok := response.(DataTransferMessage)
+	// Sanity check to make sure we can cast to datatransfer.Message
+	msg, ok := response.(datatransfer.Message)
 	require.True(t, ok)
 
 	assert.False(t, msg.IsRequest())
@@ -123,7 +123,7 @@ func TestTransferResponse_UnmarshalCBOR(t *testing.T) {
 	assert.False(t, desMsg.IsPaused())
 	assert.Equal(t, id, desMsg.TransferID())
 
-	desResp, ok := desMsg.(DataTransferResponse)
+	desResp, ok := desMsg.(datatransfer.Response)
 	require.True(t, ok)
 	assert.True(t, desResp.Accepted())
 	assert.True(t, desResp.IsNew())
@@ -146,7 +146,7 @@ func TestRequestCancel(t *testing.T) {
 	deserialized, err := FromNet(wbuf)
 	require.NoError(t, err)
 
-	deserializedRequest, ok := deserialized.(DataTransferRequest)
+	deserializedRequest, ok := deserialized.(datatransfer.Request)
 	require.True(t, ok)
 	require.Equal(t, deserializedRequest.TransferID(), req.TransferID())
 	require.Equal(t, deserializedRequest.IsCancel(), req.IsCancel())
@@ -169,7 +169,7 @@ func TestRequestUpdate(t *testing.T) {
 	deserialized, err := FromNet(wbuf)
 	require.NoError(t, err)
 
-	deserializedRequest, ok := deserialized.(DataTransferRequest)
+	deserializedRequest, ok := deserialized.(datatransfer.Request)
 	require.True(t, ok)
 	require.Equal(t, deserializedRequest.TransferID(), req.TransferID())
 	require.Equal(t, deserializedRequest.IsCancel(), req.IsCancel())
@@ -188,8 +188,8 @@ func TestUpdateResponse(t *testing.T) {
 	assert.True(t, response.IsPaused())
 	assert.False(t, response.IsRequest())
 
-	// Sanity check to make sure we can cast to DataTransferMessage
-	msg, ok := response.(DataTransferMessage)
+	// Sanity check to make sure we can cast to datatransfer.Message
+	msg, ok := response.(datatransfer.Message)
 	require.True(t, ok)
 
 	assert.False(t, msg.IsRequest())
@@ -207,8 +207,8 @@ func TestCancelResponse(t *testing.T) {
 	assert.False(t, response.IsUpdate())
 	assert.True(t, response.IsCancel())
 	assert.False(t, response.IsRequest())
-	// Sanity check to make sure we can cast to DataTransferMessage
-	msg, ok := response.(DataTransferMessage)
+	// Sanity check to make sure we can cast to datatransfer.Message
+	msg, ok := response.(datatransfer.Message)
 	require.True(t, ok)
 
 	assert.False(t, msg.IsRequest())
@@ -230,8 +230,8 @@ func TestCompleteResponse(t *testing.T) {
 	assert.True(t, response.EmptyVoucherResult())
 	assert.True(t, response.IsComplete())
 	assert.False(t, response.IsRequest())
-	// Sanity check to make sure we can cast to DataTransferMessage
-	msg, ok := response.(DataTransferMessage)
+	// Sanity check to make sure we can cast to datatransfer.Message
+	msg, ok := response.(datatransfer.Message)
 	require.True(t, ok)
 
 	assert.False(t, msg.IsRequest())
@@ -256,7 +256,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	deserialized, err := FromNet(buf)
 	require.NoError(t, err)
 
-	deserializedRequest, ok := deserialized.(DataTransferRequest)
+	deserializedRequest, ok := deserialized.(datatransfer.Request)
 	require.True(t, ok)
 
 	require.Equal(t, deserializedRequest.TransferID(), request.TransferID())
@@ -274,7 +274,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	deserialized, err = FromNet(buf)
 	require.NoError(t, err)
 
-	deserializedResponse, ok := deserialized.(DataTransferResponse)
+	deserializedResponse, ok := deserialized.(datatransfer.Response)
 	require.True(t, ok)
 
 	require.Equal(t, deserializedResponse.TransferID(), response.TransferID())
@@ -290,7 +290,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	deserialized, err = FromNet(buf)
 	require.NoError(t, err)
 
-	deserializedRequest, ok = deserialized.(DataTransferRequest)
+	deserializedRequest, ok = deserialized.(datatransfer.Request)
 	require.True(t, ok)
 
 	require.Equal(t, deserializedRequest.TransferID(), request.TransferID())
@@ -298,7 +298,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	require.Equal(t, deserializedRequest.IsRequest(), request.IsRequest())
 }
 
-func NewTestTransferRequest() (DataTransferRequest, error) {
+func NewTestTransferRequest() (datatransfer.Request, error) {
 	bcid := testutil.GenerateCids(1)[0]
 	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
 	isPull := false

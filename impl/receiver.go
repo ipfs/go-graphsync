@@ -7,8 +7,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
-	"github.com/filecoin-project/go-data-transfer/message"
-	"github.com/filecoin-project/go-data-transfer/transport"
 )
 
 type receiver struct {
@@ -20,24 +18,24 @@ type receiver struct {
 func (r *receiver) ReceiveRequest(
 	ctx context.Context,
 	initiator peer.ID,
-	incoming message.DataTransferRequest) {
+	incoming datatransfer.Request) {
 	err := r.receiveRequest(ctx, initiator, incoming)
 	if err != nil {
 		log.Warn(err)
 	}
 }
 
-func (r *receiver) receiveRequest(ctx context.Context, initiator peer.ID, incoming message.DataTransferRequest) error {
+func (r *receiver) receiveRequest(ctx context.Context, initiator peer.ID, incoming datatransfer.Request) error {
 	chid := datatransfer.ChannelID{Initiator: initiator, Responder: r.manager.peerID, ID: incoming.TransferID()}
 	response, receiveErr := r.manager.OnRequestReceived(chid, incoming)
 
-	if receiveErr == transport.ErrResume {
+	if receiveErr == datatransfer.ErrResume {
 		chst, err := r.manager.channels.GetByID(ctx, chid)
 		if err != nil {
 			return err
 		}
 		if resumeTransportStatesResponder.Contains(chst.Status()) {
-			return r.manager.transport.(transport.PauseableTransport).ResumeChannel(ctx, response, chid)
+			return r.manager.transport.(datatransfer.PauseableTransport).ResumeChannel(ctx, response, chid)
 		}
 		receiveErr = nil
 	}
@@ -55,8 +53,8 @@ func (r *receiver) receiveRequest(ctx context.Context, initiator peer.ID, incomi
 		}
 	}
 
-	if receiveErr == transport.ErrPause {
-		return r.manager.transport.(transport.PauseableTransport).PauseChannel(ctx, chid)
+	if receiveErr == datatransfer.ErrPause {
+		return r.manager.transport.(datatransfer.PauseableTransport).PauseChannel(ctx, chid)
 	}
 
 	if receiveErr != nil {
@@ -72,7 +70,7 @@ func (r *receiver) receiveRequest(ctx context.Context, initiator peer.ID, incomi
 func (r *receiver) ReceiveResponse(
 	ctx context.Context,
 	sender peer.ID,
-	incoming message.DataTransferResponse) {
+	incoming datatransfer.Response) {
 	err := r.receiveResponse(ctx, sender, incoming)
 	if err != nil {
 		log.Error(err)
@@ -81,11 +79,11 @@ func (r *receiver) ReceiveResponse(
 func (r *receiver) receiveResponse(
 	ctx context.Context,
 	sender peer.ID,
-	incoming message.DataTransferResponse) error {
+	incoming datatransfer.Response) error {
 	chid := datatransfer.ChannelID{Initiator: r.manager.peerID, Responder: sender, ID: incoming.TransferID()}
 	err := r.manager.OnResponseReceived(chid, incoming)
-	if err == transport.ErrPause {
-		return r.manager.transport.(transport.PauseableTransport).PauseChannel(ctx, chid)
+	if err == datatransfer.ErrPause {
+		return r.manager.transport.(datatransfer.PauseableTransport).PauseChannel(ctx, chid)
 	}
 	if err != nil {
 		_ = r.manager.transport.CloseChannel(ctx, chid)

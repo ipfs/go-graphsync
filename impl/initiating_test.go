@@ -42,7 +42,7 @@ func TestDataTransferInitiating(t *testing.T) {
 				require.Equal(t, messageReceived.PeerID, h.peers[1])
 				received := messageReceived.Message
 				require.True(t, received.IsRequest())
-				receivedRequest, ok := received.(message.DataTransferRequest)
+				receivedRequest, ok := received.(datatransfer.Request)
 				require.True(t, ok)
 				require.Equal(t, receivedRequest.TransferID(), channelID.ID)
 				require.Equal(t, receivedRequest.BaseCid(), h.baseCid)
@@ -69,7 +69,7 @@ func TestDataTransferInitiating(t *testing.T) {
 				require.Equal(t, openChannel.Root, cidlink.Link{Cid: h.baseCid})
 				require.Equal(t, openChannel.Selector, h.stor)
 				require.True(t, openChannel.Message.IsRequest())
-				receivedRequest, ok := openChannel.Message.(message.DataTransferRequest)
+				receivedRequest, ok := openChannel.Message.(datatransfer.Request)
 				require.True(t, ok)
 				require.Equal(t, receivedRequest.TransferID(), channelID.ID)
 				require.Equal(t, receivedRequest.BaseCid(), h.baseCid)
@@ -98,7 +98,7 @@ func TestDataTransferInitiating(t *testing.T) {
 				require.Len(t, h.network.SentMessages, 2)
 				received := h.network.SentMessages[1].Message
 				require.True(t, received.IsRequest())
-				receivedRequest, ok := received.(message.DataTransferRequest)
+				receivedRequest, ok := received.(datatransfer.Request)
 				require.True(t, ok)
 				require.True(t, receivedRequest.IsVoucher())
 				require.False(t, receivedRequest.IsCancel())
@@ -117,7 +117,7 @@ func TestDataTransferInitiating(t *testing.T) {
 				require.Len(t, h.network.SentMessages, 1)
 				received := h.network.SentMessages[0].Message
 				require.True(t, received.IsRequest())
-				receivedRequest, ok := received.(message.DataTransferRequest)
+				receivedRequest, ok := received.(datatransfer.Request)
 				require.True(t, ok)
 				require.False(t, receivedRequest.IsCancel())
 				require.True(t, receivedRequest.IsVoucher())
@@ -271,6 +271,46 @@ func TestDataTransferInitiating(t *testing.T) {
 				require.True(t, cancelMessage.IsRequest())
 				require.True(t, cancelMessage.IsCancel())
 				require.Equal(t, cancelMessage.TransferID(), channelID.ID)
+			},
+		},
+		"customizing push transfer": {
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open},
+			verify: func(t *testing.T, h *harness) {
+				err := h.dt.RegisterTransportConfigurer(h.voucher, func(channelID datatransfer.ChannelID, voucher datatransfer.Voucher, transport datatransfer.Transport) {
+					ft, ok := transport.(*testutil.FakeTransport)
+					if !ok {
+						return
+					}
+					ft.RecordCustomizedTransfer(channelID, voucher)
+				})
+				require.NoError(t, err)
+				channelID, err := h.dt.OpenPushDataChannel(h.ctx, h.peers[1], h.voucher, h.baseCid, h.stor)
+				require.NoError(t, err)
+				require.NotEmpty(t, channelID)
+				require.Len(t, h.transport.CustomizedTransfers, 1)
+				customizedTransfer := h.transport.CustomizedTransfers[0]
+				require.Equal(t, channelID, customizedTransfer.ChannelID)
+				require.Equal(t, h.voucher, customizedTransfer.Voucher)
+			},
+		},
+		"customizing pull transfer": {
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open},
+			verify: func(t *testing.T, h *harness) {
+				err := h.dt.RegisterTransportConfigurer(h.voucher, func(channelID datatransfer.ChannelID, voucher datatransfer.Voucher, transport datatransfer.Transport) {
+					ft, ok := transport.(*testutil.FakeTransport)
+					if !ok {
+						return
+					}
+					ft.RecordCustomizedTransfer(channelID, voucher)
+				})
+				require.NoError(t, err)
+				channelID, err := h.dt.OpenPullDataChannel(h.ctx, h.peers[1], h.voucher, h.baseCid, h.stor)
+				require.NoError(t, err)
+				require.NotEmpty(t, channelID)
+				require.Len(t, h.transport.CustomizedTransfers, 1)
+				customizedTransfer := h.transport.CustomizedTransfers[0]
+				require.Equal(t, channelID, customizedTransfer.ChannelID)
+				require.Equal(t, h.voucher, customizedTransfer.Voucher)
 			},
 		},
 	}

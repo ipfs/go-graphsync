@@ -3,9 +3,12 @@ package testutil
 import (
 	"bytes"
 	"context"
+	"errors"
 	"math/rand"
+	"sync"
 	"testing"
 
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/transport/graphsync/extension"
 	"github.com/ipfs/go-cid"
@@ -17,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func matchDtMessage(t *testing.T, extensions []graphsync.ExtensionData) message.DataTransferMessage {
+func matchDtMessage(t *testing.T, extensions []graphsync.ExtensionData) datatransfer.Message {
 	var matchedExtension *graphsync.ExtensionData
 	for _, ext := range extensions {
 		if ext.Name == extension.ExtensionDataTransfer {
@@ -41,7 +44,7 @@ type ReceivedGraphSyncRequest struct {
 }
 
 // DTMessage returns the data transfer message among the graphsync extensions sent with this request
-func (gsRequest ReceivedGraphSyncRequest) DTMessage(t *testing.T) message.DataTransferMessage {
+func (gsRequest ReceivedGraphSyncRequest) DTMessage(t *testing.T) datatransfer.Message {
 	return matchDtMessage(t, gsRequest.Extensions)
 }
 
@@ -55,7 +58,7 @@ type ResumeRequest struct {
 }
 
 // DTMessage returns the data transfer message among the graphsync extensions sent with this request
-func (resumeRequest ResumeRequest) DTMessage(t *testing.T) message.DataTransferMessage {
+func (resumeRequest ResumeRequest) DTMessage(t *testing.T) datatransfer.Message {
 	return matchDtMessage(t, resumeRequest.Extensions)
 }
 
@@ -71,13 +74,18 @@ type ResumeResponse struct {
 }
 
 // DTMessage returns the data transfer message among the graphsync extensions sent with this request
-func (resumeResponse ResumeResponse) DTMessage(t *testing.T) message.DataTransferMessage {
+func (resumeResponse ResumeResponse) DTMessage(t *testing.T) datatransfer.Message {
 	return matchDtMessage(t, resumeResponse.Extensions)
 }
 
 type CancelResponse struct {
 	P         peer.ID
 	RequestID graphsync.RequestID
+}
+
+type PersistenceOption struct {
+	ipld.Loader
+	ipld.Storer
 }
 
 // FakeGraphSync implements a GraphExchange but does nothing
@@ -88,6 +96,8 @@ type FakeGraphSync struct {
 	pauseResponses             chan PauseResponse
 	resumeResponses            chan ResumeResponse
 	cancelResponses            chan CancelResponse
+	persistenceOptionsLk       sync.RWMutex
+	persistenceOptions         map[string]PersistenceOption
 	leaveRequestsOpen          bool
 	OutgoingRequestHook        graphsync.OnOutgoingRequestHook
 	IncomingBlockHook          graphsync.OnIncomingBlockHook
@@ -102,12 +112,13 @@ type FakeGraphSync struct {
 // NewFakeGraphSync returns a new fake graphsync implementation
 func NewFakeGraphSync() *FakeGraphSync {
 	return &FakeGraphSync{
-		requests:        make(chan ReceivedGraphSyncRequest, 1),
-		pauseRequests:   make(chan PauseRequest, 1),
-		resumeRequests:  make(chan ResumeRequest, 1),
-		pauseResponses:  make(chan PauseResponse, 1),
-		resumeResponses: make(chan ResumeResponse, 1),
-		cancelResponses: make(chan CancelResponse, 1),
+		requests:           make(chan ReceivedGraphSyncRequest, 1),
+		pauseRequests:      make(chan PauseRequest, 1),
+		resumeRequests:     make(chan ResumeRequest, 1),
+		pauseResponses:     make(chan PauseResponse, 1),
+		resumeResponses:    make(chan ResumeResponse, 1),
+		cancelResponses:    make(chan CancelResponse, 1),
+		persistenceOptions: make(map[string]PersistenceOption),
 	}
 }
 
@@ -211,6 +222,23 @@ func (fgs *FakeGraphSync) AssertCancelResponseReceived(ctx context.Context, t *t
 	return cancelResponseReceived
 }
 
+// AssertHasPersistenceOption verifies that a persistence option was registered
+func (fgs *FakeGraphSync) AssertHasPersistenceOption(t *testing.T, name string) PersistenceOption {
+	fgs.persistenceOptionsLk.RLock()
+	defer fgs.persistenceOptionsLk.RUnlock()
+	option, ok := fgs.persistenceOptions[name]
+	require.Truef(t, ok, "persistence option %s should be registered", name)
+	return option
+}
+
+// AssertDoesNotHavePersistenceOption verifies that a persistence option is not registered
+func (fgs *FakeGraphSync) AssertDoesNotHavePersistenceOption(t *testing.T, name string) {
+	fgs.persistenceOptionsLk.RLock()
+	defer fgs.persistenceOptionsLk.RUnlock()
+	_, ok := fgs.persistenceOptions[name]
+	require.Falsef(t, ok, "persistence option %s should be registered", name)
+}
+
 // Request initiates a new GraphSync request to the given peer using the given selector spec.
 func (fgs *FakeGraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
 
@@ -226,6 +254,21 @@ func (fgs *FakeGraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link
 
 // RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
 func (fgs *FakeGraphSync) RegisterPersistenceOption(name string, loader ipld.Loader, storer ipld.Storer) error {
+	fgs.persistenceOptionsLk.Lock()
+	defer fgs.persistenceOptionsLk.Unlock()
+	_, ok := fgs.persistenceOptions[name]
+	if ok {
+		return errors.New("already registered")
+	}
+	fgs.persistenceOptions[name] = PersistenceOption{Loader: loader, Storer: storer}
+	return nil
+}
+
+// UnregisterPersistenceOption unregisters an existing loader/storer combo
+func (fgs *FakeGraphSync) UnregisterPersistenceOption(name string) error {
+	fgs.persistenceOptionsLk.Lock()
+	defer fgs.persistenceOptionsLk.Unlock()
+	delete(fgs.persistenceOptions, name)
 	return nil
 }
 
@@ -419,9 +462,13 @@ func NewFakeResponse(id graphsync.RequestID, extensions map[graphsync.ExtensionN
 	}
 }
 
-type FakeOutgoingRequestHookActions struct{}
+type FakeOutgoingRequestHookActions struct {
+	PersistenceOption string
+}
 
-func (fa *FakeOutgoingRequestHookActions) UsePersistenceOption(name string) {}
+func (fa *FakeOutgoingRequestHookActions) UsePersistenceOption(name string) {
+	fa.PersistenceOption = name
+}
 func (fa *FakeOutgoingRequestHookActions) UseLinkTargetNodeStyleChooser(_ traversal.LinkTargetNodeStyleChooser) {
 }
 
@@ -468,17 +515,20 @@ func (fa *FakeOutgoingBlockHookActions) PauseResponse() {
 var _ graphsync.OutgoingBlockHookActions = &FakeOutgoingBlockHookActions{}
 
 type FakeIncomingRequestHookActions struct {
-	TerminationError error
-	Validated        bool
-	SentExtension    graphsync.ExtensionData
-	Paused           bool
+	PersistenceOption string
+	TerminationError  error
+	Validated         bool
+	SentExtension     graphsync.ExtensionData
+	Paused            bool
 }
 
 func (fa *FakeIncomingRequestHookActions) SendExtensionData(ext graphsync.ExtensionData) {
 	fa.SentExtension = ext
 }
 
-func (fa *FakeIncomingRequestHookActions) UsePersistenceOption(name string) {}
+func (fa *FakeIncomingRequestHookActions) UsePersistenceOption(name string) {
+	fa.PersistenceOption = name
+}
 
 func (fa *FakeIncomingRequestHookActions) UseLinkTargetNodeStyleChooser(_ traversal.LinkTargetNodeStyleChooser) {
 }

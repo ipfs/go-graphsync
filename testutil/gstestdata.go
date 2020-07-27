@@ -3,7 +3,6 @@ package testutil
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"io/ioutil"
 	"os"
@@ -12,11 +11,10 @@ import (
 	"runtime"
 	"testing"
 
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/network"
-	"github.com/filecoin-project/go-data-transfer/transport"
 	gstransport "github.com/filecoin-project/go-data-transfer/transport/graphsync"
 	"github.com/filecoin-project/go-storedcounter"
-	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
@@ -24,6 +22,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsimpl "github.com/ipfs/go-graphsync/impl"
 	gsnet "github.com/ipfs/go-graphsync/network"
+	"github.com/ipfs/go-graphsync/storeutil"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	chunker "github.com/ipfs/go-ipfs-chunker"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
@@ -85,38 +84,6 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T) *GraphsyncTestin
 
 	gsData := &GraphsyncTestingData{}
 	gsData.Ctx = ctx
-	makeLoader := func(bs bstore.Blockstore) ipld.Loader {
-		return func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
-			c, ok := lnk.(cidlink.Link)
-			if !ok {
-				return nil, errors.New("Incorrect Link Type")
-			}
-			// read block from one store
-			block, err := bs.Get(c.Cid)
-			if err != nil {
-				return nil, err
-			}
-			return bytes.NewReader(block.RawData()), nil
-		}
-	}
-
-	makeStorer := func(bs bstore.Blockstore) ipld.Storer {
-		return func(lnkCtx ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
-			var buf bytes.Buffer
-			var committer ipld.StoreCommitter = func(lnk ipld.Link) error {
-				c, ok := lnk.(cidlink.Link)
-				if !ok {
-					return errors.New("Incorrect Link Type")
-				}
-				block, err := blocks.NewBlockWithCid(buf.Bytes(), c.Cid)
-				if err != nil {
-					return err
-				}
-				return bs.Put(block)
-			}
-			return &buf, committer, nil
-		}
-	}
 	ds1 := dss.MutexWrap(datastore.NewMapDatastore())
 	ds2 := dss.MutexWrap(datastore.NewMapDatastore())
 
@@ -135,12 +102,12 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T) *GraphsyncTestin
 	gsData.DagService2 = merkledag.NewDAGService(blockservice.New(gsData.Bs2, offline.Exchange(gsData.Bs2)))
 
 	// setup an IPLD loader/storer for blockstore 1
-	gsData.Loader1 = makeLoader(gsData.Bs1)
-	gsData.Storer1 = makeStorer(gsData.Bs1)
+	gsData.Loader1 = storeutil.LoaderForBlockstore(gsData.Bs1)
+	gsData.Storer1 = storeutil.StorerForBlockstore(gsData.Bs1)
 
 	// setup an IPLD loader/storer for blockstore 2
-	gsData.Loader2 = makeLoader(gsData.Bs2)
-	gsData.Storer2 = makeStorer(gsData.Bs2)
+	gsData.Loader2 = storeutil.LoaderForBlockstore(gsData.Bs2)
+	gsData.Storer2 = storeutil.StorerForBlockstore(gsData.Bs2)
 
 	mn := mocknet.New(ctx)
 
@@ -174,7 +141,7 @@ func (gsData *GraphsyncTestingData) SetupGraphsyncHost1() graphsync.GraphExchang
 }
 
 // SetupGSTransportHost1 sets up a new grapshync transport over real graphsync on the first host
-func (gsData *GraphsyncTestingData) SetupGSTransportHost1() transport.Transport {
+func (gsData *GraphsyncTestingData) SetupGSTransportHost1() datatransfer.Transport {
 	// setup graphsync
 	gs := gsData.SetupGraphsyncHost1()
 	return gstransport.NewTransport(gsData.Host1.ID(), gs)
@@ -187,7 +154,7 @@ func (gsData *GraphsyncTestingData) SetupGraphsyncHost2() graphsync.GraphExchang
 }
 
 // SetupGSTransportHost2 sets up a new grapshync transport over real graphsync on the second host
-func (gsData *GraphsyncTestingData) SetupGSTransportHost2() transport.Transport {
+func (gsData *GraphsyncTestingData) SetupGSTransportHost2() datatransfer.Transport {
 	// setup graphsync
 	gs := gsData.SetupGraphsyncHost2()
 	return gstransport.NewTransport(gsData.Host2.ID(), gs)
@@ -195,6 +162,22 @@ func (gsData *GraphsyncTestingData) SetupGSTransportHost2() transport.Transport 
 
 // LoadUnixFSFile loads a fixtures file we can test dag transfer with
 func (gsData *GraphsyncTestingData) LoadUnixFSFile(t *testing.T, useSecondNode bool) ipld.Link {
+	// import to UnixFS
+	var dagService ipldformat.DAGService
+	if useSecondNode {
+		dagService = gsData.DagService2
+	} else {
+		dagService = gsData.DagService1
+	}
+
+	link, origBytes := LoadUnixFSFile(gsData.Ctx, t, dagService)
+	gsData.OrigBytes = origBytes
+	return link
+}
+
+// LoadUnixFSFile loads a fixtures file into the given DAG Service, returning an ipld.Link for the file
+// and the original file bytes
+func LoadUnixFSFile(ctx context.Context, t *testing.T, dagService ipldformat.DAGService) (ipld.Link, []byte) {
 	_, curFile, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 
@@ -209,13 +192,7 @@ func (gsData *GraphsyncTestingData) LoadUnixFSFile(t *testing.T, useSecondNode b
 	file := files.NewReaderFile(tr)
 
 	// import to UnixFS
-	var dagService ipldformat.DAGService
-	if useSecondNode {
-		dagService = gsData.DagService2
-	} else {
-		dagService = gsData.DagService1
-	}
-	bufferedDS := ipldformat.NewBufferedDAG(gsData.Ctx, dagService)
+	bufferedDS := ipldformat.NewBufferedDAG(ctx, dagService)
 
 	params := ihelper.DagBuilderParams{
 		Maxlinks:   unixfsLinksPerLevel,
@@ -234,9 +211,7 @@ func (gsData *GraphsyncTestingData) LoadUnixFSFile(t *testing.T, useSecondNode b
 	require.NoError(t, err)
 
 	// save the original files bytes
-	gsData.OrigBytes = buf.Bytes()
-
-	return cidlink.Link{Cid: nd.Cid()}
+	return cidlink.Link{Cid: nd.Cid()}, buf.Bytes()
 }
 
 // VerifyFileTransferred verifies all of the file was transfer to the given node
@@ -248,14 +223,20 @@ func (gsData *GraphsyncTestingData) VerifyFileTransferred(t *testing.T, link ipl
 		dagService = gsData.DagService1
 	}
 
+	VerifyHasFile(gsData.Ctx, t, dagService, link, gsData.OrigBytes)
+}
+
+// VerifyHasFile verifies the presence of the given file with the given ipld.Link and file contents (fileBytes)
+// exists in the given blockstore identified by dagService
+func VerifyHasFile(ctx context.Context, t *testing.T, dagService ipldformat.DAGService, link ipld.Link, fileBytes []byte) {
 	c := link.(cidlink.Link).Cid
 
 	// load the root of the UnixFS DAG from the new blockstore
-	otherNode, err := dagService.Get(gsData.Ctx, c)
+	otherNode, err := dagService.Get(ctx, c)
 	require.NoError(t, err)
 
 	// Setup a UnixFS file reader
-	n, err := unixfile.NewUnixfsFile(gsData.Ctx, dagService, otherNode)
+	n, err := unixfile.NewUnixfsFile(ctx, dagService, otherNode)
 	require.NoError(t, err)
 
 	fn, ok := n.(files.File)
@@ -266,5 +247,5 @@ func (gsData *GraphsyncTestingData) VerifyFileTransferred(t *testing.T, link ipl
 	require.NoError(t, err)
 
 	// verify original bytes match final bytes!
-	require.EqualValues(t, gsData.OrigBytes, finalBytes)
+	require.EqualValues(t, fileBytes, finalBytes)
 }
