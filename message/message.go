@@ -147,6 +147,9 @@ func CompleteResponse(id datatransfer.TransferID, isAccepted bool, isPaused bool
 func FromNet(r io.Reader) (datatransfer.Message, error) {
 	tresp := transferMessage{}
 	err := tresp.UnmarshalCBOR(r)
+	if err != nil {
+		return nil, err
+	}
 	if tresp.IsRequest() {
 		return tresp.Request, nil
 	}
