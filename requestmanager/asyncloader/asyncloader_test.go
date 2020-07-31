@@ -200,6 +200,7 @@ func TestRegisterUnregister(t *testing.T) {
 		require.EqualError(t, err, "Unknown persistence option")
 
 		err = asyncLoader.RegisterPersistenceOption("other", otherSt.loader, otherSt.storer)
+		require.NoError(t, err)
 		requestID2 := graphsync.RequestID(rand.Int31())
 		err = asyncLoader.StartRequest(requestID2, "other")
 		require.NoError(t, err)
