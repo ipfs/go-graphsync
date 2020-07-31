@@ -160,6 +160,15 @@ func (gs *GraphSync) RegisterPersistenceOption(name string, loader ipld.Loader, 
 	return gs.persistenceOptions.Register(name, loader)
 }
 
+// UnregisterPersistenceOption unregisters an alternate loader/storer combo
+func (gs *GraphSync) UnregisterPersistenceOption(name string) error {
+	err := gs.asyncLoader.UnregisterPersistenceOption(name)
+	if err != nil {
+		return err
+	}
+	return gs.persistenceOptions.Unregister(name)
+}
+
 // RegisterOutgoingBlockHook registers a hook that runs after each block is sent in a response
 func (gs *GraphSync) RegisterOutgoingBlockHook(hook graphsync.OnOutgoingBlockHook) graphsync.UnregisterHookFunc {
 	return gs.outgoingBlockHooks.Register(hook)

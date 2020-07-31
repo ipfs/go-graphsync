@@ -188,6 +188,36 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 	})
 }
 
+func TestRegisterUnregister(t *testing.T) {
+	st := newStore()
+	otherSt := newStore()
+	blocks := testutil.GenerateBlocksOfSize(3, 100)
+	link1 := otherSt.Store(t, blocks[0])
+	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
+
+		requestID1 := graphsync.RequestID(rand.Int31())
+		err := asyncLoader.StartRequest(requestID1, "other")
+		require.EqualError(t, err, "Unknown persistence option")
+
+		err = asyncLoader.RegisterPersistenceOption("other", otherSt.loader, otherSt.storer)
+		require.NoError(t, err)
+		requestID2 := graphsync.RequestID(rand.Int31())
+		err = asyncLoader.StartRequest(requestID2, "other")
+		require.NoError(t, err)
+		resultChan1 := asyncLoader.AsyncLoad(requestID2, link1)
+		assertSuccessResponse(ctx, t, resultChan1)
+		err = asyncLoader.UnregisterPersistenceOption("other")
+		require.EqualError(t, err, "cannot unregister while requests are in progress")
+		asyncLoader.CompleteResponsesFor(requestID2)
+		asyncLoader.CleanupRequest(requestID2)
+		err = asyncLoader.UnregisterPersistenceOption("other")
+		require.NoError(t, err)
+
+		requestID3 := graphsync.RequestID(rand.Int31())
+		err = asyncLoader.StartRequest(requestID3, "other")
+		require.EqualError(t, err, "Unknown persistence option")
+	})
+}
 func TestRequestSplittingLoadLocallyFromBlockstore(t *testing.T) {
 	st := newStore()
 	otherSt := newStore()

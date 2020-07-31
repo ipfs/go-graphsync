@@ -32,6 +32,18 @@ func (po *PersistenceOptions) Register(name string, loader ipld.Loader) error {
 	return nil
 }
 
+// Unregister unregisters a loader for the response manager
+func (po *PersistenceOptions) Unregister(name string) error {
+	po.persistenceOptionsLk.Lock()
+	defer po.persistenceOptionsLk.Unlock()
+	_, ok := po.persistenceOptions[name]
+	if !ok {
+		return errors.New("persistence option is not registered")
+	}
+	delete(po.persistenceOptions, name)
+	return nil
+}
+
 // GetLoader returns the loader for the named persistence option
 func (po *PersistenceOptions) GetLoader(name string) (ipld.Loader, bool) {
 	po.persistenceOptionsLk.RLock()
