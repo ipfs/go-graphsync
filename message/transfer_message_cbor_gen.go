@@ -12,12 +12,14 @@ import (
 
 var _ = xerrors.Errorf
 
+var lengthBuftransferMessage = []byte{131}
+
 func (t *transferMessage) MarshalCBOR(w io.Writer) error {
 	if t == nil {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{131}); err != nil {
+	if _, err := w.Write(lengthBuftransferMessage); err != nil {
 		return err
 	}
 
@@ -39,9 +41,12 @@ func (t *transferMessage) MarshalCBOR(w io.Writer) error {
 }
 
 func (t *transferMessage) UnmarshalCBOR(r io.Reader) error {
-	br := cbg.GetPeeker(r)
+	*t = transferMessage{}
 
-	maj, extra, err := cbg.CborReadHeader(br)
+	br := cbg.GetPeeker(r)
+	scratch := make([]byte, 8)
+
+	maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}
@@ -55,7 +60,7 @@ func (t *transferMessage) UnmarshalCBOR(r io.Reader) error {
 
 	// t.IsRq (bool) (bool)
 
-	maj, extra, err = cbg.CborReadHeader(br)
+	maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}

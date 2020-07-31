@@ -9,7 +9,7 @@ require (
 	github.com/hannahhoward/go-pubsub v0.0.0-20200423002714-8d62886cc36e
 	github.com/ipfs/go-block-format v0.0.2
 	github.com/ipfs/go-blockservice v0.1.3
-	github.com/ipfs/go-cid v0.0.5
+	github.com/ipfs/go-cid v0.0.6
 	github.com/ipfs/go-datastore v0.4.4
 	github.com/ipfs/go-graphsync v0.0.6-0.20200731020347-9ff2ade94aa4
 	github.com/ipfs/go-ipfs-blockstore v0.1.4
@@ -28,6 +28,6 @@ require (
 	github.com/libp2p/go-libp2p-core v0.5.0
 	github.com/prometheus/common v0.10.0
 	github.com/stretchr/testify v1.5.1
-	github.com/whyrusleeping/cbor-gen v0.0.0-20200402171437-3d27c146c105
+	github.com/whyrusleeping/cbor-gen v0.0.0-20200723185710-6a3894a6352b
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
 )

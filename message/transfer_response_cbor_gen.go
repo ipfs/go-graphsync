@@ -13,18 +13,22 @@ import (
 
 var _ = xerrors.Errorf
 
+var lengthBuftransferResponse = []byte{134}
+
 func (t *transferResponse) MarshalCBOR(w io.Writer) error {
 	if t == nil {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{134}); err != nil {
+	if _, err := w.Write(lengthBuftransferResponse); err != nil {
 		return err
 	}
 
+	scratch := make([]byte, 9)
+
 	// t.Type (uint64) (uint64)
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajUnsignedInt, uint64(t.Type))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajUnsignedInt, uint64(t.Type)); err != nil {
 		return err
 	}
 
@@ -40,7 +44,7 @@ func (t *transferResponse) MarshalCBOR(w io.Writer) error {
 
 	// t.XferID (uint64) (uint64)
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajUnsignedInt, uint64(t.XferID))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajUnsignedInt, uint64(t.XferID)); err != nil {
 		return err
 	}
 
@@ -54,19 +58,22 @@ func (t *transferResponse) MarshalCBOR(w io.Writer) error {
 		return xerrors.Errorf("Value in field t.VTyp was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajTextString, uint64(len(t.VTyp)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.VTyp))); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(t.VTyp)); err != nil {
+	if _, err := io.WriteString(w, string(t.VTyp)); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (t *transferResponse) UnmarshalCBOR(r io.Reader) error {
-	br := cbg.GetPeeker(r)
+	*t = transferResponse{}
 
-	maj, extra, err := cbg.CborReadHeader(br)
+	br := cbg.GetPeeker(r)
+	scratch := make([]byte, 8)
+
+	maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}
@@ -82,7 +89,7 @@ func (t *transferResponse) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		maj, extra, err = cbg.CborReadHeader(br)
+		maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -94,7 +101,7 @@ func (t *transferResponse) UnmarshalCBOR(r io.Reader) error {
 	}
 	// t.Acpt (bool) (bool)
 
-	maj, extra, err = cbg.CborReadHeader(br)
+	maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}
@@ -111,7 +118,7 @@ func (t *transferResponse) UnmarshalCBOR(r io.Reader) error {
 	}
 	// t.Paus (bool) (bool)
 
-	maj, extra, err = cbg.CborReadHeader(br)
+	maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}
@@ -130,7 +137,7 @@ func (t *transferResponse) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		maj, extra, err = cbg.CborReadHeader(br)
+		maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -144,27 +151,16 @@ func (t *transferResponse) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		pb, err := br.PeekByte()
-		if err != nil {
-			return err
-		}
-		if pb == cbg.CborNull[0] {
-			var nbuf [1]byte
-			if _, err := br.Read(nbuf[:]); err != nil {
-				return err
-			}
-		} else {
-			t.VRes = new(cbg.Deferred)
-			if err := t.VRes.UnmarshalCBOR(br); err != nil {
-				return xerrors.Errorf("unmarshaling t.VRes pointer: %w", err)
-			}
-		}
+		t.VRes = new(cbg.Deferred)
 
+		if err := t.VRes.UnmarshalCBOR(br); err != nil {
+			return xerrors.Errorf("failed to read deferred field: %w", err)
+		}
 	}
 	// t.VTyp (datatransfer.TypeIdentifier) (string)
 
 	{
-		sval, err := cbg.ReadString(br)
+		sval, err := cbg.ReadStringBuf(br, scratch)
 		if err != nil {
 			return err
 		}

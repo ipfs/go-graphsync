@@ -13,24 +13,28 @@ import (
 
 var _ = xerrors.Errorf
 
+var lengthBufChannelID = []byte{131}
+
 func (t *ChannelID) MarshalCBOR(w io.Writer) error {
 	if t == nil {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{131}); err != nil {
+	if _, err := w.Write(lengthBufChannelID); err != nil {
 		return err
 	}
+
+	scratch := make([]byte, 9)
 
 	// t.Initiator (peer.ID) (string)
 	if len(t.Initiator) > cbg.MaxLength {
 		return xerrors.Errorf("Value in field t.Initiator was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajTextString, uint64(len(t.Initiator)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.Initiator))); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(t.Initiator)); err != nil {
+	if _, err := io.WriteString(w, string(t.Initiator)); err != nil {
 		return err
 	}
 
@@ -39,16 +43,16 @@ func (t *ChannelID) MarshalCBOR(w io.Writer) error {
 		return xerrors.Errorf("Value in field t.Responder was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajTextString, uint64(len(t.Responder)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.Responder))); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(t.Responder)); err != nil {
+	if _, err := io.WriteString(w, string(t.Responder)); err != nil {
 		return err
 	}
 
 	// t.ID (datatransfer.TransferID) (uint64)
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajUnsignedInt, uint64(t.ID))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajUnsignedInt, uint64(t.ID)); err != nil {
 		return err
 	}
 
@@ -56,9 +60,12 @@ func (t *ChannelID) MarshalCBOR(w io.Writer) error {
 }
 
 func (t *ChannelID) UnmarshalCBOR(r io.Reader) error {
-	br := cbg.GetPeeker(r)
+	*t = ChannelID{}
 
-	maj, extra, err := cbg.CborReadHeader(br)
+	br := cbg.GetPeeker(r)
+	scratch := make([]byte, 8)
+
+	maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}
@@ -73,7 +80,7 @@ func (t *ChannelID) UnmarshalCBOR(r io.Reader) error {
 	// t.Initiator (peer.ID) (string)
 
 	{
-		sval, err := cbg.ReadString(br)
+		sval, err := cbg.ReadStringBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -83,7 +90,7 @@ func (t *ChannelID) UnmarshalCBOR(r io.Reader) error {
 	// t.Responder (peer.ID) (string)
 
 	{
-		sval, err := cbg.ReadString(br)
+		sval, err := cbg.ReadStringBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -94,7 +101,7 @@ func (t *ChannelID) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		maj, extra, err = cbg.CborReadHeader(br)
+		maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 		if err != nil {
 			return err
 		}

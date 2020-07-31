@@ -14,18 +14,22 @@ import (
 
 var _ = xerrors.Errorf
 
+var lengthBufinternalChannelState = []byte{142}
+
 func (t *internalChannelState) MarshalCBOR(w io.Writer) error {
 	if t == nil {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{142}); err != nil {
+	if _, err := w.Write(lengthBufinternalChannelState); err != nil {
 		return err
 	}
 
+	scratch := make([]byte, 9)
+
 	// t.TransferID (datatransfer.TransferID) (uint64)
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajUnsignedInt, uint64(t.TransferID))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajUnsignedInt, uint64(t.TransferID)); err != nil {
 		return err
 	}
 
@@ -34,10 +38,10 @@ func (t *internalChannelState) MarshalCBOR(w io.Writer) error {
 		return xerrors.Errorf("Value in field t.Initiator was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajTextString, uint64(len(t.Initiator)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.Initiator))); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(t.Initiator)); err != nil {
+	if _, err := io.WriteString(w, string(t.Initiator)); err != nil {
 		return err
 	}
 
@@ -46,16 +50,16 @@ func (t *internalChannelState) MarshalCBOR(w io.Writer) error {
 		return xerrors.Errorf("Value in field t.Responder was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajTextString, uint64(len(t.Responder)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.Responder))); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(t.Responder)); err != nil {
+	if _, err := io.WriteString(w, string(t.Responder)); err != nil {
 		return err
 	}
 
 	// t.BaseCid (cid.Cid) (struct)
 
-	if err := cbg.WriteCid(w, t.BaseCid); err != nil {
+	if err := cbg.WriteCidBuf(scratch, w, t.BaseCid); err != nil {
 		return xerrors.Errorf("failed to write cid field t.BaseCid: %w", err)
 	}
 
@@ -69,10 +73,10 @@ func (t *internalChannelState) MarshalCBOR(w io.Writer) error {
 		return xerrors.Errorf("Value in field t.Sender was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajTextString, uint64(len(t.Sender)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.Sender))); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(t.Sender)); err != nil {
+	if _, err := io.WriteString(w, string(t.Sender)); err != nil {
 		return err
 	}
 
@@ -81,34 +85,34 @@ func (t *internalChannelState) MarshalCBOR(w io.Writer) error {
 		return xerrors.Errorf("Value in field t.Recipient was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajTextString, uint64(len(t.Recipient)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.Recipient))); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(t.Recipient)); err != nil {
+	if _, err := io.WriteString(w, string(t.Recipient)); err != nil {
 		return err
 	}
 
 	// t.TotalSize (uint64) (uint64)
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajUnsignedInt, uint64(t.TotalSize))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajUnsignedInt, uint64(t.TotalSize)); err != nil {
 		return err
 	}
 
 	// t.Status (datatransfer.Status) (uint64)
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajUnsignedInt, uint64(t.Status))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajUnsignedInt, uint64(t.Status)); err != nil {
 		return err
 	}
 
 	// t.Sent (uint64) (uint64)
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajUnsignedInt, uint64(t.Sent))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajUnsignedInt, uint64(t.Sent)); err != nil {
 		return err
 	}
 
 	// t.Received (uint64) (uint64)
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajUnsignedInt, uint64(t.Received))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajUnsignedInt, uint64(t.Received)); err != nil {
 		return err
 	}
 
@@ -117,10 +121,10 @@ func (t *internalChannelState) MarshalCBOR(w io.Writer) error {
 		return xerrors.Errorf("Value in field t.Message was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajTextString, uint64(len(t.Message)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.Message))); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(t.Message)); err != nil {
+	if _, err := io.WriteString(w, string(t.Message)); err != nil {
 		return err
 	}
 
@@ -129,7 +133,7 @@ func (t *internalChannelState) MarshalCBOR(w io.Writer) error {
 		return xerrors.Errorf("Slice value in field t.Vouchers was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajArray, uint64(len(t.Vouchers)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajArray, uint64(len(t.Vouchers))); err != nil {
 		return err
 	}
 	for _, v := range t.Vouchers {
@@ -143,7 +147,7 @@ func (t *internalChannelState) MarshalCBOR(w io.Writer) error {
 		return xerrors.Errorf("Slice value in field t.VoucherResults was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajArray, uint64(len(t.VoucherResults)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajArray, uint64(len(t.VoucherResults))); err != nil {
 		return err
 	}
 	for _, v := range t.VoucherResults {
@@ -155,9 +159,12 @@ func (t *internalChannelState) MarshalCBOR(w io.Writer) error {
 }
 
 func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
-	br := cbg.GetPeeker(r)
+	*t = internalChannelState{}
 
-	maj, extra, err := cbg.CborReadHeader(br)
+	br := cbg.GetPeeker(r)
+	scratch := make([]byte, 8)
+
+	maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}
@@ -173,7 +180,7 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		maj, extra, err = cbg.CborReadHeader(br)
+		maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -186,7 +193,7 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 	// t.Initiator (peer.ID) (string)
 
 	{
-		sval, err := cbg.ReadString(br)
+		sval, err := cbg.ReadStringBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -196,7 +203,7 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 	// t.Responder (peer.ID) (string)
 
 	{
-		sval, err := cbg.ReadString(br)
+		sval, err := cbg.ReadStringBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -219,27 +226,16 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		pb, err := br.PeekByte()
-		if err != nil {
-			return err
-		}
-		if pb == cbg.CborNull[0] {
-			var nbuf [1]byte
-			if _, err := br.Read(nbuf[:]); err != nil {
-				return err
-			}
-		} else {
-			t.Selector = new(cbg.Deferred)
-			if err := t.Selector.UnmarshalCBOR(br); err != nil {
-				return xerrors.Errorf("unmarshaling t.Selector pointer: %w", err)
-			}
-		}
+		t.Selector = new(cbg.Deferred)
 
+		if err := t.Selector.UnmarshalCBOR(br); err != nil {
+			return xerrors.Errorf("failed to read deferred field: %w", err)
+		}
 	}
 	// t.Sender (peer.ID) (string)
 
 	{
-		sval, err := cbg.ReadString(br)
+		sval, err := cbg.ReadStringBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -249,7 +245,7 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 	// t.Recipient (peer.ID) (string)
 
 	{
-		sval, err := cbg.ReadString(br)
+		sval, err := cbg.ReadStringBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -260,7 +256,7 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		maj, extra, err = cbg.CborReadHeader(br)
+		maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -274,7 +270,7 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		maj, extra, err = cbg.CborReadHeader(br)
+		maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -288,7 +284,7 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		maj, extra, err = cbg.CborReadHeader(br)
+		maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -302,7 +298,7 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		maj, extra, err = cbg.CborReadHeader(br)
+		maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -315,7 +311,7 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 	// t.Message (string) (string)
 
 	{
-		sval, err := cbg.ReadString(br)
+		sval, err := cbg.ReadStringBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -324,7 +320,7 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 	}
 	// t.Vouchers ([]channels.encodedVoucher) (slice)
 
-	maj, extra, err = cbg.CborReadHeader(br)
+	maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}
@@ -336,9 +332,11 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 	if maj != cbg.MajArray {
 		return fmt.Errorf("expected cbor array")
 	}
+
 	if extra > 0 {
 		t.Vouchers = make([]encodedVoucher, extra)
 	}
+
 	for i := 0; i < int(extra); i++ {
 
 		var v encodedVoucher
@@ -351,7 +349,7 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 
 	// t.VoucherResults ([]channels.encodedVoucherResult) (slice)
 
-	maj, extra, err = cbg.CborReadHeader(br)
+	maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}
@@ -363,9 +361,11 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 	if maj != cbg.MajArray {
 		return fmt.Errorf("expected cbor array")
 	}
+
 	if extra > 0 {
 		t.VoucherResults = make([]encodedVoucherResult, extra)
 	}
+
 	for i := 0; i < int(extra); i++ {
 
 		var v encodedVoucherResult
@@ -379,24 +379,28 @@ func (t *internalChannelState) UnmarshalCBOR(r io.Reader) error {
 	return nil
 }
 
+var lengthBufencodedVoucher = []byte{130}
+
 func (t *encodedVoucher) MarshalCBOR(w io.Writer) error {
 	if t == nil {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{130}); err != nil {
+	if _, err := w.Write(lengthBufencodedVoucher); err != nil {
 		return err
 	}
+
+	scratch := make([]byte, 9)
 
 	// t.Type (datatransfer.TypeIdentifier) (string)
 	if len(t.Type) > cbg.MaxLength {
 		return xerrors.Errorf("Value in field t.Type was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajTextString, uint64(len(t.Type)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.Type))); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(t.Type)); err != nil {
+	if _, err := io.WriteString(w, string(t.Type)); err != nil {
 		return err
 	}
 
@@ -408,9 +412,12 @@ func (t *encodedVoucher) MarshalCBOR(w io.Writer) error {
 }
 
 func (t *encodedVoucher) UnmarshalCBOR(r io.Reader) error {
-	br := cbg.GetPeeker(r)
+	*t = encodedVoucher{}
 
-	maj, extra, err := cbg.CborReadHeader(br)
+	br := cbg.GetPeeker(r)
+	scratch := make([]byte, 8)
+
+	maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}
@@ -425,7 +432,7 @@ func (t *encodedVoucher) UnmarshalCBOR(r io.Reader) error {
 	// t.Type (datatransfer.TypeIdentifier) (string)
 
 	{
-		sval, err := cbg.ReadString(br)
+		sval, err := cbg.ReadStringBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -436,44 +443,37 @@ func (t *encodedVoucher) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		pb, err := br.PeekByte()
-		if err != nil {
-			return err
-		}
-		if pb == cbg.CborNull[0] {
-			var nbuf [1]byte
-			if _, err := br.Read(nbuf[:]); err != nil {
-				return err
-			}
-		} else {
-			t.Voucher = new(cbg.Deferred)
-			if err := t.Voucher.UnmarshalCBOR(br); err != nil {
-				return xerrors.Errorf("unmarshaling t.Voucher pointer: %w", err)
-			}
-		}
+		t.Voucher = new(cbg.Deferred)
 
+		if err := t.Voucher.UnmarshalCBOR(br); err != nil {
+			return xerrors.Errorf("failed to read deferred field: %w", err)
+		}
 	}
 	return nil
 }
+
+var lengthBufencodedVoucherResult = []byte{130}
 
 func (t *encodedVoucherResult) MarshalCBOR(w io.Writer) error {
 	if t == nil {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{130}); err != nil {
+	if _, err := w.Write(lengthBufencodedVoucherResult); err != nil {
 		return err
 	}
+
+	scratch := make([]byte, 9)
 
 	// t.Type (datatransfer.TypeIdentifier) (string)
 	if len(t.Type) > cbg.MaxLength {
 		return xerrors.Errorf("Value in field t.Type was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajTextString, uint64(len(t.Type)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.Type))); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(t.Type)); err != nil {
+	if _, err := io.WriteString(w, string(t.Type)); err != nil {
 		return err
 	}
 
@@ -485,9 +485,12 @@ func (t *encodedVoucherResult) MarshalCBOR(w io.Writer) error {
 }
 
 func (t *encodedVoucherResult) UnmarshalCBOR(r io.Reader) error {
-	br := cbg.GetPeeker(r)
+	*t = encodedVoucherResult{}
 
-	maj, extra, err := cbg.CborReadHeader(br)
+	br := cbg.GetPeeker(r)
+	scratch := make([]byte, 8)
+
+	maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}
@@ -502,7 +505,7 @@ func (t *encodedVoucherResult) UnmarshalCBOR(r io.Reader) error {
 	// t.Type (datatransfer.TypeIdentifier) (string)
 
 	{
-		sval, err := cbg.ReadString(br)
+		sval, err := cbg.ReadStringBuf(br, scratch)
 		if err != nil {
 			return err
 		}
@@ -513,22 +516,11 @@ func (t *encodedVoucherResult) UnmarshalCBOR(r io.Reader) error {
 
 	{
 
-		pb, err := br.PeekByte()
-		if err != nil {
-			return err
-		}
-		if pb == cbg.CborNull[0] {
-			var nbuf [1]byte
-			if _, err := br.Read(nbuf[:]); err != nil {
-				return err
-			}
-		} else {
-			t.VoucherResult = new(cbg.Deferred)
-			if err := t.VoucherResult.UnmarshalCBOR(br); err != nil {
-				return xerrors.Errorf("unmarshaling t.VoucherResult pointer: %w", err)
-			}
-		}
+		t.VoucherResult = new(cbg.Deferred)
 
+		if err := t.VoucherResult.UnmarshalCBOR(br); err != nil {
+			return xerrors.Errorf("failed to read deferred field: %w", err)
+		}
 	}
 	return nil
 }

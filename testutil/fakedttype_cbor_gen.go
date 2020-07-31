@@ -12,33 +12,40 @@ import (
 
 var _ = xerrors.Errorf
 
+var lengthBufFakeDTType = []byte{129}
+
 func (t *FakeDTType) MarshalCBOR(w io.Writer) error {
 	if t == nil {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{129}); err != nil {
+	if _, err := w.Write(lengthBufFakeDTType); err != nil {
 		return err
 	}
+
+	scratch := make([]byte, 9)
 
 	// t.Data (string) (string)
 	if len(t.Data) > cbg.MaxLength {
 		return xerrors.Errorf("Value in field t.Data was too long")
 	}
 
-	if _, err := w.Write(cbg.CborEncodeMajorType(cbg.MajTextString, uint64(len(t.Data)))); err != nil {
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.Data))); err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(t.Data)); err != nil {
+	if _, err := io.WriteString(w, string(t.Data)); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (t *FakeDTType) UnmarshalCBOR(r io.Reader) error {
-	br := cbg.GetPeeker(r)
+	*t = FakeDTType{}
 
-	maj, extra, err := cbg.CborReadHeader(br)
+	br := cbg.GetPeeker(r)
+	scratch := make([]byte, 8)
+
+	maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return err
 	}
@@ -53,7 +60,7 @@ func (t *FakeDTType) UnmarshalCBOR(r io.Reader) error {
 	// t.Data (string) (string)
 
 	{
-		sval, err := cbg.ReadString(br)
+		sval, err := cbg.ReadStringBuf(br, scratch)
 		if err != nil {
 			return err
 		}
