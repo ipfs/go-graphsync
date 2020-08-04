@@ -7,16 +7,17 @@ import (
 	"sync/atomic"
 
 	"github.com/ipfs/go-cid"
+	ipld "github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal"
+	peer "github.com/libp2p/go-libp2p-core/peer"
+
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
-	ipld "github.com/ipld/go-ipld-prime"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipld/go-ipld-prime/traversal"
-	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 // AsyncLoadFn is a function which given a request id and an ipld.Link, returns

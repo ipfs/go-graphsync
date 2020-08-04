@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testutil"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 type fakeMessageNetwork struct {

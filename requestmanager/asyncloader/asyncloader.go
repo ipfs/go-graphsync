@@ -6,14 +6,14 @@ import (
 	"io/ioutil"
 
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-graphsync"
+	"github.com/ipld/go-ipld-prime"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/loadattemptqueue"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/responsecache"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/unverifiedblockstore"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
-	"github.com/ipld/go-ipld-prime"
 )
 
 type loaderMessage interface {

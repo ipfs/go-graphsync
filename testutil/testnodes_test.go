@@ -3,8 +3,9 @@ package testutil
 import (
 	"testing"
 
-	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync/ipldutil"
 )
 
 func TestFailParseSelectorSpec(t *testing.T) {

@@ -6,11 +6,10 @@ import (
 	"testing"
 
 	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync/testutil"
-
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
 func TestVerifyBlockPresent(t *testing.T) {

@@ -8,14 +8,14 @@ import (
 	"time"
 
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/metadata"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
+	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
-	ipld "github.com/ipld/go-ipld-prime"
 )
 
 func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {

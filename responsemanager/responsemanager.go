@@ -6,16 +6,16 @@ import (
 	"math"
 	"time"
 
-	"github.com/ipfs/go-graphsync/responsemanager/hooks"
-
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/ipldutil"
+	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/responsemanager/hooks"
+	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 )
 
 var log = logging.Logger("graphsync")

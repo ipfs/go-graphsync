@@ -3,13 +3,14 @@ package selectorvalidator
 import (
 	"errors"
 
-	"github.com/ipfs/go-graphsync"
 	ipld "github.com/ipld/go-ipld-prime"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/ipfs/go-graphsync"
 )
 
 var (

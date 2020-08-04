@@ -1,8 +1,9 @@
 package linktracker
 
 import (
-	"github.com/ipfs/go-graphsync"
 	"github.com/ipld/go-ipld-prime"
+
+	"github.com/ipfs/go-graphsync"
 )
 
 // LinkTracker records links being traversed to determine useful information

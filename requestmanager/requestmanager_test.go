@@ -7,23 +7,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-graphsync/cidset"
-	"github.com/ipfs/go-graphsync/requestmanager/testloader"
-
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/requestmanager/hooks"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync/metadata"
-
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-
-	"github.com/ipld/go-ipld-prime"
-
-	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/cidset"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/requestmanager/hooks"
+	"github.com/ipfs/go-graphsync/requestmanager/testloader"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 

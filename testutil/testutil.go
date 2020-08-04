@@ -8,15 +8,15 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	util "github.com/ipfs/go-ipfs-util"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/stretchr/testify/require"
-
 	random "github.com/jbenet/go-random"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync"
 )
 
 var blockGenerator = blocksutil.NewBlockGenerator()

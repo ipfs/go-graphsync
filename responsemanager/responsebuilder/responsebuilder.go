@@ -2,10 +2,11 @@ package responsebuilder
 
 import (
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipld/go-ipld-prime"
+
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
-	"github.com/ipld/go-ipld-prime"
 )
 
 // ResponseBuilder captures componenst of a response message across multiple

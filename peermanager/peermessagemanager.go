@@ -3,10 +3,10 @@ package peermanager
 import (
 	"context"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/libp2p/go-libp2p-core/peer"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 // PeerQueue is a process that sends messages to a peer

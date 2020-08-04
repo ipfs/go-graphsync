@@ -2,9 +2,10 @@ package hooks
 
 import (
 	"github.com/hannahhoward/go-pubsub"
-	"github.com/ipfs/go-graphsync"
 	"github.com/ipld/go-ipld-prime/traversal"
 	peer "github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/ipfs/go-graphsync"
 )
 
 // OutgoingRequestHooks is a set of incoming request hooks that can be processed

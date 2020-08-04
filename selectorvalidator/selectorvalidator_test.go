@@ -5,10 +5,9 @@ import (
 
 	ipld "github.com/ipld/go-ipld-prime"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/stretchr/testify/require"
-
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidateMaxRecusionDepth(t *testing.T) {

@@ -4,8 +4,9 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestDecodeEncodeCidSet(t *testing.T) {

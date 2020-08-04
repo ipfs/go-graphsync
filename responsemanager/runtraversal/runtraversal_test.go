@@ -7,12 +7,12 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ipfs/go-graphsync/testutil"
-	"github.com/stretchr/testify/require"
-
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
+	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 type fakeResponseKey struct {
