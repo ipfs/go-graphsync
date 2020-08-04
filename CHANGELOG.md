@@ -187,6 +187,28 @@ Security fix release
 | Hannah Howard | 3 | +442/-302 | 7 |
 | hannahhoward | 1 | +3/-3 | 2 |
 
+# go-data-transfer 0.5.3
+
+Minor fixes + update to release process
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix(deps): update graphsync
+  - Release infrastructure (#61) ([filecoin-project/go-data-transfer#61](https://github.com/filecoin-project/go-data-transfer/pull/61))
+  - Update cbor-gen (#60) ([filecoin-project/go-data-transfer#60](https://github.com/filecoin-project/go-data-transfer/pull/60))
+- github.com/ipfs/go-graphsync (v0.0.6-0.20200731020347-9ff2ade94aa4 -> v0.1.0):
+  - docs(CHANGELOG): update for v0.1.0 release
+  - Release infrastructure (#81) ([ipfs/go-graphsync#81](https://github.com/ipfs/go-graphsync/pull/81))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 2 | +1202/-223 | 91 |
+| Łukasz Magiera | 1 | +176/-176 | 8 |
+| hannahhoward | 2 | +48/-3 | 3 |
+
 ### 🙌🏽 Want to contribute?
 
 Would you like to contribute to this repo and don’t know how? Here are a few places you can get started:
