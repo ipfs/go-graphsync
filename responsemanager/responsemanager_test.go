@@ -9,6 +9,13 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-peertaskqueue/peertask"
+	ipld "github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
+
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
 	gsmsg "github.com/ipfs/go-graphsync/message"
@@ -17,12 +24,6 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	"github.com/ipfs/go-graphsync/testutil"
-	"github.com/ipfs/go-peertaskqueue/peertask"
-	ipld "github.com/ipld/go-ipld-prime"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/stretchr/testify/require"
 )
 
 type fakeQueryQueue struct {

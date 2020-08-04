@@ -3,6 +3,11 @@ package graphsync
 import (
 	"context"
 
+	logging "github.com/ipfs/go-log"
+	"github.com/ipfs/go-peertaskqueue"
+	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/libp2p/go-libp2p-core/peer"
+
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
@@ -16,10 +21,6 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
-	logging "github.com/ipfs/go-log"
-	"github.com/ipfs/go-peertaskqueue"
-	ipld "github.com/ipld/go-ipld-prime"
-	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 var log = logging.Logger("graphsync")

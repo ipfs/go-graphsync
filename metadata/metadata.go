@@ -1,10 +1,11 @@
 package metadata
 
 import (
-	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/fluent"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+
+	"github.com/ipfs/go-graphsync/ipldutil"
 )
 
 // Item is a single link traversed in a repsonse

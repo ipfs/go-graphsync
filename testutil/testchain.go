@@ -7,7 +7,6 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
@@ -15,6 +14,8 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync"
 )
 
 const blockChainTraversedNodesPerBlock = 2

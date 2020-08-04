@@ -7,13 +7,14 @@ import (
 	"time"
 
 	ggio "github.com/gogo/protobuf/io"
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
+
+	gsmsg "github.com/ipfs/go-graphsync/message"
 )
 
 var log = logging.Logger("graphsync_network")

@@ -4,10 +4,11 @@ import (
 	"errors"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipld/go-ipld-prime/fluent"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+
+	"github.com/ipfs/go-graphsync/ipldutil"
 )
 
 // EncodeCidSet encodes a cid set into bytes for the do-no-send-cids extension

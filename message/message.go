@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"io"
 
-	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipld/go-ipld-prime"
-
 	ggio "github.com/gogo/protobuf/io"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
+	"github.com/libp2p/go-libp2p-core/network"
+
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	pb "github.com/ipfs/go-graphsync/message/pb"
-	"github.com/libp2p/go-libp2p-core/network"
 )
 
 // IsTerminalSuccessCode returns true if the response code indicates the

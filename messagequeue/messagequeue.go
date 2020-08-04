@@ -6,11 +6,11 @@ import (
 	"time"
 
 	blocks "github.com/ipfs/go-block-format"
+	logging "github.com/ipfs/go-log"
+	"github.com/libp2p/go-libp2p-core/peer"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
-	logging "github.com/ipfs/go-log"
-	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 var log = logging.Logger("graphsync")

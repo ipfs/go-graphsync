@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"io"
 
-	"github.com/ipfs/go-graphsync/ipldutil"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
+
+	"github.com/ipfs/go-graphsync/ipldutil"
 )
 
 // ResponseSender sends responses over the network

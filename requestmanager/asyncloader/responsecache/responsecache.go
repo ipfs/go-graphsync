@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/metadata"
-	logging "github.com/ipfs/go-log"
-
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-graphsync/linktracker"
+	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/linktracker"
+	"github.com/ipfs/go-graphsync/metadata"
 )
 
 var log = logging.Logger("graphsync")

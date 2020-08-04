@@ -4,19 +4,17 @@ import (
 	"context"
 	"sync"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/peermanager"
-
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-
+	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/libp2p/go-libp2p-core/peer"
 
-	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/linktracker"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/responsemanager/responsebuilder"
-	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 const (
