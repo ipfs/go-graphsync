@@ -3,9 +3,10 @@ package extension
 import (
 	"bytes"
 
+	"github.com/ipfs/go-graphsync"
+
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/message"
-	"github.com/ipfs/go-graphsync"
 )
 
 const (

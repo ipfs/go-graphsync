@@ -3,9 +3,10 @@ package testutil
 import (
 	"context"
 
-	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 )
 
 // OpenedChannel records a call to open a channel

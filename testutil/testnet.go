@@ -3,9 +3,10 @@ package testutil
 import (
 	"context"
 
+	"github.com/libp2p/go-libp2p-core/peer"
+
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/network"
-	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 // FakeSentMessage is a recording of a message sent on the FakeNetwork

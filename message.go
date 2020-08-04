@@ -3,10 +3,11 @@ package datatransfer
 import (
 	"io"
 
-	"github.com/filecoin-project/go-data-transfer/encoding"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	cborgen "github.com/whyrusleeping/cbor-gen"
+
+	"github.com/filecoin-project/go-data-transfer/encoding"
 )
 
 // Message is a message for the data transfer protocol

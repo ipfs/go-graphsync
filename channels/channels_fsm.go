@@ -1,10 +1,12 @@
 package channels
 
 import (
-	datatransfer "github.com/filecoin-project/go-data-transfer"
-	"github.com/filecoin-project/go-statemachine/fsm"
 	logging "github.com/ipfs/go-log"
 	cbg "github.com/whyrusleeping/cbor-gen"
+
+	"github.com/filecoin-project/go-statemachine/fsm"
+
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 )
 
 var log = logging.Logger("data-transfer")

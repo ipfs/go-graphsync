@@ -3,13 +3,14 @@ package channels
 import (
 	"bytes"
 
-	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	cbg "github.com/whyrusleeping/cbor-gen"
+
+	datatransfer "github.com/filecoin-project/go-data-transfer"
 )
 
 // channelState is immutable channel data plus mutable state

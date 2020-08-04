@@ -11,10 +11,6 @@ import (
 	"runtime"
 	"testing"
 
-	datatransfer "github.com/filecoin-project/go-data-transfer"
-	"github.com/filecoin-project/go-data-transfer/network"
-	gstransport "github.com/filecoin-project/go-data-transfer/transport/graphsync"
-	"github.com/filecoin-project/go-storedcounter"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
@@ -40,6 +36,12 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/filecoin-project/go-storedcounter"
+
+	datatransfer "github.com/filecoin-project/go-data-transfer"
+	"github.com/filecoin-project/go-data-transfer/network"
+	gstransport "github.com/filecoin-project/go-data-transfer/transport/graphsync"
 )
 
 var allSelector ipld.Node

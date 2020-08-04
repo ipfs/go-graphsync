@@ -15,11 +15,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/filecoin-project/go-storedcounter"
+
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	. "github.com/filecoin-project/go-data-transfer/impl"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/testutil"
-	"github.com/filecoin-project/go-storedcounter"
 )
 
 func TestDataTransferResponding(t *testing.T) {

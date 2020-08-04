@@ -37,6 +37,27 @@ jobs:
       - prepare
       - go/mod-download
       - go/mod-tidy-check
+        
+  imports-check:
+    executor: golang
+    steps:
+      - install-deps
+      - prepare
+      - run: go install golang.org/x/tools/cmd/goimports
+      - run: scripts/fiximports
+      - run: git --no-pager diff
+      - run: git --no-pager diff --quiet
+
+  cbor-gen-check:
+    executor: golang
+    steps:
+      - install-deps
+      - prepare
+      - run: go install golang.org/x/tools/cmd/goimports
+      - run: go install github.com/hannahhoward/cbor-gen-for
+      - run: go generate ./...
+      - run: git --no-pager diff
+      - run: git --no-pager diff --quiet
 
   test: &test
     description: |
@@ -159,3 +180,5 @@ workflows:
           args: "--new-from-rev origin/master"
       - test
       - mod-tidy-check
+      - cbor-gen-check
+      - imports-check

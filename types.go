@@ -3,10 +3,11 @@ package datatransfer
 import (
 	"fmt"
 
-	"github.com/filecoin-project/go-data-transfer/encoding"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/filecoin-project/go-data-transfer/encoding"
 )
 
 type errorString string

@@ -3,9 +3,10 @@ package registry_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/filecoin-project/go-data-transfer/registry"
 	"github.com/filecoin-project/go-data-transfer/testutil"
-	"github.com/stretchr/testify/require"
 )
 
 func TestRegistry(t *testing.T) {
