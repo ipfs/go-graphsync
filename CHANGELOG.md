@@ -209,6 +209,24 @@ Minor fixes + update to release process
 | Łukasz Magiera | 1 | +176/-176 | 8 |
 | hannahhoward | 2 | +48/-3 | 3 |
 
+# go-data-transfer 0.6.0
+
+Includes two small breaking change updates:
+
+- Update go-ipfs-blockstore to address blocks by-hash instead of by-cid. This brings go-data-transfer in-line with lotus.
+- Update cbor-gen for some performance improvements and some API-breaking changes.
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Update cbor-gen (#63) ([filecoin-project/go-data-transfer#63](https://github.com/filecoin-project/go-data-transfer/pull/63))
+
+### Contributors
+
+| Contributor  | Commits | Lines ± | Files Changed |
+|--------------|---------|---------|---------------|
+| Steven Allen |       1 | +30/-23 |             5 |
+
 ### 🙌🏽 Want to contribute?
 
 Would you like to contribute to this repo and don’t know how? Here are a few places you can get started:
