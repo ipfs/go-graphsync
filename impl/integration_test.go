@@ -206,6 +206,133 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+func TestMultipleRoundTripMultipleStores(t *testing.T) {
+	ctx := context.Background()
+	testCases := map[string]struct {
+		isPull       bool
+		requestCount int
+	}{
+		"multiple roundtrip for push requests": {
+			requestCount: 2,
+		},
+		"multiple roundtrip for pull requests": {
+			isPull:       true,
+			requestCount: 2,
+		},
+	}
+	for testCase, data := range testCases {
+		t.Run(testCase, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+
+			gsData := testutil.NewGraphsyncTestingData(ctx, t)
+			host1 := gsData.Host1 // initiator, data sender
+			host2 := gsData.Host2 // data recipient
+
+			tp1 := gsData.SetupGSTransportHost1()
+			tp2 := gsData.SetupGSTransportHost2()
+
+			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1, gsData.StoredCounter1)
+			require.NoError(t, err)
+			err = dt1.Start(ctx)
+			require.NoError(t, err)
+			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2, gsData.StoredCounter2)
+			require.NoError(t, err)
+			err = dt2.Start(ctx)
+			require.NoError(t, err)
+
+			finished := make(chan struct{}, 2*data.requestCount)
+			errChan := make(chan string, 2*data.requestCount)
+			opened := make(chan struct{}, 2*data.requestCount)
+			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+				if channelState.Status() == datatransfer.Completed {
+					finished <- struct{}{}
+				}
+				if event.Code == datatransfer.Error {
+					errChan <- event.Message
+				}
+				if event.Code == datatransfer.Open {
+					opened <- struct{}{}
+				}
+			}
+			dt1.SubscribeToEvents(subscriber)
+			dt2.SubscribeToEvents(subscriber)
+			vouchers := make([]datatransfer.Voucher, 0, data.requestCount)
+			for i := 0; i < data.requestCount; i++ {
+				vouchers = append(vouchers, testutil.NewFakeDTType())
+			}
+			sv := testutil.NewStubbedValidator()
+
+			root, origBytes := testutil.LoadUnixFSFile(ctx, t, gsData.DagService1)
+			rootCid := root.(cidlink.Link).Cid
+
+			destDagServices := make([]ipldformat.DAGService, 0, data.requestCount)
+			loaders := make([]ipld.Loader, 0, data.requestCount)
+			storers := make([]ipld.Storer, 0, data.requestCount)
+			for i := 0; i < data.requestCount; i++ {
+				ds := dss.MutexWrap(datastore.NewMapDatastore())
+				bs := bstore.NewBlockstore(namespace.Wrap(ds, datastore.NewKey("blockstore")))
+				loader := storeutil.LoaderForBlockstore(bs)
+				storer := storeutil.StorerForBlockstore(bs)
+				destDagService := merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
+
+				destDagServices = append(destDagServices, destDagService)
+				loaders = append(loaders, loader)
+				storers = append(storers, storer)
+			}
+
+			err = dt2.RegisterTransportConfigurer(&testutil.FakeDTType{}, func(channelID datatransfer.ChannelID, testVoucher datatransfer.Voucher, transport datatransfer.Transport) {
+				fv, ok := testVoucher.(*testutil.FakeDTType)
+				if ok {
+					for i, voucher := range vouchers {
+						if fv.Data == voucher.(*testutil.FakeDTType).Data {
+							gsTransport, ok := transport.(*tp.Transport)
+							if ok {
+								err := gsTransport.UseStore(channelID, loaders[i], storers[i])
+								require.NoError(t, err)
+							}
+						}
+					}
+				}
+			})
+			require.NoError(t, err)
+
+			if data.isPull {
+				sv.ExpectSuccessPull()
+				require.NoError(t, dt1.RegisterVoucherType(&testutil.FakeDTType{}, sv))
+				for i := 0; i < data.requestCount; i++ {
+					_, err = dt2.OpenPullDataChannel(ctx, host1.ID(), vouchers[i], rootCid, gsData.AllSelector)
+					require.NoError(t, err)
+				}
+			} else {
+				sv.ExpectSuccessPush()
+				require.NoError(t, dt2.RegisterVoucherType(&testutil.FakeDTType{}, sv))
+				for i := 0; i < data.requestCount; i++ {
+					_, err = dt1.OpenPushDataChannel(ctx, host2.ID(), vouchers[i], rootCid, gsData.AllSelector)
+					require.NoError(t, err)
+				}
+			}
+			opens := 0
+			completes := 0
+			for opens < 2*data.requestCount || completes < 2*data.requestCount {
+				select {
+				case <-ctx.Done():
+					t.Fatal("Did not complete succcessful data transfer")
+				case <-finished:
+					completes++
+				case <-opened:
+					opens++
+				case err := <-errChan:
+					t.Fatalf("received error on data transfer: %s", err)
+				}
+			}
+			for _, destDagService := range destDagServices {
+				testutil.VerifyHasFile(ctx, t, destDagService, root, origBytes)
+			}
+		})
+	}
+}
+
 type retrievalRevalidator struct {
 	*testutil.StubbedRevalidator
 	dataSoFar          uint64

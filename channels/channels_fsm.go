@@ -1,7 +1,7 @@
 package channels
 
 import (
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	cbg "github.com/whyrusleeping/cbor-gen"
 
 	"github.com/filecoin-project/go-statemachine/fsm"

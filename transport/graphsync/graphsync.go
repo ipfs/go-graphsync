@@ -6,13 +6,15 @@ import (
 	"sync"
 
 	"github.com/ipfs/go-graphsync"
+	logging "github.com/ipfs/go-log/v2"
 	ipld "github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
-	"github.com/prometheus/common/log"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/transport/graphsync/extension"
 )
+
+var log = logging.Logger("dt_graphsync")
 
 var errContextCancelled = errors.New("context cancelled")
 
@@ -105,6 +107,9 @@ func (t *Transport) consumeResponses(ctx context.Context, errChan <-chan error) 
 func (t *Transport) executeGsRequest(ctx context.Context, channelID datatransfer.ChannelID, errChan <-chan error) {
 	lastError := t.consumeResponses(ctx, errChan)
 	if _, ok := lastError.(graphsync.RequestCancelledErr); !ok {
+		if lastError != nil {
+			log.Warnf("graphsync error: %s", lastError.Error())
+		}
 		err := t.events.OnChannelCompleted(channelID, lastError == nil)
 		if err != nil {
 			log.Error(err)

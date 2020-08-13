@@ -11,7 +11,7 @@ require (
 	github.com/ipfs/go-blockservice v0.1.3
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-datastore v0.4.4
-	github.com/ipfs/go-graphsync v0.1.0
+	github.com/ipfs/go-graphsync v0.1.1
 	github.com/ipfs/go-ipfs-blockstore v1.0.1
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-chunker v0.0.5
@@ -19,14 +19,13 @@ require (
 	github.com/ipfs/go-ipfs-files v0.0.8
 	github.com/ipfs/go-ipld-cbor v0.0.4
 	github.com/ipfs/go-ipld-format v0.2.0
-	github.com/ipfs/go-log v1.0.2
+	github.com/ipfs/go-log/v2 v2.0.2
 	github.com/ipfs/go-merkledag v0.3.2
 	github.com/ipfs/go-unixfs v0.2.4
 	github.com/ipld/go-ipld-prime v0.0.2-0.20200428162820-8b59dc292b8e
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-libp2p v0.6.0
 	github.com/libp2p/go-libp2p-core v0.5.0
-	github.com/prometheus/common v0.10.0
 	github.com/stretchr/testify v1.5.1
 	github.com/whyrusleeping/cbor-gen v0.0.0-20200810223238-211df3b9e24c
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
