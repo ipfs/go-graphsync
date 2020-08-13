@@ -131,6 +131,22 @@ Major release (we fell behind on creating tagged releases for a while) -- many a
 | hannahhoward | 13 | +1663/-1906 | 184 |
 | Hector Sanjuan | 2 | +95/-0 | 3 |
 
+# go-graphsync 0.1.1
+
+Minor fix for alternate persistence stores and deduplication
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - docs(CHANGELOG): update for v0.1.0 release ([ipfs/go-graphsync#84](https://github.com/ipfs/go-graphsync/pull/84))
+  - Dedup by key extension (#83) ([ipfs/go-graphsync#83](https://github.com/ipfs/go-graphsync/pull/83))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +316/-7 | 10 |
+
 ### 🙌🏽 Want to contribute?
 
 Would you like to contribute to this repo and don’t know how? Here are a few places you can get started:
