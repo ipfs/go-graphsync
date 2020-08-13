@@ -15,6 +15,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/dedupkey"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
@@ -645,6 +646,12 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	returnedResponseChan2, returnedErrorChan2 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
+
+	dedupData, has := requestRecords[0].gsr.Extension(graphsync.ExtensionDeDupByKey)
+	require.True(t, has)
+	key, err := dedupkey.DecodeDedupKey(dedupData)
+	require.NoError(t, err)
+	require.Equal(t, "chainstore", key)
 
 	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
 	mdEncoded, err := metadata.EncodeMetadata(md)
