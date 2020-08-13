@@ -42,6 +42,8 @@ type peerResponseSender struct {
 
 	linkTrackerLk      sync.RWMutex
 	linkTracker        *linktracker.LinkTracker
+	altTrackers        map[string]*linktracker.LinkTracker
+	dedupKeys          map[graphsync.RequestID]string
 	responseBuildersLk sync.RWMutex
 	responseBuilders   []*responsebuilder.ResponseBuilder
 }
@@ -50,6 +52,7 @@ type peerResponseSender struct {
 // a given peer across multiple requests.
 type PeerResponseSender interface {
 	peermanager.PeerProcess
+	DedupKey(requestID graphsync.RequestID, key string)
 	IgnoreBlocks(requestID graphsync.RequestID, links []ipld.Link)
 	SendResponse(
 		requestID graphsync.RequestID,
@@ -90,6 +93,8 @@ func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHa
 		peerHandler:  peerHandler,
 		outgoingWork: make(chan struct{}, 1),
 		linkTracker:  linktracker.New(),
+		dedupKeys:    make(map[graphsync.RequestID]string),
+		altTrackers:  make(map[string]*linktracker.LinkTracker),
 	}
 }
 
@@ -98,10 +103,29 @@ func (prs *peerResponseSender) Startup() {
 	go prs.run()
 }
 
+func (prs *peerResponseSender) getLinkTracker(requestID graphsync.RequestID) *linktracker.LinkTracker {
+	key, ok := prs.dedupKeys[requestID]
+	if ok {
+		return prs.altTrackers[key]
+	}
+	return prs.linkTracker
+}
+
+func (prs *peerResponseSender) DedupKey(requestID graphsync.RequestID, key string) {
+	prs.linkTrackerLk.Lock()
+	defer prs.linkTrackerLk.Unlock()
+	prs.dedupKeys[requestID] = key
+	_, ok := prs.altTrackers[key]
+	if !ok {
+		prs.altTrackers[key] = linktracker.New()
+	}
+}
+
 func (prs *peerResponseSender) IgnoreBlocks(requestID graphsync.RequestID, links []ipld.Link) {
 	prs.linkTrackerLk.Lock()
+	linkTracker := prs.getLinkTracker(requestID)
 	for _, link := range links {
-		prs.linkTracker.RecordLinkTraversal(requestID, link, true)
+		linkTracker.RecordLinkTraversal(requestID, link, true)
 	}
 	prs.linkTrackerLk.Unlock()
 }
@@ -235,8 +259,9 @@ func (prs *peerResponseSender) setupBlockOperation(requestID graphsync.RequestID
 	link ipld.Link, data []byte) blockOperation {
 	hasBlock := data != nil
 	prs.linkTrackerLk.Lock()
-	sendBlock := hasBlock && prs.linkTracker.BlockRefCount(link) == 0
-	prs.linkTracker.RecordLinkTraversal(requestID, link, hasBlock)
+	linkTracker := prs.getLinkTracker(requestID)
+	sendBlock := hasBlock && linkTracker.BlockRefCount(link) == 0
+	linkTracker.RecordLinkTraversal(requestID, link, hasBlock)
 	prs.linkTrackerLk.Unlock()
 	return blockOperation{
 		data, sendBlock, link, requestID,
@@ -273,7 +298,16 @@ func (fo statusOperation) size() uint64 {
 func (prs *peerResponseSender) finishTracking(requestID graphsync.RequestID) bool {
 	prs.linkTrackerLk.Lock()
 	defer prs.linkTrackerLk.Unlock()
-	return prs.linkTracker.FinishRequest(requestID)
+	linkTracker := prs.getLinkTracker(requestID)
+	allBlocks := linkTracker.FinishRequest(requestID)
+	key, ok := prs.dedupKeys[requestID]
+	if ok {
+		delete(prs.dedupKeys, requestID)
+		if linkTracker.Empty() {
+			delete(prs.altTrackers, key)
+		}
+	}
+	return allBlocks
 }
 
 func (prs *peerResponseSender) setupFinishOperation(requestID graphsync.RequestID) statusOperation {
@@ -295,9 +329,7 @@ func (prs *peerResponseSender) FinishRequest(requestID graphsync.RequestID) grap
 }
 
 func (prs *peerResponseSender) setupFinishWithErrOperation(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) statusOperation {
-	prs.linkTrackerLk.Lock()
-	prs.linkTracker.FinishRequest(requestID)
-	prs.linkTrackerLk.Unlock()
+	prs.finishTracking(requestID)
 	return statusOperation{requestID, status}
 }
 

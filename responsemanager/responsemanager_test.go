@@ -18,6 +18,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/dedupkey"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
@@ -114,6 +115,7 @@ type fakePeerResponseSender struct {
 	pausedRequests       chan pausedRequest
 	cancelledRequests    chan cancelledRequest
 	ignoredLinks         chan []ipld.Link
+	dedupKeys            chan string
 }
 
 func (fprs *fakePeerResponseSender) Startup()  {}
@@ -126,6 +128,10 @@ type fakeBlkData struct {
 
 func (fprs *fakePeerResponseSender) IgnoreBlocks(requestID graphsync.RequestID, links []ipld.Link) {
 	fprs.ignoredLinks <- links
+}
+
+func (fprs *fakePeerResponseSender) DedupKey(requestID graphsync.RequestID, key string) {
+	fprs.dedupKeys <- key
 }
 
 func (fbd fakeBlkData) Link() ipld.Link {
@@ -556,6 +562,31 @@ func TestValidationAndExtensions(t *testing.T) {
 			require.True(t, set.Has(link.(cidlink.Link).Cid))
 		}
 	})
+	t.Run("dedup-by-key extension", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners)
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+		})
+		data, err := dedupkey.EncodeDedupKey("applesauce")
+		require.NoError(t, err)
+		requests := []gsmsg.GraphSyncRequest{
+			gsmsg.NewRequest(td.requestID, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0),
+				graphsync.ExtensionData{
+					Name: graphsync.ExtensionDeDupByKey,
+					Data: data,
+				}),
+		}
+		responseManager.ProcessRequests(td.ctx, td.p, requests)
+		var lastRequest completedRequest
+		testutil.AssertReceive(td.ctx, t, td.completedRequestChan, &lastRequest, "should complete request")
+		require.True(t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
+		var dedupKey string
+		testutil.AssertReceive(td.ctx, t, td.dedupKeys, &dedupKey, "should dedup by key")
+		require.Equal(t, dedupKey, "applesauce")
+	})
 	t.Run("test pause/resume", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -931,6 +962,7 @@ type testData struct {
 	pausedRequests        chan pausedRequest
 	cancelledRequests     chan cancelledRequest
 	ignoredLinks          chan []ipld.Link
+	dedupKeys             chan string
 	peerManager           *fakePeerManager
 	queryQueue            *fakeQueryQueue
 	extensionData         []byte
@@ -968,6 +1000,7 @@ func newTestData(t *testing.T) testData {
 	td.pausedRequests = make(chan pausedRequest, 1)
 	td.cancelledRequests = make(chan cancelledRequest, 1)
 	td.ignoredLinks = make(chan []ipld.Link, 1)
+	td.dedupKeys = make(chan string, 1)
 	fprs := &fakePeerResponseSender{
 		lastCompletedRequest: td.completedRequestChan,
 		sentResponses:        td.sentResponses,
@@ -975,6 +1008,7 @@ func newTestData(t *testing.T) testData {
 		pausedRequests:       td.pausedRequests,
 		cancelledRequests:    td.cancelledRequests,
 		ignoredLinks:         td.ignoredLinks,
+		dedupKeys:            td.dedupKeys,
 	}
 	td.peerManager = &fakePeerManager{peerResponseSender: fprs}
 	td.queryQueue = &fakeQueryQueue{}

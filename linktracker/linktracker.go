@@ -78,3 +78,8 @@ func (lt *LinkTracker) FinishRequest(requestID graphsync.RequestID) (hasAllBlock
 
 	return
 }
+
+// Empty returns true if the link tracker is empty
+func (lt *LinkTracker) Empty() bool {
+	return len(lt.missingBlocks) == 0 && len(lt.traversalsWithBlocksInProgress) == 0
+}

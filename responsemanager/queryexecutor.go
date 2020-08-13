@@ -13,6 +13,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/dedupkey"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
@@ -138,6 +139,9 @@ func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	if transactionError != nil {
 		return nil, nil, false, transactionError
 	}
+	if err := qe.processDedupByKey(request, peerResponseSender); err != nil {
+		return nil, nil, false, err
+	}
 	if err := qe.processDoNoSendCids(request, peerResponseSender); err != nil {
 		return nil, nil, false, err
 	}
@@ -152,6 +156,20 @@ func (qe *queryExecutor) prepareQuery(ctx context.Context,
 		loader = qe.loader
 	}
 	return loader, traverser, isPaused, nil
+}
+
+func (qe *queryExecutor) processDedupByKey(request gsmsg.GraphSyncRequest, peerResponseSender peerresponsemanager.PeerResponseSender) error {
+	dedupData, has := request.Extension(graphsync.ExtensionDeDupByKey)
+	if !has {
+		return nil
+	}
+	key, err := dedupkey.DecodeDedupKey(dedupData)
+	if err != nil {
+		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
+		return err
+	}
+	peerResponseSender.DedupKey(request.ID(), key)
+	return nil
 }
 
 func (qe *queryExecutor) processDoNoSendCids(request gsmsg.GraphSyncRequest, peerResponseSender peerresponsemanager.PeerResponseSender) error {
