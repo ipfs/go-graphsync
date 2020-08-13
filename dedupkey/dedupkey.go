@@ -1,8 +1,9 @@
 package dedupkey
 
 import (
-	"github.com/ipfs/go-graphsync/ipldutil"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+
+	"github.com/ipfs/go-graphsync/ipldutil"
 )
 
 // EncodeDedupKey returns encoded cbor data for string key
