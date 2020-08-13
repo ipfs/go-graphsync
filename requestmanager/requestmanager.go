@@ -15,6 +15,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/dedupkey"
 	ipldutil "github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
@@ -514,6 +515,18 @@ func (rm *RequestManager) validateRequest(requestID graphsync.RequestID, p peer.
 	}
 	request := gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, defaultPriority, extensions...)
 	hooksResult := rm.requestHooks.ProcessRequestHooks(p, request)
+	if hooksResult.PersistenceOption != "" {
+		dedupData, err := dedupkey.EncodeDedupKey(hooksResult.PersistenceOption)
+		if err != nil {
+			return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, err
+		}
+		request = request.ReplaceExtensions([]graphsync.ExtensionData{
+			{
+				Name: graphsync.ExtensionDeDupByKey,
+				Data: dedupData,
+			},
+		})
+	}
 	err = rm.asyncLoader.StartRequest(requestID, hooksResult.PersistenceOption)
 	if err != nil {
 		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, err

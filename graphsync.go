@@ -42,6 +42,10 @@ const (
 	// https://github.com/ipld/specs/blob/master/block-layer/graphsync/known_extensions.md
 	ExtensionDoNotSendCIDs = ExtensionName("graphsync/do-not-send-cids")
 
+	// ExtensionDeDupByKey tells the responding peer to only deduplicate block sending
+	// for requests that have the same key. The data for the extension is a string key
+	ExtensionDeDupByKey = ExtensionName("graphsync/dedup-by-key")
+
 	// GraphSync Response Status Codes
 
 	// Informational Response Codes (partial)
