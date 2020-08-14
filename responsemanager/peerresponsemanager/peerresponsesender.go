@@ -135,12 +135,12 @@ type responseOperation interface {
 	size() uint64
 }
 
-func (prs *peerResponseSender) execute(operations []responseOperation) {
+func (prs *peerResponseSender) execute(requestID graphsync.RequestID, operations []responseOperation) {
 	size := uint64(0)
 	for _, op := range operations {
 		size += op.size()
 	}
-	if prs.buildResponse(size, func(responseBuilder *responsebuilder.ResponseBuilder) {
+	if prs.buildResponse(requestID, size, func(responseBuilder *responsebuilder.ResponseBuilder) {
 		for _, op := range operations {
 			op.build(responseBuilder)
 		}
@@ -168,7 +168,7 @@ func (eo extensionOperation) size() uint64 {
 }
 
 func (prs *peerResponseSender) SendExtensionData(requestID graphsync.RequestID, extension graphsync.ExtensionData) {
-	prs.execute([]responseOperation{extensionOperation{requestID, extension}})
+	prs.execute(requestID, []responseOperation{extensionOperation{requestID, extension}})
 }
 
 type peerResponseTransactionSender struct {
@@ -212,7 +212,7 @@ func (prs *peerResponseSender) Transaction(requestID graphsync.RequestID, transa
 	}
 	err := transaction(prts)
 	if err == nil {
-		prs.execute(prts.operations)
+		prs.execute(requestID, prts.operations)
 	}
 	return err
 }
@@ -278,7 +278,7 @@ func (prs *peerResponseSender) SendResponse(
 	data []byte,
 ) graphsync.BlockData {
 	op := prs.setupBlockOperation(requestID, link, data)
-	prs.execute([]responseOperation{op})
+	prs.execute(requestID, []responseOperation{op})
 	return op
 }
 
@@ -324,7 +324,7 @@ func (prs *peerResponseSender) setupFinishOperation(requestID graphsync.RequestI
 // FinishRequest marks the given requestID as having sent all responses
 func (prs *peerResponseSender) FinishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode {
 	op := prs.setupFinishOperation(requestID)
-	prs.execute([]responseOperation{op})
+	prs.execute(requestID, []responseOperation{op})
 	return op.status
 }
 
@@ -336,21 +336,21 @@ func (prs *peerResponseSender) setupFinishWithErrOperation(requestID graphsync.R
 // FinishWithError marks the given requestID as having terminated with an error
 func (prs *peerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
 	op := prs.setupFinishWithErrOperation(requestID, status)
-	prs.execute([]responseOperation{op})
+	prs.execute(requestID, []responseOperation{op})
 }
 
 func (prs *peerResponseSender) PauseRequest(requestID graphsync.RequestID) {
-	prs.execute([]responseOperation{statusOperation{requestID, graphsync.RequestPaused}})
+	prs.execute(requestID, []responseOperation{statusOperation{requestID, graphsync.RequestPaused}})
 }
 
 func (prs *peerResponseSender) FinishWithCancel(requestID graphsync.RequestID) {
 	_ = prs.finishTracking(requestID)
 }
 
-func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn func(*responsebuilder.ResponseBuilder)) bool {
+func (prs *peerResponseSender) buildResponse(requestID graphsync.RequestID, blkSize uint64, buildResponseFn func(*responsebuilder.ResponseBuilder)) bool {
 	prs.responseBuildersLk.Lock()
 	defer prs.responseBuildersLk.Unlock()
-	if shouldBeginNewResponse(prs.responseBuilders, blkSize) {
+	if shouldBeginNewResponse(prs.responseBuilders, requestID, blkSize) {
 		prs.responseBuilders = append(prs.responseBuilders, responsebuilder.New())
 	}
 	responseBuilder := prs.responseBuilders[len(prs.responseBuilders)-1]
@@ -358,8 +358,11 @@ func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn fun
 	return !responseBuilder.Empty()
 }
 
-func shouldBeginNewResponse(responseBuilders []*responsebuilder.ResponseBuilder, blkSize uint64) bool {
+func shouldBeginNewResponse(responseBuilders []*responsebuilder.ResponseBuilder, requestID graphsync.RequestID, blkSize uint64) bool {
 	if len(responseBuilders) == 0 {
+		return true
+	}
+	if responseBuilders[len(responseBuilders)-1].HasResponseCode(requestID) {
 		return true
 	}
 	if blkSize == 0 {

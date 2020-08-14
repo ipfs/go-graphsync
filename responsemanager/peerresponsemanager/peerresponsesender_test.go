@@ -221,7 +221,66 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.Equal(t, graphsync.RequestCompletedFull, response.Status(), "did not send corrent response code in fifth message")
 
 }
+func TestPeerResponseSenderSendsMultipleResponseCodes(t *testing.T) {
 
+	p := testutil.GeneratePeers(1)[0]
+	requestID1 := graphsync.RequestID(rand.Int31())
+	// generate large blocks before proceeding
+	blks := testutil.GenerateBlocksOfSize(5, 100)
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	links := make([]ipld.Link, 0, len(blks))
+	for _, block := range blks {
+		links = append(links, cidlink.Link{Cid: block.Cid()})
+	}
+	done := make(chan struct{}, 1)
+	sent := make(chan struct{}, 1)
+	fph := &fakePeerHandler{
+		done: done,
+		sent: sent,
+	}
+	peerResponseSender := NewResponseSender(ctx, p, fph)
+	peerResponseSender.Startup()
+
+	peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
+
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send first message")
+
+	require.Len(t, fph.lastBlocks, 1)
+	require.Equal(t, blks[0].Cid(), fph.lastBlocks[0].Cid(), "did not send correct blocks for first message")
+
+	require.Len(t, fph.lastResponses, 1)
+	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
+	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
+
+	// Send 2 seperate responses, no blocks present
+	peerResponseSender.PauseRequest(requestID1)
+	peerResponseSender.FinishRequest(requestID1)
+
+	// let peer reponse manager know last message was sent so message sending can continue
+	done <- struct{}{}
+
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message ")
+
+	require.Len(t, fph.lastResponses, 1, "Should break up message")
+
+	// Send one more block while waiting
+	response, err := findResponseForRequestID(fph.lastResponses, requestID1)
+	require.NoError(t, err)
+	require.Equal(t, graphsync.RequestPaused, response.Status(), "did not send corrent response code in fifth message")
+
+	// let peer reponse manager know last message was sent so message sending can continue
+	done <- struct{}{}
+
+	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
+
+	require.Len(t, fph.lastResponses, 1, "should break up message")
+	response, err = findResponseForRequestID(fph.lastResponses, requestID1)
+	require.NoError(t, err)
+	require.Equal(t, graphsync.RequestCompletedFull, response.Status(), "did not send corrent response code in fifth message")
+
+}
 func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

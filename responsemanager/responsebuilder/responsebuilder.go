@@ -63,6 +63,12 @@ func (rb *ResponseBuilder) AddResponseCode(requestID graphsync.RequestID, status
 	}
 }
 
+// HasResponseCode returns true if the given builder already has a response code for this request
+func (rb *ResponseBuilder) HasResponseCode(requestID graphsync.RequestID) bool {
+	_, ok := rb.completedResponses[requestID]
+	return ok
+}
+
 // Empty returns true if there is no content to send
 func (rb *ResponseBuilder) Empty() bool {
 	return len(rb.outgoingBlocks) == 0 && len(rb.outgoingResponses) == 0
