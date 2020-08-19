@@ -676,6 +676,80 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 
 }
 
+func TestGraphsyncRoundTripMultipleReceivers(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	responder := td.GraphSyncHost1()
+
+	extensionName := graphsync.ExtensionName("datatransfer")
+	extension := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: nil,
+	}
+
+	requestorStores := make([]map[ipld.Link][]byte, 0, 10)
+	requestors := make([]graphsync.GraphExchange, 0, 10)
+	for i := 0; i < 10; i++ {
+		host, err := td.mn.GenPeer()
+		require.NoError(t, err, "error generating host")
+		gsnet := gsnet.NewFromLibp2pHost(host)
+		blockStore := make(map[ipld.Link][]byte)
+		loader, storer := testutil.NewTestStore(blockStore)
+		altStore := make(map[ipld.Link][]byte)
+		altLoader, altStorer := testutil.NewTestStore(altStore)
+		requestor := New(td.ctx, gsnet, loader, storer)
+		requestor.RegisterOutgoingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.OutgoingRequestHookActions) {
+			_, has := requestData.Extension(extensionName)
+			if has {
+				hookActions.UsePersistenceOption("datatransfer-store")
+			}
+		})
+		requestor.RegisterPersistenceOption("datatransfer-store", altLoader, altStorer)
+		requestors = append(requestors, requestor)
+		requestorStores = append(requestorStores, altStore)
+	}
+	err := td.mn.LinkAll()
+	require.NoError(t, err, "error linking hosts")
+
+	// alternate storing location for responder
+	altSendStore := make(map[ipld.Link][]byte)
+	altSendLoader, altSendStorer := testutil.NewTestStore(altSendStore)
+
+	err = responder.RegisterPersistenceOption("datatransfer-store", altSendLoader, altSendStorer)
+	require.NoError(t, err)
+
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, altSendLoader, altSendStorer, 100, blockChainLength)
+
+	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		_, has := requestData.Extension(extensionName)
+		if has {
+			hookActions.UsePersistenceOption("datatransfer-store")
+		}
+	})
+
+	progressChans := make([]<-chan graphsync.ResponseProgress, 0, 10)
+	errChans := make([]<-chan error, 0, 10)
+	for _, requestor := range requestors {
+		progressChan, errChan := requestor.Request(ctx, td.host1.ID(), blockChain.TipLink, blockChain.Selector(), extension)
+		progressChans = append(progressChans, progressChan)
+		errChans = append(errChans, errChan)
+	}
+
+	for i, progressChan := range progressChans {
+		blockChain.VerifyWholeChain(ctx, progressChan)
+		require.Len(t, requestorStores[i], blockChainLength, "did not store all blocks in alternate store 1")
+	}
+	for _, errChan := range errChans {
+		testutil.VerifyEmptyErrors(ctx, t, errChan)
+	}
+}
+
 // TestRoundTripLargeBlocksSlowNetwork test verifies graphsync continues to work
 // under a specific of adverse conditions:
 // -- large blocks being returned by a query
