@@ -227,6 +227,26 @@ Includes two small breaking change updates:
 |--------------|---------|---------|---------------|
 | Steven Allen |       1 | +30/-23 |             5 |
 
+# go-data-transfer 0.6.1
+
+Update graphsync with critical bug fix for multiple transfers across custom stores
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Update graphsync 0.1.1 (#65) ([filecoin-project/go-data-transfer#65](https://github.com/filecoin-project/go-data-transfer/pull/65))
+- github.com/ipfs/go-graphsync (v0.1.0 -> v0.1.1):
+  - docs(CHANGELOG): update for v0.1.1
+  - docs(CHANGELOG): update for v0.1.0 release ([ipfs/go-graphsync#84](https://github.com/ipfs/go-graphsync/pull/84))
+  - Dedup by key extension (#83) ([ipfs/go-graphsync#83](https://github.com/ipfs/go-graphsync/pull/83))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 2 | +456/-57 | 17 |
+| hannahhoward | 1 | +18/-1 | 2 |
+
 ### 🙌🏽 Want to contribute?
 
 Would you like to contribute to this repo and don’t know how? Here are a few places you can get started:
