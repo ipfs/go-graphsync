@@ -59,6 +59,7 @@ const unixfsLinksPerLevel = 1024
 // graphsync
 type GraphsyncTestingData struct {
 	Ctx            context.Context
+	Mn             mocknet.Mocknet
 	StoredCounter1 *storedcounter.StoredCounter
 	StoredCounter2 *storedcounter.StoredCounter
 	DtDs1          datastore.Datastore
@@ -111,17 +112,17 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T) *GraphsyncTestin
 	gsData.Loader2 = storeutil.LoaderForBlockstore(gsData.Bs2)
 	gsData.Storer2 = storeutil.StorerForBlockstore(gsData.Bs2)
 
-	mn := mocknet.New(ctx)
+	gsData.Mn = mocknet.New(ctx)
 
 	// setup network
 	var err error
-	gsData.Host1, err = mn.GenPeer()
+	gsData.Host1, err = gsData.Mn.GenPeer()
 	require.NoError(t, err)
 
-	gsData.Host2, err = mn.GenPeer()
+	gsData.Host2, err = gsData.Mn.GenPeer()
 	require.NoError(t, err)
 
-	err = mn.LinkAll()
+	err = gsData.Mn.LinkAll()
 	require.NoError(t, err)
 
 	gsData.GsNet1 = gsnet.NewFromLibp2pHost(gsData.Host1)

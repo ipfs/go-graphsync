@@ -215,10 +215,10 @@ func (t *Transport) CloseChannel(ctx context.Context, chid datatransfer.ChannelI
 		return nil
 	}
 	t.dataLock.Lock()
-	defer t.dataLock.Unlock()
 	if _, ok := t.requestorCancelledMap[chid]; ok {
 		return nil
 	}
+	t.dataLock.Unlock()
 	return t.gs.CancelResponse(gsKey.p, gsKey.requestID)
 }
 

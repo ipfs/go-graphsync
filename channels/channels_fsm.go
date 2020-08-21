@@ -46,29 +46,32 @@ var ChannelEvents = fsm.Events{
 	fsm.Event(datatransfer.PauseInitiator).
 		FromMany(datatransfer.Requested, datatransfer.Ongoing).To(datatransfer.InitiatorPaused).
 		From(datatransfer.ResponderPaused).To(datatransfer.BothPaused).
-		FromAny().ToNoChange(),
+		FromAny().ToJustRecord(),
 	fsm.Event(datatransfer.PauseResponder).
 		FromMany(datatransfer.Requested, datatransfer.Ongoing).To(datatransfer.ResponderPaused).
 		From(datatransfer.InitiatorPaused).To(datatransfer.BothPaused).
-		FromAny().ToNoChange(),
+		FromAny().ToJustRecord(),
 	fsm.Event(datatransfer.ResumeInitiator).
 		From(datatransfer.InitiatorPaused).To(datatransfer.Ongoing).
 		From(datatransfer.BothPaused).To(datatransfer.ResponderPaused).
-		FromAny().ToNoChange(),
+		FromAny().ToJustRecord(),
 	fsm.Event(datatransfer.ResumeResponder).
 		From(datatransfer.ResponderPaused).To(datatransfer.Ongoing).
 		From(datatransfer.BothPaused).To(datatransfer.InitiatorPaused).
 		From(datatransfer.Finalizing).To(datatransfer.Completing).
-		FromAny().ToNoChange(),
+		FromAny().ToJustRecord(),
 	fsm.Event(datatransfer.FinishTransfer).
 		FromAny().To(datatransfer.TransferFinished).
+		FromMany(datatransfer.Failing, datatransfer.Cancelling).ToJustRecord().
 		From(datatransfer.ResponderCompleted).To(datatransfer.Completing).
 		From(datatransfer.ResponderFinalizing).To(datatransfer.ResponderFinalizingTransferFinished),
 	fsm.Event(datatransfer.ResponderBeginsFinalization).
 		FromAny().To(datatransfer.ResponderFinalizing).
+		FromMany(datatransfer.Failing, datatransfer.Cancelling).ToJustRecord().
 		From(datatransfer.TransferFinished).To(datatransfer.ResponderFinalizingTransferFinished),
 	fsm.Event(datatransfer.ResponderCompletes).
 		FromAny().To(datatransfer.ResponderCompleted).
+		FromMany(datatransfer.Failing, datatransfer.Cancelling).ToJustRecord().
 		From(datatransfer.ResponderPaused).To(datatransfer.ResponderFinalizing).
 		From(datatransfer.TransferFinished).To(datatransfer.Completing).
 		From(datatransfer.ResponderFinalizing).To(datatransfer.ResponderCompleted).
