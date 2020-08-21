@@ -247,6 +247,22 @@ Update graphsync with critical bug fix for multiple transfers across custom stor
 | Hannah Howard | 2 | +456/-57 | 17 |
 | hannahhoward | 1 | +18/-1 | 2 |
 
+# go-data-transfer 0.6.2
+
+Minor bug fix release for request cancelling
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Fix Pull Request Cancelling (#67) ([filecoin-project/go-data-transfer#67](https://github.com/filecoin-project/go-data-transfer/pull/67))
+  - docs(CHANGELOG): update for 0.6.1 ([filecoin-project/go-data-transfer#66](https://github.com/filecoin-project/go-data-transfer/pull/66))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +265/-9 | 4 |
+
 ### 🙌🏽 Want to contribute?
 
 Would you like to contribute to this repo and don’t know how? Here are a few places you can get started:
