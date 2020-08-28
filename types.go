@@ -10,12 +10,6 @@ import (
 	"github.com/filecoin-project/go-data-transfer/encoding"
 )
 
-type errorString string
-
-func (es errorString) Error() string {
-	return string(es)
-}
-
 //go:generate cbor-gen-for ChannelID
 
 // TypeIdentifier is a unique string identifier for a type of encodable object in a

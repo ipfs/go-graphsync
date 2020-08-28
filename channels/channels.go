@@ -131,7 +131,7 @@ func (c *Channels) CreateNew(tid datatransfer.TransferID, baseCid cid.Cid, selec
 }
 
 // InProgress returns a list of in progress channels
-func (c *Channels) InProgress(ctx context.Context) (map[datatransfer.ChannelID]datatransfer.ChannelState, error) {
+func (c *Channels) InProgress() (map[datatransfer.ChannelID]datatransfer.ChannelState, error) {
 	var internalChannels []internalChannelState
 	err := c.statemachines.List(&internalChannels)
 	if err != nil {
@@ -260,15 +260,4 @@ func (c *Channels) send(chid datatransfer.ChannelID, code datatransfer.EventCode
 		return ErrNotFound
 	}
 	return c.statemachines.Send(chid, code, args...)
-}
-
-func (c *Channels) sendSync(ctx context.Context, chid datatransfer.ChannelID, code datatransfer.EventCode, args ...interface{}) error {
-	has, err := c.statemachines.Has(chid)
-	if err != nil {
-		return err
-	}
-	if !has {
-		return ErrNotFound
-	}
-	return c.statemachines.SendSync(ctx, chid, code, args...)
 }

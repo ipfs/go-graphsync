@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/hannahhoward/go-pubsub"
+	"github.com/hashicorp/go-multierror"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	logging "github.com/ipfs/go-log/v2"
@@ -101,8 +102,20 @@ func (m *manager) Start(ctx context.Context) error {
 }
 
 // Stop terminates all data transfers and ends processing
-func (m *manager) Stop() error {
-	return nil
+func (m *manager) Stop(ctx context.Context) error {
+	openChannels, err := m.channels.InProgress()
+	if err != nil {
+		return xerrors.Errorf("error getting channels in progress: %w", err)
+	}
+
+	var result error
+	for chid := range openChannels {
+		if err := m.CloseDataTransferChannel(ctx, chid); err != nil {
+			result = multierror.Append(result, xerrors.Errorf("error closing channel with ID %v, err: %w", chid, err))
+		}
+	}
+
+	return result
 }
 
 // RegisterVoucherType registers a validator for the given voucher type
@@ -266,7 +279,7 @@ func (m *manager) SubscribeToEvents(subscriber datatransfer.Subscriber) datatran
 
 // get all in progress transfers
 func (m *manager) InProgressChannels(ctx context.Context) (map[datatransfer.ChannelID]datatransfer.ChannelState, error) {
-	return m.channels.InProgress(ctx)
+	return m.channels.InProgress()
 }
 
 // RegisterRevalidator registers a revalidator for the given voucher type

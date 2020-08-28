@@ -37,51 +37,6 @@ type libp2pDataTransferNetwork struct {
 	receiver Receiver
 }
 
-type streamMessageSender struct {
-	s network.Stream
-}
-
-func (s *streamMessageSender) Close() error {
-	return helpers.FullClose(s.s)
-}
-
-func (s *streamMessageSender) Reset() error {
-	return s.s.Reset()
-}
-
-func (s *streamMessageSender) SendMsg(ctx context.Context, msg datatransfer.Message) error {
-	return msgToStream(ctx, s.s, msg)
-}
-
-func msgToStream(ctx context.Context, s network.Stream, msg datatransfer.Message) error {
-	if msg.IsRequest() {
-		log.Debugf("Outgoing request message for transfer ID: %d", msg.TransferID())
-	}
-
-	deadline := time.Now().Add(sendMessageTimeout)
-	if dl, ok := ctx.Deadline(); ok {
-		deadline = dl
-	}
-	if err := s.SetWriteDeadline(deadline); err != nil {
-		log.Warnf("error setting deadline: %s", err)
-	}
-
-	switch s.Protocol() {
-	case ProtocolDataTransfer:
-		if err := msg.ToNet(s); err != nil {
-			log.Debugf("error: %s", err)
-			return err
-		}
-	default:
-		return fmt.Errorf("unrecognized protocol on remote: %s", s.Protocol())
-	}
-
-	if err := s.SetWriteDeadline(time.Time{}); err != nil {
-		log.Warnf("error resetting deadline: %s", err)
-	}
-	return nil
-}
-
 func (dtnet *libp2pDataTransferNetwork) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stream, error) {
 	return dtnet.host.NewStream(ctx, p, ProtocolDataTransfer)
 }
@@ -166,4 +121,33 @@ func (dtnet *libp2pDataTransferNetwork) Protect(id peer.ID, tag string) {
 
 func (dtnet *libp2pDataTransferNetwork) Unprotect(id peer.ID, tag string) bool {
 	return dtnet.host.ConnManager().Unprotect(id, tag)
+}
+
+func msgToStream(ctx context.Context, s network.Stream, msg datatransfer.Message) error {
+	if msg.IsRequest() {
+		log.Debugf("Outgoing request message for transfer ID: %d", msg.TransferID())
+	}
+
+	deadline := time.Now().Add(sendMessageTimeout)
+	if dl, ok := ctx.Deadline(); ok {
+		deadline = dl
+	}
+	if err := s.SetWriteDeadline(deadline); err != nil {
+		log.Warnf("error setting deadline: %s", err)
+	}
+
+	switch s.Protocol() {
+	case ProtocolDataTransfer:
+		if err := msg.ToNet(s); err != nil {
+			log.Debugf("error: %s", err)
+			return err
+		}
+	default:
+		return fmt.Errorf("unrecognized protocol on remote: %s", s.Protocol())
+	}
+
+	if err := s.SetWriteDeadline(time.Time{}); err != nil {
+		log.Warnf("error resetting deadline: %s", err)
+	}
+	return nil
 }

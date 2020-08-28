@@ -70,7 +70,7 @@ func TestChannels(t *testing.T) {
 	})
 
 	t.Run("in progress channels", func(t *testing.T) {
-		inProgress, err := channelList.InProgress(ctx)
+		inProgress, err := channelList.InProgress()
 		require.NoError(t, err)
 		require.Len(t, inProgress, 2)
 		require.Contains(t, inProgress, datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1})

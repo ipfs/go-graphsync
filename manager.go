@@ -58,7 +58,7 @@ type Manager interface {
 	Start(ctx context.Context) error
 
 	// Stop terminates all data transfers and ends processing
-	Stop() error
+	Stop(ctx context.Context) error
 
 	// RegisterVoucherType registers a validator for the given voucher type
 	// will error if voucher type does not implement voucher
