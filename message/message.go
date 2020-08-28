@@ -58,6 +58,8 @@ type GraphSyncMessage interface {
 	Exportable
 
 	Loggable() map[string]interface{}
+
+	Clone() GraphSyncMessage
 }
 
 // Exportable is an interface that can serialize to a protobuf
@@ -337,6 +339,20 @@ func (gsm *graphSyncMessage) Loggable() map[string]interface{} {
 		"requests":  requests,
 		"responses": responses,
 	}
+}
+
+func (gsm *graphSyncMessage) Clone() GraphSyncMessage {
+	clone := newMsg()
+	for id, request := range gsm.requests {
+		clone.requests[id] = request
+	}
+	for id, response := range gsm.responses {
+		clone.responses[id] = response
+	}
+	for cid, block := range gsm.blocks {
+		clone.blocks[cid] = block
+	}
+	return clone
 }
 
 // ID Returns the request ID for this Request

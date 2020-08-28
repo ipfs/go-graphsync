@@ -3,7 +3,6 @@ package testutil
 import (
 	"context"
 	"io/ioutil"
-	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -18,12 +17,20 @@ import (
 	"github.com/ipfs/go-graphsync"
 )
 
+// TestingT covers the interface methods we need from either *testing.T or
+// *testing.B
+type TestingT interface {
+	Errorf(format string, args ...interface{})
+	FailNow()
+	Fatal(args ...interface{})
+}
+
 const blockChainTraversedNodesPerBlock = 2
 
 // TestBlockChain is a simulated data structure similar to a blockchain
 // which graphsync is uniquely suited for
 type TestBlockChain struct {
-	t                *testing.T
+	t                TestingT
 	blockChainLength int
 	loader           ipld.Loader
 	GenisisNode      ipld.Node
@@ -87,7 +94,7 @@ func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
 // SetupBlockChain creates a new test block chain with the given height
 func SetupBlockChain(
 	ctx context.Context,
-	t *testing.T,
+	t TestingT,
 	loader ipld.Loader,
 	storer ipld.Storer,
 	size uint64,

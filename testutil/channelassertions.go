@@ -3,20 +3,19 @@ package testutil
 import (
 	"context"
 	"reflect"
-	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 // AssertReceive verifies that a channel returns a value before the given context closes, and writes into
 // into out, which should be a pointer to the value type
-func AssertReceive(ctx context.Context, t *testing.T, channel interface{}, out interface{}, errorMessage string) {
+func AssertReceive(ctx context.Context, t TestingT, channel interface{}, out interface{}, errorMessage string) {
 	AssertReceiveFirst(t, channel, out, errorMessage, ctx.Done())
 }
 
 // AssertReceiveFirst verifies that a channel returns a value on the specified channel before the other channels,
 // and writes the value into out, which should be a pointer to the value type
-func AssertReceiveFirst(t *testing.T, channel interface{}, out interface{}, errorMessage string, incorrectChannels ...interface{}) {
+func AssertReceiveFirst(t TestingT, channel interface{}, out interface{}, errorMessage string, incorrectChannels ...interface{}) {
 	chanValue := reflect.ValueOf(channel)
 	outValue := reflect.ValueOf(out)
 	require.Equal(t, reflect.Chan, chanValue.Kind(), "incorrect argument: should pass channel to read from")
@@ -45,12 +44,12 @@ func AssertReceiveFirst(t *testing.T, channel interface{}, out interface{}, erro
 }
 
 // AssertDoesReceive verifies that a channel returns some value before the given context closes
-func AssertDoesReceive(ctx context.Context, t *testing.T, channel interface{}, errorMessage string) {
+func AssertDoesReceive(ctx context.Context, t TestingT, channel interface{}, errorMessage string) {
 	AssertDoesReceiveFirst(t, channel, errorMessage, ctx.Done())
 }
 
 // AssertDoesReceiveFirst asserts that the given channel receives a value before any of the other channels specified
-func AssertDoesReceiveFirst(t *testing.T, channel interface{}, errorMessage string, incorrectChannels ...interface{}) {
+func AssertDoesReceiveFirst(t TestingT, channel interface{}, errorMessage string, incorrectChannels ...interface{}) {
 	chanValue := reflect.ValueOf(channel)
 	require.Equal(t, reflect.Chan, chanValue.Kind(), "incorrect argument: should pass channel to read from")
 	require.Contains(t, []reflect.ChanDir{reflect.BothDir, reflect.RecvDir}, chanValue.Type().ChanDir(), "incorrect argument: should pass a receiving channel")
@@ -74,7 +73,7 @@ func AssertDoesReceiveFirst(t *testing.T, channel interface{}, errorMessage stri
 }
 
 // AssertChannelEmpty verifies that a channel has no value currently
-func AssertChannelEmpty(t *testing.T, channel interface{}, errorMessage string) {
+func AssertChannelEmpty(t TestingT, channel interface{}, errorMessage string) {
 	chanValue := reflect.ValueOf(channel)
 	require.Equal(t, reflect.Chan, chanValue.Kind(), "incorrect argument: should pass channel to read from")
 	require.Contains(t, []reflect.ChanDir{reflect.BothDir, reflect.RecvDir}, chanValue.Type().ChanDir(), "incorrect argument: should pass a receiving channel")
@@ -91,7 +90,7 @@ func AssertChannelEmpty(t *testing.T, channel interface{}, errorMessage string) 
 }
 
 // AssertSends attempts to send the given input value to the given channel before the given context closes
-func AssertSends(ctx context.Context, t *testing.T, channel interface{}, in interface{}, errorMessage string) {
+func AssertSends(ctx context.Context, t TestingT, channel interface{}, in interface{}, errorMessage string) {
 	chanValue := reflect.ValueOf(channel)
 	inValue := reflect.ValueOf(in)
 	require.Equal(t, reflect.Chan, chanValue.Kind(), "incorrect argument: should pass channel to send to")
