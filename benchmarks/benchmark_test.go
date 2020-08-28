@@ -16,8 +16,6 @@ import (
 
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/benchmarks/testinstance"
-	tn "github.com/ipfs/go-graphsync/benchmarks/testnet"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	chunker "github.com/ipfs/go-ipfs-chunker"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -32,6 +30,9 @@ import (
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync/benchmarks/testinstance"
+	tn "github.com/ipfs/go-graphsync/benchmarks/testnet"
 )
 
 const stdBlockSize = 8000
