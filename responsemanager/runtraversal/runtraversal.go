@@ -33,13 +33,16 @@ func RunTraversal(
 		if err != nil {
 			traverser.Error(traversal.SkipMe{})
 		} else {
-			var blockBuffer bytes.Buffer
-			_, err = io.Copy(&blockBuffer, result)
+			blockBuffer, ok := result.(*bytes.Buffer)
+			if !ok {
+				blockBuffer = new(bytes.Buffer)
+				_, err = io.Copy(blockBuffer, result)
+			}
 			if err != nil {
 				traverser.Error(err)
 			} else {
 				data = blockBuffer.Bytes()
-				err = traverser.Advance(&blockBuffer)
+				err = traverser.Advance(blockBuffer)
 				if err != nil {
 					return err
 				}

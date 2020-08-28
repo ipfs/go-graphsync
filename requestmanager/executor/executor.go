@@ -132,7 +132,7 @@ func (re *requestExecutor) traverse() error {
 			if err != nil {
 				return err
 			}
-			err = traverser.Advance(bytes.NewReader(result.Data))
+			err = traverser.Advance(bytes.NewBuffer(result.Data))
 			if err != nil {
 				return err
 			}
@@ -220,7 +220,7 @@ func (re *requestExecutor) processResult(traverser ipldutil.Traverser, link ipld
 	if err != nil {
 		return err
 	}
-	err = traverser.Advance(bytes.NewReader(result.Data))
+	err = traverser.Advance(bytes.NewBuffer(result.Data))
 	if err != nil {
 		return err
 	}

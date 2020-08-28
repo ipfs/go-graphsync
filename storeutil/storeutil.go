@@ -23,7 +23,7 @@ func LoaderForBlockstore(bs bstore.Blockstore) ipld.Loader {
 		if err != nil {
 			return nil, err
 		}
-		return bytes.NewReader(block.RawData()), nil
+		return bytes.NewBuffer(block.RawData()), nil
 	}
 }
 
