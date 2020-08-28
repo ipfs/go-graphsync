@@ -4,12 +4,10 @@ import (
 	"context"
 	"time"
 
-	dgbadger "github.com/dgraph-io/badger/v2"
 	"github.com/ipfs/go-datastore"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"
-	badger "github.com/ipfs/go-ds-badger2"
 	graphsync "github.com/ipfs/go-graphsync"
 	tn "github.com/ipfs/go-graphsync/benchmarks/testnet"
 	gsimpl "github.com/ipfs/go-graphsync/impl"
@@ -22,14 +20,6 @@ import (
 	p2ptestutil "github.com/libp2p/go-libp2p-netutil"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 )
-
-func badgerDs(path string) (datastore.Batching, error) {
-	opts := badger.DefaultOptions
-	opts.Options = dgbadger.DefaultOptions("").WithTruncate(true).
-		WithValueThreshold(1 << 10)
-
-	return badger.NewDatastore(path, &opts)
-}
 
 // TempDirGenerator is any interface that can generate temporary directories
 type TempDirGenerator interface {

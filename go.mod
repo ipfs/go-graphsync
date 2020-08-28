@@ -3,7 +3,6 @@ module github.com/ipfs/go-graphsync
 go 1.12
 
 require (
-	github.com/dgraph-io/badger/v2 v2.2007.1
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/protobuf v1.3.2 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20190812055157-5d271430af9f // indirect
@@ -12,7 +11,6 @@ require (
 	github.com/ipfs/go-blockservice v0.1.3
 	github.com/ipfs/go-cid v0.0.5
 	github.com/ipfs/go-datastore v0.4.4
-	github.com/ipfs/go-ds-badger2 v0.1.0
 	github.com/ipfs/go-ipfs-blockstore v0.1.4
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-chunker v0.0.5
@@ -30,6 +28,7 @@ require (
 	github.com/ipld/go-ipld-prime v0.0.4-0.20200828224805-5ff8c8b0b6ef
 	github.com/ipld/go-ipld-prime-proto v0.0.0-20200828231332-ae0aea07222b
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
+	github.com/jbenet/goprocess v0.1.4 // indirect
 	github.com/libp2p/go-libp2p v0.6.0
 	github.com/libp2p/go-libp2p-core v0.5.0
 	github.com/libp2p/go-libp2p-netutil v0.1.0
