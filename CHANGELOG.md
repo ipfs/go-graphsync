@@ -263,6 +263,31 @@ Minor bug fix release for request cancelling
 |-------------|---------|---------|---------------|
 | Hannah Howard | 1 | +265/-9 | 4 |
 
+# go-data-transfer 0.6.3
+
+Primarily a bug fix release-- graphsync performance and some better shutdown
+logic
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix(deps): update graphsync, small cleanup
+  - Stop data transfer correctly and some minor cleanp (#69) ([filecoin-project/go-data-transfer#69](https://github.com/filecoin-project/go-data-transfer/pull/69))
+  - docs(CHANGELOG): update for 0.6.2 release ([filecoin-project/go-data-transfer#68](https://github.com/filecoin-project/go-data-transfer/pull/68))
+- github.com/ipfs/go-graphsync (v0.1.1 -> v0.1.2):
+  - fix(asyncloader): remove send on close channel
+  - docs(CHANGELOG): update for 0.1.2 release
+  - Benchmark framework + First memory fixes (#89) ([ipfs/go-graphsync#89](https://github.com/ipfs/go-graphsync/pull/89))
+  - docs(CHANGELOG): update for v0.1.1 ([ipfs/go-graphsync#85](https://github.com/ipfs/go-graphsync/pull/85))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +1055/-39 | 17 |
+| Aarsh Shah | 1 | +53/-68 | 8 |
+| hannahhoward | 3 | +67/-34 | 11 |
+
 ### 🙌🏽 Want to contribute?
 
 Would you like to contribute to this repo and don’t know how? Here are a few places you can get started:
