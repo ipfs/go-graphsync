@@ -344,7 +344,7 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 			NetworkError:     networkError,
 			LastResponse:     lastResponse,
 			DoNotSendCids:    doNotSendCids,
-			NodeStyleChooser: hooksResult.CustomChooser,
+			NodePrototypeChooser: hooksResult.CustomChooser,
 			ResumeMessages:   resumeMessages,
 			PauseMessages:    pauseMessages,
 		})

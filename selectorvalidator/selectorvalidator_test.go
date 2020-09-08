@@ -11,7 +11,7 @@ import (
 )
 
 func TestValidateMaxRecusionDepth(t *testing.T) {
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Map)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Map)
 
 	successBase := ssb.ExploreRecursive(selector.RecursionLimitDepth(80), ssb.ExploreRecursiveEdge())
 	failBase := ssb.ExploreRecursive(selector.RecursionLimitDepth(120), ssb.ExploreRecursiveEdge())

@@ -67,7 +67,7 @@ func NewTestIPLDTree() TestIPLDTree {
 		leafAlphaBlock, _               = blocks.NewBlockWithCid(storage[leafAlphaLnk], leafAlphaLnk.(cidlink.Link).Cid)
 		leafBeta, leafBetaLnk           = encode(basicnode.NewString("beta"))
 		leafBetaBlock, _                = blocks.NewBlockWithCid(storage[leafBetaLnk], leafBetaLnk.(cidlink.Link).Cid)
-		middleMapNode, middleMapNodeLnk = encode(fluent.MustBuildMap(basicnode.Style.Map, 3, func(na fluent.MapAssembler) {
+		middleMapNode, middleMapNodeLnk = encode(fluent.MustBuildMap(basicnode.Prototype.Map, 3, func(na fluent.MapAssembler) {
 			na.AssembleEntry("foo").AssignBool(true)
 			na.AssembleEntry("bar").AssignBool(false)
 			na.AssembleEntry("nested").CreateMap(2, func(na fluent.MapAssembler) {
@@ -76,14 +76,14 @@ func NewTestIPLDTree() TestIPLDTree {
 			})
 		}))
 		middleMapBlock, _                 = blocks.NewBlockWithCid(storage[middleMapNodeLnk], middleMapNodeLnk.(cidlink.Link).Cid)
-		middleListNode, middleListNodeLnk = encode(fluent.MustBuildList(basicnode.Style.List, 4, func(na fluent.ListAssembler) {
+		middleListNode, middleListNodeLnk = encode(fluent.MustBuildList(basicnode.Prototype.List, 4, func(na fluent.ListAssembler) {
 			na.AssembleValue().AssignLink(leafAlphaLnk)
 			na.AssembleValue().AssignLink(leafAlphaLnk)
 			na.AssembleValue().AssignLink(leafBetaLnk)
 			na.AssembleValue().AssignLink(leafAlphaLnk)
 		}))
 		middleListBlock, _    = blocks.NewBlockWithCid(storage[middleListNodeLnk], middleListNodeLnk.(cidlink.Link).Cid)
-		rootNode, rootNodeLnk = encode(fluent.MustBuildMap(basicnode.Style.Map, 4, func(na fluent.MapAssembler) {
+		rootNode, rootNodeLnk = encode(fluent.MustBuildMap(basicnode.Prototype.Map, 4, func(na fluent.MapAssembler) {
 			na.AssembleEntry("plain").AssignString("olde string")
 			na.AssembleEntry("linkedString").AssignLink(leafAlphaLnk)
 			na.AssembleEntry("linkedMap").AssignLink(middleMapNodeLnk)

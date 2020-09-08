@@ -42,7 +42,7 @@ type RequestExecution struct {
 	Request          gsmsg.GraphSyncRequest
 	LastResponse     *atomic.Value
 	DoNotSendCids    *cid.Set
-	NodeStyleChooser traversal.LinkTargetNodeStyleChooser
+	NodePrototypeChooser traversal.LinkTargetNodePrototypeChooser
 	ResumeMessages   chan []graphsync.ExtensionData
 	PauseMessages    chan struct{}
 }
@@ -58,7 +58,7 @@ func (ee ExecutionEnv) Start(re RequestExecution) (chan graphsync.ResponseProgre
 		request:          re.Request,
 		lastResponse:     re.LastResponse,
 		doNotSendCids:    re.DoNotSendCids,
-		nodeStyleChooser: re.NodeStyleChooser,
+		nodeStyleChooser: re.NodePrototypeChooser,
 		resumeMessages:   re.ResumeMessages,
 		pauseMessages:    re.PauseMessages,
 		env:              ee,
@@ -76,7 +76,7 @@ type requestExecutor struct {
 	networkError      chan error
 	request           gsmsg.GraphSyncRequest
 	lastResponse      *atomic.Value
-	nodeStyleChooser  traversal.LinkTargetNodeStyleChooser
+	nodeStyleChooser  traversal.LinkTargetNodePrototypeChooser
 	resumeMessages    chan []graphsync.ExtensionData
 	pauseMessages     chan struct{}
 	doNotSendCids     *cid.Set

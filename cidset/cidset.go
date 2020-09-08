@@ -13,7 +13,7 @@ import (
 
 // EncodeCidSet encodes a cid set into bytes for the do-no-send-cids extension
 func EncodeCidSet(cids *cid.Set) ([]byte, error) {
-	list := fluent.MustBuildList(basicnode.Style.List, cids.Len(), func(la fluent.ListAssembler) {
+	list := fluent.MustBuildList(basicnode.Prototype.List, cids.Len(), func(la fluent.ListAssembler) {
 		_ = cids.ForEach(func(c cid.Cid) error {
 			la.AssembleValue().AssignLink(cidlink.Link{Cid: c})
 			return nil

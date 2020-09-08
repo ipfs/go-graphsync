@@ -23,7 +23,7 @@ func TestTraverser(t *testing.T) {
 
 	t.Run("traverses correctly, simple struct", func(t *testing.T) {
 		testdata := testutil.NewTestIPLDTree()
-		ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+		ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 		sel := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
 		traverser := TraversalBuilder{
 			Root:     testdata.RootNodeLnk,

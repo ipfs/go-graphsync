@@ -384,9 +384,9 @@ func (ree *requestExecutionEnv) sendRequest(p peer.ID, request gsmsg.GraphSyncRe
 	}
 }
 
-func (ree *requestExecutionEnv) nodeStyleChooser(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
+func (ree *requestExecutionEnv) nodeStyleChooser(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
 	ree.nodeStyleChooserCalled = true
-	return basicnode.Style.Any, nil
+	return basicnode.Prototype.Any, nil
 }
 
 func (ree *requestExecutionEnv) checkPause(requestID graphsync.RequestID, link ipld.Link, result <-chan types.AsyncLoadResult) {
@@ -435,7 +435,7 @@ func (ree *requestExecutionEnv) requestExecution() (chan graphsync.ResponseProgr
 		LastResponse:     &lastResponse,
 		Request:          ree.request,
 		DoNotSendCids:    ree.doNotSendCids,
-		NodeStyleChooser: ree.nodeStyleChooser,
+		NodePrototypeChooser: ree.nodeStyleChooser,
 		ResumeMessages:   ree.resumeMessages,
 		PauseMessages:    ree.pauseMessages,
 	})

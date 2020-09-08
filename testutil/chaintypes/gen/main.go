@@ -29,16 +29,19 @@ func main() {
 		schema.StructRepresentation_Map{},
 	)
 
+	adjCfg := &gengo.AdjunctCfg{}
+	pkgName := "chaintypes"
+
 	f := openOrPanic("testchain_minima.go")
-	gengo.EmitMinima("chaintypes", f)
+	gengo.EmitInternalEnums(pkgName, f)
 
 	f = openOrPanic("testchain_gen.go")
-	gengo.EmitFileHeader("chaintypes", f)
-	gengo.EmitEntireType(gengo.NewGeneratorForKindBytes(tBytes), f)
-	gengo.EmitEntireType(gengo.NewGeneratorForKindLink(tLink), f)
-	gengo.EmitEntireType(gengo.NewGeneratorForKindString(tString), f)
-	gengo.EmitEntireType(gengo.NewGeneratorForKindList(tParents), f)
-	gengo.EmitEntireType(gengo.NewGeneratorForKindList(tMessages), f)
-	gengo.EmitEntireType(gengo.NewGeneratorForKindStruct(tBlock), f)
+	gengo.EmitFileHeader(pkgName, f)
+	gengo.EmitEntireType(gengo.NewBytesReprBytesGenerator(pkgName, tBytes, adjCfg), f)
+	gengo.EmitEntireType(gengo.NewLinkReprLinkGenerator(pkgName, tLink, adjCfg), f)
+	gengo.EmitEntireType(gengo.NewStringReprStringGenerator(pkgName, tString, adjCfg), f)
+	gengo.EmitEntireType(gengo.NewListReprListGenerator(pkgName, tParents, adjCfg), f)
+	gengo.EmitEntireType(gengo.NewListReprListGenerator(pkgName, tMessages, adjCfg), f)
+	gengo.EmitEntireType(gengo.NewStructReprMapGenerator(pkgName, tBlock, adjCfg), f)
 
 }

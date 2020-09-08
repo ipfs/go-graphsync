@@ -42,7 +42,7 @@ type TestBlockChain struct {
 }
 
 func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
-	blknb := basicnode.Style.Map.NewBuilder()
+	blknb := basicnode.Prototype.Map.NewBuilder()
 	blknbmnb, err := blknb.BeginMap(2)
 	if err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func SetupBlockChain(
 
 // Selector returns the selector to recursive traverse the block chain parent links
 func (tbc *TestBlockChain) Selector() ipld.Node {
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	return ssb.ExploreRecursive(selector.RecursionLimitDepth(tbc.blockChainLength),
 		ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
 			efsb.Insert("Parents", ssb.ExploreAll(
@@ -270,7 +270,7 @@ func (tbc *TestBlockChain) RemainderBlocks(from int) []blocks.Block {
 }
 
 // Chooser is a NodeBuilderChooser function that always returns the block chain
-func (tbc *TestBlockChain) Chooser(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
-	return basicnode.Style.Any, nil
+func (tbc *TestBlockChain) Chooser(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
+	return basicnode.Prototype.Any, nil
 	//return chaintypes.Block__NodeBuilder(), nil
 }

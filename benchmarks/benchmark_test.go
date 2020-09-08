@@ -71,7 +71,7 @@ func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc,
 		thisCids := df(ctx, b, instances[:1])
 		allCids = append(allCids, thisCids...)
 	}
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 
 	allSelector := ssb.ExploreRecursive(ipldselector.RecursionLimitNone(),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
@@ -140,7 +140,7 @@ func subtestDistributeAndFetch(ctx context.Context, b *testing.B, numnodes int, 
 			i.SetBlockstoreLatency(bstoreLatency)
 		}
 	}
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 
 	allSelector := ssb.ExploreRecursive(ipldselector.RecursionLimitNone(),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
