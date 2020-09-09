@@ -150,8 +150,13 @@ func FromNet(r io.Reader) (datatransfer.Message, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if (tresp.IsRequest() && tresp.Request == nil) || (!tresp.IsRequest() && tresp.Response == nil) {
+		return nil, xerrors.Errorf("invalid/malformed message")
+	}
+
 	if tresp.IsRequest() {
 		return tresp.Request, nil
 	}
-	return tresp.Response, err
+	return tresp.Response, nil
 }

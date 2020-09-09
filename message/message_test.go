@@ -298,6 +298,20 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	require.Equal(t, deserializedRequest.IsRequest(), request.IsRequest())
 }
 
+func TestFromNetMessageValidation(t *testing.T) {
+	// craft request message with nil request struct
+	buf := []byte{0x83, 0xf5, 0xf6, 0xf6}
+	msg, err := FromNet(bytes.NewBuffer(buf))
+	assert.Error(t, err)
+	assert.Nil(t, msg)
+
+	// craft response message with nil response struct
+	buf = []byte{0x83, 0xf4, 0xf6, 0xf6}
+	msg, err = FromNet(bytes.NewBuffer(buf))
+	assert.Error(t, err)
+	assert.Nil(t, msg)
+}
+
 func NewTestTransferRequest() (datatransfer.Request, error) {
 	bcid := testutil.GenerateCids(1)[0]
 	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
