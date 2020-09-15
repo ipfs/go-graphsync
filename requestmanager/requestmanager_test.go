@@ -199,8 +199,13 @@ func TestCancelRequestInProgress(t *testing.T) {
 
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan1)
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
-	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
+
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan2)
+
+	errors := testutil.CollectErrors(requestCtx, t, returnedErrorChan1)
+	require.Len(t, errors, 1)
+	_, ok := errors[0].(graphsync.RequestContextCancelledErr)
+	require.True(t, ok)
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {

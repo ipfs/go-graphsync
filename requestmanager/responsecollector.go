@@ -80,6 +80,10 @@ func (rc *responseCollector) collectResponses(
 			case <-rc.ctx.Done():
 				return
 			case <-requestCtx.Done():
+				select {
+				case <-rc.ctx.Done():
+				case returnedErrors <- graphsync.RequestContextCancelledErr{}:
+				}
 				return
 			case err, ok := <-incomingErrors:
 				if !ok {

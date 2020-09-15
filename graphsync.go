@@ -94,6 +94,13 @@ const (
 	RequestCancelled = ResponseStatusCode(35)
 )
 
+// RequestContextCancelledErr is an error message received on the error channel when the request context given by the user is cancelled/times out
+type RequestContextCancelledErr struct{}
+
+func (e RequestContextCancelledErr) Error() string {
+	return "Request Context Cancelled"
+}
+
 // RequestFailedBusyErr is an error message received on the error channel when the peer is busy
 type RequestFailedBusyErr struct{}
 
