@@ -1,0 +1,60 @@
+panic: runtime error: makeslice: cap out of range
+
+goroutine 1 [running]:
+github.com/ipld/go-ipld-prime/node/basic.(*plainMap__Assembler).BeginMap(...)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/node/basic/map.go:170
+github.com/ipld/go-ipld-prime/node/basic.(*plainList__ValueAssembler).BeginMap(0xc00000e348, 0x3030303030303030, 0xc0001132e8, 0x6c710e, 0xc0000660a0, 0xbb)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/node/basic/list.go:255 +0x112
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968c40, 0xc00000e348, 0x961e20, 0xc0000660a0, 0xc000100620, 0x0, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:48 +0xc17
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968d40, 0xc00009d120, 0x961e20, 0xc0000660a0, 0xc000100620, 0xc00009d120, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:112 +0x2bd
+github.com/ipld/go-ipld-prime/codec/dagcbor.Unmarshal(0x968d40, 0xc00009d120, 0x961e20, 0xc0000660a0, 0xc00009d120, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:33 +0x1eb
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968c40, 0xc00000e2c8, 0x961e20, 0xc0000660a0, 0xc0001005b0, 0x0, 0xc0001005b0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:77 +0xe3a
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968c40, 0xc00000e288, 0x961e20, 0xc0000660a0, 0xc0001005b0, 0x0, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:112 +0x2bd
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968d40, 0xc00009d0c0, 0x961e20, 0xc0000660a0, 0xc0001005b0, 0xc00009d0c0, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:112 +0x2bd
+github.com/ipld/go-ipld-prime/codec/dagcbor.Unmarshal(0x968d40, 0xc00009d0c0, 0x961e20, 0xc0000660a0, 0xc00009d0c0, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:33 +0x1eb
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968c40, 0xc00000e208, 0x961e20, 0xc0000660a0, 0xc000100540, 0x0, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:77 +0xe3a
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968d40, 0xc00009d060, 0x961e20, 0xc0000660a0, 0xc000100540, 0xc00009d060, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:112 +0x2bd
+github.com/ipld/go-ipld-prime/codec/dagcbor.Unmarshal(0x968d40, 0xc00009d060, 0x961e20, 0xc0000660a0, 0xc00009d060, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:33 +0x1eb
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968c40, 0xc00000e188, 0x961e20, 0xc0000660a0, 0xc0001004d0, 0x0, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:77 +0xe3a
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968d40, 0xc00009d000, 0x961e20, 0xc0000660a0, 0xc0001004d0, 0xc00009d000, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:112 +0x2bd
+github.com/ipld/go-ipld-prime/codec/dagcbor.Unmarshal(0x968d40, 0xc00009d000, 0x961e20, 0xc0000660a0, 0xc00009d000, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:33 +0x1eb
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968c40, 0xc00000e108, 0x961e20, 0xc0000660a0, 0xc000100460, 0x0, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:77 +0xe3a
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968d40, 0xc00009cfa0, 0x961e20, 0xc0000660a0, 0xc000100460, 0xc00009cfa0, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:112 +0x2bd
+github.com/ipld/go-ipld-prime/codec/dagcbor.Unmarshal(0x968d40, 0xc00009cfa0, 0x961e20, 0xc0000660a0, 0xc00009cfa0, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:33 +0x1eb
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968c40, 0xc00000e088, 0x961e20, 0xc0000660a0, 0xc0001003f0, 0x0, 0xc0001003f0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:77 +0xe3a
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968c40, 0xc000066080, 0x961e20, 0xc0000660a0, 0xc0001003f0, 0x0, 0xc0001003f0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:112 +0x2bd
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x7f66b6d3a008, 0xc000066050, 0x961e20, 0xc0000660a0, 0xc0001003f0, 0x7bcc80, 0xbe2a01)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:112 +0x2bd
+github.com/ipld/go-ipld-prime/codec/dagcbor.Unmarshal(0x7f66b6d3a008, 0xc000066050, 0x961e20, 0xc0000660a0, 0x0, 0x40ac00)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:33 +0x1eb
+github.com/ipld/go-ipld-prime/codec/dagcbor.Decoder(0x7f66b6d3a008, 0xc000066050, 0x961bc0, 0xc00009cf60, 0xc000066050, 0x1)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/multicodec.go:32 +0x248
+github.com/ipfs/go-graphsync/ipldutil.DecodeNode(0x7f66b6d8a000, 0x20, 0x20, 0x0, 0x0, 0x9fc127d8b1b18571, 0xb105a778e247ba95)
+	/tmp/fuzzing/ipldutil/ipldutil.go:61 +0x129
+github.com/ipfs/go-graphsync/metadata.DecodeMetadata(0x7f66b6d8a000, 0x20, 0x20, 0x6aeba6a0e2b0, 0xc0373a0728, 0x373a072800000001, 0x5f5afa40, 0xc000113e98)
+	/tmp/fuzzing/metadata/metadata.go:24 +0x72
+github.com/ipfs/go-graphsync.FuzzDecodeMetadata(0x7f66b6d8a000, 0x20, 0x20, 0x4)
+	/tmp/fuzzing/fuzz.go:18 +0x5e
+go-fuzz-dep.Main(0xc000113f70, 0x1, 0x1)
+	go-fuzz-dep/main.go:36 +0x1ad
+main.main()
+	github.com/ipfs/go-graphsync/go.fuzz.main/main.go:15 +0x52
+exit status 2

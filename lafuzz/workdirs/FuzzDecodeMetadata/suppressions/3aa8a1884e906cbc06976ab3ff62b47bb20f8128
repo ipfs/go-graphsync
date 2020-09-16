@@ -1,0 +1,4 @@
+program hanged (timeout 10 seconds)
+
+m: []
+signal: killed

@@ -1,0 +1,13 @@
+panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x18 pc=0x6d03e2]
+
+goroutine 1 [running]:
+github.com/ipfs/go-graphsync/metadata.DecodeMetadata(0x7fbf97960000, 0x2, 0x2, 0x599d8291df28, 0x2030bce8, 0x2030bce800000000, 0x5f5ab003, 0xc00015de98)
+	/tmp/fuzzing/metadata/metadata.go:34 +0x172
+github.com/ipfs/go-graphsync.FuzzDecodeMetadata(0x7fbf97960000, 0x2, 0x2, 0x4)
+	/tmp/fuzzing/fuzz.go:18 +0x5e
+go-fuzz-dep.Main(0xc00015df70, 0x1, 0x1)
+	go-fuzz-dep/main.go:36 +0x1ad
+main.main()
+	github.com/ipfs/go-graphsync/go.fuzz.main/main.go:15 +0x52
+exit status 2

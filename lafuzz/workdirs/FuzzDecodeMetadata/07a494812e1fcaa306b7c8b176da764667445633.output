@@ -1,0 +1,60 @@
+fatal error: out of memory allocating heap arena metadata
+
+runtime stack:
+runtime.throw(0x7ec266, 0x2c)
+	runtime/panic.go:1116 +0x72
+runtime.(*mheap).sysAlloc(0xbd01c0, 0x7d0606400000, 0xbd01c8, 0x3e8303031)
+	runtime/malloc.go:738 +0x6d8
+runtime.(*mheap).grow(0xbd01c0, 0x3e8303031, 0x0)
+	runtime/mheap.go:1286 +0x11c
+runtime.(*mheap).allocSpan(0xbd01c0, 0x3e8303031, 0x7ffd60e00000, 0xbe3d88, 0x66)
+	runtime/mheap.go:1124 +0x6a0
+runtime.(*mheap).alloc.func1()
+	runtime/mheap.go:871 +0x64
+runtime.(*mheap).alloc(0xbd01c0, 0x3e8303031, 0xbb0100, 0x7f3b71369098)
+	runtime/mheap.go:865 +0x81
+runtime.largeAlloc(0x7d0606060600, 0xbe0001, 0x7f3b71369098)
+	runtime/malloc.go:1152 +0x92
+runtime.mallocgc.func1()
+	runtime/malloc.go:1047 +0x46
+runtime.systemstack(0x45fb24)
+	runtime/asm_amd64.s:370 +0x66
+runtime.mstart()
+	runtime/proc.go:1041
+
+goroutine 1 [running]:
+runtime.systemstack_switch()
+	runtime/asm_amd64.s:330 fp=0xc00018b9e8 sp=0xc00018b9e0 pc=0x45fc20
+runtime.mallocgc(0x7d0606060600, 0x7a82a0, 0x1, 0xc00000e0a0)
+	runtime/malloc.go:1046 +0x895 fp=0xc00018ba88 sp=0xc00018b9e8 pc=0x40d2f5
+runtime.makeslice(0x7a82a0, 0x0, 0x3e830303030, 0x68)
+	runtime/slice.go:49 +0x6c fp=0xc00018bab8 sp=0xc00018ba88 pc=0x44963c
+github.com/ipld/go-ipld-prime/node/basic.(*plainMap__Assembler).BeginMap(...)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/node/basic/map.go:170
+github.com/ipld/go-ipld-prime/node/basic.(*plainMap__ValueAssembler).BeginMap(0xc000100158, 0x3e830303030, 0x6c6f0d, 0xc000100190, 0xbb8cbb, 0xc0001784d0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/node/basic/map.go:364 +0x112 fp=0xc00018baf8 sp=0xc00018bab8 pc=0x515302
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x968d40, 0xc000100158, 0x961e20, 0xc000100190, 0xc0001784d0, 0xc00000e060, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:48 +0xc17 fp=0xc00018bb90 sp=0xc00018baf8 pc=0x6cf8f7
+github.com/ipld/go-ipld-prime/codec/dagcbor.Unmarshal(0x968d40, 0xc000100158, 0x961e20, 0xc000100190, 0xc000100158, 0x0)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:33 +0x1eb fp=0xc00018bbe0 sp=0xc00018bb90 pc=0x6cec2b
+github.com/ipld/go-ipld-prime/codec/dagcbor.unmarshal(0x7f3b71369008, 0xc000100140, 0x961e20, 0xc000100190, 0xc000178460, 0x7bcc80, 0xbe2a01)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:77 +0xe3a fp=0xc00018bc78 sp=0xc00018bbe0 pc=0x6cfb1a
+github.com/ipld/go-ipld-prime/codec/dagcbor.Unmarshal(0x7f3b71369008, 0xc000100140, 0x961e20, 0xc000100190, 0x0, 0x40ac00)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/unmarshal.go:33 +0x1eb fp=0xc00018bcc8 sp=0xc00018bc78 pc=0x6cec2b
+github.com/ipld/go-ipld-prime/codec/dagcbor.Decoder(0x7f3b71369008, 0xc000100140, 0x961bc0, 0xc000116f60, 0xc000100140, 0x43d38f)
+	/go/pkg/mod/github.com/ipld/go-ipld-prime@v0.0.4-0.20200828224805-5ff8c8b0b6ef/codec/dagcbor/multicodec.go:32 +0x248 fp=0xc00018bd28 sp=0xc00018bcc8 pc=0x6ce7a8
+github.com/ipfs/go-graphsync/ipldutil.DecodeNode(0x7f3b713b9000, 0xc, 0xc, 0x43d1d8, 0xc000000180, 0x200000003, 0xc000000180)
+	/tmp/fuzzing/ipldutil/ipldutil.go:61 +0x129 fp=0xc00018bd78 sp=0xc00018bd28 pc=0x6d00e9
+github.com/ipfs/go-graphsync/metadata.DecodeMetadata(0x7f3b713b9000, 0xc, 0xc, 0x5f8567bb8274, 0x25766888, 0x2576688800000000, 0x5f5ac959, 0xc00018be98)
+	/tmp/fuzzing/metadata/metadata.go:24 +0x72 fp=0xc00018be38 sp=0xc00018bd78 pc=0x6d02e2
+github.com/ipfs/go-graphsync.FuzzDecodeMetadata(0x7f3b713b9000, 0xc, 0xc, 0x4)
+	/tmp/fuzzing/fuzz.go:18 +0x5e fp=0xc00018bea8 sp=0xc00018be38 pc=0x75afae
+go-fuzz-dep.Main(0xc00018bf70, 0x1, 0x1)
+	go-fuzz-dep/main.go:36 +0x1ad fp=0xc00018bf58 sp=0xc00018bea8 pc=0x48695d
+main.main()
+	github.com/ipfs/go-graphsync/go.fuzz.main/main.go:15 +0x52 fp=0xc00018bf88 sp=0xc00018bf58 pc=0x75b1c2
+runtime.main()
+	runtime/proc.go:203 +0x1fa fp=0xc00018bfe0 sp=0xc00018bf88 pc=0x4359da
+runtime.goexit()
+	runtime/asm_amd64.s:1373 +0x1 fp=0xc00018bfe8 sp=0xc00018bfe0 pc=0x461d31
+exit status 2

@@ -1,0 +1,5 @@
+panic: runtime error: invalid memory address or nil pointer dereference
+github.com/ipfs/go-graphsync/metadata.DecodeMetadata
+github.com/ipfs/go-graphsync.FuzzDecodeMetadata
+go-fuzz-dep.Main
+main.main
