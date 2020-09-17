@@ -80,10 +80,24 @@ func (rc *responseCollector) collectResponses(
 			case <-rc.ctx.Done():
 				return
 			case <-requestCtx.Done():
+				select {
+				case <-rc.ctx.Done():
+				case returnedErrors <- graphsync.RequestContextCancelledErr{}:
+				}
 				return
 			case err, ok := <-incomingErrors:
 				if !ok {
 					incomingErrors = nil
+					// even if the `incomingErrors` channel is closed without any error,
+					// the context could still have timed out in which case we need to inform the caller of the same.
+					select {
+					case <-requestCtx.Done():
+						select {
+						case <-rc.ctx.Done():
+						case returnedErrors <- graphsync.RequestContextCancelledErr{}:
+						}
+					default:
+					}
 				} else {
 					receivedErrors = append(receivedErrors, err)
 				}
