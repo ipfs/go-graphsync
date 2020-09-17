@@ -288,6 +288,22 @@ logic
 | Aarsh Shah | 1 | +53/-68 | 8 |
 | hannahhoward | 3 | +67/-34 | 11 |
 
+# go-data-transfer 0.6.4
+
+security fix for messages
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Ensure valid messages are returned from FromNet() (#74) ([filecoin-project/go-data-transfer#74](https://github.com/filecoin-project/go-data-transfer/pull/74))
+  - Release/v0.6.3 ([filecoin-project/go-data-transfer#70](https://github.com/filecoin-project/go-data-transfer/pull/70))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Ingar Shu | 1 | +20/-1 | 2 |
+
 ### 🙌🏽 Want to contribute?
 
 Would you like to contribute to this repo and don’t know how? Here are a few places you can get started:
