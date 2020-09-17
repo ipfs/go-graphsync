@@ -7,15 +7,14 @@ import (
 	"sync"
 	"time"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	gsnet "github.com/ipfs/go-graphsync/network"
-
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
-
 	"github.com/libp2p/go-libp2p-core/peer"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+
+	gsmsg "github.com/ipfs/go-graphsync/message"
+	gsnet "github.com/ipfs/go-graphsync/network"
 )
 
 // VirtualNetwork generates a new testnet instance - a fake network that

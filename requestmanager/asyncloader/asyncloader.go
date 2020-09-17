@@ -117,11 +117,7 @@ func (al *AsyncLoader) AsyncLoad(requestID graphsync.RequestID, link ipld.Link) 
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	response := make(chan error, 1)
 	lr := loadattemptqueue.NewLoadRequest(requestID, link, resultChan)
-	err := al.sendSyncMessage(&loadRequestMessage{response, requestID, lr}, response)
-	if err != nil {
-		resultChan <- types.AsyncLoadResult{Data: nil, Err: err}
-		close(resultChan)
-	}
+	_ = al.sendSyncMessage(&loadRequestMessage{response, requestID, lr}, response)
 	return resultChan
 }
 

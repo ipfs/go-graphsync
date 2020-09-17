@@ -147,6 +147,22 @@ Minor fix for alternate persistence stores and deduplication
 |-------------|---------|---------|---------------|
 | Hannah Howard | 1 | +316/-7 | 10 |
 
+# go-graphsync 0.1.2
+
+Minor release with initial benchmarks
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Benchmark framework + First memory fixes (#89) ([ipfs/go-graphsync#89](https://github.com/ipfs/go-graphsync/pull/89))
+  - docs(CHANGELOG): update for v0.1.1 ([ipfs/go-graphsync#85](https://github.com/ipfs/go-graphsync/pull/85))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +1055/-39 | 17 |
+
 ### 🙌🏽 Want to contribute?
 
 Would you like to contribute to this repo and don’t know how? Here are a few places you can get started:
