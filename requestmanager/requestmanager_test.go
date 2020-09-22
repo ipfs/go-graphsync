@@ -58,7 +58,7 @@ func metadataForBlocks(blks []blocks.Block, present bool) metadata.Metadata {
 	md := make(metadata.Metadata, 0, len(blks))
 	for _, block := range blks {
 		md = append(md, metadata.Item{
-			Link:         cidlink.Link{Cid: block.Cid()},
+			Link:         block.Cid(),
 			BlockPresent: present,
 		})
 	}

@@ -41,7 +41,7 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},
@@ -64,7 +64,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.(cidlink.Link).Cid,
 					BlockPresent: false,
 				},
 			},
@@ -106,7 +106,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},
@@ -133,7 +133,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.(cidlink.Link).Cid,
 					BlockPresent: false,
 				},
 			},
@@ -169,7 +169,7 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},
@@ -259,13 +259,13 @@ func TestRequestSplittingSameBlockTwoStores(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID1: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},
 			requestID2: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},
@@ -299,7 +299,7 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID2: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},

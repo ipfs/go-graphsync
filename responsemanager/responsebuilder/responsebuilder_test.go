@@ -80,9 +80,9 @@ func TestMessageBuilding(t *testing.T) {
 	response1Metadata, err := metadata.DecodeMetadata(response1MetadataRaw)
 	require.NoError(t, err)
 	require.Equal(t, response1Metadata, metadata.Metadata{
-		metadata.Item{Link: links[0], BlockPresent: true},
-		metadata.Item{Link: links[1], BlockPresent: false},
-		metadata.Item{Link: links[2], BlockPresent: true},
+		metadata.Item{Link: links[0].(cidlink.Link).Cid, BlockPresent: true},
+		metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: false},
+		metadata.Item{Link: links[2].(cidlink.Link).Cid, BlockPresent: true},
 	}, "incorrect metadata included in response")
 
 	response1ReturnedExtensionData, found := response1.Extension(extensionName1)
@@ -98,9 +98,9 @@ func TestMessageBuilding(t *testing.T) {
 	response2Metadata, err := metadata.DecodeMetadata(response2MetadataRaw)
 	require.NoError(t, err)
 	require.Equal(t, response2Metadata, metadata.Metadata{
-		metadata.Item{Link: links[1], BlockPresent: true},
-		metadata.Item{Link: links[2], BlockPresent: true},
-		metadata.Item{Link: links[1], BlockPresent: true},
+		metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
+		metadata.Item{Link: links[2].(cidlink.Link).Cid, BlockPresent: true},
+		metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
 	}, "incorrect metadata included in response")
 
 	response3, err := findResponseForRequestID(responses, requestID3)
@@ -112,8 +112,8 @@ func TestMessageBuilding(t *testing.T) {
 	response3Metadata, err := metadata.DecodeMetadata(response3MetadataRaw)
 	require.NoError(t, err)
 	require.Equal(t, response3Metadata, metadata.Metadata{
-		metadata.Item{Link: links[0], BlockPresent: true},
-		metadata.Item{Link: links[1], BlockPresent: true},
+		metadata.Item{Link: links[0].(cidlink.Link).Cid, BlockPresent: true},
+		metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
 	}, "incorrect metadata included in response")
 
 	response3ReturnedExtensionData, found := response3.Extension(extensionName2)

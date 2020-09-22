@@ -58,30 +58,30 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 
 	request1Metadata := metadata.Metadata{
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[0].Cid()},
+			Link:         blks[0].Cid(),
 			BlockPresent: true,
 		},
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[1].Cid()},
+			Link:         blks[1].Cid(),
 			BlockPresent: false,
 		},
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[3].Cid()},
+			Link:         blks[3].Cid(),
 			BlockPresent: true,
 		},
 	}
 
 	request2Metadata := metadata.Metadata{
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[1].Cid()},
+			Link:         blks[1].Cid(),
 			BlockPresent: true,
 		},
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[3].Cid()},
+			Link:         blks[3].Cid(),
 			BlockPresent: true,
 		},
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[4].Cid()},
+			Link:         blks[4].Cid(),
 			BlockPresent: true,
 		},
 	}
