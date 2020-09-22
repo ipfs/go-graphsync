@@ -27,7 +27,7 @@ require (
 	github.com/ipfs/go-peertaskqueue v0.2.0
 	github.com/ipfs/go-unixfs v0.2.4
 	github.com/ipld/go-ipld-prime v0.5.1-0.20200828233916-988837377a7f
-	github.com/ipld/go-ipld-prime-proto v0.0.0-20200922000432-18d8669296eb
+	github.com/ipld/go-ipld-prime-proto v0.0.0-20200922192210-9a2bfd4440a6
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/jbenet/goprocess v0.1.4 // indirect
 	github.com/libp2p/go-libp2p v0.6.0
