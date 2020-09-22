@@ -26,8 +26,8 @@ require (
 	github.com/ipfs/go-merkledag v0.3.1
 	github.com/ipfs/go-peertaskqueue v0.2.0
 	github.com/ipfs/go-unixfs v0.2.4
-	github.com/ipld/go-ipld-prime v0.5.0
-	github.com/ipld/go-ipld-prime-proto v0.0.0-20200908180311-da0ab5c81760
+	github.com/ipld/go-ipld-prime v0.5.1-0.20200828233916-988837377a7f
+	github.com/ipld/go-ipld-prime-proto v0.0.0-20200922000432-18d8669296eb
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/jbenet/goprocess v0.1.4 // indirect
 	github.com/libp2p/go-libp2p v0.6.0
@@ -39,7 +39,6 @@ require (
 	github.com/multiformats/go-multihash v0.0.13
 	github.com/polydawn/refmt v0.0.0-20190809202753-05966cbd336a // indirect
 	github.com/smartystreets/assertions v1.0.1 // indirect
-	github.com/smartystreets/goconvey v0.0.0-20190731233626-505e41936337 // indirect
 	github.com/stretchr/testify v1.5.1
 	github.com/whyrusleeping/cbor-gen v0.0.0-20200710004633-5379fc63235d
 	go.uber.org/multierr v1.4.0 // indirect

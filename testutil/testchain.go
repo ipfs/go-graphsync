@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/testutil/chaintypes"
 )
 
 // TestingT covers the interface methods we need from either *testing.T or
@@ -42,7 +43,7 @@ type TestBlockChain struct {
 }
 
 func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
-	blknb := basicnode.Prototype.Map.NewBuilder()
+	blknb := chaintypes.Type.Block.NewBuilder()
 	blknbmnb, err := blknb.BeginMap(2)
 	if err != nil {
 		return nil, err
@@ -169,20 +170,20 @@ func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress
 	for i, response := range responses {
 		require.Equal(tbc.t, expectedPath, response.Path.String(), "response has correct path")
 		if i%2 == 0 {
-			// if verifyTypes {
-			// 	_, ok := response.Node.(chaintypes.Block)
-			// 	require.True(tbc.t, ok, "nodes in response should have correct type")
-			// }
+			if verifyTypes {
+				_, ok := response.Node.(chaintypes.Block)
+				require.True(tbc.t, ok, "nodes in response should have correct type")
+			}
 			if expectedPath == "" {
 				expectedPath = "Parents"
 			} else {
 				expectedPath = expectedPath + "/Parents"
 			}
 		} else {
-			// if verifyTypes {
-			// 	_, ok := response.Node.(chaintypes.Parents)
-			// 	require.True(tbc.t, ok, "nodes in response should have correct type")
-			// }
+			if verifyTypes {
+				_, ok := response.Node.(chaintypes.Parents)
+				require.True(tbc.t, ok, "nodes in response should have correct type")
+			}
 			expectedPath = expectedPath + "/0"
 		}
 		if response.LastBlock.Path.String() != response.Path.String() {
@@ -271,6 +272,5 @@ func (tbc *TestBlockChain) RemainderBlocks(from int) []blocks.Block {
 
 // Chooser is a NodeBuilderChooser function that always returns the block chain
 func (tbc *TestBlockChain) Chooser(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
-	return basicnode.Prototype.Any, nil
-	//return chaintypes.Block__NodeBuilder(), nil
+	return chaintypes.Type.Block, nil
 }
