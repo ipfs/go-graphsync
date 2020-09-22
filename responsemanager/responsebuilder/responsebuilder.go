@@ -3,6 +3,7 @@ package responsebuilder
 import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
@@ -48,7 +49,7 @@ func (rb *ResponseBuilder) BlockSize() uint64 {
 // AddLink adds the given link and whether its block is present
 // to the response for the given request ID.
 func (rb *ResponseBuilder) AddLink(requestID graphsync.RequestID, link ipld.Link, blockPresent bool) {
-	rb.outgoingResponses[requestID] = append(rb.outgoingResponses[requestID], metadata.Item{Link: link, BlockPresent: blockPresent})
+	rb.outgoingResponses[requestID] = append(rb.outgoingResponses[requestID], metadata.Item{Link: link.(cidlink.Link).Cid, BlockPresent: blockPresent})
 }
 
 // AddResponseCode marks the given request as completed in the response,

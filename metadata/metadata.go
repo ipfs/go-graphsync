@@ -1,16 +1,19 @@
 package metadata
 
 import (
-	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/fluent"
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"bytes"
+	"fmt"
 
-	"github.com/ipfs/go-graphsync/ipldutil"
+	"github.com/ipfs/go-cid"
+	cbg "github.com/whyrusleeping/cbor-gen"
+	xerrors "golang.org/x/xerrors"
 )
+
+//go:generate cbor-gen-for --map-encoding Item
 
 // Item is a single link traversed in a repsonse
 type Item struct {
-	Link         ipld.Link
+	Link         cid.Cid
 	BlockPresent bool
 }
 
@@ -21,56 +24,56 @@ type Metadata []Item
 // DecodeMetadata assembles metadata from a raw byte array, first deserializing
 // as a node and then assembling into a metadata struct.
 func DecodeMetadata(data []byte) (Metadata, error) {
-	node, err := ipldutil.DecodeNode(data)
+	var metadata Metadata
+	r := bytes.NewReader(data)
+
+	br := cbg.GetPeeker(r)
+	scratch := make([]byte, 8)
+
+	maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return nil, err
 	}
-	iterator := node.ListIterator()
-	var metadata Metadata
-	if node.Length() != -1 {
-		metadata = make(Metadata, 0, node.Length())
+
+	if extra > cbg.MaxLength {
+		return nil, fmt.Errorf("t.Metadata: array too large (%d)", extra)
 	}
 
-	for !iterator.Done() {
-		_, item, err := iterator.Next()
-		if err != nil {
-			return nil, err
-		}
-		linkNode, err := item.LookupString("link")
-		if err != nil {
-			return nil, err
-		}
-		link, err := linkNode.AsLink()
-		if err != nil {
-			return nil, err
-		}
-		blockPresentNode, err := item.LookupString("blockPresent")
-		if err != nil {
-			return nil, err
-		}
-		blockPresent, err := blockPresentNode.AsBool()
-		if err != nil {
-			return nil, err
-		}
-		metadata = append(metadata, Item{link, blockPresent})
+	if maj != cbg.MajArray {
+		return nil, fmt.Errorf("expected cbor array")
 	}
-	return metadata, err
+
+	if extra > 0 {
+		metadata = make(Metadata, extra)
+	}
+
+	for i := 0; i < int(extra); i++ {
+
+		var v Item
+		if err := v.UnmarshalCBOR(br); err != nil {
+			return nil, err
+		}
+
+		metadata[i] = v
+	}
+
+	return metadata, nil
 }
 
 // EncodeMetadata encodes metadata to an IPLD node then serializes to raw bytes
 func EncodeMetadata(entries Metadata) ([]byte, error) {
-	node, err := fluent.Build(basicnode.Style.List, func(na fluent.NodeAssembler) {
-		na.CreateList(len(entries), func(na fluent.ListAssembler) {
-			for _, item := range entries {
-				na.AssembleValue().CreateMap(2, func(na fluent.MapAssembler) {
-					na.AssembleEntry("link").AssignLink(item.Link)
-					na.AssembleEntry("blockPresent").AssignBool(item.BlockPresent)
-				})
-			}
-		})
-	})
-	if err != nil {
+	w := new(bytes.Buffer)
+	scratch := make([]byte, 9)
+	if len(entries) > cbg.MaxLength {
+		return nil, xerrors.Errorf("Slice value was too long")
+	}
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajArray, uint64(len(entries))); err != nil {
 		return nil, err
 	}
-	return ipldutil.EncodeNode(node)
+	for _, v := range entries {
+		if err := v.MarshalCBOR(w); err != nil {
+			return nil, err
+		}
+	}
+	return w.Bytes(), nil
 }

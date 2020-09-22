@@ -78,7 +78,7 @@ func (rc *ResponseCache) ProcessResponse(responses map[graphsync.RequestID]metad
 	for requestID, md := range responses {
 		for _, item := range md {
 			log.Debugf("Traverse link %s on request ID %d", item.Link.String(), requestID)
-			rc.linkTracker.RecordLinkTraversal(requestID, item.Link, item.BlockPresent)
+			rc.linkTracker.RecordLinkTraversal(requestID, cidlink.Link{Cid: item.Link}, item.BlockPresent)
 		}
 	}
 
