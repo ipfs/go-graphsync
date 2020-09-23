@@ -19,27 +19,15 @@ var (
 	ErrInvalidLimit = errors.New("unsupported recursive selector limit")
 )
 
-// SelectorValidator returns an OnRequestReceivedHook that only validates
-// requests if their selector only has no recursions that are greater than
-// maxAcceptedDepth
-func SelectorValidator(maxAcceptedDepth int) graphsync.OnIncomingRequestHook {
-	return func(p peer.ID, request graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
-		err := ValidateMaxRecursionDepth(request.Selector(), maxAcceptedDepth)
-		if err == nil {
-			hookActions.ValidateRequest()
-		}
-	}
-}
+var maxDepthSelector selector.Selector
 
-// ValidateMaxRecursionDepth examines the given selector node and verifies
-// recursive selectors are limited to the given fixed depth
-func ValidateMaxRecursionDepth(node ipld.Node, maxAcceptedDepth int) error {
+func init() {
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Map)
 
 	// this selector is a selector for traversing selectors...
 	// it traverses the various selector types looking for recursion limit fields
 	// and matches them
-	s, err := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
+	maxDepthSelector, _ = ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
 		efsb.Insert(selector.SelectorKey_ExploreRecursive, ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
 			efsb.Insert(selector.SelectorKey_Limit, ssb.Matcher())
 			efsb.Insert(selector.SelectorKey_Sequence, ssb.ExploreRecursiveEdge())
@@ -61,12 +49,25 @@ func ValidateMaxRecursionDepth(node ipld.Node, maxAcceptedDepth int) error {
 			efsb.Insert(selector.SelectorKey_Next, ssb.ExploreRecursiveEdge())
 		}))
 	})).Selector()
+}
 
-	if err != nil {
-		return err
+// SelectorValidator returns an OnRequestReceivedHook that only validates
+// requests if their selector only has no recursions that are greater than
+// maxAcceptedDepth
+func SelectorValidator(maxAcceptedDepth int) graphsync.OnIncomingRequestHook {
+	return func(p peer.ID, request graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		err := ValidateMaxRecursionDepth(request.Selector(), maxAcceptedDepth)
+		if err == nil {
+			hookActions.ValidateRequest()
+		}
 	}
+}
 
-	return traversal.WalkMatching(node, s, func(progress traversal.Progress, visited ipld.Node) error {
+// ValidateMaxRecursionDepth examines the given selector node and verifies
+// recursive selectors are limited to the given fixed depth
+func ValidateMaxRecursionDepth(node ipld.Node, maxAcceptedDepth int) error {
+
+	return traversal.WalkMatching(node, maxDepthSelector, func(progress traversal.Progress, visited ipld.Node) error {
 		if visited.ReprKind() != ipld.ReprKind_Map || visited.Length() != 1 {
 			return ErrInvalidLimit
 		}
