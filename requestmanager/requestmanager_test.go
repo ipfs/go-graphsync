@@ -641,7 +641,7 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	hook := func(p peer.ID, r graphsync.RequestData, ha graphsync.OutgoingRequestHookActions) {
 		_, has := r.Extension(td.extensionName1)
 		if has {
-			ha.UseLinkTargetNodeStyleChooser(td.blockChain.Chooser)
+			ha.UseLinkTargetNodePrototypeChooser(td.blockChain.Chooser)
 			ha.UsePersistenceOption("chainstore")
 		}
 	}

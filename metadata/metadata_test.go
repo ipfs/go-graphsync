@@ -17,7 +17,7 @@ import (
 func TestDecodeEncodeMetadata(t *testing.T) {
 	cids := testutil.GenerateCids(10)
 	initialMetadata := make(Metadata, 0, 10)
-	nd := fluent.MustBuildList(basicnode.Style.List, 10, func(fla fluent.ListAssembler) {
+	nd := fluent.MustBuildList(basicnode.Prototype.List, 10, func(fla fluent.ListAssembler) {
 		for _, k := range cids {
 			blockPresent := rand.Int31()%2 == 0
 			initialMetadata = append(initialMetadata, Item{k, blockPresent})
@@ -44,12 +44,12 @@ func TestDecodeEncodeMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, decodedMetadata, decodedMetadataFromNode, "metadata not equal to IPLD encoding")
 
-	nb := basicnode.Style.List.NewBuilder()
+	nb := basicnode.Prototype.List.NewBuilder()
 	err = dagcbor.Decoder(nb, encodedNode)
 	require.NoError(t, err)
 	decodedNode := nb.Build()
 	require.Equal(t, nd, decodedNode)
-	nb = basicnode.Style.List.NewBuilder()
+	nb = basicnode.Prototype.List.NewBuilder()
 	err = dagcbor.Decoder(nb, bytes.NewReader(encoded))
 	require.NoError(t, err)
 	decodedNodeFromMetadata := nb.Build()

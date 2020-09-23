@@ -8,7 +8,7 @@ import (
 
 // EncodeDedupKey returns encoded cbor data for string key
 func EncodeDedupKey(key string) ([]byte, error) {
-	nb := basicnode.Style.String.NewBuilder()
+	nb := basicnode.Prototype.String.NewBuilder()
 	err := nb.AssignString(key)
 	if err != nil {
 		return nil, err

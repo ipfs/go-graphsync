@@ -69,7 +69,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
@@ -104,7 +104,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
@@ -198,7 +198,7 @@ func TestDedupingMessages(t *testing.T) {
 	waitGroup.Add(1)
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 

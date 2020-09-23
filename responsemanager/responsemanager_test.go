@@ -494,9 +494,9 @@ func TestValidationAndExtensions(t *testing.T) {
 		responseManager.Startup()
 
 		customChooserCallCount := 0
-		customChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
+		customChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
 			customChooserCallCount++
-			return basicnode.Style.Any, nil
+			return basicnode.Prototype.Any, nil
 		}
 
 		// add validating hook -- so the request SHOULD succeed
@@ -514,7 +514,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		// register hook to use custom chooser
 		_ = td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			if _, found := requestData.Extension(td.extensionName); found {
-				hookActions.UseLinkTargetNodeStyleChooser(customChooser)
+				hookActions.UseLinkTargetNodePrototypeChooser(customChooser)
 				hookActions.SendExtensionData(td.extensionResponse)
 			}
 		})

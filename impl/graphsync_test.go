@@ -260,7 +260,7 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 		}
 	})
 	// create a selector to traverse the whole tree
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	allSelector := ssb.ExploreRecursive(selector.RecursionLimitDepth(10),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
 
@@ -587,14 +587,14 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	requestor.RegisterOutgoingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.OutgoingRequestHookActions) {
 		_, has := requestData.Extension(extensionName)
 		if has {
-			hookActions.UseLinkTargetNodeStyleChooser(blockChain.Chooser)
+			hookActions.UseLinkTargetNodePrototypeChooser(blockChain.Chooser)
 			hookActions.UsePersistenceOption("chainstore")
 		}
 	})
 	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		_, has := requestData.Extension(extensionName)
 		if has {
-			hookActions.UseLinkTargetNodeStyleChooser(blockChain.Chooser)
+			hookActions.UseLinkTargetNodePrototypeChooser(blockChain.Chooser)
 			hookActions.UsePersistenceOption("chainstore")
 		}
 	})
@@ -828,7 +828,7 @@ func TestUnixFSFetch(t *testing.T) {
 	clink := cidlink.Link{Cid: nd.Cid()}
 
 	// create a selector for the whole UnixFS dag
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 
 	allSelector := ssb.ExploreRecursive(ipldselector.RecursionLimitNone(),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()

@@ -53,7 +53,7 @@ type RequestResult struct {
 	IsValidated   bool
 	IsPaused      bool
 	CustomLoader  ipld.Loader
-	CustomChooser traversal.LinkTargetNodeStyleChooser
+	CustomChooser traversal.LinkTargetNodePrototypeChooser
 	Err           error
 	Extensions    []graphsync.ExtensionData
 }
@@ -73,7 +73,7 @@ type requestHookActions struct {
 	isPaused           bool
 	err                error
 	loader             ipld.Loader
-	chooser            traversal.LinkTargetNodeStyleChooser
+	chooser            traversal.LinkTargetNodePrototypeChooser
 	extensions         []graphsync.ExtensionData
 }
 
@@ -109,7 +109,7 @@ func (ha *requestHookActions) UsePersistenceOption(name string) {
 	ha.loader = loader
 }
 
-func (ha *requestHookActions) UseLinkTargetNodeStyleChooser(chooser traversal.LinkTargetNodeStyleChooser) {
+func (ha *requestHookActions) UseLinkTargetNodePrototypeChooser(chooser traversal.LinkTargetNodePrototypeChooser) {
 	ha.chooser = chooser
 }
 
