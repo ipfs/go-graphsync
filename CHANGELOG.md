@@ -163,6 +163,33 @@ Minor release with initial benchmarks
 |-------------|---------|---------|---------------|
 | Hannah Howard | 1 | +1055/-39 | 17 |
 
+# go-graphsync 0.2.0
+
+Update to IPLD prime + several optimizations for performance
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - style(imports): fix imports
+  - fix(selectorvalidator): memory optimization (#97) ([ipfs/go-graphsync#97](https://github.com/ipfs/go-graphsync/pull/97))
+  - Update go-ipld-prime@v0.5.0 (#92) ([ipfs/go-graphsync#92](https://github.com/ipfs/go-graphsync/pull/92))
+  - refactor(metadata): use cbor-gen encoding (#96) ([ipfs/go-graphsync#96](https://github.com/ipfs/go-graphsync/pull/96))
+  - Release/v0.1.2 ([ipfs/go-graphsync#95](https://github.com/ipfs/go-graphsync/pull/95))
+  - Return Request context cancelled error (#93) ([ipfs/go-graphsync#93](https://github.com/ipfs/go-graphsync/pull/93))
+  - feat(benchmarks): add p2p stress test (#91) ([ipfs/go-graphsync#91](https://github.com/ipfs/go-graphsync/pull/91))
+- github.com/hannahhoward/cbor-gen-for (null -> v0.0.0-20200817222906-ea96cece81f1):
+  - add flag to select map encoding ([hannahhoward/cbor-gen-for#1](https://github.com/hannahhoward/cbor-gen-for/pull/1))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Eric Myhre | 1 | +2919/-121 | 39 |
+| Hannah Howard | 3 | +412/-103 | 15 |
+| hannahhoward | 1 | +31/-31 | 7 |
+| whyrusleeping | 1 | +31/-18 | 2 |
+| Aarsh Shah | 1 | +27/-1 | 3 |
+
 ### 🙌🏽 Want to contribute?
 
 Would you like to contribute to this repo and don’t know how? Here are a few places you can get started:
