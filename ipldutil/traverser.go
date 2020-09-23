@@ -167,8 +167,8 @@ func (t *traverser) start() {
 		}
 		err = traversal.Progress{
 			Cfg: &traversal.Config{
-				Ctx:                        t.ctx,
-				LinkLoader:                 loader,
+				Ctx:                            t.ctx,
+				LinkLoader:                     loader,
 				LinkTargetNodePrototypeChooser: t.chooser,
 			},
 		}.WalkAdv(nd, sel, t.visitor)

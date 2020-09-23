@@ -3,11 +3,11 @@ package testnet
 import (
 	"context"
 
-	gsnet "github.com/ipfs/go-graphsync/network"
-
 	"github.com/libp2p/go-libp2p-core/peer"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	mockpeernet "github.com/libp2p/go-libp2p/p2p/net/mock"
+
+	gsnet "github.com/ipfs/go-graphsync/network"
 )
 
 type peernet struct {

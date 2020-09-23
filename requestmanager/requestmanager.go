@@ -338,15 +338,15 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 		Loader:           rm.asyncLoader.AsyncLoad,
 	}.Start(
 		executor.RequestExecution{
-			Ctx:              ctx,
-			P:                p,
-			Request:          request,
-			NetworkError:     networkError,
-			LastResponse:     lastResponse,
-			DoNotSendCids:    doNotSendCids,
+			Ctx:                  ctx,
+			P:                    p,
+			Request:              request,
+			NetworkError:         networkError,
+			LastResponse:         lastResponse,
+			DoNotSendCids:        doNotSendCids,
 			NodePrototypeChooser: hooksResult.CustomChooser,
-			ResumeMessages:   resumeMessages,
-			PauseMessages:    pauseMessages,
+			ResumeMessages:       resumeMessages,
+			PauseMessages:        pauseMessages,
 		})
 	return incoming, incomingError
 }

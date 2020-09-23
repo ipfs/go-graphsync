@@ -36,8 +36,8 @@ func Traverse(ctx context.Context, loader ipld.Loader, chooser traversal.LinkTar
 	node := nb.Build()
 	return traversal.Progress{
 		Cfg: &traversal.Config{
-			Ctx:                        ctx,
-			LinkLoader:                 loader,
+			Ctx:                            ctx,
+			LinkLoader:                     loader,
 			LinkTargetNodePrototypeChooser: chooser,
 		},
 	}.WalkAdv(node, s, fn)

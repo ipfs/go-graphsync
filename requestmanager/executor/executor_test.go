@@ -430,13 +430,13 @@ func (ree *requestExecutionEnv) requestExecution() (chan graphsync.ResponseProgr
 		TerminateRequest: ree.terminateRequest,
 		Loader:           ree.fal.AsyncLoad,
 	}.Start(executor.RequestExecution{
-		Ctx:              ree.ctx,
-		P:                ree.p,
-		LastResponse:     &lastResponse,
-		Request:          ree.request,
-		DoNotSendCids:    ree.doNotSendCids,
+		Ctx:                  ree.ctx,
+		P:                    ree.p,
+		LastResponse:         &lastResponse,
+		Request:              ree.request,
+		DoNotSendCids:        ree.doNotSendCids,
 		NodePrototypeChooser: ree.nodeStyleChooser,
-		ResumeMessages:   ree.resumeMessages,
-		PauseMessages:    ree.pauseMessages,
+		ResumeMessages:       ree.resumeMessages,
+		PauseMessages:        ree.pauseMessages,
 	})
 }
