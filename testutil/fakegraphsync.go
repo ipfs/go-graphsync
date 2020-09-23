@@ -470,7 +470,7 @@ type FakeOutgoingRequestHookActions struct {
 func (fa *FakeOutgoingRequestHookActions) UsePersistenceOption(name string) {
 	fa.PersistenceOption = name
 }
-func (fa *FakeOutgoingRequestHookActions) UseLinkTargetNodeStyleChooser(_ traversal.LinkTargetNodeStyleChooser) {
+func (fa *FakeOutgoingRequestHookActions) UseLinkTargetNodePrototypeChooser(_ traversal.LinkTargetNodePrototypeChooser) {
 }
 
 var _ graphsync.OutgoingRequestHookActions = &FakeOutgoingRequestHookActions{}
@@ -531,7 +531,7 @@ func (fa *FakeIncomingRequestHookActions) UsePersistenceOption(name string) {
 	fa.PersistenceOption = name
 }
 
-func (fa *FakeIncomingRequestHookActions) UseLinkTargetNodeStyleChooser(_ traversal.LinkTargetNodeStyleChooser) {
+func (fa *FakeIncomingRequestHookActions) UseLinkTargetNodePrototypeChooser(_ traversal.LinkTargetNodePrototypeChooser) {
 }
 
 func (fa *FakeIncomingRequestHookActions) TerminateWithError(err error) {

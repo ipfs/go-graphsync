@@ -106,14 +106,18 @@ func (t *Transport) consumeResponses(ctx context.Context, errChan <-chan error) 
 
 func (t *Transport) executeGsRequest(ctx context.Context, channelID datatransfer.ChannelID, errChan <-chan error) {
 	lastError := t.consumeResponses(ctx, errChan)
-	if _, ok := lastError.(graphsync.RequestCancelledErr); !ok {
-		if lastError != nil {
-			log.Warnf("graphsync error: %s", lastError.Error())
-		}
-		err := t.events.OnChannelCompleted(channelID, lastError == nil)
-		if err != nil {
-			log.Error(err)
-		}
+	if _, ok := lastError.(graphsync.RequestContextCancelledErr); ok {
+		return
+	}
+	if _, ok := lastError.(graphsync.RequestCancelledErr); ok {
+		return
+	}
+	if lastError != nil {
+		log.Warnf("graphsync error: %s", lastError.Error())
+	}
+	err := t.events.OnChannelCompleted(channelID, lastError == nil)
+	if err != nil {
+		log.Error(err)
 	}
 }
 

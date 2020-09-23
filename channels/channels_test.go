@@ -46,7 +46,7 @@ func TestChannels(t *testing.T) {
 	fv1 := &testutil.FakeDTType{}
 	fv2 := &testutil.FakeDTType{}
 	cids := testutil.GenerateCids(2)
-	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
+	selector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
 	peers := testutil.GeneratePeers(4)
 
 	t.Run("adding channels", func(t *testing.T) {

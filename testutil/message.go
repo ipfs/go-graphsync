@@ -15,7 +15,7 @@ import (
 func NewDTRequest(t *testing.T, transferID datatransfer.TransferID) datatransfer.Request {
 	voucher := NewFakeDTType()
 	baseCid := GenerateCids(1)[0]
-	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
+	selector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
 	r, err := message.NewRequest(transferID, false, voucher.Type(), voucher, baseCid, selector)
 	require.NoError(t, err)
 	return r

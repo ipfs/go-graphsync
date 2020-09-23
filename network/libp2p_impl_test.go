@@ -83,7 +83,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 
 	t.Run("Send Request", func(t *testing.T) {
 		baseCid := testutil.GenerateCids(1)[0]
-		selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
+		selector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
 		isPull := false
 		id := datatransfer.TransferID(rand.Int31())
 		voucher := testutil.NewFakeDTType()

@@ -102,7 +102,7 @@ func AssertEqualSelector(t *testing.T, expectedRequest datatransfer.Request, req
 
 // AllSelector just returns a new instance of a "whole dag selector"
 func AllSelector() ipld.Node {
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	return ssb.ExploreRecursive(selector.RecursionLimitNone(),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
 }

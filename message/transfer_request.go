@@ -92,7 +92,7 @@ func (trq *transferRequest) Selector() (ipld.Node, error) {
 	if trq.Stor == nil {
 		return nil, xerrors.New("No selector present to read")
 	}
-	builder := basicnode.Style.Any.NewBuilder()
+	builder := basicnode.Prototype.Any.NewBuilder()
 	reader := bytes.NewReader(trq.Stor.Raw)
 	err := dagcbor.Decoder(builder, reader)
 	if err != nil {

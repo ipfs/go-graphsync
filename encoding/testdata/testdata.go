@@ -7,7 +7,7 @@ import (
 )
 
 // Prime = an instance of an ipld prime piece of data
-var Prime = fluent.MustBuildMap(basicnode.Style.Map, 2, func(na fluent.MapAssembler) {
+var Prime = fluent.MustBuildMap(basicnode.Prototype.Map, 2, func(na fluent.MapAssembler) {
 	nva := na.AssembleEntry("X")
 	nva.AssignInt(100)
 	nva = na.AssembleEntry("Y")

@@ -66,7 +66,7 @@ func (c channelState) BaseCID() cid.Cid { return c.baseCid }
 // Selector returns the IPLD selector for this data transfer (represented as
 // an IPLD node)
 func (c channelState) Selector() ipld.Node {
-	builder := basicnode.Style.Any.NewBuilder()
+	builder := basicnode.Prototype.Any.NewBuilder()
 	reader := bytes.NewReader(c.selector.Raw)
 	err := dagcbor.Decoder(builder, reader)
 	if err != nil {

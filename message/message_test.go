@@ -17,7 +17,7 @@ import (
 
 func TestNewRequest(t *testing.T) {
 	baseCid := testutil.GenerateCids(1)[0]
-	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
+	selector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
 	isPull := true
 	id := datatransfer.TransferID(rand.Int31())
 	voucher := testutil.NewFakeDTType()
@@ -241,7 +241,7 @@ func TestCompleteResponse(t *testing.T) {
 }
 func TestToNetFromNetEquivalency(t *testing.T) {
 	baseCid := testutil.GenerateCids(1)[0]
-	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
+	selector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
 	isPull := false
 	id := datatransfer.TransferID(rand.Int31())
 	accepted := false
@@ -314,7 +314,7 @@ func TestFromNetMessageValidation(t *testing.T) {
 
 func NewTestTransferRequest() (datatransfer.Request, error) {
 	bcid := testutil.GenerateCids(1)[0]
-	selector := builder.NewSelectorSpecBuilder(basicnode.Style.Any).Matcher().Node()
+	selector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
 	isPull := false
 	id := datatransfer.TransferID(rand.Int31())
 	voucher := testutil.NewFakeDTType()
