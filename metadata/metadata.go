@@ -9,8 +9,6 @@ import (
 	xerrors "golang.org/x/xerrors"
 )
 
-//go:generate cbor-gen-for --map-encoding Item
-
 // Item is a single link traversed in a repsonse
 type Item struct {
 	Link         cid.Cid
