@@ -7,11 +7,11 @@ import (
 
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/fluent"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync/testutil"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 )
 
 func TestDecodeEncodeMetadata(t *testing.T) {

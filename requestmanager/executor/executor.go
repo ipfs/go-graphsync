@@ -36,15 +36,15 @@ type ExecutionEnv struct {
 
 // RequestExecution are parameters for a single request execution
 type RequestExecution struct {
-	Ctx              context.Context
-	P                peer.ID
-	NetworkError     chan error
-	Request          gsmsg.GraphSyncRequest
-	LastResponse     *atomic.Value
-	DoNotSendCids    *cid.Set
+	Ctx                  context.Context
+	P                    peer.ID
+	NetworkError         chan error
+	Request              gsmsg.GraphSyncRequest
+	LastResponse         *atomic.Value
+	DoNotSendCids        *cid.Set
 	NodePrototypeChooser traversal.LinkTargetNodePrototypeChooser
-	ResumeMessages   chan []graphsync.ExtensionData
-	PauseMessages    chan struct{}
+	ResumeMessages       chan []graphsync.ExtensionData
+	PauseMessages        chan struct{}
 }
 
 // Start begins execution of a request in a go routine
