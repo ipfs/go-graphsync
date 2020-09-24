@@ -22,8 +22,8 @@ func TestDecodeEncodeMetadata(t *testing.T) {
 			blockPresent := rand.Int31()%2 == 0
 			initialMetadata = append(initialMetadata, Item{k, blockPresent})
 			fla.AssembleValue().CreateMap(2, func(fma fluent.MapAssembler) {
-				fma.AssembleEntry("Link").AssignLink(cidlink.Link{Cid: k})
-				fma.AssembleEntry("BlockPresent").AssignBool(blockPresent)
+				fma.AssembleEntry("link").AssignLink(cidlink.Link{Cid: k})
+				fma.AssembleEntry("blockPresent").AssignBool(blockPresent)
 			})
 		}
 	})
