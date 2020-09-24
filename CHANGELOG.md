@@ -1,90 +1,78 @@
 # go-graphsync changelog
 
-# go-graphysnc 0.0.1-filecoin
+# go-graphsync 0.2.1
 
-Initial tagged release for early version of filecoin
-
-### Changelog
-
-Initial feature set including parallel requests, selectors, basic architecture,
-etc. -- changelog not tracked due to lack of go.mod
-
-# go-graphsync 0.0.2
-
-Bug fix release. Fix message sizes to not overflow limits.
+Compatibility fix for 0.2.0
 
 ### Changelog
 
 - github.com/ipfs/go-graphsync:
-  - Limit Response Size ([ipfs/go-graphsync#37](https://github.com/ipfs/go-graphsync/pull/37))
+  - fix(metadata): fix cbor-gen (#98) ([ipfs/go-graphsync#98](https://github.com/ipfs/go-graphsync/pull/98))
 
 ### Contributors
 
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|
-| hannahhoward | 2 | +295/-52 | 5 |
+| Hannah Howard | 1 | +12/-16 | 3 |
 
-# go-graphsync 0.0.3
+# go-graphsync 0.2.0
 
-Bug fix release. Fix issues issues with message queue.
+Update to IPLD prime + several optimizations for performance
 
 ### Changelog
 
 - github.com/ipfs/go-graphsync:
-  - fix(messagequeue): no retry after queue shutdown ([ipfs/go-graphsync#38](https://github.com/ipfs/go-graphsync/pull/38))
+  - style(imports): fix imports
+  - fix(selectorvalidator): memory optimization (#97) ([ipfs/go-graphsync#97](https://github.com/ipfs/go-graphsync/pull/97))
+  - Update go-ipld-prime@v0.5.0 (#92) ([ipfs/go-graphsync#92](https://github.com/ipfs/go-graphsync/pull/92))
+  - refactor(metadata): use cbor-gen encoding (#96) ([ipfs/go-graphsync#96](https://github.com/ipfs/go-graphsync/pull/96))
+  - Release/v0.1.2 ([ipfs/go-graphsync#95](https://github.com/ipfs/go-graphsync/pull/95))
+  - Return Request context cancelled error (#93) ([ipfs/go-graphsync#93](https://github.com/ipfs/go-graphsync/pull/93))
+  - feat(benchmarks): add p2p stress test (#91) ([ipfs/go-graphsync#91](https://github.com/ipfs/go-graphsync/pull/91))
+- github.com/hannahhoward/cbor-gen-for (null -> v0.0.0-20200817222906-ea96cece81f1):
+  - add flag to select map encoding ([hannahhoward/cbor-gen-for#1](https://github.com/hannahhoward/cbor-gen-for/pull/1))
 
 ### Contributors
 
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|
-| hannahhoward | 1 | +70/-1 | 2 |
+| Eric Myhre | 1 | +2919/-121 | 39 |
+| Hannah Howard | 3 | +412/-103 | 15 |
+| hannahhoward | 1 | +31/-31 | 7 |
+| whyrusleeping | 1 | +31/-18 | 2 |
+| Aarsh Shah | 1 | +27/-1 | 3 |
 
-# go-graphsync 0.0.4
+# go-graphsync 0.1.2
 
-Initial release to incorporate into go-data-transfer module.
-
-Implements request authorization, request hooks, default valdiation policy, etc
+Minor release with initial benchmarks
 
 ### Changelog
 
 - github.com/ipfs/go-graphsync:
-  - Add DAG Protobuf Support ([ipfs/go-graphsync#51](https://github.com/ipfs/go-graphsync/pull/51))
-  - Add response hooks ([ipfs/go-graphsync#50](https://github.com/ipfs/go-graphsync/pull/50))
-  - Request hooks ([ipfs/go-graphsync#49](https://github.com/ipfs/go-graphsync/pull/49))
-  - Add a default validation policy ([ipfs/go-graphsync#48](https://github.com/ipfs/go-graphsync/pull/48))
-  - Send user extensions in request ([ipfs/go-graphsync#47](https://github.com/ipfs/go-graphsync/pull/47))
-  - Revert "Merge pull request #44 from ipfs/chore/update-peertaskqueue"
-  - Update peertaskqueue ([ipfs/go-graphsync#44](https://github.com/ipfs/go-graphsync/pull/44))
-  - Refactor file organization ([ipfs/go-graphsync#43](https://github.com/ipfs/go-graphsync/pull/43))
-  - feat(graphsync): support extension protocol ([ipfs/go-graphsync#42](https://github.com/ipfs/go-graphsync/pull/42))
-  - Bump go-ipld-prime to 092ea9a7696d ([ipfs/go-graphsync#41](https://github.com/ipfs/go-graphsync/pull/41))
-  - Fix some typo ([ipfs/go-graphsync#40](https://github.com/ipfs/go-graphsync/pull/40))
+  - Benchmark framework + First memory fixes (#89) ([ipfs/go-graphsync#89](https://github.com/ipfs/go-graphsync/pull/89))
+  - docs(CHANGELOG): update for v0.1.1 ([ipfs/go-graphsync#85](https://github.com/ipfs/go-graphsync/pull/85))
 
 ### Contributors
 
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|
-| hannahhoward | 12 | +3040/-1516 | 103 |
-| Hannah Howard | 2 | +253/-321 | 3 |
-| Dirk McCormick | 1 | +47/-33 | 4 |
-| Edgar Lee | 1 | +36/-20 | 8 |
-| Alexey | 1 | +15/-15 | 1 |
+| Hannah Howard | 1 | +1055/-39 | 17 |
 
-# go-graphsync v0.0.5
+# go-graphsync 0.1.1
 
-Minor release -- update task queue and add some documentation
+Minor fix for alternate persistence stores and deduplication
 
 ### Changelog
 
 - github.com/ipfs/go-graphsync:
-  - feat: update the peer task queue ([ipfs/go-graphsync#54](https://github.com/ipfs/go-graphsync/pull/54))
-  - docs(readme): document the storeutil package in the readme ([ipfs/go-graphsync#52](https://github.com/ipfs/go-graphsync/pull/52))
+  - docs(CHANGELOG): update for v0.1.0 release ([ipfs/go-graphsync#84](https://github.com/ipfs/go-graphsync/pull/84))
+  - Dedup by key extension (#83) ([ipfs/go-graphsync#83](https://github.com/ipfs/go-graphsync/pull/83))
 
 ### Contributors
 
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|
-| Steven Allen | 2 | +68/-49 | 5 |
+| Hannah Howard | 1 | +316/-7 | 10 |
 
 # go-graphsync v0.1.0
 
@@ -131,64 +119,91 @@ Major release (we fell behind on creating tagged releases for a while) -- many a
 | hannahhoward | 13 | +1663/-1906 | 184 |
 | Hector Sanjuan | 2 | +95/-0 | 3 |
 
-# go-graphsync 0.1.1
+# go-graphsync v0.0.5
 
-Minor fix for alternate persistence stores and deduplication
+Minor release -- update task queue and add some documentation
 
 ### Changelog
 
 - github.com/ipfs/go-graphsync:
-  - docs(CHANGELOG): update for v0.1.0 release ([ipfs/go-graphsync#84](https://github.com/ipfs/go-graphsync/pull/84))
-  - Dedup by key extension (#83) ([ipfs/go-graphsync#83](https://github.com/ipfs/go-graphsync/pull/83))
+  - feat: update the peer task queue ([ipfs/go-graphsync#54](https://github.com/ipfs/go-graphsync/pull/54))
+  - docs(readme): document the storeutil package in the readme ([ipfs/go-graphsync#52](https://github.com/ipfs/go-graphsync/pull/52))
 
 ### Contributors
 
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|
-| Hannah Howard | 1 | +316/-7 | 10 |
+| Steven Allen | 2 | +68/-49 | 5 |
 
-# go-graphsync 0.1.2
+# go-graphsync 0.0.4
 
-Minor release with initial benchmarks
+Initial release to incorporate into go-data-transfer module.
+
+Implements request authorization, request hooks, default valdiation policy, etc
 
 ### Changelog
 
 - github.com/ipfs/go-graphsync:
-  - Benchmark framework + First memory fixes (#89) ([ipfs/go-graphsync#89](https://github.com/ipfs/go-graphsync/pull/89))
-  - docs(CHANGELOG): update for v0.1.1 ([ipfs/go-graphsync#85](https://github.com/ipfs/go-graphsync/pull/85))
+  - Add DAG Protobuf Support ([ipfs/go-graphsync#51](https://github.com/ipfs/go-graphsync/pull/51))
+  - Add response hooks ([ipfs/go-graphsync#50](https://github.com/ipfs/go-graphsync/pull/50))
+  - Request hooks ([ipfs/go-graphsync#49](https://github.com/ipfs/go-graphsync/pull/49))
+  - Add a default validation policy ([ipfs/go-graphsync#48](https://github.com/ipfs/go-graphsync/pull/48))
+  - Send user extensions in request ([ipfs/go-graphsync#47](https://github.com/ipfs/go-graphsync/pull/47))
+  - Revert "Merge pull request #44 from ipfs/chore/update-peertaskqueue"
+  - Update peertaskqueue ([ipfs/go-graphsync#44](https://github.com/ipfs/go-graphsync/pull/44))
+  - Refactor file organization ([ipfs/go-graphsync#43](https://github.com/ipfs/go-graphsync/pull/43))
+  - feat(graphsync): support extension protocol ([ipfs/go-graphsync#42](https://github.com/ipfs/go-graphsync/pull/42))
+  - Bump go-ipld-prime to 092ea9a7696d ([ipfs/go-graphsync#41](https://github.com/ipfs/go-graphsync/pull/41))
+  - Fix some typo ([ipfs/go-graphsync#40](https://github.com/ipfs/go-graphsync/pull/40))
 
 ### Contributors
 
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|
-| Hannah Howard | 1 | +1055/-39 | 17 |
+| hannahhoward | 12 | +3040/-1516 | 103 |
+| Hannah Howard | 2 | +253/-321 | 3 |
+| Dirk McCormick | 1 | +47/-33 | 4 |
+| Edgar Lee | 1 | +36/-20 | 8 |
+| Alexey | 1 | +15/-15 | 1 |
 
-# go-graphsync 0.2.0
+# go-graphsync 0.0.3
 
-Update to IPLD prime + several optimizations for performance
+Bug fix release. Fix issues issues with message queue.
 
 ### Changelog
 
 - github.com/ipfs/go-graphsync:
-  - style(imports): fix imports
-  - fix(selectorvalidator): memory optimization (#97) ([ipfs/go-graphsync#97](https://github.com/ipfs/go-graphsync/pull/97))
-  - Update go-ipld-prime@v0.5.0 (#92) ([ipfs/go-graphsync#92](https://github.com/ipfs/go-graphsync/pull/92))
-  - refactor(metadata): use cbor-gen encoding (#96) ([ipfs/go-graphsync#96](https://github.com/ipfs/go-graphsync/pull/96))
-  - Release/v0.1.2 ([ipfs/go-graphsync#95](https://github.com/ipfs/go-graphsync/pull/95))
-  - Return Request context cancelled error (#93) ([ipfs/go-graphsync#93](https://github.com/ipfs/go-graphsync/pull/93))
-  - feat(benchmarks): add p2p stress test (#91) ([ipfs/go-graphsync#91](https://github.com/ipfs/go-graphsync/pull/91))
-- github.com/hannahhoward/cbor-gen-for (null -> v0.0.0-20200817222906-ea96cece81f1):
-  - add flag to select map encoding ([hannahhoward/cbor-gen-for#1](https://github.com/hannahhoward/cbor-gen-for/pull/1))
+  - fix(messagequeue): no retry after queue shutdown ([ipfs/go-graphsync#38](https://github.com/ipfs/go-graphsync/pull/38))
 
 ### Contributors
 
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|
-| Eric Myhre | 1 | +2919/-121 | 39 |
-| Hannah Howard | 3 | +412/-103 | 15 |
-| hannahhoward | 1 | +31/-31 | 7 |
-| whyrusleeping | 1 | +31/-18 | 2 |
-| Aarsh Shah | 1 | +27/-1 | 3 |
+| hannahhoward | 1 | +70/-1 | 2 |
+
+# go-graphsync 0.0.2
+
+Bug fix release. Fix message sizes to not overflow limits.
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Limit Response Size ([ipfs/go-graphsync#37](https://github.com/ipfs/go-graphsync/pull/37))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| hannahhoward | 2 | +295/-52 | 5 |
+
+# go-graphysnc 0.0.1-filecoin
+
+Initial tagged release for early version of filecoin
+
+### Changelog
+
+Initial feature set including parallel requests, selectors, basic architecture,
+etc. -- changelog not tracked due to lack of go.mod
 
 ### 🙌🏽 Want to contribute?
 
