@@ -123,7 +123,7 @@ func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response datat
 			}
 		}
 		if !response.Accepted() {
-			return m.channels.Error(chid, errors.New("Response Rejected"))
+			return m.channels.Error(chid, datatransfer.ErrRejected)
 		}
 		if response.IsNew() {
 			err := m.channels.Accept(chid)
@@ -170,7 +170,15 @@ func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, success bool) 
 		}
 		return m.channels.FinishTransfer(chid)
 	}
-	return m.channels.Error(chid, errors.New("incomplete response"))
+	chst, err := m.channels.GetByID(context.TODO(), chid)
+	if err != nil {
+		return err
+	}
+	// send an error, but only if we haven't already errored for some reason
+	if chst.Status() != datatransfer.Failing && chst.Status() != datatransfer.Failed {
+		return m.channels.Error(chid, datatransfer.ErrIncomplete)
+	}
+	return nil
 }
 
 func (m *manager) receiveNewRequest(

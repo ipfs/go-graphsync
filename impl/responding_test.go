@@ -482,6 +482,27 @@ func TestDataTransferResponding(t *testing.T) {
 				require.False(t, response.IsPaused())
 			},
 		},
+		"validated, incomplete response": {
+			expectedEvents: []datatransfer.EventCode{
+				datatransfer.Open,
+				datatransfer.NewVoucherResult,
+				datatransfer.Accept,
+				datatransfer.Error,
+				datatransfer.CleanupComplete,
+			},
+			configureValidator: func(sv *testutil.StubbedValidator) {
+				sv.ExpectSuccessPull()
+				sv.StubResult(testutil.NewFakeDTType())
+			},
+			configureRevalidator: func(srv *testutil.StubbedRevalidator) {
+			},
+			verify: func(t *testing.T, h *receiverHarness) {
+				_, err := h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.pullRequest)
+				require.NoError(t, err)
+				err = h.transport.EventHandler.OnChannelCompleted(channelID(h.id, h.peers), false)
+				require.NoError(t, err)
+			},
+		},
 		"new push request, customized transport": {
 			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.NewVoucherResult, datatransfer.Accept},
 			configureValidator: func(sv *testutil.StubbedValidator) {

@@ -231,7 +231,7 @@ func (m *manager) PauseDataTransferChannel(ctx context.Context, chid datatransfe
 
 	pausable, ok := m.transport.(datatransfer.PauseableTransport)
 	if !ok {
-		return errors.New("unsupported")
+		return datatransfer.ErrUnsupported
 	}
 
 	err := pausable.PauseChannel(ctx, chid)
@@ -252,7 +252,7 @@ func (m *manager) PauseDataTransferChannel(ctx context.Context, chid datatransfe
 func (m *manager) ResumeDataTransferChannel(ctx context.Context, chid datatransfer.ChannelID) error {
 	pausable, ok := m.transport.(datatransfer.PauseableTransport)
 	if !ok {
-		return errors.New("unsupported")
+		return datatransfer.ErrUnsupported
 	}
 
 	err := pausable.ResumeChannel(ctx, m.resumeMessage(chid), chid)

@@ -890,6 +890,83 @@ func TestPauseAndResume(t *testing.T) {
 	}
 }
 
+func TestUnrecognizedVoucherRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	testCases := map[string]bool{
+		"push requests": false,
+		"pull requests": true,
+	}
+	for testCase, isPull := range testCases {
+		t.Run(testCase, func(t *testing.T) {
+			//	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			//	defer cancel()
+
+			gsData := testutil.NewGraphsyncTestingData(ctx, t)
+			host1 := gsData.Host1 // initiator, data sender
+			host2 := gsData.Host2 // data recipient
+
+			tp1 := gsData.SetupGSTransportHost1()
+			tp2 := gsData.SetupGSTransportHost2()
+
+			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1, gsData.StoredCounter1)
+			require.NoError(t, err)
+			err = dt1.Start(ctx)
+			require.NoError(t, err)
+			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2, gsData.StoredCounter2)
+			require.NoError(t, err)
+			err = dt2.Start(ctx)
+			require.NoError(t, err)
+
+			finished := make(chan struct{}, 2)
+			errChan := make(chan string, 2)
+			opened := make(chan struct{}, 2)
+			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+				if channelState.Status() == datatransfer.Failed {
+					finished <- struct{}{}
+				}
+				if event.Code == datatransfer.Error {
+					errChan <- channelState.Message()
+				}
+				if event.Code == datatransfer.Open {
+					opened <- struct{}{}
+				}
+			}
+			dt1.SubscribeToEvents(subscriber)
+			dt2.SubscribeToEvents(subscriber)
+			voucher := testutil.FakeDTType{Data: "applesauce"}
+
+			root, _ := testutil.LoadUnixFSFile(ctx, t, gsData.DagService1)
+			rootCid := root.(cidlink.Link).Cid
+
+			if isPull {
+				_, err = dt2.OpenPullDataChannel(ctx, host1.ID(), &voucher, rootCid, gsData.AllSelector)
+			} else {
+				_, err = dt1.OpenPushDataChannel(ctx, host2.ID(), &voucher, rootCid, gsData.AllSelector)
+			}
+			require.NoError(t, err)
+			opens := 0
+			var errMessages []string
+			finishes := 0
+			for opens < 1 || finishes < 1 {
+				select {
+				case <-ctx.Done():
+					t.Fatal("Did not complete succcessful data transfer")
+				case <-finished:
+					finishes++
+				case <-opened:
+					opens++
+				case errMessage := <-errChan:
+					require.Equal(t, errMessage, datatransfer.ErrRejected.Error())
+					errMessages = append(errMessages, errMessage)
+					if len(errMessages) > 1 {
+						t.Fatal("too many errors")
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestDataTransferSubscribing(t *testing.T) {
 	// create network
 	ctx := context.Background()
