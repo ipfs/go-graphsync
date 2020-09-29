@@ -593,21 +593,21 @@ type retrievalRevalidator struct {
 	finalVoucher       datatransfer.VoucherResult
 }
 
-func (r *retrievalRevalidator) OnPullDataSent(chid datatransfer.ChannelID, additionalBytesSent uint64) (datatransfer.VoucherResult, error) {
+func (r *retrievalRevalidator) OnPullDataSent(chid datatransfer.ChannelID, additionalBytesSent uint64) (bool, datatransfer.VoucherResult, error) {
 	r.dataSoFar += additionalBytesSent
 	if r.providerPausePoint < len(r.pausePoints) &&
 		r.dataSoFar >= r.pausePoints[r.providerPausePoint] {
 		r.providerPausePoint++
-		return testutil.NewFakeDTType(), datatransfer.ErrPause
+		return true, testutil.NewFakeDTType(), datatransfer.ErrPause
 	}
-	return nil, nil
+	return true, nil, nil
 }
 
-func (r *retrievalRevalidator) OnPushDataReceived(chid datatransfer.ChannelID, additionalBytesReceived uint64) (datatransfer.VoucherResult, error) {
-	return nil, nil
+func (r *retrievalRevalidator) OnPushDataReceived(chid datatransfer.ChannelID, additionalBytesReceived uint64) (bool, datatransfer.VoucherResult, error) {
+	return false, nil, nil
 }
-func (r *retrievalRevalidator) OnComplete(chid datatransfer.ChannelID) (datatransfer.VoucherResult, error) {
-	return r.finalVoucher, datatransfer.ErrPause
+func (r *retrievalRevalidator) OnComplete(chid datatransfer.ChannelID) (bool, datatransfer.VoucherResult, error) {
+	return true, r.finalVoucher, datatransfer.ErrPause
 }
 
 func TestSimulatedRetrievalFlow(t *testing.T) {

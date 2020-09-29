@@ -165,21 +165,21 @@ func NewStubbedRevalidator() *StubbedRevalidator {
 }
 
 // OnPullDataSent returns a stubbed result for checking when pull data is sent
-func (srv *StubbedRevalidator) OnPullDataSent(chid datatransfer.ChannelID, additionalBytesSent uint64) (datatransfer.VoucherResult, error) {
+func (srv *StubbedRevalidator) OnPullDataSent(chid datatransfer.ChannelID, additionalBytesSent uint64) (bool, datatransfer.VoucherResult, error) {
 	srv.didPullCheck = true
-	return srv.revalidationResult, srv.pullCheckError
+	return srv.expectPullCheck, srv.revalidationResult, srv.pullCheckError
 }
 
 // OnPushDataReceived returns a stubbed result for checking when push data is received
-func (srv *StubbedRevalidator) OnPushDataReceived(chid datatransfer.ChannelID, additionalBytesReceived uint64) (datatransfer.VoucherResult, error) {
+func (srv *StubbedRevalidator) OnPushDataReceived(chid datatransfer.ChannelID, additionalBytesReceived uint64) (bool, datatransfer.VoucherResult, error) {
 	srv.didPushCheck = true
-	return srv.revalidationResult, srv.pushCheckError
+	return srv.expectPushCheck, srv.revalidationResult, srv.pushCheckError
 }
 
 // OnComplete returns a stubbed result for checking when the requests completes
-func (srv *StubbedRevalidator) OnComplete(chid datatransfer.ChannelID) (datatransfer.VoucherResult, error) {
+func (srv *StubbedRevalidator) OnComplete(chid datatransfer.ChannelID) (bool, datatransfer.VoucherResult, error) {
 	srv.didComplete = true
-	return srv.revalidationResult, srv.completeError
+	return srv.expectComplete, srv.revalidationResult, srv.completeError
 }
 
 // Revalidate returns a stubbed result for revalidating a request

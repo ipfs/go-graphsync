@@ -32,10 +32,14 @@ func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, si
 	if chid.Initiator != m.peerID {
 		var result datatransfer.VoucherResult
 		var err error
+		var handled bool
 		_ = m.revalidators.Each(func(_ datatransfer.TypeIdentifier, _ encoding.Decoder, processor registry.Processor) error {
 			revalidator := processor.(datatransfer.Revalidator)
-			result, err = revalidator.OnPushDataReceived(chid, size)
-			return err
+			handled, result, err = revalidator.OnPushDataReceived(chid, size)
+			if handled {
+				return errors.New("stop processing")
+			}
+			return nil
 		})
 		if err != nil || result != nil {
 			msg, err := m.processRevalidationResult(chid, result, err)
@@ -58,10 +62,14 @@ func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size u
 	if chid.Initiator != m.peerID {
 		var result datatransfer.VoucherResult
 		var err error
+		var handled bool
 		_ = m.revalidators.Each(func(_ datatransfer.TypeIdentifier, _ encoding.Decoder, processor registry.Processor) error {
 			revalidator := processor.(datatransfer.Revalidator)
-			result, err = revalidator.OnPullDataSent(chid, size)
-			return err
+			handled, result, err = revalidator.OnPullDataSent(chid, size)
+			if handled {
+				return errors.New("stop processing")
+			}
+			return nil
 		})
 		if err != nil || result != nil {
 			return m.processRevalidationResult(chid, result, err)
@@ -330,10 +338,14 @@ func (m *manager) processRevalidationResult(chid datatransfer.ChannelID, result 
 func (m *manager) completeMessage(chid datatransfer.ChannelID) (datatransfer.Response, error) {
 	var result datatransfer.VoucherResult
 	var resultErr error
+	var handled bool
 	_ = m.revalidators.Each(func(_ datatransfer.TypeIdentifier, _ encoding.Decoder, processor registry.Processor) error {
 		revalidator := processor.(datatransfer.Revalidator)
-		result, resultErr = revalidator.OnComplete(chid)
-		return resultErr
+		handled, result, resultErr = revalidator.OnComplete(chid)
+		if handled {
+			return errors.New("stop processing")
+		}
+		return nil
 	})
 	if result != nil {
 		err := m.channels.NewVoucherResult(chid, result)

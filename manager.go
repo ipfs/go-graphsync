@@ -31,20 +31,30 @@ type Revalidator interface {
 	// Revalidate revalidates a request with a new voucher
 	Revalidate(channelID ChannelID, voucher Voucher) (VoucherResult, error)
 	// OnPullDataSent is called on the responder side when more bytes are sent
-	// for a given pull request. It should return a VoucherResult + ErrPause to
+	// for a given pull request. The first value indicates whether the request was
+	// recognized by this revalidator and should be considered 'handled'. If true,
+	// the remaining two values are interpreted. If 'false' the request is passed on
+	// to the next revalidators.
+	// It should return a VoucherResult + ErrPause to
 	// request revalidation or nil to continue uninterrupted,
-	// other errors will terminate the request
-	OnPullDataSent(chid ChannelID, additionalBytesSent uint64) (VoucherResult, error)
+	// other errors will terminate the request.
+	OnPullDataSent(chid ChannelID, additionalBytesSent uint64) (bool, VoucherResult, error)
 	// OnPushDataReceived is called on the responder side when more bytes are received
-	// for a given push request.  It should return a VoucherResult + ErrPause to
+	// for a given push request. The first value indicates whether the request was
+	// recognized by this revalidator and should be considered 'handled'. If true,
+	// the remaining two values are interpreted. If 'false' the request is passed on
+	// to the next revalidators. It should return a VoucherResult + ErrPause to
 	// request revalidation or nil to continue uninterrupted,
 	// other errors will terminate the request
-	OnPushDataReceived(chid ChannelID, additionalBytesReceived uint64) (VoucherResult, error)
+	OnPushDataReceived(chid ChannelID, additionalBytesReceived uint64) (bool, VoucherResult, error)
 	// OnComplete is called to make a final request for revalidation -- often for the
-	// purpose of settlement.
+	// purpose of settlement. The first value indicates whether the request was
+	// recognized by this revalidator and should be considered 'handled'. If true,
+	// the remaining two values are interpreted. If 'false' the request is passed on
+	// to the next revalidators.
 	// if VoucherResult is non nil, the request will enter a settlement phase awaiting
 	// a final update
-	OnComplete(chid ChannelID) (VoucherResult, error)
+	OnComplete(chid ChannelID) (bool, VoucherResult, error)
 }
 
 // TransportConfigurer provides a mechanism to provide transport specific configuration for a given voucher type
