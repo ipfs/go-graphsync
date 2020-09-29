@@ -1,5 +1,26 @@
 # go-data-transfer changelog
 
+# go-fil-markets 0.6.6
+
+Dependency update - go graphsync fix
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - feat(deps): update graphsync (#86) ([filecoin-project/go-data-transfer#86](https://github.com/filecoin-project/go-data-transfer/pull/86))
+  - docs(CHANGELOG): updates for 0.6.5 ([filecoin-project/go-data-transfer#85](https://github.com/filecoin-project/go-data-transfer/pull/85))
+- github.com/ipfs/go-graphsync (v0.2.0 -> v0.2.1):
+  - docs(CHANGELOG): update for 0.2.1
+  - Release/0.2.0 ([ipfs/go-graphsync#99](https://github.com/ipfs/go-graphsync/pull/99))
+  - fix(metadata): fix cbor-gen (#98) ([ipfs/go-graphsync#98](https://github.com/ipfs/go-graphsync/pull/98))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| hannahhoward | 1 | +83/-68 | 1 |
+| Hannah Howard | 2 | +15/-19 | 5 |
+
 # go-fil-markets 0.6.5
 
 Dependency update - go-graphsync and go-ipld-prime
