@@ -1,6 +1,23 @@
 # go-data-transfer changelog
 
-# go-fil-markets 0.6.6
+# go-data-transfer 0.6.7
+
+Minor update w/ fixes to support go-fil-markets 0.7.0
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Feat/cleanup errors (#90) ([filecoin-project/go-data-transfer#90](https://github.com/filecoin-project/go-data-transfer/pull/90))
+  - Disambiguate whether a revalidator recognized a request when checking for a need to revalidate (#87) ([filecoin-project/go-data-transfer#87](https://github.com/filecoin-project/go-data-transfer/pull/87))
+  - docs(CHANGELOG): update for 0.6.6 ([filecoin-project/go-data-transfer#89](https://github.com/filecoin-project/go-data-transfer/pull/89))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 2 | +167/-30 | 9 |
+
+# go-data-transfer 0.6.6
 
 Dependency update - go graphsync fix
 
@@ -21,7 +38,7 @@ Dependency update - go graphsync fix
 | hannahhoward | 1 | +83/-68 | 1 |
 | Hannah Howard | 2 | +15/-19 | 5 |
 
-# go-fil-markets 0.6.5
+# go-data-transfer 0.6.5
 
 Dependency update - go-graphsync and go-ipld-prime
 
