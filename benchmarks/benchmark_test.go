@@ -52,8 +52,14 @@ func BenchmarkRoundtripSuccess(b *testing.B) {
 	b.Run("test-20-10000", func(b *testing.B) {
 		subtestDistributeAndFetch(ctx, b, 20, delay.Fixed(0), time.Duration(0), allFilesUniformSize(10000, defaultUnixfsChunkSize, defaultUnixfsLinksPerLevel), tdm)
 	})
+	b.Run("test-20-128MB", func(b *testing.B) {
+		subtestDistributeAndFetch(ctx, b, 10, delay.Fixed(0), time.Duration(0), allFilesUniformSize(128*(1<<20), defaultUnixfsChunkSize, defaultUnixfsLinksPerLevel), tdm)
+	})
 	b.Run("test-p2p-stress-10-128MB", func(b *testing.B) {
 		p2pStrestTest(ctx, b, 20, allFilesUniformSize(128*(1<<20), 1<<20, 1024), tdm)
+	})
+	b.Run("test-p2p-stress-10-128MB-1KB-chunks", func(b *testing.B) {
+		p2pStrestTest(ctx, b, 10, allFilesUniformSize(128*(1<<20), 1<<10, 1024), tdm)
 	})
 }
 

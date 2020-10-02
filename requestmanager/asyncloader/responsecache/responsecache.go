@@ -20,6 +20,7 @@ var log = logging.Logger("graphsync")
 // as they come in and removing them as they are verified
 type UnverifiedBlockStore interface {
 	PruneBlocks(func(ipld.Link) bool)
+	PruneBlock(ipld.Link)
 	VerifyBlock(ipld.Link) ([]byte, error)
 	AddUnverifiedBlock(ipld.Link, []byte)
 }
@@ -83,9 +84,11 @@ func (rc *ResponseCache) ProcessResponse(responses map[graphsync.RequestID]metad
 	}
 
 	// prune unused blocks right away
-	rc.unverifiedBlockStore.PruneBlocks(func(link ipld.Link) bool {
-		return rc.linkTracker.BlockRefCount(link) == 0
-	})
+	for _, block := range blks {
+		if rc.linkTracker.BlockRefCount(cidlink.Link{Cid: block.Cid()}) == 0 {
+			rc.unverifiedBlockStore.PruneBlock(cidlink.Link{Cid: block.Cid()})
+		}
+	}
 
 	rc.responseCacheLk.Unlock()
 }

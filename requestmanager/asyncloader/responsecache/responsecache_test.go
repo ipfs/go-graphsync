@@ -31,6 +31,10 @@ func (ubs *fakeUnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link) boo
 	}
 }
 
+func (ubs *fakeUnverifiedBlockStore) PruneBlock(link ipld.Link) {
+	delete(ubs.inMemoryBlocks, link)
+}
+
 func (ubs *fakeUnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
 	data, ok := ubs.inMemoryBlocks[lnk]
 	if !ok {

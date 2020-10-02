@@ -38,6 +38,11 @@ func (ubs *UnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link) bool) {
 	}
 }
 
+// PruneBlock deletes an individual block from the store
+func (ubs *UnverifiedBlockStore) PruneBlock(link ipld.Link) {
+	delete(ubs.inMemoryBlocks, link)
+}
+
 // VerifyBlock verifies the data for the given link as being part of a traversal,
 // removes it from the unverified store, and writes it to permaneant storage.
 func (ubs *UnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
