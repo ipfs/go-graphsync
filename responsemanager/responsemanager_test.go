@@ -20,6 +20,7 @@ import (
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/dedupkey"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
@@ -150,6 +151,7 @@ func (fprs *fakePeerResponseSender) SendResponse(
 	requestID graphsync.RequestID,
 	link ipld.Link,
 	data []byte,
+	_ ...notifications.Notifee,
 ) graphsync.BlockData {
 	fprs.sentResponses <- sentResponse{requestID, link, data}
 	return fakeBlkData{link, uint64(len(data))}
@@ -158,20 +160,21 @@ func (fprs *fakePeerResponseSender) SendResponse(
 func (fprs *fakePeerResponseSender) SendExtensionData(
 	requestID graphsync.RequestID,
 	extension graphsync.ExtensionData,
+	_ ...notifications.Notifee,
 ) {
 	fprs.sentExtensions <- sentExtension{requestID, extension}
 }
 
-func (fprs *fakePeerResponseSender) FinishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode {
+func (fprs *fakePeerResponseSender) FinishRequest(requestID graphsync.RequestID, _ ...notifications.Notifee) graphsync.ResponseStatusCode {
 	fprs.lastCompletedRequest <- completedRequest{requestID, graphsync.RequestCompletedFull}
 	return graphsync.RequestCompletedFull
 }
 
-func (fprs *fakePeerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
+func (fprs *fakePeerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode, _ ...notifications.Notifee) {
 	fprs.lastCompletedRequest <- completedRequest{requestID, status}
 }
 
-func (fprs *fakePeerResponseSender) PauseRequest(requestID graphsync.RequestID) {
+func (fprs *fakePeerResponseSender) PauseRequest(requestID graphsync.RequestID, _ ...notifications.Notifee) {
 	fprs.pausedRequests <- pausedRequest{requestID}
 }
 
@@ -179,7 +182,7 @@ func (fprs *fakePeerResponseSender) FinishWithCancel(requestID graphsync.Request
 	fprs.cancelledRequests <- cancelledRequest{requestID}
 }
 
-func (fprs *fakePeerResponseSender) Transaction(requestID graphsync.RequestID, transaction peerresponsemanager.Transaction) error {
+func (fprs *fakePeerResponseSender) Transaction(requestID graphsync.RequestID, transaction peerresponsemanager.Transaction, _ ...notifications.Notifee) error {
 	fprts := &fakePeerResponseTransactionSender{requestID, fprs}
 	return transaction(fprts)
 }

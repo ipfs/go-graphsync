@@ -2,8 +2,10 @@ package peerresponsemanager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +26,7 @@ type fakePeerHandler struct {
 	lastBlocks    []blocks.Block
 	lastResponses []gsmsg.GraphSyncResponse
 	sent          chan struct{}
+	notifeesLk    sync.Mutex
 	notifees      []notifications.Notifee
 }
 
@@ -31,19 +34,31 @@ func (fph *fakePeerHandler) SendResponse(p peer.ID, responses []gsmsg.GraphSyncR
 	fph.lastResponses = responses
 	fph.lastBlocks = blks
 	fph.sent <- struct{}{}
+	fph.notifeesLk.Lock()
 	fph.notifees = append(fph.notifees, notifees...)
+	fph.notifeesLk.Unlock()
 }
 
-func (fph *fakePeerHandler) notifyQueue(topic notifications.Topic) {
-	var newNotifees []notifications.Notifee
+func (fph *fakePeerHandler) notifySuccess() {
+	fph.notifeesLk.Lock()
 	for _, notifee := range fph.notifees {
-		if notifee.Topic == topic {
-			notifee.Subscriber.OnNext(topic, messagequeue.Event{Name: messagequeue.Queued})
-		} else {
-			newNotifees = append(newNotifees, notifee)
-		}
+		notifee.Subscriber.OnNext(notifee.Topic, messagequeue.Event{Name: messagequeue.Queued})
+		notifee.Subscriber.OnNext(notifee.Topic, messagequeue.Event{Name: messagequeue.Sent})
+		notifee.Subscriber.OnClose(notifee.Topic)
 	}
-	fph.notifees = newNotifees
+	fph.notifees = nil
+	fph.notifeesLk.Unlock()
+}
+
+func (fph *fakePeerHandler) notifyError() {
+	fph.notifeesLk.Lock()
+	for _, notifee := range fph.notifees {
+		notifee.Subscriber.OnNext(notifee.Topic, messagequeue.Event{Name: messagequeue.Queued})
+		notifee.Subscriber.OnNext(notifee.Topic, messagequeue.Event{Name: messagequeue.Error, Err: errors.New("something went wrong")})
+		notifee.Subscriber.OnClose(notifee.Topic)
+	}
+	fph.notifees = nil
+	fph.notifeesLk.Unlock()
 }
 
 func TestPeerResponseSenderSendsResponses(t *testing.T) {
@@ -54,6 +69,12 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	requestID1 := graphsync.RequestID(rand.Int31())
 	requestID2 := graphsync.RequestID(rand.Int31())
 	requestID3 := graphsync.RequestID(rand.Int31())
+	sendResponseNotifee1, sendResponseVerifier1 := testutil.NewTestNotifee(requestID1, 10)
+	sendResponseNotifee2, sendResponseVerifier2 := testutil.NewTestNotifee(requestID2, 10)
+	sendResponseNotifee3, sendResponseVerifier3 := testutil.NewTestNotifee(requestID3, 10)
+	finishNotifee1, finishVerifier1 := testutil.NewTestNotifee(requestID1, 10)
+	finishNotifee2, finishVerifier2 := testutil.NewTestNotifee(requestID2, 10)
+
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -66,7 +87,7 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	peerResponseSender := NewResponseSender(ctx, p, fph)
 	peerResponseSender.Startup()
 
-	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
+	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData(), sendResponseNotifee1)
 	require.Equal(t, links[0], bd.Link())
 	require.Equal(t, uint64(len(blks[0].RawData())), bd.BlockSize())
 	require.Equal(t, uint64(len(blks[0].RawData())), bd.BlockSizeOnWire())
@@ -79,25 +100,22 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
 
-	require.Len(t, fph.notifees, 1)
-	topic := fph.notifees[0].Topic
-
-	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData())
+	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData(), sendResponseNotifee2)
 	require.Equal(t, links[0], bd.Link())
 	require.Equal(t, uint64(len(blks[0].RawData())), bd.BlockSize())
 	require.Equal(t, uint64(0), bd.BlockSizeOnWire())
-	bd = peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData())
+	bd = peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData(), sendResponseNotifee1)
 	require.Equal(t, links[1], bd.Link())
 	require.Equal(t, uint64(len(blks[1].RawData())), bd.BlockSize())
 	require.Equal(t, uint64(len(blks[1].RawData())), bd.BlockSizeOnWire())
-	bd = peerResponseSender.SendResponse(requestID1, links[2], nil)
+	bd = peerResponseSender.SendResponse(requestID1, links[2], nil, sendResponseNotifee1)
 	require.Equal(t, links[2], bd.Link())
 	require.Equal(t, uint64(0), bd.BlockSize())
 	require.Equal(t, uint64(0), bd.BlockSizeOnWire())
-	peerResponseSender.FinishRequest(requestID1)
+	peerResponseSender.FinishRequest(requestID1, finishNotifee1)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message")
 
@@ -112,14 +130,12 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, graphsync.PartialResponse, response2.Status(), "did not send corrent response code in second message")
 
-	require.Len(t, fph.notifees, 1)
-	topic = fph.notifees[0].Topic
-	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData())
-	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
-	peerResponseSender.FinishRequest(requestID2)
+	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData(), sendResponseNotifee2)
+	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData(), sendResponseNotifee3)
+	peerResponseSender.FinishRequest(requestID2, finishNotifee2)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
@@ -134,14 +150,12 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	response3, err := findResponseForRequestID(fph.lastResponses, requestID3)
 	require.NoError(t, err)
 	require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not send correct response code in third message")
-	require.Len(t, fph.notifees, 1)
-	topic = fph.notifees[0].Topic
 
-	peerResponseSender.SendResponse(requestID3, links[0], blks[0].RawData())
-	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
+	peerResponseSender.SendResponse(requestID3, links[0], blks[0].RawData(), sendResponseNotifee3)
+	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData(), sendResponseNotifee3)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send fourth message")
 
@@ -151,7 +165,23 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, requestID3, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
-	require.Len(t, fph.notifees, 1)
+
+	fph.notifyError()
+
+	sendResponseVerifier1.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}, Event{Name: Sent}})
+	sendResponseVerifier1.ExpectClose(ctx, t)
+	sendResponseVerifier2.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}, Event{Name: Sent}})
+	sendResponseVerifier2.ExpectClose(ctx, t)
+	sendResponseVerifier3.ExpectEvents(ctx, t, []notifications.Event{
+		Event{Name: Sent},
+		Event{Name: Error, Err: fmt.Errorf("error sending message: %w", errors.New("something went wrong"))},
+	})
+	sendResponseVerifier3.ExpectClose(ctx, t)
+
+	finishVerifier1.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}})
+	finishVerifier1.ExpectClose(ctx, t)
+	finishVerifier2.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}})
+	finishVerifier2.ExpectClose(ctx, t)
 }
 
 func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
@@ -184,8 +214,6 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
-	require.Len(t, fph.notifees, 1)
-	topic := fph.notifees[0].Topic
 
 	// Send 3 very large blocks
 	peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData())
@@ -193,7 +221,7 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	peerResponseSender.SendResponse(requestID1, links[3], blks[3].RawData())
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message ")
 
@@ -201,15 +229,13 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.Equal(t, blks[1].Cid(), fph.lastBlocks[0].Cid(), "Should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "Should break up message")
-	require.Len(t, fph.notifees, 1)
-	topic = fph.notifees[0].Topic
 
 	// Send one more block while waiting
 	peerResponseSender.SendResponse(requestID1, links[4], blks[4].RawData())
 	peerResponseSender.FinishRequest(requestID1)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
@@ -217,11 +243,9 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.Equal(t, blks[2].Cid(), fph.lastBlocks[0].Cid(), "should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "should break up message")
-	require.Len(t, fph.notifees, 1)
-	topic = fph.notifees[0].Topic
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send fourth message")
 
@@ -229,11 +253,9 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.Equal(t, blks[3].Cid(), fph.lastBlocks[0].Cid(), "should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "should break up message")
-	require.Len(t, fph.notifees, 1)
-	topic = fph.notifees[0].Topic
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send fifth message")
 
@@ -241,7 +263,6 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.Equal(t, blks[4].Cid(), fph.lastBlocks[0].Cid(), "should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "should break up message")
-	require.Len(t, fph.notifees, 1)
 
 	response, err := findResponseForRequestID(fph.lastResponses, requestID1)
 	require.NoError(t, err)
@@ -277,8 +298,6 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
-	require.Len(t, fph.notifees, 1)
-	topic := fph.notifees[0].Topic
 
 	extensionData1 := testutil.RandomBytes(100)
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
@@ -296,7 +315,7 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 	peerResponseSender.SendExtensionData(requestID1, extension1)
 	peerResponseSender.SendExtensionData(requestID1, extension2)
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message")
 
@@ -310,8 +329,6 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 	returnedData2, found := lastResponse.Extension(extensionName2)
 	require.True(t, found)
 	require.Equal(t, extensionData2, returnedData2, "did not encode first extension")
-
-	require.Len(t, fph.notifees, 1)
 
 }
 
@@ -394,8 +411,6 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
-	require.Len(t, fph.notifees, 1)
-	topic := fph.notifees[0].Topic
 
 	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData())
 	require.Equal(t, links[0], bd.Link())
@@ -412,7 +427,7 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 	peerResponseSender.FinishRequest(requestID1)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message")
 
@@ -425,13 +440,11 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 	response2, err := findResponseForRequestID(fph.lastResponses, requestID2)
 	require.NoError(t, err)
 	require.Equal(t, graphsync.PartialResponse, response2.Status(), "did not send corrent response code in second message")
-	require.Len(t, fph.notifees, 1)
-	topic = fph.notifees[0].Topic
 	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData())
 	peerResponseSender.FinishRequest(requestID2)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
@@ -443,7 +456,6 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, graphsync.RequestCompletedFull, response2.Status(), "did not send correct response code in third message")
 
-	require.Len(t, fph.notifees, 1)
 }
 
 func TestPeerResponseSenderDupKeys(t *testing.T) {
@@ -482,9 +494,6 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
 
-	require.Len(t, fph.notifees, 1)
-	topic := fph.notifees[0].Topic
-
 	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData())
 	require.Equal(t, links[0], bd.Link())
 	require.Equal(t, uint64(len(blks[0].RawData())), bd.BlockSize())
@@ -499,7 +508,7 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	require.Equal(t, uint64(0), bd.BlockSizeOnWire())
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message")
 
@@ -514,15 +523,13 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	response2, err := findResponseForRequestID(fph.lastResponses, requestID2)
 	require.NoError(t, err)
 	require.Equal(t, graphsync.PartialResponse, response2.Status(), "did not send corrent response code in second message")
-	require.Len(t, fph.notifees, 1)
-	topic = fph.notifees[0].Topic
 
 	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData())
 	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
 	peerResponseSender.FinishRequest(requestID2)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
@@ -537,14 +544,12 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	response3, err := findResponseForRequestID(fph.lastResponses, requestID3)
 	require.NoError(t, err)
 	require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not send correct response code in third message")
-	require.Len(t, fph.notifees, 1)
-	topic = fph.notifees[0].Topic
 
 	peerResponseSender.SendResponse(requestID3, links[0], blks[0].RawData())
 	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifyQueue(topic)
+	fph.notifySuccess()
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send fourth message")
 
@@ -553,7 +558,6 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, requestID3, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
-	require.Len(t, fph.notifees, 1)
 
 }
 
