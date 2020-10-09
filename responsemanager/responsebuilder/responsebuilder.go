@@ -14,6 +14,7 @@ import (
 // requests for a given peer and then generates the corresponding
 // GraphSync message components once responses are ready to send.
 type ResponseBuilder struct {
+	topic              Topic
 	outgoingBlocks     []blocks.Block
 	blkSize            uint64
 	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
@@ -21,9 +22,13 @@ type ResponseBuilder struct {
 	extensions         map[graphsync.RequestID][]graphsync.ExtensionData
 }
 
+// Topic is an identifier for notifications about this response builder
+type Topic uint64
+
 // New generates a new ResponseBuilder.
-func New() *ResponseBuilder {
+func New(topic Topic) *ResponseBuilder {
 	return &ResponseBuilder{
+		topic:              topic,
 		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
 		outgoingResponses:  make(map[graphsync.RequestID]metadata.Metadata),
 		extensions:         make(map[graphsync.RequestID][]graphsync.ExtensionData),
@@ -85,6 +90,11 @@ func (rb *ResponseBuilder) Build() ([]gsmsg.GraphSyncResponse, []blocks.Block, e
 		responses = append(responses, gsmsg.NewResponse(requestID, responseCode(status, isComplete), rb.extensions[requestID]...))
 	}
 	return responses, rb.outgoingBlocks, nil
+}
+
+// Topic returns the identifier for notifications sent about this response builder
+func (rb *ResponseBuilder) Topic() Topic {
+	return rb.topic
 }
 
 func responseCode(status graphsync.ResponseStatusCode, isComplete bool) graphsync.ResponseStatusCode {

@@ -7,13 +7,14 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/notifications"
 )
 
 // PeerQueue is a process that sends messages to a peer
 type PeerQueue interface {
 	PeerProcess
-	AddRequest(graphSyncRequest gsmsg.GraphSyncRequest)
-	AddResponses(responses []gsmsg.GraphSyncResponse, blks []blocks.Block) <-chan struct{}
+	AddRequest(graphSyncRequest gsmsg.GraphSyncRequest, notifees ...notifications.Notifee)
+	AddResponses(responses []gsmsg.GraphSyncResponse, blks []blocks.Block, notifees ...notifications.Notifee)
 }
 
 // PeerQueueFactory provides a function that will create a PeerQueue.
@@ -34,14 +35,14 @@ func NewMessageManager(ctx context.Context, createPeerQueue PeerQueueFactory) *P
 }
 
 // SendRequest sends the given GraphSyncRequest to the given peer
-func (pmm *PeerMessageManager) SendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
+func (pmm *PeerMessageManager) SendRequest(p peer.ID, request gsmsg.GraphSyncRequest, notifees ...notifications.Notifee) {
 	pq := pmm.GetProcess(p).(PeerQueue)
-	pq.AddRequest(request)
+	pq.AddRequest(request, notifees...)
 }
 
 // SendResponse sends the given GraphSyncResponses and blocks to the given peer.
 func (pmm *PeerMessageManager) SendResponse(p peer.ID,
-	responses []gsmsg.GraphSyncResponse, blks []blocks.Block) <-chan struct{} {
+	responses []gsmsg.GraphSyncResponse, blks []blocks.Block, notifees ...notifications.Notifee) {
 	pq := pmm.GetProcess(p).(PeerQueue)
-	return pq.AddResponses(responses, blks)
+	pq.AddResponses(responses, blks, notifees...)
 }

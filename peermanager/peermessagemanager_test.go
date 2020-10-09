@@ -14,6 +14,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -30,14 +31,13 @@ type fakePeer struct {
 func (fp *fakePeer) Startup()  {}
 func (fp *fakePeer) Shutdown() {}
 
-func (fp *fakePeer) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest) {
+func (fp *fakePeer) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest, notifees ...notifications.Notifee) {
 	message := gsmsg.New()
 	message.AddRequest(graphSyncRequest)
 	fp.messagesSent <- messageSent{fp.p, message}
 }
 
-func (fp *fakePeer) AddResponses([]gsmsg.GraphSyncResponse, []blocks.Block) <-chan struct{} {
-	return nil
+func (fp *fakePeer) AddResponses([]gsmsg.GraphSyncResponse, []blocks.Block, ...notifications.Notifee) {
 }
 
 func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {

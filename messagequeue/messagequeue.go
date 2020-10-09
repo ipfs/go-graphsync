@@ -2,10 +2,13 @@ package messagequeue
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync/notifications"
 	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p-core/peer"
 
@@ -16,6 +19,21 @@ import (
 var log = logging.Logger("graphsync")
 
 const maxRetries = 10
+
+type EventName uint64
+
+const (
+	Queued EventName = iota
+	Sent
+	Error
+)
+
+type Event struct {
+	Name EventName
+	Err  error
+}
+
+type Topic uint64
 
 // MessageNetwork is any network that can connect peers and generate a message
 // sender.
@@ -35,28 +53,32 @@ type MessageQueue struct {
 
 	// internal do not touch outside go routines
 	nextMessage        gsmsg.GraphSyncMessage
+	nextMessageTopic   Topic
 	nextMessageLk      sync.RWMutex
+	nextAvailableTopic Topic
 	processedNotifiers []chan struct{}
 	sender             gsnet.MessageSender
+	eventPublisher     notifications.Publisher
 }
 
 // New creats a new MessageQueue.
 func New(ctx context.Context, p peer.ID, network MessageNetwork) *MessageQueue {
 	return &MessageQueue{
-		ctx:          ctx,
-		network:      network,
-		p:            p,
-		outgoingWork: make(chan struct{}, 1),
-		done:         make(chan struct{}),
+		ctx:            ctx,
+		network:        network,
+		p:              p,
+		outgoingWork:   make(chan struct{}, 1),
+		done:           make(chan struct{}),
+		eventPublisher: notifications.NewPublisher(),
 	}
 }
 
 // AddRequest adds an outgoing request to the message queue.
-func (mq *MessageQueue) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest) {
+func (mq *MessageQueue) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest, notifees ...notifications.Notifee) {
 
 	if mq.mutateNextMessage(func(nextMessage gsmsg.GraphSyncMessage) {
 		nextMessage.AddRequest(graphSyncRequest)
-	}, nil) {
+	}, notifees) {
 		mq.signalWork()
 	}
 }
@@ -64,8 +86,7 @@ func (mq *MessageQueue) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest) {
 // AddResponses adds the given blocks and responses to the next message and
 // returns a channel that sends a notification when sending initiates. If ignored by the consumer
 // sending will not block.
-func (mq *MessageQueue) AddResponses(responses []gsmsg.GraphSyncResponse, blks []blocks.Block) <-chan struct{} {
-	notificationChannel := make(chan struct{}, 1)
+func (mq *MessageQueue) AddResponses(responses []gsmsg.GraphSyncResponse, blks []blocks.Block, notifees ...notifications.Notifee) {
 	if mq.mutateNextMessage(func(nextMessage gsmsg.GraphSyncMessage) {
 		for _, response := range responses {
 			nextMessage.AddResponse(response)
@@ -73,10 +94,9 @@ func (mq *MessageQueue) AddResponses(responses []gsmsg.GraphSyncResponse, blks [
 		for _, block := range blks {
 			nextMessage.AddBlock(block)
 		}
-	}, notificationChannel) {
+	}, notifees) {
 		mq.signalWork()
 	}
-	return notificationChannel
 }
 
 // Startup starts the processing of messages, and creates an initial message
@@ -109,15 +129,17 @@ func (mq *MessageQueue) runQueue() {
 	}
 }
 
-func (mq *MessageQueue) mutateNextMessage(mutator func(gsmsg.GraphSyncMessage), processedNotifier chan struct{}) bool {
+func (mq *MessageQueue) mutateNextMessage(mutator func(gsmsg.GraphSyncMessage), notifees []notifications.Notifee) bool {
 	mq.nextMessageLk.Lock()
 	defer mq.nextMessageLk.Unlock()
 	if mq.nextMessage == nil {
 		mq.nextMessage = gsmsg.New()
+		mq.nextMessageTopic = mq.nextAvailableTopic
+		mq.nextAvailableTopic++
 	}
 	mutator(mq.nextMessage)
-	if processedNotifier != nil {
-		mq.processedNotifiers = append(mq.processedNotifiers, processedNotifier)
+	for _, notifee := range notifees {
+		notifications.SubscribeOn(mq.eventPublisher, mq.nextMessageTopic, notifee)
 	}
 	return !mq.nextMessage.Empty()
 }
@@ -129,41 +151,38 @@ func (mq *MessageQueue) signalWork() {
 	}
 }
 
-func (mq *MessageQueue) extractOutgoingMessage() gsmsg.GraphSyncMessage {
+func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, Topic) {
 	// grab outgoing message
 	mq.nextMessageLk.Lock()
 	message := mq.nextMessage
+	topic := mq.nextMessageTopic
 	mq.nextMessage = nil
-	for _, processedNotifier := range mq.processedNotifiers {
-		select {
-		case processedNotifier <- struct{}{}:
-		default:
-		}
-		close(processedNotifier)
-	}
-	mq.processedNotifiers = nil
 	mq.nextMessageLk.Unlock()
-	return message
+	return message, topic
 }
 
 func (mq *MessageQueue) sendMessage() {
-	message := mq.extractOutgoingMessage()
+	message, topic := mq.extractOutgoingMessage()
 	if message == nil || message.Empty() {
 		return
 	}
+	mq.eventPublisher.Publish(topic, Event{Name: Queued, Err: nil})
+	defer mq.eventPublisher.Close(topic)
 
 	err := mq.initializeSender()
 	if err != nil {
 		log.Infof("cant open message sender to peer %s: %s", mq.p, err)
 		// TODO: cant connect, what now?
+		mq.eventPublisher.Publish(topic, Event{Name: Error, Err: fmt.Errorf("cant open message sender to peer %s: %w", mq.p, err)})
 		return
 	}
 
 	for i := 0; i < maxRetries; i++ { // try to send this message until we fail.
-		if mq.attemptSendAndRecovery(message) {
+		if mq.attemptSendAndRecovery(message, topic) {
 			return
 		}
 	}
+	mq.eventPublisher.Publish(topic, Event{Name: Error, Err: fmt.Errorf("expended retries on SendMsg(%s)", mq.p)})
 }
 
 func (mq *MessageQueue) initializeSender() error {
@@ -178,9 +197,10 @@ func (mq *MessageQueue) initializeSender() error {
 	return nil
 }
 
-func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage) bool {
+func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, topic Topic) bool {
 	err := mq.sender.SendMsg(mq.ctx, message)
 	if err == nil {
+		mq.eventPublisher.Publish(topic, Event{Name: Sent})
 		return true
 	}
 
@@ -190,8 +210,10 @@ func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage) b
 
 	select {
 	case <-mq.done:
+		mq.eventPublisher.Publish(topic, Event{Name: Error, Err: errors.New("queue shutdown")})
 		return true
 	case <-mq.ctx.Done():
+		mq.eventPublisher.Publish(topic, Event{Name: Error, Err: errors.New("context cancelled")})
 		return true
 	case <-time.After(time.Millisecond * 100):
 		// wait 100ms in case disconnect notifications are still propogating
@@ -205,6 +227,7 @@ func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage) b
 		// I think the *right* answer is to probably put the message we're
 		// trying to send back, and then return to waiting for new work or
 		// a disconnect.
+		mq.eventPublisher.Publish(topic, Event{Name: Error, Err: fmt.Errorf("couldnt open sender again after SendMsg(%s) failed: %w", mq.p, err)})
 		return true
 	}
 

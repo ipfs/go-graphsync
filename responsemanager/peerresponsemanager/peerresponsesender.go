@@ -13,6 +13,8 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/linktracker"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/messagequeue"
+	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/responsemanager/responsebuilder"
 )
@@ -27,7 +29,7 @@ var log = logging.Logger("graphsync")
 // PeerMessageHandler is an interface that can send a response for a given peer across
 // the network.
 type PeerMessageHandler interface {
-	SendResponse(peer.ID, []gsmsg.GraphSyncResponse, []blocks.Block) <-chan struct{}
+	SendResponse(peer.ID, []gsmsg.GraphSyncResponse, []blocks.Block, ...notifications.Notifee)
 }
 
 // Transaction is a series of operations that should be send together in a single response
@@ -46,6 +48,9 @@ type peerResponseSender struct {
 	dedupKeys          map[graphsync.RequestID]string
 	responseBuildersLk sync.RWMutex
 	responseBuilders   []*responsebuilder.ResponseBuilder
+	nextBuilderTopic   responsebuilder.Topic
+	queuedMessages     chan responsebuilder.Topic
+	subscriber         notifications.MappableSubscriber
 }
 
 // PeerResponseSender handles batching, deduping, and sending responses for
@@ -86,16 +91,19 @@ type PeerResponseTransactionSender interface {
 // using the given peer message handler.
 func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHandler) PeerResponseSender {
 	ctx, cancel := context.WithCancel(ctx)
-	return &peerResponseSender{
-		p:            p,
-		ctx:          ctx,
-		cancel:       cancel,
-		peerHandler:  peerHandler,
-		outgoingWork: make(chan struct{}, 1),
-		linkTracker:  linktracker.New(),
-		dedupKeys:    make(map[graphsync.RequestID]string),
-		altTrackers:  make(map[string]*linktracker.LinkTracker),
+	prs := &peerResponseSender{
+		p:              p,
+		ctx:            ctx,
+		cancel:         cancel,
+		peerHandler:    peerHandler,
+		outgoingWork:   make(chan struct{}, 1),
+		linkTracker:    linktracker.New(),
+		dedupKeys:      make(map[graphsync.RequestID]string),
+		altTrackers:    make(map[string]*linktracker.LinkTracker),
+		queuedMessages: make(chan responsebuilder.Topic, 1),
 	}
+	prs.subscriber = notifications.NewMappableSubscriber(&subscriber{prs}, notifications.IdentityTransform)
+	return prs
 }
 
 // Startup initiates message sending for a peer
@@ -351,7 +359,9 @@ func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn fun
 	prs.responseBuildersLk.Lock()
 	defer prs.responseBuildersLk.Unlock()
 	if shouldBeginNewResponse(prs.responseBuilders, blkSize) {
-		prs.responseBuilders = append(prs.responseBuilders, responsebuilder.New())
+		topic := prs.nextBuilderTopic
+		prs.nextBuilderTopic++
+		prs.responseBuilders = append(prs.responseBuilders, responsebuilder.New(topic))
 	}
 	responseBuilder := prs.responseBuilders[len(prs.responseBuilders)-1]
 	buildResponseFn(responseBuilder)
@@ -401,13 +411,50 @@ func (prs *peerResponseSender) sendResponseMessages() {
 			log.Errorf("Unable to assemble GraphSync response: %s", err.Error())
 		}
 
-		done := prs.peerHandler.SendResponse(prs.p, responses, blks)
+		prs.peerHandler.SendResponse(prs.p, responses, blks, notifications.Notifee{
+			Topic:      builder.Topic(),
+			Subscriber: prs.subscriber,
+		})
 
 		// wait for message to be processed
+		prs.waitForMessageQueud(builder.Topic())
+	}
+}
+
+func (prs *peerResponseSender) waitForMessageQueud(topic responsebuilder.Topic) {
+	for {
 		select {
-		case <-done:
 		case <-prs.ctx.Done():
+			return
+		case queuedTopic := <-prs.queuedMessages:
+			if topic == queuedTopic {
+				return
+			}
 		}
 	}
+}
 
+type subscriber struct {
+	prs *peerResponseSender
+}
+
+func (s *subscriber) OnNext(topic notifications.Topic, event notifications.Event) {
+	builderTopic, ok := topic.(responsebuilder.Topic)
+	if !ok {
+		return
+	}
+	msgEvent, ok := event.(messagequeue.Event)
+	if !ok {
+		return
+	}
+	if msgEvent.Name != messagequeue.Queued {
+		return
+	}
+	select {
+	case s.prs.queuedMessages <- builderTopic:
+	case <-s.prs.ctx.Done():
+	}
+}
+
+func (s *subscriber) OnClose(_ notifications.Topic) {
 }

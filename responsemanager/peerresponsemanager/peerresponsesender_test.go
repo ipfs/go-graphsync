@@ -15,6 +15,8 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/messagequeue"
+	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -22,14 +24,26 @@ type fakePeerHandler struct {
 	lastBlocks    []blocks.Block
 	lastResponses []gsmsg.GraphSyncResponse
 	sent          chan struct{}
-	done          chan struct{}
+	notifees      []notifications.Notifee
 }
 
-func (fph *fakePeerHandler) SendResponse(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block) <-chan struct{} {
+func (fph *fakePeerHandler) SendResponse(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block, notifees ...notifications.Notifee) {
 	fph.lastResponses = responses
 	fph.lastBlocks = blks
 	fph.sent <- struct{}{}
-	return fph.done
+	fph.notifees = append(fph.notifees, notifees...)
+}
+
+func (fph *fakePeerHandler) notifyQueue(topic notifications.Topic) {
+	var newNotifees []notifications.Notifee
+	for _, notifee := range fph.notifees {
+		if notifee.Topic == topic {
+			notifee.Subscriber.OnNext(topic, messagequeue.Event{Name: messagequeue.Queued})
+		} else {
+			newNotifees = append(newNotifees, notifee)
+		}
+	}
+	fph.notifees = newNotifees
 }
 
 func TestPeerResponseSenderSendsResponses(t *testing.T) {
@@ -45,10 +59,8 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	for _, block := range blks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	done := make(chan struct{}, 1)
 	sent := make(chan struct{}, 1)
 	fph := &fakePeerHandler{
-		done: done,
 		sent: sent,
 	}
 	peerResponseSender := NewResponseSender(ctx, p, fph)
@@ -67,6 +79,9 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
 
+	require.Len(t, fph.notifees, 1)
+	topic := fph.notifees[0].Topic
+
 	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData())
 	require.Equal(t, links[0], bd.Link())
 	require.Equal(t, uint64(len(blks[0].RawData())), bd.BlockSize())
@@ -82,7 +97,7 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	peerResponseSender.FinishRequest(requestID1)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message")
 
@@ -97,12 +112,14 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, graphsync.PartialResponse, response2.Status(), "did not send corrent response code in second message")
 
+	require.Len(t, fph.notifees, 1)
+	topic = fph.notifees[0].Topic
 	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData())
 	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
 	peerResponseSender.FinishRequest(requestID2)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
@@ -117,12 +134,14 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	response3, err := findResponseForRequestID(fph.lastResponses, requestID3)
 	require.NoError(t, err)
 	require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not send correct response code in third message")
+	require.Len(t, fph.notifees, 1)
+	topic = fph.notifees[0].Topic
 
 	peerResponseSender.SendResponse(requestID3, links[0], blks[0].RawData())
 	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send fourth message")
 
@@ -132,6 +151,7 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, requestID3, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
+	require.Len(t, fph.notifees, 1)
 }
 
 func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
@@ -147,10 +167,8 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	for _, block := range blks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	done := make(chan struct{}, 1)
 	sent := make(chan struct{}, 1)
 	fph := &fakePeerHandler{
-		done: done,
 		sent: sent,
 	}
 	peerResponseSender := NewResponseSender(ctx, p, fph)
@@ -166,6 +184,8 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
+	require.Len(t, fph.notifees, 1)
+	topic := fph.notifees[0].Topic
 
 	// Send 3 very large blocks
 	peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData())
@@ -173,7 +193,7 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	peerResponseSender.SendResponse(requestID1, links[3], blks[3].RawData())
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message ")
 
@@ -181,13 +201,15 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.Equal(t, blks[1].Cid(), fph.lastBlocks[0].Cid(), "Should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "Should break up message")
+	require.Len(t, fph.notifees, 1)
+	topic = fph.notifees[0].Topic
 
 	// Send one more block while waiting
 	peerResponseSender.SendResponse(requestID1, links[4], blks[4].RawData())
 	peerResponseSender.FinishRequest(requestID1)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
@@ -195,9 +217,11 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.Equal(t, blks[2].Cid(), fph.lastBlocks[0].Cid(), "should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "should break up message")
+	require.Len(t, fph.notifees, 1)
+	topic = fph.notifees[0].Topic
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send fourth message")
 
@@ -205,9 +229,11 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.Equal(t, blks[3].Cid(), fph.lastBlocks[0].Cid(), "should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "should break up message")
+	require.Len(t, fph.notifees, 1)
+	topic = fph.notifees[0].Topic
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send fifth message")
 
@@ -215,6 +241,7 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.Equal(t, blks[4].Cid(), fph.lastBlocks[0].Cid(), "should break up message")
 
 	require.Len(t, fph.lastResponses, 1, "should break up message")
+	require.Len(t, fph.notifees, 1)
 
 	response, err := findResponseForRequestID(fph.lastResponses, requestID1)
 	require.NoError(t, err)
@@ -233,10 +260,8 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 	for _, block := range blks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	done := make(chan struct{}, 1)
 	sent := make(chan struct{}, 1)
 	fph := &fakePeerHandler{
-		done: done,
 		sent: sent,
 	}
 	peerResponseSender := NewResponseSender(ctx, p, fph)
@@ -252,6 +277,8 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
+	require.Len(t, fph.notifees, 1)
+	topic := fph.notifees[0].Topic
 
 	extensionData1 := testutil.RandomBytes(100)
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
@@ -269,7 +296,7 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 	peerResponseSender.SendExtensionData(requestID1, extension1)
 	peerResponseSender.SendExtensionData(requestID1, extension2)
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message")
 
@@ -283,6 +310,9 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 	returnedData2, found := lastResponse.Extension(extensionName2)
 	require.True(t, found)
 	require.Equal(t, extensionData2, returnedData2, "did not encode first extension")
+
+	require.Len(t, fph.notifees, 1)
+
 }
 
 func TestPeerResponseSenderSendsResponsesInTransaction(t *testing.T) {
@@ -296,10 +326,8 @@ func TestPeerResponseSenderSendsResponsesInTransaction(t *testing.T) {
 	for _, block := range blks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	done := make(chan struct{}, 1)
 	sent := make(chan struct{}, 1)
 	fph := &fakePeerHandler{
-		done: done,
 		sent: sent,
 	}
 	peerResponseSender := NewResponseSender(ctx, p, fph)
@@ -346,10 +374,8 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 	for _, block := range blks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	done := make(chan struct{}, 1)
 	sent := make(chan struct{}, 1)
 	fph := &fakePeerHandler{
-		done: done,
 		sent: sent,
 	}
 	peerResponseSender := NewResponseSender(ctx, p, fph)
@@ -368,6 +394,8 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
+	require.Len(t, fph.notifees, 1)
+	topic := fph.notifees[0].Topic
 
 	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData())
 	require.Equal(t, links[0], bd.Link())
@@ -384,7 +412,7 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 	peerResponseSender.FinishRequest(requestID1)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message")
 
@@ -397,12 +425,13 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 	response2, err := findResponseForRequestID(fph.lastResponses, requestID2)
 	require.NoError(t, err)
 	require.Equal(t, graphsync.PartialResponse, response2.Status(), "did not send corrent response code in second message")
-
+	require.Len(t, fph.notifees, 1)
+	topic = fph.notifees[0].Topic
 	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData())
 	peerResponseSender.FinishRequest(requestID2)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
@@ -413,6 +442,8 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 	response2, err = findResponseForRequestID(fph.lastResponses, requestID2)
 	require.NoError(t, err)
 	require.Equal(t, graphsync.RequestCompletedFull, response2.Status(), "did not send correct response code in third message")
+
+	require.Len(t, fph.notifees, 1)
 }
 
 func TestPeerResponseSenderDupKeys(t *testing.T) {
@@ -428,10 +459,8 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	for _, block := range blks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	done := make(chan struct{}, 1)
 	sent := make(chan struct{}, 1)
 	fph := &fakePeerHandler{
-		done: done,
 		sent: sent,
 	}
 	peerResponseSender := NewResponseSender(ctx, p, fph)
@@ -453,6 +482,9 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	require.Equal(t, requestID1, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
 
+	require.Len(t, fph.notifees, 1)
+	topic := fph.notifees[0].Topic
+
 	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData())
 	require.Equal(t, links[0], bd.Link())
 	require.Equal(t, uint64(len(blks[0].RawData())), bd.BlockSize())
@@ -467,7 +499,7 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	require.Equal(t, uint64(0), bd.BlockSizeOnWire())
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send second message")
 
@@ -482,13 +514,15 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	response2, err := findResponseForRequestID(fph.lastResponses, requestID2)
 	require.NoError(t, err)
 	require.Equal(t, graphsync.PartialResponse, response2.Status(), "did not send corrent response code in second message")
+	require.Len(t, fph.notifees, 1)
+	topic = fph.notifees[0].Topic
 
 	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData())
 	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
 	peerResponseSender.FinishRequest(requestID2)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send third message")
 
@@ -503,12 +537,14 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	response3, err := findResponseForRequestID(fph.lastResponses, requestID3)
 	require.NoError(t, err)
 	require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not send correct response code in third message")
+	require.Len(t, fph.notifees, 1)
+	topic = fph.notifees[0].Topic
 
 	peerResponseSender.SendResponse(requestID3, links[0], blks[0].RawData())
 	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifyQueue(topic)
 
 	testutil.AssertDoesReceive(ctx, t, sent, "did not send fourth message")
 
@@ -517,6 +553,7 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	require.Len(t, fph.lastResponses, 1)
 	require.Equal(t, requestID3, fph.lastResponses[0].RequestID())
 	require.Equal(t, graphsync.PartialResponse, fph.lastResponses[0].Status())
+	require.Len(t, fph.notifees, 1)
 
 }
 
