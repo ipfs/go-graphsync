@@ -14,6 +14,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 )
@@ -26,14 +27,15 @@ const (
 )
 
 type inProgressResponseStatus struct {
-	ctx       context.Context
-	cancelFn  func()
-	request   gsmsg.GraphSyncRequest
-	loader    ipld.Loader
-	traverser ipldutil.Traverser
-	signals   signals
-	updates   []gsmsg.GraphSyncRequest
-	isPaused  bool
+	ctx        context.Context
+	cancelFn   func()
+	request    gsmsg.GraphSyncRequest
+	loader     ipld.Loader
+	traverser  ipldutil.Traverser
+	signals    signals
+	updates    []gsmsg.GraphSyncRequest
+	isPaused   bool
+	subscriber *subscriber
 }
 
 type responseKey struct {
@@ -44,7 +46,7 @@ type responseKey struct {
 type signals struct {
 	pauseSignal  chan struct{}
 	updateSignal chan struct{}
-	stopSignal   chan bool
+	errSignal    chan error
 }
 
 type responseTaskData struct {
@@ -83,12 +85,22 @@ type UpdateHooks interface {
 
 // CompletedListeners is an interface for notifying listeners that responses are complete
 type CompletedListeners interface {
-	NotifyCompletedListeners(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode)
+	NotifyCompletedListeners(p peer.ID, requestID graphsync.RequestID, status graphsync.ResponseStatusCode)
 }
 
 // CancelledListeners is an interface for notifying listeners that requestor cancelled
 type CancelledListeners interface {
-	NotifyCancelledListeners(p peer.ID, request graphsync.RequestData)
+	NotifyCancelledListeners(p peer.ID, requestID graphsync.RequestID)
+}
+
+// BlockSentListeners is an interface for notifying listeners that of a block send occuring over the wire
+type BlockSentListeners interface {
+	NotifyBlockSentListeners(p peer.ID, requestID graphsync.RequestID, block graphsync.BlockData)
+}
+
+// NetworkErrorListeners is an interface for notifying listeners that an error occurred sending a data on the wire
+type NetworkErrorListeners interface {
+	NotifyNetworkErrorListeners(p peer.ID, requestID graphsync.RequestID, err error)
 }
 
 // PeerManager is an interface that returns sender interfaces for peer responses.
@@ -109,10 +121,10 @@ type ResponseManager struct {
 	queryQueue          QueryQueue
 	updateHooks         UpdateHooks
 	cancelledListeners  CancelledListeners
-	completedListeners  CompletedListeners
 	messages            chan responseManagerMessage
 	workSignal          chan struct{}
 	qe                  *queryExecutor
+	sub                 notifications.MappableSubscriber
 	inProgressResponses map[responseKey]*inProgressResponseStatus
 }
 
@@ -127,15 +139,23 @@ func New(ctx context.Context,
 	updateHooks UpdateHooks,
 	completedListeners CompletedListeners,
 	cancelledListeners CancelledListeners,
+	blockSentListeners BlockSentListeners,
+	networkErrorListeners NetworkErrorListeners,
 ) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
 	messages := make(chan responseManagerMessage, 16)
 	workSignal := make(chan struct{}, 1)
+	sub := notifications.NewMappableSubscriber(&subscriber{
+		ctx:                   ctx,
+		messages:              messages,
+		blockSentListeners:    blockSentListeners,
+		completedListeners:    completedListeners,
+		networkErrorListeners: networkErrorListeners,
+	}, notifications.IdentityTransform)
 	qe := &queryExecutor{
 		requestHooks:       requestHooks,
 		blockHooks:         blockHooks,
 		updateHooks:        updateHooks,
-		completedListeners: completedListeners,
 		cancelledListeners: cancelledListeners,
 		peerManager:        peerManager,
 		loader:             loader,
@@ -144,6 +164,7 @@ func New(ctx context.Context,
 		ctx:                ctx,
 		workSignal:         workSignal,
 		ticker:             time.NewTicker(thawSpeed),
+		sub:                sub,
 	}
 	return &ResponseManager{
 		ctx:                 ctx,
@@ -151,11 +172,11 @@ func New(ctx context.Context,
 		peerManager:         peerManager,
 		queryQueue:          queryQueue,
 		updateHooks:         updateHooks,
-		completedListeners:  completedListeners,
 		cancelledListeners:  cancelledListeners,
 		messages:            messages,
 		workSignal:          workSignal,
 		qe:                  qe,
+		sub:                 sub,
 		inProgressResponses: make(map[responseKey]*inProgressResponseStatus),
 	}
 }
@@ -199,16 +220,17 @@ func (rm *ResponseManager) PauseResponse(p peer.ID, requestID graphsync.RequestI
 	return rm.sendSyncMessage(&pauseRequestMessage{p, requestID, response}, response)
 }
 
-type cancelRequestMessage struct {
+type errorRequestMessage struct {
 	p         peer.ID
 	requestID graphsync.RequestID
+	err       error
 	response  chan error
 }
 
 // CancelResponse cancels an in progress response
 func (rm *ResponseManager) CancelResponse(p peer.ID, requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
-	return rm.sendSyncMessage(&cancelRequestMessage{p, requestID, response}, response)
+	return rm.sendSyncMessage(&errorRequestMessage{p, requestID, errCancelledByCommand, response}, response)
 }
 
 func (rm *ResponseManager) sendSyncMessage(message responseManagerMessage, response chan error) error {
@@ -311,6 +333,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		}
 		if result.Err != nil {
 			transaction.FinishWithError(graphsync.RequestFailedUnknown)
+			transaction.AddNotifee(notifications.Notifee{Topic: statusNotification{key.p, key.requestID, graphsync.RequestFailedUnknown}, Subscriber: rm.sub})
 		}
 		return nil
 	})
@@ -358,7 +381,7 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	return nil
 }
 
-func (rm *ResponseManager) cancelRequest(p peer.ID, requestID graphsync.RequestID, selfCancel bool) error {
+func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID, err error) error {
 	key := responseKey{p, requestID}
 	rm.queryQueue.Remove(key, key.p)
 	response, ok := rm.inProgressResponses[key]
@@ -368,19 +391,19 @@ func (rm *ResponseManager) cancelRequest(p peer.ID, requestID graphsync.RequestI
 
 	if response.isPaused {
 		peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-		if selfCancel {
-			rm.completedListeners.NotifyCompletedListeners(p, response.request, graphsync.RequestCancelled)
-			peerResponseSender.FinishWithError(requestID, graphsync.RequestCancelled)
-		} else {
-			rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
+		if isContextErr(err) {
+
+			rm.cancelledListeners.NotifyCancelledListeners(p, response.request.ID())
 			peerResponseSender.FinishWithCancel(requestID)
+		} else if err != errNetworkError {
+			peerResponseSender.FinishWithError(requestID, graphsync.RequestCancelled, notifications.Notifee{Topic: statusNotification{key.p, key.requestID, graphsync.RequestCancelled}, Subscriber: rm.sub})
 		}
 		delete(rm.inProgressResponses, key)
 		response.cancelFn()
 		return nil
 	}
 	select {
-	case response.signals.stopSignal <- selfCancel:
+	case response.signals.errSignal <- err:
 	default:
 	}
 	return nil
@@ -390,7 +413,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 	for _, request := range prm.requests {
 		key := responseKey{p: prm.p, requestID: request.ID()}
 		if request.IsCancel() {
-			_ = rm.cancelRequest(prm.p, request.ID(), false)
+			_ = rm.abortRequest(prm.p, request.ID(), ipldutil.ContextCancelError{})
 			continue
 		}
 		if request.IsUpdate() {
@@ -406,7 +429,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 				signals: signals{
 					pauseSignal:  make(chan struct{}, 1),
 					updateSignal: make(chan struct{}, 1),
-					stopSignal:   make(chan bool, 1),
+					errSignal:    make(chan error, 1),
 				},
 			}
 		// TODO: Use a better work estimation metric.
@@ -511,8 +534,8 @@ func (prm *pauseRequestMessage) handle(rm *ResponseManager) {
 	}
 }
 
-func (crm *cancelRequestMessage) handle(rm *ResponseManager) {
-	err := rm.cancelRequest(crm.p, crm.requestID, true)
+func (crm *errorRequestMessage) handle(rm *ResponseManager) {
+	err := rm.abortRequest(crm.p, crm.requestID, crm.err)
 	select {
 	case <-rm.ctx.Done():
 	case crm.response <- err:

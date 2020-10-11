@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/ipfs/go-graphsync/notifications"
@@ -92,4 +93,52 @@ func NewTestNotifee(topic notifications.Topic, bufferSize int) (notifications.No
 			expectedTopic: topic,
 			subscriber:    subscriber,
 		}
+}
+
+type MockPublisher struct {
+	notifeesLk sync.Mutex
+	notifees   []notifications.Notifee
+}
+
+func (mp *MockPublisher) AddNotifees(notifees []notifications.Notifee) {
+	mp.notifeesLk.Lock()
+	mp.notifees = append(mp.notifees, notifees...)
+	mp.notifeesLk.Unlock()
+}
+
+func (mp *MockPublisher) PublishMatchingEvents(shouldPublish func(notifications.Topic) bool, events []notifications.Event) {
+	mp.notifeesLk.Lock()
+	var newNotifees []notifications.Notifee
+	for _, notifee := range mp.notifees {
+		if shouldPublish(notifee.Topic) {
+			for _, ev := range events {
+				notifee.Subscriber.OnNext(notifee.Topic, ev)
+			}
+			notifee.Subscriber.OnClose(notifee.Topic)
+		} else {
+			newNotifees = append(newNotifees, notifee)
+		}
+	}
+	mp.notifees = newNotifees
+	mp.notifeesLk.Unlock()
+}
+
+func (mp *MockPublisher) PublishEvents(events []notifications.Event) {
+	mp.PublishMatchingEvents(func(notifications.Topic) bool { return true }, events)
+}
+
+func (mp *MockPublisher) PublishEventsOnTopics(topics []notifications.Topic, events []notifications.Event) {
+	shouldPublish := func(topic notifications.Topic) bool {
+		for _, testTopic := range topics {
+			if topic == testTopic {
+				return true
+			}
+		}
+		return false
+	}
+	mp.PublishMatchingEvents(shouldPublish, events)
+}
+
+func NewMockPublisher() *MockPublisher {
+	return &MockPublisher{}
 }

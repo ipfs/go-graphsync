@@ -89,7 +89,7 @@ type PeerResponseSender interface {
 	FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode, notifees ...notifications.Notifee)
 	// Transaction calls multiple operations at once so they end up in a single response
 	// Note: if the transaction function errors, the results will not execute
-	Transaction(requestID graphsync.RequestID, transaction Transaction, notifees ...notifications.Notifee) error
+	Transaction(requestID graphsync.RequestID, transaction Transaction) error
 	PauseRequest(requestID graphsync.RequestID, notifees ...notifications.Notifee)
 }
 
@@ -104,6 +104,7 @@ type PeerResponseTransactionSender interface {
 	FinishRequest() graphsync.ResponseStatusCode
 	FinishWithError(status graphsync.ResponseStatusCode)
 	PauseRequest()
+	AddNotifee(notifications.Notifee)
 }
 
 // NewResponseSender generates a new PeerResponseSender for the given context, peer ID,
@@ -202,6 +203,7 @@ func (prs *peerResponseSender) SendExtensionData(requestID graphsync.RequestID, 
 type peerResponseTransactionSender struct {
 	requestID  graphsync.RequestID
 	operations []responseOperation
+	notifees   []notifications.Notifee
 	prs        *peerResponseSender
 }
 
@@ -233,14 +235,18 @@ func (prts *peerResponseTransactionSender) FinishWithCancel() {
 	_ = prts.prs.finishTracking(prts.requestID)
 }
 
-func (prs *peerResponseSender) Transaction(requestID graphsync.RequestID, transaction Transaction, notifees ...notifications.Notifee) error {
+func (prts *peerResponseTransactionSender) AddNotifee(notifee notifications.Notifee) {
+	prts.notifees = append(prts.notifees, notifee)
+}
+
+func (prs *peerResponseSender) Transaction(requestID graphsync.RequestID, transaction Transaction) error {
 	prts := &peerResponseTransactionSender{
 		requestID: requestID,
 		prs:       prs,
 	}
 	err := transaction(prts)
 	if err == nil {
-		prs.execute(prts.operations, notifees)
+		prs.execute(prts.operations, prts.notifees)
 	}
 	return err
 }

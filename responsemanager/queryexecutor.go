@@ -16,6 +16,7 @@ import (
 	"github.com/ipfs/go-graphsync/dedupkey"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/runtraversal"
@@ -28,7 +29,6 @@ type queryExecutor struct {
 	requestHooks       RequestHooks
 	blockHooks         BlockHooks
 	updateHooks        UpdateHooks
-	completedListeners CompletedListeners
 	cancelledListeners CancelledListeners
 	peerManager        PeerManager
 	loader             ipld.Loader
@@ -37,6 +37,7 @@ type queryExecutor struct {
 	ctx                context.Context
 	workSignal         chan struct{}
 	ticker             *time.Ticker
+	sub                notifications.MappableSubscriber
 }
 
 func (qe *queryExecutor) processQueriesWorker() {
@@ -73,12 +74,9 @@ func (qe *queryExecutor) processQueriesWorker() {
 				continue
 			}
 			status, err := qe.executeTask(key, taskData)
-			_, isPaused := err.(hooks.ErrPaused)
 			isCancelled := err != nil && isContextErr(err)
 			if isCancelled {
-				qe.cancelledListeners.NotifyCancelledListeners(key.p, taskData.request)
-			} else if !isPaused {
-				qe.completedListeners.NotifyCompletedListeners(key.p, taskData.request, status)
+				qe.cancelledListeners.NotifyCancelledListeners(key.p, taskData.request.ID())
 			}
 			select {
 			case qe.messages <- &finishTaskRequest{key, status, err}:
@@ -97,7 +95,7 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 	traverser := taskData.traverser
 	if loader == nil || traverser == nil {
 		var isPaused bool
-		loader, traverser, isPaused, err = qe.prepareQuery(taskData.ctx, key.p, taskData.request)
+		loader, traverser, isPaused, err = qe.prepareQuery(taskData.ctx, key.p, taskData.request, taskData.signals)
 		if err != nil {
 			return graphsync.RequestFailedUnknown, err
 		}
@@ -115,17 +113,19 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 
 func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	p peer.ID,
-	request gsmsg.GraphSyncRequest) (ipld.Loader, ipldutil.Traverser, bool, error) {
+	request gsmsg.GraphSyncRequest, signals signals) (ipld.Loader, ipldutil.Traverser, bool, error) {
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
 	peerResponseSender := qe.peerManager.SenderForPeer(p)
 	var transactionError error
 	var isPaused bool
+	failNotifee := notifications.Notifee{Topic: statusNotification{p, request.ID(), graphsync.RequestFailedUnknown}, Subscriber: qe.sub}
 	err := peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
 		for _, extension := range result.Extensions {
 			transaction.SendExtensionData(extension)
 		}
 		if result.Err != nil || !result.IsValidated {
 			transaction.FinishWithError(graphsync.RequestFailedUnknown)
+			transaction.AddNotifee(failNotifee)
 			transactionError = errors.New("request not valid")
 		} else if result.IsPaused {
 			transaction.PauseRequest()
@@ -139,10 +139,10 @@ func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	if transactionError != nil {
 		return nil, nil, false, transactionError
 	}
-	if err := qe.processDedupByKey(request, peerResponseSender); err != nil {
+	if err := qe.processDedupByKey(request, peerResponseSender, failNotifee); err != nil {
 		return nil, nil, false, err
 	}
-	if err := qe.processDoNoSendCids(request, peerResponseSender); err != nil {
+	if err := qe.processDoNoSendCids(request, peerResponseSender, failNotifee); err != nil {
 		return nil, nil, false, err
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
@@ -158,28 +158,28 @@ func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	return loader, traverser, isPaused, nil
 }
 
-func (qe *queryExecutor) processDedupByKey(request gsmsg.GraphSyncRequest, peerResponseSender peerresponsemanager.PeerResponseSender) error {
+func (qe *queryExecutor) processDedupByKey(request gsmsg.GraphSyncRequest, peerResponseSender peerresponsemanager.PeerResponseSender, failNotifee notifications.Notifee) error {
 	dedupData, has := request.Extension(graphsync.ExtensionDeDupByKey)
 	if !has {
 		return nil
 	}
 	key, err := dedupkey.DecodeDedupKey(dedupData)
 	if err != nil {
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
+		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown, failNotifee)
 		return err
 	}
 	peerResponseSender.DedupKey(request.ID(), key)
 	return nil
 }
 
-func (qe *queryExecutor) processDoNoSendCids(request gsmsg.GraphSyncRequest, peerResponseSender peerresponsemanager.PeerResponseSender) error {
+func (qe *queryExecutor) processDoNoSendCids(request gsmsg.GraphSyncRequest, peerResponseSender peerresponsemanager.PeerResponseSender, failNotifee notifications.Notifee) error {
 	doNotSendCidsData, has := request.Extension(graphsync.ExtensionDoNotSendCIDs)
 	if !has {
 		return nil
 	}
 	cidSet, err := cidset.DecodeCidSet(doNotSendCidsData)
 	if err != nil {
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
+		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown, failNotifee)
 		return err
 	}
 	links := make([]ipld.Link, 0, cidSet.Len())
@@ -210,6 +210,7 @@ func (qe *queryExecutor) executeQuery(
 				return nil
 			}
 			blockData := transaction.SendResponse(link, data)
+			transaction.AddNotifee(notifications.Notifee{Topic: blockSentNotification{p, request.ID(), blockData}, Subscriber: qe.sub})
 			if blockData.BlockSize() > 0 {
 				result := qe.blockHooks.ProcessBlockHooks(p, request, blockData)
 				for _, extension := range result.Extensions {
@@ -226,23 +227,36 @@ func (qe *queryExecutor) executeQuery(
 		})
 		return err
 	})
-	if err != nil {
-		_, isPaused := err.(hooks.ErrPaused)
-		if isPaused {
-			return graphsync.RequestPaused, err
+	var code graphsync.ResponseStatusCode
+	_ = peerResponseSender.Transaction(request.ID(), func(peerResponseSender peerresponsemanager.PeerResponseTransactionSender) error {
+		if err != nil {
+			_, isPaused := err.(hooks.ErrPaused)
+			if isPaused {
+				code = graphsync.RequestPaused
+				return nil
+			}
+			if isContextErr(err) {
+				peerResponseSender.FinishWithCancel()
+				code = graphsync.RequestCancelled
+				return nil
+			}
+			if err == errNetworkError {
+				code = graphsync.RequestFailedUnknown
+				return nil
+			}
+			if err == errCancelledByCommand {
+				code = graphsync.RequestCancelled
+			} else {
+				code = graphsync.RequestFailedUnknown
+			}
+			peerResponseSender.FinishWithError(graphsync.RequestCancelled)
+		} else {
+			code = peerResponseSender.FinishRequest()
 		}
-		if isContextErr(err) {
-			peerResponseSender.FinishWithCancel(request.ID())
-			return graphsync.RequestCancelled, err
-		}
-		if err == errCancelledByCommand {
-			peerResponseSender.FinishWithError(request.ID(), graphsync.RequestCancelled)
-			return graphsync.RequestCancelled, err
-		}
-		peerResponseSender.FinishWithError(request.ID(), graphsync.RequestFailedUnknown)
-		return graphsync.RequestFailedUnknown, err
-	}
-	return peerResponseSender.FinishRequest(request.ID()), nil
+		peerResponseSender.AddNotifee(notifications.Notifee{Topic: statusNotification{p, request.ID(), code}, Subscriber: qe.sub})
+		return nil
+	})
+	return code, err
 }
 
 func (qe *queryExecutor) checkForUpdates(
@@ -253,14 +267,11 @@ func (qe *queryExecutor) checkForUpdates(
 	peerResponseSender peerresponsemanager.PeerResponseTransactionSender) error {
 	for {
 		select {
-		case selfCancelled := <-signals.stopSignal:
-			if selfCancelled {
-				return errCancelledByCommand
-			}
-			return ipldutil.ContextCancelError{}
 		case <-signals.pauseSignal:
 			peerResponseSender.PauseRequest()
 			return hooks.ErrPaused{}
+		case err := <-signals.errSignal:
+			return err
 		case <-signals.updateSignal:
 			select {
 			case qe.messages <- &responseUpdateRequest{responseKey{p, request.ID()}, updateChan}:

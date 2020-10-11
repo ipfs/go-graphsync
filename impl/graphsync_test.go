@@ -210,7 +210,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	})
 
 	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
-	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestID, status graphsync.ResponseStatusCode) {
 		select {
 		case finalResponseStatusChan <- status:
 		default:
@@ -253,7 +253,7 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 	responder := td.GraphSyncHost2()
 
 	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
-	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestID, status graphsync.ResponseStatusCode) {
 		select {
 		case finalResponseStatusChan <- status:
 		default:
@@ -546,6 +546,69 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 
 	require.Equal(t, td.extensionResponseData, receivedReponseData, "did not receive correct extension response data")
 	require.Equal(t, td.extensionUpdateData, receivedUpdateData, "did not receive correct extension update data")
+}
+
+func TestNetworkDisconnect(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	stopPoint := 50
+	blocksSent := 0
+	requestIDChan := make(chan graphsync.RequestID, 1)
+	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+		_, has := requestData.Extension(td.extensionName)
+		if has {
+			select {
+			case requestIDChan <- requestData.ID():
+			default:
+			}
+			blocksSent++
+			if blocksSent == stopPoint {
+				hookActions.PauseResponse()
+			}
+		} else {
+			hookActions.TerminateWithError(errors.New("should have sent extension"))
+		}
+	})
+	networkError := make(chan error, 1)
+	responder.RegisterNetworkErrorListener(func(p peer.ID, requestID graphsync.RequestID, err error) {
+		select {
+		case networkError <- err:
+		default:
+		}
+	})
+	requestCtx, requestCancel := context.WithTimeout(ctx, 1*time.Second)
+	defer requestCancel()
+	progressChan, errChan := requestor.Request(requestCtx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	blockChain.VerifyResponseRange(ctx, progressChan, 0, stopPoint)
+	timer := time.NewTimer(100 * time.Millisecond)
+	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
+	testutil.AssertChannelEmpty(t, networkError, "no network errors so far")
+
+	// unlink peers so they cannot communicate
+	td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID())
+	td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID())
+	requestID := <-requestIDChan
+	err := responder.UnpauseResponse(td.host1.ID(), requestID)
+	require.NoError(t, err)
+
+	testutil.AssertReceive(ctx, t, networkError, &err, "should receive network error")
+	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
+	require.EqualError(t, err, graphsync.RequestContextCancelledErr{}.Error())
 }
 
 func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
