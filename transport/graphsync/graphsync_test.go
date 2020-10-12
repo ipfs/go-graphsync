@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -627,9 +628,9 @@ func TestManager(t *testing.T) {
 				assertDecodesToMessage(t, gsData.incomingRequestHookActions.SentExtension.Data, gsData.incoming)
 			},
 		},
-		"request pause works even if called when request is still pending": {
+		"open channel adds doNotSendCids to the DoNotSend extension": {
 			action: func(gsData *harness) {
-				gsData.fgs.LeaveRequestsOpen()
+				cids := testutil.GenerateCids(2)
 				stor, _ := gsData.outgoing.Selector()
 				_ = gsData.transport.OpenChannel(
 					gsData.ctx,
@@ -637,7 +638,93 @@ func TestManager(t *testing.T) {
 					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
 					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
 					stor,
+					cids,
 					gsData.outgoing)
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+
+				ext := requestReceived.Extensions
+				require.Len(t, ext, 2)
+				doNotSend := ext[1]
+
+				name := doNotSend.Name
+				require.Equal(t, graphsync.ExtensionDoNotSendCIDs, name)
+				data := doNotSend.Data
+				cs, err := cidset.DecodeCidSet(data)
+				require.NoError(t, err)
+				require.Equal(t, cs.Len(), 2)
+			},
+		},
+		"open channel cancels an existing request with the same channel ID": {
+			action: func(gsData *harness) {
+				cids := testutil.GenerateCids(2)
+				stor, _ := gsData.outgoing.Selector()
+				_ = gsData.transport.OpenChannel(
+					gsData.ctx,
+					gsData.other,
+					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
+					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
+					stor,
+					cids,
+					gsData.outgoing)
+
+				_ = gsData.transport.OpenChannel(
+					gsData.ctx,
+					gsData.other,
+					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
+					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
+					stor,
+					cids,
+					gsData.outgoing)
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				requestReceived1 := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+				requestReceived2 := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+
+				require.Error(t, requestReceived1.Ctx.Err())
+				require.NoError(t, requestReceived2.Ctx.Err())
+			},
+		},
+		"request times out if we get request context cancelled error": {
+			action: func(gsData *harness) {
+				gsData.fgs.LeaveRequestsOpen()
+				stor, _ := gsData.outgoing.Selector()
+
+				_ = gsData.transport.OpenChannel(
+					gsData.ctx,
+					gsData.other,
+					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
+					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
+					stor,
+					nil,
+					gsData.outgoing)
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+				requestReceived.ResponseErrChan <- graphsync.RequestContextCancelledErr{}
+				close(requestReceived.ResponseErrChan)
+
+				require.Eventually(t, func() bool {
+					return events.OnRequestTimedOutCalled == true
+				}, 2*time.Second, 100*time.Millisecond)
+				require.Equal(t, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self}, events.OnRequestTimedOutChannelId)
+			},
+		},
+		"request pause works even if called when request is still pending": {
+			action: func(gsData *harness) {
+				gsData.fgs.LeaveRequestsOpen()
+				stor, _ := gsData.outgoing.Selector()
+
+				_ = gsData.transport.OpenChannel(
+					gsData.ctx,
+					gsData.other,
+					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
+					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
+					stor,
+					nil,
+					gsData.outgoing)
+
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
@@ -704,7 +791,7 @@ func TestManager(t *testing.T) {
 	ctx := context.Background()
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 			peers := testutil.GeneratePeers(2)
 			transferID := datatransfer.TransferID(rand.Uint64())
@@ -761,11 +848,22 @@ type fakeEvents struct {
 	OnResponseReceivedErrors    []error
 	OnChannelCompletedCalled    bool
 	OnChannelCompletedErr       error
-	ChannelCompletedSuccess     bool
-	DataSentMessage             datatransfer.Message
-	RequestReceivedRequest      datatransfer.Request
-	RequestReceivedResponse     datatransfer.Response
-	ResponseReceivedResponse    datatransfer.Response
+
+	OnRequestTimedOutCalled    bool
+	OnRequestTimedOutChannelId datatransfer.ChannelID
+
+	ChannelCompletedSuccess  bool
+	DataSentMessage          datatransfer.Message
+	RequestReceivedRequest   datatransfer.Request
+	RequestReceivedResponse  datatransfer.Response
+	ResponseReceivedResponse datatransfer.Response
+}
+
+func (fe *fakeEvents) OnRequestTimedOut(_ context.Context, chid datatransfer.ChannelID) error {
+	fe.OnRequestTimedOutCalled = true
+	fe.OnRequestTimedOutChannelId = chid
+
+	return nil
 }
 
 func (fe *fakeEvents) OnChannelOpened(chid datatransfer.ChannelID) error {

@@ -1,4 +1,4 @@
-package message
+package message1_0
 
 import (
 	"io"

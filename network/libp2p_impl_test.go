@@ -21,11 +21,12 @@ import (
 
 // Receiver is an interface for receiving messages from the DataTransferNetwork.
 type receiver struct {
-	messageReceived chan struct{}
-	lastRequest     datatransfer.Request
-	lastResponse    datatransfer.Response
-	lastSender      peer.ID
-	connectedPeers  chan peer.ID
+	messageReceived    chan struct{}
+	lastRequest        datatransfer.Request
+	lastRestartRequest datatransfer.Request
+	lastResponse       datatransfer.Response
+	lastSender         peer.ID
+	connectedPeers     chan peer.ID
 }
 
 func (r *receiver) ReceiveRequest(
@@ -53,6 +54,15 @@ func (r *receiver) ReceiveResponse(
 }
 
 func (r *receiver) ReceiveError(err error) {
+}
+
+func (r *receiver) ReceiveRestartExistingChannelRequest(ctx context.Context, sender peer.ID, incoming datatransfer.Request) {
+	r.lastSender = sender
+	r.lastRestartRequest = incoming
+	select {
+	case <-ctx.Done():
+	case r.messageReceived <- struct{}{}:
+	}
 }
 
 func TestMessageSendAndReceive(t *testing.T) {
@@ -87,7 +97,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 		isPull := false
 		id := datatransfer.TransferID(rand.Int31())
 		voucher := testutil.NewFakeDTType()
-		request, err := message.NewRequest(id, isPull, voucher.Type(), voucher, baseCid, selector)
+		request, err := message.NewRequest(id, false, isPull, voucher.Type(), voucher, baseCid, selector)
 		require.NoError(t, err)
 		require.NoError(t, dtnet1.SendMessage(ctx, host2.ID(), request))
 
@@ -137,4 +147,30 @@ func TestMessageSendAndReceive(t *testing.T) {
 		assert.Equal(t, response.IsRequest(), receivedResponse.IsRequest())
 		testutil.AssertEqualFakeDTVoucherResult(t, response, receivedResponse)
 	})
+
+	t.Run("Send Restart Request", func(t *testing.T) {
+		peers := testutil.GeneratePeers(2)
+		id := datatransfer.TransferID(rand.Int31())
+		chId := datatransfer.ChannelID{Initiator: peers[0],
+			Responder: peers[1], ID: id}
+
+		request := message.RestartExistingChannelRequest(chId)
+		require.NoError(t, dtnet1.SendMessage(ctx, host2.ID(), request))
+
+		select {
+		case <-ctx.Done():
+			t.Fatal("did not receive message sent")
+		case <-r.messageReceived:
+		}
+
+		sender := r.lastSender
+		require.Equal(t, sender, host1.ID())
+
+		receivedRequest := r.lastRestartRequest
+		require.NotNil(t, receivedRequest)
+		achid, err := receivedRequest.RestartChannelId()
+		require.NoError(t, err)
+		require.Equal(t, chId, achid)
+	})
+
 }

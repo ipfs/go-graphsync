@@ -1,4 +1,4 @@
-package channels
+package internal
 
 import (
 	"github.com/ipfs/go-cid"
@@ -8,23 +8,28 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 )
 
-//go:generate cbor-gen-for internalChannelState encodedVoucher encodedVoucherResult
+//go:generate cbor-gen-for --map-encoding ChannelState EncodedVoucher EncodedVoucherResult
 
-type encodedVoucher struct {
+// EncodedVoucher is how the voucher is stored on disk
+type EncodedVoucher struct {
 	// Vouchers identifier for decoding
 	Type datatransfer.TypeIdentifier
 	// used to verify this channel
 	Voucher *cbg.Deferred
 }
 
-type encodedVoucherResult struct {
+// EncodedVoucherResult is how the voucher result is stored on disk
+type EncodedVoucherResult struct {
 	// Vouchers identifier for decoding
 	Type datatransfer.TypeIdentifier
 	// used to verify this channel
 	VoucherResult *cbg.Deferred
 }
 
-type internalChannelState struct {
+// ChannelState is the internal representation on disk for the channel fsm
+type ChannelState struct {
+	// PeerId of the manager peer
+	SelfPeer peer.ID
 	// an identifier for this channel shared by request and responder, set by requester through protocol
 	TransferID datatransfer.TransferID
 	// Initiator is the person who intiated this datatransfer request
@@ -49,26 +54,9 @@ type internalChannelState struct {
 	Received uint64
 	// more informative status on a channel
 	Message        string
-	Vouchers       []encodedVoucher
-	VoucherResults []encodedVoucherResult
-}
+	Vouchers       []EncodedVoucher
+	VoucherResults []EncodedVoucherResult
 
-func (c internalChannelState) ToChannelState(voucherDecoder DecoderByTypeFunc, voucherResultDecoder DecoderByTypeFunc) datatransfer.ChannelState {
-	return channelState{
-		isPull:               c.Initiator == c.Recipient,
-		transferID:           c.TransferID,
-		baseCid:              c.BaseCid,
-		selector:             c.Selector,
-		sender:               c.Sender,
-		recipient:            c.Recipient,
-		totalSize:            c.TotalSize,
-		status:               c.Status,
-		sent:                 c.Sent,
-		received:             c.Received,
-		message:              c.Message,
-		vouchers:             c.Vouchers,
-		voucherResults:       c.VoucherResults,
-		voucherResultDecoder: voucherResultDecoder,
-		voucherDecoder:       voucherDecoder,
-	}
+	// ReceivedCids is all the cids the initiator has received so far
+	ReceivedCids []cid.Cid
 }

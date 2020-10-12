@@ -37,16 +37,20 @@ func (m *manager) newRequest(ctx context.Context, selector ipld.Node, isPull boo
 		return nil, err
 	}
 	tid := datatransfer.TransferID(next)
-	return message.NewRequest(tid, isPull, voucher.Type(), voucher, baseCid, selector)
+	return message.NewRequest(tid, false, isPull, voucher.Type(), voucher, baseCid, selector)
 }
 
-func (m *manager) response(isNew bool, err error, tid datatransfer.TransferID, voucherResult datatransfer.VoucherResult) (datatransfer.Response, error) {
+func (m *manager) response(isRestart bool, isNew bool, err error, tid datatransfer.TransferID, voucherResult datatransfer.VoucherResult) (datatransfer.Response, error) {
 	isAccepted := err == nil || err == datatransfer.ErrPause
 	isPaused := err == datatransfer.ErrPause
 	resultType := datatransfer.EmptyTypeIdentifier
 	if voucherResult != nil {
 		resultType = voucherResult.Type()
 	}
+	if isRestart {
+		return message.RestartResponse(tid, isAccepted, isPaused, resultType, voucherResult)
+	}
+
 	if isNew {
 		return message.NewResponse(tid, isAccepted, isPaused, resultType, voucherResult)
 	}

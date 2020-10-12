@@ -3,10 +3,12 @@ package impl
 import (
 	"context"
 
+	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
+	"github.com/filecoin-project/go-data-transfer/channels"
 )
 
 type receiver struct {
@@ -41,9 +43,18 @@ func (r *receiver) receiveRequest(ctx context.Context, initiator peer.ID, incomi
 	}
 
 	if response != nil {
-		if response.IsNew() && response.Accepted() && !incoming.IsPull() {
+		if (response.IsNew() || response.IsRestart()) && response.Accepted() && !incoming.IsPull() {
+			var doNotSendCids []cid.Cid
+			if response.IsRestart() {
+				channel, err := r.manager.channels.GetByID(ctx, chid)
+				if err != nil {
+					return err
+				}
+				doNotSendCids = channel.ReceivedCids()
+			}
+
 			stor, _ := incoming.Selector()
-			if err := r.manager.transport.OpenChannel(ctx, initiator, chid, cidlink.Link{Cid: incoming.BaseCid()}, stor, response); err != nil {
+			if err := r.manager.transport.OpenChannel(ctx, initiator, chid, cidlink.Link{Cid: incoming.BaseCid()}, stor, doNotSendCids, response); err != nil {
 				return err
 			}
 		} else {
@@ -94,4 +105,53 @@ func (r *receiver) receiveResponse(
 
 func (r *receiver) ReceiveError(err error) {
 	log.Errorf("received error message on data transfer: %s", err.Error())
+}
+
+func (r *receiver) ReceiveRestartExistingChannelRequest(ctx context.Context,
+	sender peer.ID,
+	incoming datatransfer.Request) {
+
+	ch, err := incoming.RestartChannelId()
+	if err != nil {
+		log.Errorf("failed to fetch restart channel Id: %w", err)
+		return
+	}
+
+	// validate channel exists -> in non-terminal state and that the sender matches
+	channel, err := r.manager.channels.GetByID(ctx, ch)
+	if err != nil || channel == nil {
+		// nothing to do here, we wont handle the request
+		return
+	}
+
+	// initiator should be me
+	if channel.ChannelID().Initiator != r.manager.peerID {
+		log.Error("channel initiator is not the manager peer")
+		return
+	}
+
+	// other peer should be the counter party on the channel
+	if channel.OtherPeer() != sender {
+		log.Error("channel counterparty is not the sender peer")
+		return
+	}
+
+	// channel should NOT be terminated
+	if channels.IsChannelTerminated(channel.Status()) {
+		log.Error("channel is already terminated")
+		return
+	}
+
+	switch r.manager.channelDataTransferType(channel) {
+	case ManagerPeerCreatePush:
+		if err := r.manager.openPushRestartChannel(ctx, channel); err != nil {
+			log.Errorf("failed to open push restart channel: %w", err)
+		}
+	case ManagerPeerCreatePull:
+		if err := r.manager.openPullRestartChannel(ctx, channel); err != nil {
+			log.Errorf("failed to open pull restart channel: %w", err)
+		}
+	default:
+		log.Error("peer is not the creator of the channel")
+	}
 }

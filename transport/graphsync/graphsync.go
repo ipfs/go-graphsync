@@ -5,10 +5,13 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/cidset"
 	logging "github.com/ipfs/go-log/v2"
 	ipld "github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
+	"golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/transport/graphsync/extension"
@@ -71,6 +74,7 @@ func (t *Transport) OpenChannel(ctx context.Context,
 	channelID datatransfer.ChannelID,
 	root ipld.Link,
 	stor ipld.Node,
+	doNotSendCids []cid.Cid,
 	msg datatransfer.Message) error {
 	if t.events == nil {
 		return datatransfer.ErrHandlerNotSet
@@ -80,11 +84,32 @@ func (t *Transport) OpenChannel(ctx context.Context,
 		return err
 	}
 	internalCtx, internalCancel := context.WithCancel(ctx)
+
 	t.dataLock.Lock()
+	// if we have an existing request pending for the channelID, cancel it first.
+	if cancelF, ok := t.contextCancelMap[channelID]; ok {
+		cancelF()
+	}
 	t.pending[channelID] = make(chan struct{})
 	t.contextCancelMap[channelID] = internalCancel
 	t.dataLock.Unlock()
-	_, errChan := t.gs.Request(internalCtx, dataSender, root, stor, ext)
+
+	exts := []graphsync.ExtensionData{ext}
+	if len(doNotSendCids) != 0 {
+		set := cid.NewSet()
+		for _, c := range doNotSendCids {
+			set.Add(c)
+		}
+		bz, err := cidset.EncodeCidSet(set)
+		if err != nil {
+			return xerrors.Errorf("failed to encode cid set: %w", err)
+		}
+		doNotSendExt := graphsync.ExtensionData{Name: graphsync.ExtensionDoNotSendCIDs,
+			Data: bz}
+		exts = append(exts, doNotSendExt)
+	}
+	_, errChan := t.gs.Request(internalCtx, dataSender, root, stor, exts...)
+
 	go t.executeGsRequest(ctx, channelID, errChan)
 	return nil
 }
@@ -106,12 +131,20 @@ func (t *Transport) consumeResponses(ctx context.Context, errChan <-chan error) 
 
 func (t *Transport) executeGsRequest(ctx context.Context, channelID datatransfer.ChannelID, errChan <-chan error) {
 	lastError := t.consumeResponses(ctx, errChan)
+
 	if _, ok := lastError.(graphsync.RequestContextCancelledErr); ok {
+		log.Warnf("graphsync request context cancelled, channel Id: %v", channelID)
+		if err := t.events.OnRequestTimedOut(ctx, channelID); err != nil {
+			log.Error(err)
+		}
 		return
 	}
+
 	if _, ok := lastError.(graphsync.RequestCancelledErr); ok {
+		// TODO Should we do anything for RequestCancelledErr ?
 		return
 	}
+
 	if lastError != nil {
 		log.Warnf("graphsync error: %s", lastError.Error())
 	}

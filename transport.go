@@ -3,6 +3,7 @@ package datatransfer
 import (
 	"context"
 
+	"github.com/ipfs/go-cid"
 	ipld "github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
@@ -46,6 +47,10 @@ type EventsHandler interface {
 	// OnResponseCompleted is called when we finish sending data for the given channel ID
 	// Error returns are logged but otherwise have not effect
 	OnChannelCompleted(chid ChannelID, success bool) error
+
+	// OnRequestTimedOut is called when a request we opened (with the given channel Id) to receive data times out.
+	// Error returns are logged but otherwise have no effect
+	OnRequestTimedOut(ctx context.Context, chid ChannelID) error
 }
 
 /*
@@ -73,6 +78,7 @@ type Transport interface {
 		channelID ChannelID,
 		root ipld.Link,
 		stor ipld.Node,
+		doNotSendCids []cid.Cid,
 		msg Message) error
 
 	// CloseChannel closes the given channel

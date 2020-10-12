@@ -1,4 +1,4 @@
-package message
+package message1_0
 
 import (
 	"bytes"
@@ -8,11 +8,13 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/libp2p/go-libp2p-core/protocol"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	xerrors "golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/encoding"
+	"github.com/filecoin-project/go-data-transfer/message/types"
 )
 
 //go:generate cbor-gen-for transferRequest
@@ -36,16 +38,25 @@ func (trq *transferRequest) IsRequest() bool {
 	return true
 }
 
+func (trq *transferRequest) MessageForProtocol(targetProtocol protocol.ID) (datatransfer.Message, error) {
+	switch targetProtocol {
+	case datatransfer.ProtocolDataTransfer1_0:
+		return trq, nil
+	default:
+		return nil, xerrors.Errorf("protocol not supported")
+	}
+}
+
 func (trq *transferRequest) IsNew() bool {
-	return trq.Type == uint64(newMessage)
+	return trq.Type == uint64(types.NewMessage)
 }
 
 func (trq *transferRequest) IsUpdate() bool {
-	return trq.Type == uint64(updateMessage)
+	return trq.Type == uint64(types.UpdateMessage)
 }
 
 func (trq *transferRequest) IsVoucher() bool {
-	return trq.Type == uint64(voucherMessage) || trq.Type == uint64(newMessage)
+	return trq.Type == uint64(types.VoucherMessage) || trq.Type == uint64(types.NewMessage)
 }
 
 func (trq *transferRequest) IsPaused() bool {
@@ -103,7 +114,7 @@ func (trq *transferRequest) Selector() (ipld.Node, error) {
 
 // IsCancel returns true if this is a cancel request
 func (trq *transferRequest) IsCancel() bool {
-	return trq.Type == uint64(cancelMessage)
+	return trq.Type == uint64(types.CancelMessage)
 }
 
 // IsPartial returns true if this is a partial request
@@ -120,4 +131,16 @@ func (trq *transferRequest) ToNet(w io.Writer) error {
 		Response: nil,
 	}
 	return msg.MarshalCBOR(w)
+}
+
+func (trq *transferRequest) IsRestart() bool {
+	return false
+}
+
+func (trq *transferRequest) IsRestartExistingChannelRequest() bool {
+	return false
+}
+
+func (trq *transferRequest) RestartChannelId() (datatransfer.ChannelID, error) {
+	return datatransfer.ChannelID{}, xerrors.New("not supported")
 }

@@ -12,8 +12,14 @@ const (
 	// Accept is an event that emits when the data transfer is first accepted
 	Accept
 
-	// Progress is an event that gets emitted every time more data is transferred
-	Progress
+	// Restart is an event that emits when the data transfer is restarted
+	Restart
+
+	// DataReceived is emitted when data is received on the channel from a remote peer
+	DataReceived
+
+	// DataSent is emitted when data is sent on the channel to the remote peer
+	DataSent
 
 	// Cancel indicates one side has cancelled the transfer
 	Cancel
@@ -55,15 +61,23 @@ const (
 	// initiator
 	BeginFinalizing
 
+	// Disconnected emits when we are not able to connect to the other party
+	Disconnected
+
 	// Complete is emitted when a data transfer is complete
 	Complete
+
+	// CompleteCleanupOnRestart is emitted when a data transfer channel is restarted to signal
+	// that channels that were cleaning up should finish cleanup
+	CompleteCleanupOnRestart
 )
 
 // Events are human readable names for data transfer events
 var Events = map[EventCode]string{
 	Open:                        "Open",
 	Accept:                      "Accept",
-	Progress:                    "Progress",
+	DataSent:                    "DataSent",
+	DataReceived:                "DataReceived",
 	Cancel:                      "Cancel",
 	Error:                       "Error",
 	CleanupComplete:             "CleanupComplete",
@@ -78,6 +92,7 @@ var Events = map[EventCode]string{
 	ResponderCompletes:          "ResponderCompletes",
 	BeginFinalizing:             "BeginFinalizing",
 	Complete:                    "Complete",
+	CompleteCleanupOnRestart:    "CompleteCleanupOnRestart",
 }
 
 // Event is a struct containing information about a data transfer event

@@ -38,10 +38,12 @@ func matchDtMessage(t *testing.T, extensions []graphsync.ExtensionData) datatran
 
 // ReceivedGraphSyncRequest contains data about a received graphsync request
 type ReceivedGraphSyncRequest struct {
-	P          peer.ID
-	Root       ipld.Link
-	Selector   ipld.Node
-	Extensions []graphsync.ExtensionData
+	Ctx             context.Context
+	P               peer.ID
+	Root            ipld.Link
+	Selector        ipld.Node
+	Extensions      []graphsync.ExtensionData
+	ResponseErrChan chan error
 }
 
 // DTMessage returns the data transfer message among the graphsync extensions sent with this request
@@ -113,7 +115,7 @@ type FakeGraphSync struct {
 // NewFakeGraphSync returns a new fake graphsync implementation
 func NewFakeGraphSync() *FakeGraphSync {
 	return &FakeGraphSync{
-		requests:           make(chan ReceivedGraphSyncRequest, 1),
+		requests:           make(chan ReceivedGraphSyncRequest, 2),
 		pauseRequests:      make(chan PauseRequest, 1),
 		resumeRequests:     make(chan ResumeRequest, 1),
 		pauseResponses:     make(chan PauseResponse, 1),
@@ -242,10 +244,9 @@ func (fgs *FakeGraphSync) AssertDoesNotHavePersistenceOption(t *testing.T, name 
 
 // Request initiates a new GraphSync request to the given peer using the given selector spec.
 func (fgs *FakeGraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
-
-	fgs.requests <- ReceivedGraphSyncRequest{p, root, selector, extensions}
-	responses := make(chan graphsync.ResponseProgress)
 	errors := make(chan error)
+	fgs.requests <- ReceivedGraphSyncRequest{ctx, p, root, selector, extensions, errors}
+	responses := make(chan graphsync.ResponseProgress)
 	if !fgs.leaveRequestsOpen {
 		close(responses)
 		close(errors)

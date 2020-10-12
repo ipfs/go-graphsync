@@ -92,13 +92,19 @@ type Channel interface {
 	// ChannelID returns the ChannelID for this request
 	ChannelID() ChannelID
 
-	// OtherParty returns the opposite party in the channel to the passed in party
-	OtherParty(thisParty peer.ID) peer.ID
+	// OtherPeer returns the counter party peer for this channel
+	OtherPeer() peer.ID
+
+	// ReceivedCids returns the cids received so far on the channel
+	ReceivedCids() []cid.Cid
 }
 
 // ChannelState is channel parameters plus it's current state
 type ChannelState interface {
 	Channel
+
+	// SelfPeer returns the peer this channel belongs to
+	SelfPeer() peer.ID
 
 	// Status is the current status of this channel
 	Status() Status

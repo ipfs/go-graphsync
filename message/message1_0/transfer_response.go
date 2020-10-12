@@ -1,13 +1,15 @@
-package message
+package message1_0
 
 import (
 	"io"
 
+	"github.com/libp2p/go-libp2p-core/protocol"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	xerrors "golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/encoding"
+	"github.com/filecoin-project/go-data-transfer/message/types"
 )
 
 //go:generate cbor-gen-for transferResponse
@@ -26,6 +28,19 @@ func (trsp *transferResponse) TransferID() datatransfer.TransferID {
 	return datatransfer.TransferID(trsp.XferID)
 }
 
+func (trsp *transferResponse) IsRestart() bool {
+	return false
+}
+
+func (trsp *transferResponse) MessageForProtocol(targetProtocol protocol.ID) (datatransfer.Message, error) {
+	switch targetProtocol {
+	case datatransfer.ProtocolDataTransfer1_0:
+		return trsp, nil
+	default:
+		return nil, xerrors.Errorf("protocol not supported")
+	}
+}
+
 // IsRequest always returns false in this case because this is a transfer response
 func (trsp *transferResponse) IsRequest() bool {
 	return false
@@ -33,12 +48,12 @@ func (trsp *transferResponse) IsRequest() bool {
 
 // IsNew returns true if this is the first response sent
 func (trsp *transferResponse) IsNew() bool {
-	return trsp.Type == uint64(newMessage)
+	return trsp.Type == uint64(types.NewMessage)
 }
 
 // IsUpdate returns true if this response is an update
 func (trsp *transferResponse) IsUpdate() bool {
-	return trsp.Type == uint64(updateMessage)
+	return trsp.Type == uint64(types.UpdateMessage)
 }
 
 // IsPaused returns true if the responder is paused
@@ -48,16 +63,17 @@ func (trsp *transferResponse) IsPaused() bool {
 
 // IsCancel returns true if the responder has cancelled this response
 func (trsp *transferResponse) IsCancel() bool {
-	return trsp.Type == uint64(cancelMessage)
+	return trsp.Type == uint64(types.CancelMessage)
 }
 
 // IsComplete returns true if the responder has completed this response
 func (trsp *transferResponse) IsComplete() bool {
-	return trsp.Type == uint64(completeMessage)
+	return trsp.Type == uint64(types.CompleteMessage)
 }
 
 func (trsp *transferResponse) IsVoucherResult() bool {
-	return trsp.Type == uint64(voucherResultMessage) || trsp.Type == uint64(newMessage) || trsp.Type == uint64(completeMessage)
+	return trsp.Type == uint64(types.VoucherResultMessage) || trsp.Type == uint64(types.NewMessage) ||
+		trsp.Type == uint64(types.CompleteMessage)
 }
 
 // 	Accepted returns true if the request is accepted in the response

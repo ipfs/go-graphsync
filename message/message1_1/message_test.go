@@ -1,4 +1,4 @@
-package message_test
+package message1_1_test
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
-	. "github.com/filecoin-project/go-data-transfer/message"
+	"github.com/filecoin-project/go-data-transfer/message/message1_1"
 	"github.com/filecoin-project/go-data-transfer/testutil"
 )
 
@@ -21,7 +21,7 @@ func TestNewRequest(t *testing.T) {
 	isPull := true
 	id := datatransfer.TransferID(rand.Int31())
 	voucher := testutil.NewFakeDTType()
-	request, err := NewRequest(id, isPull, voucher.Type(), voucher, baseCid, selector)
+	request, err := message1_1.NewRequest(id, false, isPull, voucher.Type(), voucher, baseCid, selector)
 	require.NoError(t, err)
 	assert.Equal(t, id, request.TransferID())
 	assert.False(t, request.IsCancel())
@@ -39,7 +39,58 @@ func TestNewRequest(t *testing.T) {
 
 	assert.True(t, msg.IsRequest())
 	assert.Equal(t, request.TransferID(), msg.TransferID())
+	assert.False(t, msg.IsRestart())
+	assert.True(t, msg.IsNew())
 }
+
+func TestRestartRequest(t *testing.T) {
+	baseCid := testutil.GenerateCids(1)[0]
+	selector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
+	isPull := true
+	id := datatransfer.TransferID(rand.Int31())
+	voucher := testutil.NewFakeDTType()
+	request, err := message1_1.NewRequest(id, true, isPull, voucher.Type(), voucher, baseCid, selector)
+	require.NoError(t, err)
+	assert.Equal(t, id, request.TransferID())
+	assert.False(t, request.IsCancel())
+	assert.False(t, request.IsUpdate())
+	assert.True(t, request.IsPull())
+	assert.True(t, request.IsRequest())
+	assert.Equal(t, baseCid.String(), request.BaseCid().String())
+	testutil.AssertFakeDTVoucher(t, request, voucher)
+	receivedSelector, err := request.Selector()
+	require.NoError(t, err)
+	require.Equal(t, selector, receivedSelector)
+	// Sanity check to make sure we can cast to datatransfer.Message
+	msg, ok := request.(datatransfer.Message)
+	require.True(t, ok)
+
+	assert.True(t, msg.IsRequest())
+	assert.Equal(t, request.TransferID(), msg.TransferID())
+	assert.True(t, msg.IsRestart())
+	assert.False(t, msg.IsNew())
+}
+
+func TestRestartExistingChannelRequest(t *testing.T) {
+	peers := testutil.GeneratePeers(2)
+	tid := uint64(1)
+	chid := datatransfer.ChannelID{Initiator: peers[0],
+		Responder: peers[1], ID: datatransfer.TransferID(tid)}
+	req := message1_1.RestartExistingChannelRequest(chid)
+
+	wbuf := new(bytes.Buffer)
+	require.NoError(t, req.ToNet(wbuf))
+
+	desMsg, err := message1_1.FromNet(wbuf)
+	require.NoError(t, err)
+	req, ok := (desMsg).(datatransfer.Request)
+	require.True(t, ok)
+	require.True(t, req.IsRestartExistingChannelRequest())
+	achid, err := req.RestartChannelId()
+	require.NoError(t, err)
+	require.Equal(t, chid, achid)
+}
+
 func TestTransferRequest_MarshalCBOR(t *testing.T) {
 	// sanity check MarshalCBOR does its thing w/o error
 	req, err := NewTestTransferRequest()
@@ -55,7 +106,7 @@ func TestTransferRequest_UnmarshalCBOR(t *testing.T) {
 	// use ToNet / FromNet
 	require.NoError(t, req.ToNet(wbuf))
 
-	desMsg, err := FromNet(wbuf)
+	desMsg, err := message1_1.FromNet(wbuf)
 	require.NoError(t, err)
 
 	// Verify round-trip
@@ -73,7 +124,7 @@ func TestTransferRequest_UnmarshalCBOR(t *testing.T) {
 func TestResponses(t *testing.T) {
 	id := datatransfer.TransferID(rand.Int31())
 	voucherResult := testutil.NewFakeDTType()
-	response, err := NewResponse(id, false, true, voucherResult.Type(), voucherResult) // not accepted
+	response, err := message1_1.NewResponse(id, false, true, voucherResult.Type(), voucherResult) // not accepted
 	require.NoError(t, err)
 	assert.Equal(t, response.TransferID(), id)
 	assert.False(t, response.Accepted())
@@ -96,7 +147,7 @@ func TestResponses(t *testing.T) {
 func TestTransferResponse_MarshalCBOR(t *testing.T) {
 	id := datatransfer.TransferID(rand.Int31())
 	voucherResult := testutil.NewFakeDTType()
-	response, err := NewResponse(id, true, false, voucherResult.Type(), voucherResult) // accepted
+	response, err := message1_1.NewResponse(id, true, false, voucherResult.Type(), voucherResult) // accepted
 	require.NoError(t, err)
 
 	// sanity check that we can marshal data
@@ -108,14 +159,14 @@ func TestTransferResponse_MarshalCBOR(t *testing.T) {
 func TestTransferResponse_UnmarshalCBOR(t *testing.T) {
 	id := datatransfer.TransferID(rand.Int31())
 	voucherResult := testutil.NewFakeDTType()
-	response, err := NewResponse(id, true, false, voucherResult.Type(), voucherResult) // accepted
+	response, err := message1_1.NewResponse(id, true, false, voucherResult.Type(), voucherResult) // accepted
 	require.NoError(t, err)
 
 	wbuf := new(bytes.Buffer)
 	require.NoError(t, response.ToNet(wbuf))
 
 	// verify round trip
-	desMsg, err := FromNet(wbuf)
+	desMsg, err := message1_1.FromNet(wbuf)
 	require.NoError(t, err)
 	assert.False(t, desMsg.IsRequest())
 	assert.True(t, desMsg.IsNew())
@@ -134,7 +185,7 @@ func TestTransferResponse_UnmarshalCBOR(t *testing.T) {
 
 func TestRequestCancel(t *testing.T) {
 	id := datatransfer.TransferID(rand.Int31())
-	req := CancelRequest(id)
+	req := message1_1.CancelRequest(id)
 	require.Equal(t, req.TransferID(), id)
 	require.True(t, req.IsRequest())
 	require.True(t, req.IsCancel())
@@ -143,7 +194,7 @@ func TestRequestCancel(t *testing.T) {
 	wbuf := new(bytes.Buffer)
 	require.NoError(t, req.ToNet(wbuf))
 
-	deserialized, err := FromNet(wbuf)
+	deserialized, err := message1_1.FromNet(wbuf)
 	require.NoError(t, err)
 
 	deserializedRequest, ok := deserialized.(datatransfer.Request)
@@ -156,7 +207,7 @@ func TestRequestCancel(t *testing.T) {
 
 func TestRequestUpdate(t *testing.T) {
 	id := datatransfer.TransferID(rand.Int31())
-	req := UpdateRequest(id, true)
+	req := message1_1.UpdateRequest(id, true)
 	require.Equal(t, req.TransferID(), id)
 	require.True(t, req.IsRequest())
 	require.False(t, req.IsCancel())
@@ -166,7 +217,7 @@ func TestRequestUpdate(t *testing.T) {
 	wbuf := new(bytes.Buffer)
 	require.NoError(t, req.ToNet(wbuf))
 
-	deserialized, err := FromNet(wbuf)
+	deserialized, err := message1_1.FromNet(wbuf)
 	require.NoError(t, err)
 
 	deserializedRequest, ok := deserialized.(datatransfer.Request)
@@ -180,7 +231,7 @@ func TestRequestUpdate(t *testing.T) {
 
 func TestUpdateResponse(t *testing.T) {
 	id := datatransfer.TransferID(rand.Int31())
-	response := UpdateResponse(id, true) // not accepted
+	response := message1_1.UpdateResponse(id, true) // not accepted
 	assert.Equal(t, response.TransferID(), id)
 	assert.False(t, response.Accepted())
 	assert.False(t, response.IsNew())
@@ -201,7 +252,7 @@ func TestUpdateResponse(t *testing.T) {
 
 func TestCancelResponse(t *testing.T) {
 	id := datatransfer.TransferID(rand.Int31())
-	response := CancelResponse(id)
+	response := message1_1.CancelResponse(id)
 	assert.Equal(t, response.TransferID(), id)
 	assert.False(t, response.IsNew())
 	assert.False(t, response.IsUpdate())
@@ -220,7 +271,7 @@ func TestCancelResponse(t *testing.T) {
 
 func TestCompleteResponse(t *testing.T) {
 	id := datatransfer.TransferID(rand.Int31())
-	response, err := CompleteResponse(id, true, true, datatransfer.EmptyTypeIdentifier, nil)
+	response, err := message1_1.CompleteResponse(id, true, true, datatransfer.EmptyTypeIdentifier, nil)
 	require.NoError(t, err)
 	assert.Equal(t, response.TransferID(), id)
 	assert.False(t, response.IsNew())
@@ -247,13 +298,13 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	accepted := false
 	voucher := testutil.NewFakeDTType()
 	voucherResult := testutil.NewFakeDTType()
-	request, err := NewRequest(id, isPull, voucher.Type(), voucher, baseCid, selector)
+	request, err := message1_1.NewRequest(id, false, isPull, voucher.Type(), voucher, baseCid, selector)
 	require.NoError(t, err)
 	buf := new(bytes.Buffer)
 	err = request.ToNet(buf)
 	require.NoError(t, err)
 	require.Greater(t, buf.Len(), 0)
-	deserialized, err := FromNet(buf)
+	deserialized, err := message1_1.FromNet(buf)
 	require.NoError(t, err)
 
 	deserializedRequest, ok := deserialized.(datatransfer.Request)
@@ -267,11 +318,11 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	testutil.AssertEqualFakeDTVoucher(t, request, deserializedRequest)
 	testutil.AssertEqualSelector(t, request, deserializedRequest)
 
-	response, err := NewResponse(id, accepted, false, voucherResult.Type(), voucherResult)
+	response, err := message1_1.NewResponse(id, accepted, false, voucherResult.Type(), voucherResult)
 	require.NoError(t, err)
 	err = response.ToNet(buf)
 	require.NoError(t, err)
-	deserialized, err = FromNet(buf)
+	deserialized, err = message1_1.FromNet(buf)
 	require.NoError(t, err)
 
 	deserializedResponse, ok := deserialized.(datatransfer.Response)
@@ -284,10 +335,10 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	require.Equal(t, deserializedResponse.IsPaused(), response.IsPaused())
 	testutil.AssertEqualFakeDTVoucherResult(t, response, deserializedResponse)
 
-	request = CancelRequest(id)
+	request = message1_1.CancelRequest(id)
 	err = request.ToNet(buf)
 	require.NoError(t, err)
-	deserialized, err = FromNet(buf)
+	deserialized, err = message1_1.FromNet(buf)
 	require.NoError(t, err)
 
 	deserializedRequest, ok = deserialized.(datatransfer.Request)
@@ -301,13 +352,13 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 func TestFromNetMessageValidation(t *testing.T) {
 	// craft request message with nil request struct
 	buf := []byte{0x83, 0xf5, 0xf6, 0xf6}
-	msg, err := FromNet(bytes.NewBuffer(buf))
+	msg, err := message1_1.FromNet(bytes.NewBuffer(buf))
 	assert.Error(t, err)
 	assert.Nil(t, msg)
 
 	// craft response message with nil response struct
 	buf = []byte{0x83, 0xf4, 0xf6, 0xf6}
-	msg, err = FromNet(bytes.NewBuffer(buf))
+	msg, err = message1_1.FromNet(bytes.NewBuffer(buf))
 	assert.Error(t, err)
 	assert.Nil(t, msg)
 }
@@ -318,5 +369,5 @@ func NewTestTransferRequest() (datatransfer.Request, error) {
 	isPull := false
 	id := datatransfer.TransferID(rand.Int31())
 	voucher := testutil.NewFakeDTType()
-	return NewRequest(id, isPull, voucher.Type(), voucher, bcid, selector)
+	return message1_1.NewRequest(id, false, isPull, voucher.Type(), voucher, bcid, selector)
 }

@@ -34,6 +34,7 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/protocol"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
 
@@ -45,6 +46,8 @@ import (
 )
 
 var allSelector ipld.Node
+
+const loremFile = "lorem.txt"
 
 func init() {
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
@@ -62,8 +65,8 @@ type GraphsyncTestingData struct {
 	Mn             mocknet.Mocknet
 	StoredCounter1 *storedcounter.StoredCounter
 	StoredCounter2 *storedcounter.StoredCounter
-	DtDs1          datastore.Datastore
-	DtDs2          datastore.Datastore
+	DtDs1          datastore.Batching
+	DtDs2          datastore.Batching
 	Bs1            bstore.Blockstore
 	Bs2            bstore.Blockstore
 	DagService1    ipldformat.DAGService
@@ -83,7 +86,7 @@ type GraphsyncTestingData struct {
 }
 
 // NewGraphsyncTestingData returns a new GraphsyncTestingData instance
-func NewGraphsyncTestingData(ctx context.Context, t *testing.T) *GraphsyncTestingData {
+func NewGraphsyncTestingData(ctx context.Context, t *testing.T, host1Protocols []protocol.ID, host2Protocols []protocol.ID) *GraphsyncTestingData {
 
 	gsData := &GraphsyncTestingData{}
 	gsData.Ctx = ctx
@@ -128,8 +131,19 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T) *GraphsyncTestin
 	gsData.GsNet1 = gsnet.NewFromLibp2pHost(gsData.Host1)
 	gsData.GsNet2 = gsnet.NewFromLibp2pHost(gsData.Host2)
 
-	gsData.DtNet1 = network.NewFromLibp2pHost(gsData.Host1)
-	gsData.DtNet2 = network.NewFromLibp2pHost(gsData.Host2)
+	opts1 := []network.Option{network.RetryParameters(0, 0, 0)}
+	opts2 := []network.Option{network.RetryParameters(0, 0, 0)}
+
+	if len(host1Protocols) != 0 {
+		opts1 = append(opts1, network.DataTransferProtocols(host1Protocols))
+	}
+
+	if len(host2Protocols) != 0 {
+		opts2 = append(opts2, network.DataTransferProtocols(host2Protocols))
+	}
+
+	gsData.DtNet1 = network.NewFromLibp2pHost(gsData.Host1, opts1...)
+	gsData.DtNet2 = network.NewFromLibp2pHost(gsData.Host2, opts2...)
 
 	// create a selector for the whole UnixFS dag
 	gsData.AllSelector = allSelector
@@ -173,19 +187,19 @@ func (gsData *GraphsyncTestingData) LoadUnixFSFile(t *testing.T, useSecondNode b
 		dagService = gsData.DagService1
 	}
 
-	link, origBytes := LoadUnixFSFile(gsData.Ctx, t, dagService)
+	link, origBytes := LoadUnixFSFile(gsData.Ctx, t, dagService, loremFile)
 	gsData.OrigBytes = origBytes
 	return link
 }
 
 // LoadUnixFSFile loads a fixtures file into the given DAG Service, returning an ipld.Link for the file
 // and the original file bytes
-func LoadUnixFSFile(ctx context.Context, t *testing.T, dagService ipldformat.DAGService) (ipld.Link, []byte) {
+func LoadUnixFSFile(ctx context.Context, t *testing.T, dagService ipldformat.DAGService, fileName string) (ipld.Link, []byte) {
 	_, curFile, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 
 	// read in a fixture file
-	path := filepath.Join(path.Dir(curFile), "fixtures", "lorem.txt")
+	path := filepath.Join(path.Dir(curFile), "fixtures", fileName)
 
 	f, err := os.Open(path)
 	require.NoError(t, err)

@@ -1,12 +1,14 @@
 package channels
 
 import (
+	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	cbg "github.com/whyrusleeping/cbor-gen"
 
 	"github.com/filecoin-project/go-statemachine/fsm"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
+	"github.com/filecoin-project/go-data-transfer/channels/internal"
 )
 
 var log = logging.Logger("data-transfer")
@@ -15,32 +17,50 @@ var log = logging.Logger("data-transfer")
 var ChannelEvents = fsm.Events{
 	fsm.Event(datatransfer.Open).FromAny().To(datatransfer.Requested),
 	fsm.Event(datatransfer.Accept).From(datatransfer.Requested).To(datatransfer.Ongoing),
+	fsm.Event(datatransfer.Restart).FromAny().To(datatransfer.Ongoing),
+
 	fsm.Event(datatransfer.Cancel).FromAny().To(datatransfer.Cancelling),
-	fsm.Event(datatransfer.Progress).FromMany(
+
+	fsm.Event(datatransfer.DataReceived).FromMany(
 		datatransfer.Requested,
 		datatransfer.Ongoing,
 		datatransfer.InitiatorPaused,
 		datatransfer.ResponderPaused,
 		datatransfer.BothPaused,
 		datatransfer.ResponderCompleted,
-		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internalChannelState, deltaSent uint64, deltaReceived uint64) error {
-		chst.Received += deltaReceived
-		chst.Sent += deltaSent
+		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64, c cid.Cid) error {
+		chst.Received += delta
+		chst.ReceivedCids = append(chst.ReceivedCids, c)
 		return nil
 	}),
-	fsm.Event(datatransfer.Error).FromAny().To(datatransfer.Failing).Action(func(chst *internalChannelState, err error) error {
+
+	fsm.Event(datatransfer.DataSent).FromMany(
+		datatransfer.Requested,
+		datatransfer.Ongoing,
+		datatransfer.InitiatorPaused,
+		datatransfer.ResponderPaused,
+		datatransfer.BothPaused,
+		datatransfer.ResponderCompleted,
+		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64, c cid.Cid) error {
+		chst.Sent += delta
+		return nil
+	}),
+
+	fsm.Event(datatransfer.Disconnected).FromAny().To(datatransfer.PeerDisconnected),
+
+	fsm.Event(datatransfer.Error).FromAny().To(datatransfer.Failing).Action(func(chst *internal.ChannelState, err error) error {
 		chst.Message = err.Error()
 		return nil
 	}),
 	fsm.Event(datatransfer.NewVoucher).FromAny().ToNoChange().
-		Action(func(chst *internalChannelState, vtype datatransfer.TypeIdentifier, voucherBytes []byte) error {
-			chst.Vouchers = append(chst.Vouchers, encodedVoucher{Type: vtype, Voucher: &cbg.Deferred{Raw: voucherBytes}})
+		Action(func(chst *internal.ChannelState, vtype datatransfer.TypeIdentifier, voucherBytes []byte) error {
+			chst.Vouchers = append(chst.Vouchers, internal.EncodedVoucher{Type: vtype, Voucher: &cbg.Deferred{Raw: voucherBytes}})
 			return nil
 		}),
 	fsm.Event(datatransfer.NewVoucherResult).FromAny().ToNoChange().
-		Action(func(chst *internalChannelState, vtype datatransfer.TypeIdentifier, voucherResultBytes []byte) error {
+		Action(func(chst *internal.ChannelState, vtype datatransfer.TypeIdentifier, voucherResultBytes []byte) error {
 			chst.VoucherResults = append(chst.VoucherResults,
-				encodedVoucherResult{Type: vtype, VoucherResult: &cbg.Deferred{Raw: voucherResultBytes}})
+				internal.EncodedVoucherResult{Type: vtype, VoucherResult: &cbg.Deferred{Raw: voucherResultBytes}})
 			return nil
 		}),
 	fsm.Event(datatransfer.PauseInitiator).
@@ -82,6 +102,9 @@ var ChannelEvents = fsm.Events{
 		From(datatransfer.Cancelling).To(datatransfer.Cancelled).
 		From(datatransfer.Failing).To(datatransfer.Failed).
 		From(datatransfer.Completing).To(datatransfer.Completed),
+
+	// will kickoff state handlers for channels that were cleaning up
+	fsm.Event(datatransfer.CompleteCleanupOnRestart).FromAny().ToNoChange(),
 }
 
 // ChannelStateEntryFuncs are handlers called as we enter different states
@@ -92,7 +115,7 @@ var ChannelStateEntryFuncs = fsm.StateEntryFuncs{
 	datatransfer.Completing: cleanupConnection,
 }
 
-func cleanupConnection(ctx fsm.Context, env ChannelEnvironment, channel internalChannelState) error {
+func cleanupConnection(ctx fsm.Context, env ChannelEnvironment, channel internal.ChannelState) error {
 	otherParty := channel.Initiator
 	if otherParty == env.ID() {
 		otherParty = channel.Responder
@@ -102,9 +125,38 @@ func cleanupConnection(ctx fsm.Context, env ChannelEnvironment, channel internal
 	return ctx.Trigger(datatransfer.CleanupComplete)
 }
 
+// CleanupStates are the penultimate states for a channel
+var CleanupStates = []fsm.StateKey{
+	datatransfer.Cancelling,
+	datatransfer.Completing,
+	datatransfer.Failing,
+}
+
 // ChannelFinalityStates are the final states for a channel
 var ChannelFinalityStates = []fsm.StateKey{
 	datatransfer.Cancelled,
 	datatransfer.Completed,
 	datatransfer.Failed,
+}
+
+// IsChannelTerminated returns true if the channel is in a finality state
+func IsChannelTerminated(st datatransfer.Status) bool {
+	for _, s := range ChannelFinalityStates {
+		if s == st {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IsChannelCleaningUp returns true if channel was being cleaned up and finished
+func IsChannelCleaningUp(st datatransfer.Status) bool {
+	for _, s := range CleanupStates {
+		if s == st {
+			return true
+		}
+	}
+
+	return false
 }

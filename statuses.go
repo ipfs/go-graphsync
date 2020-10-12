@@ -58,6 +58,9 @@ const (
 
 	// ChannelNotFoundError means the searched for data transfer does not exist
 	ChannelNotFoundError
+
+	// PeerDisconnected means that we do NOT have a connection to the other peer
+	PeerDisconnected
 )
 
 // Statuses are human readable names for data transfer states
