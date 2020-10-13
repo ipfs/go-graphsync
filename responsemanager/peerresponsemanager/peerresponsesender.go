@@ -43,6 +43,12 @@ type Event struct {
 	Err  error
 }
 
+// Topic is a topic for the peer response sender
+type Topic struct {
+	P     peer.ID
+	Index responsebuilder.Index
+}
+
 // PeerMessageHandler is an interface that can send a response for a given peer across
 // the network.
 type PeerMessageHandler interface {
@@ -65,8 +71,8 @@ type peerResponseSender struct {
 	dedupKeys          map[graphsync.RequestID]string
 	responseBuildersLk sync.RWMutex
 	responseBuilders   []*responsebuilder.ResponseBuilder
-	nextBuilderTopic   responsebuilder.Topic
-	queuedMessages     chan responsebuilder.Topic
+	nextBuilderTopic   responsebuilder.Index
+	queuedMessages     chan responsebuilder.Index
 	subscriber         notifications.MappableSubscriber
 	publisher          notifications.Publisher
 }
@@ -120,7 +126,7 @@ func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHa
 		linkTracker:    linktracker.New(),
 		dedupKeys:      make(map[graphsync.RequestID]string),
 		altTrackers:    make(map[string]*linktracker.LinkTracker),
-		queuedMessages: make(chan responsebuilder.Topic, 1),
+		queuedMessages: make(chan responsebuilder.Index, 1),
 		publisher:      notifications.NewPublisher(),
 	}
 	prs.subscriber = notifications.NewMappableSubscriber(&subscriber{prs}, notifications.IdentityTransform)
@@ -393,7 +399,7 @@ func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn fun
 	responseBuilder := prs.responseBuilders[len(prs.responseBuilders)-1]
 	buildResponseFn(responseBuilder)
 	for _, notifee := range notifees {
-		notifications.SubscribeOn(prs.publisher, responseBuilder.Topic(), notifee)
+		notifications.SubscribeOn(prs.publisher, Topic{P: prs.p, Index: responseBuilder.Index()}, notifee)
 	}
 	return !responseBuilder.Empty()
 }
@@ -442,16 +448,16 @@ func (prs *peerResponseSender) sendResponseMessages() {
 		}
 
 		prs.peerHandler.SendResponse(prs.p, responses, blks, notifications.Notifee{
-			Topic:      builder.Topic(),
+			Topic:      Topic{P: prs.p, Index: builder.Index()},
 			Subscriber: prs.subscriber,
 		})
 
 		// wait for message to be processed
-		prs.waitForMessageQueud(builder.Topic())
+		prs.waitForMessageQueud(builder.Index())
 	}
 }
 
-func (prs *peerResponseSender) waitForMessageQueud(topic responsebuilder.Topic) {
+func (prs *peerResponseSender) waitForMessageQueud(topic responsebuilder.Index) {
 	for {
 		select {
 		case <-prs.ctx.Done():
@@ -469,7 +475,7 @@ type subscriber struct {
 }
 
 func (s *subscriber) OnNext(topic notifications.Topic, event notifications.Event) {
-	builderTopic, ok := topic.(responsebuilder.Topic)
+	builderTopic, ok := topic.(Topic)
 	if !ok {
 		return
 	}
@@ -484,7 +490,7 @@ func (s *subscriber) OnNext(topic notifications.Topic, event notifications.Event
 		s.prs.publisher.Publish(builderTopic, Event{Name: Error, Err: fmt.Errorf("error sending message: %w", msgEvent.Err)})
 	case messagequeue.Queued:
 		select {
-		case s.prs.queuedMessages <- builderTopic:
+		case s.prs.queuedMessages <- builderTopic.Index:
 		case <-s.prs.ctx.Done():
 		}
 	}

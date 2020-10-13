@@ -16,7 +16,7 @@ import (
 )
 
 func TestMessageBuilding(t *testing.T) {
-	rb := New(Topic(0))
+	rb := New(Index(0))
 	blocks := testutil.GenerateBlocksOfSize(3, 100)
 	links := make([]ipld.Link, 0, len(blocks))
 	for _, block := range blocks {
