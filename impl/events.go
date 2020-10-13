@@ -17,8 +17,6 @@ import (
 	"github.com/filecoin-project/go-data-transfer/registry"
 )
 
-var ChannelRemoveTimeout = 1 * time.Hour
-
 func (m *manager) OnChannelOpened(chid datatransfer.ChannelID) error {
 	has, err := m.channels.HasChannel(chid)
 	if err != nil {
@@ -170,12 +168,42 @@ func (m *manager) OnRequestTimedOut(ctx context.Context, chid datatransfer.Chann
 	go func() {
 		select {
 		case <-ctx.Done():
-		case <-time.After(ChannelRemoveTimeout):
+		case <-time.After(m.channelRemoveTimeout):
 			channel, err := m.channels.GetByID(ctx, chid)
 			if err == nil {
 				if !(channels.IsChannelTerminated(channel.Status()) ||
 					channels.IsChannelCleaningUp(channel.Status())) {
-					if err := m.channels.Cancel(chid); err != nil {
+					if err := m.channels.Error(chid, datatransfer.ErrRemoved); err != nil {
+						log.Errorf("failed to cancel timed-out channel: %v", err)
+						return
+					}
+					log.Warnf("channel %+v has ben cancelled because of timeout", chid)
+				}
+			}
+		}
+	}()
+
+	return nil
+}
+
+func (m *manager) OnRequestDisconnected(ctx context.Context, chid datatransfer.ChannelID) error {
+	log.Warnf("channel %+v has stalled or disconnected", chid)
+
+	// mark peer disconnected for informational purposes
+	err := m.channels.Disconnected(chid)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-time.After(m.channelRemoveTimeout):
+			channel, err := m.channels.GetByID(ctx, chid)
+			if err == nil {
+				if !(channels.IsChannelTerminated(channel.Status()) ||
+					channels.IsChannelCleaningUp(channel.Status())) {
+					if err := m.channels.Error(chid, datatransfer.ErrRemoved); err != nil {
 						log.Errorf("failed to cancel timed-out channel: %v", err)
 						return
 					}
@@ -198,7 +226,7 @@ func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, success bool) 
 			if msg != nil {
 				if err := m.dataTransferNetwork.SendMessage(context.TODO(), chid.Initiator, msg); err != nil {
 					log.Warnf("failed to send completion message, err : %v", err)
-					return m.channels.Disconnected(chid)
+					return m.OnRequestDisconnected(context.TODO(), chid)
 				}
 			}
 			if msg.Accepted() {

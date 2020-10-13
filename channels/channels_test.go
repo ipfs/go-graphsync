@@ -303,7 +303,7 @@ func TestChannels(t *testing.T) {
 		err = channelList.Disconnected(chid)
 		require.NoError(t, err)
 		state = checkEvent(ctx, t, received, datatransfer.Disconnected)
-		require.Equal(t, datatransfer.PeerDisconnected, state.Status())
+		require.Equal(t, datatransfer.ErrDisconnected.Error(), state.Message())
 	})
 
 	t.Run("test self peer and other peer", func(t *testing.T) {

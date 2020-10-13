@@ -17,7 +17,10 @@ var log = logging.Logger("data-transfer")
 var ChannelEvents = fsm.Events{
 	fsm.Event(datatransfer.Open).FromAny().To(datatransfer.Requested),
 	fsm.Event(datatransfer.Accept).From(datatransfer.Requested).To(datatransfer.Ongoing),
-	fsm.Event(datatransfer.Restart).FromAny().To(datatransfer.Ongoing),
+	fsm.Event(datatransfer.Restart).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
+		chst.Message = ""
+		return nil
+	}),
 
 	fsm.Event(datatransfer.Cancel).FromAny().To(datatransfer.Cancelling),
 
@@ -46,7 +49,10 @@ var ChannelEvents = fsm.Events{
 		return nil
 	}),
 
-	fsm.Event(datatransfer.Disconnected).FromAny().To(datatransfer.PeerDisconnected),
+	fsm.Event(datatransfer.Disconnected).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
+		chst.Message = datatransfer.ErrDisconnected.Error()
+		return nil
+	}),
 
 	fsm.Event(datatransfer.Error).FromAny().To(datatransfer.Failing).Action(func(chst *internal.ChannelState, err error) error {
 		chst.Message = err.Error()

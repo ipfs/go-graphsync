@@ -284,6 +284,7 @@ func (t *Transport) SetEventHandler(events datatransfer.EventsHandler) error {
 	t.gs.RegisterIncomingResponseHook(t.gsIncomingResponseHook)
 	t.gs.RegisterRequestUpdatedHook(t.gsRequestUpdatedHook)
 	t.gs.RegisterRequestorCancelledListener(t.gsRequestorCancelledListener)
+	t.gs.RegisterNetworkErrorListener(t.gsNetworkErrorListener)
 	return nil
 }
 
@@ -595,5 +596,18 @@ func (t *Transport) gsRequestorCancelledListener(p peer.ID, request graphsync.Re
 	chid, ok := t.graphsyncRequestMap[graphsyncKey{request.ID(), p}]
 	if ok {
 		t.requestorCancelledMap[chid] = struct{}{}
+	}
+}
+
+func (t *Transport) gsNetworkErrorListener(p peer.ID, request graphsync.RequestData, err error) {
+	t.dataLock.Lock()
+	defer t.dataLock.Unlock()
+
+	chid, ok := t.graphsyncRequestMap[graphsyncKey{request.ID(), p}]
+	if ok {
+		err := t.events.OnRequestDisconnected(context.TODO(), chid)
+		if err != nil {
+			log.Error(err)
+		}
 	}
 }

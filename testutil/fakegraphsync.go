@@ -110,6 +110,8 @@ type FakeGraphSync struct {
 	RequestUpdatedHook         graphsync.OnRequestUpdatedHook
 	IncomingResponseHook       graphsync.OnIncomingResponseHook
 	RequestorCancelledListener graphsync.OnRequestorCancelledListener
+	BlockSentListener          graphsync.OnBlockSentListener
+	NetworkErrorListener       graphsync.OnNetworkErrorListener
 }
 
 // NewFakeGraphSync returns a new fake graphsync implementation
@@ -349,6 +351,18 @@ func (fgs *FakeGraphSync) CancelResponse(p peer.ID, requestID graphsync.RequestI
 // RegisterRequestorCancelledListener adds a listener on the responder for requests cancelled by the requestor
 func (fgs *FakeGraphSync) RegisterRequestorCancelledListener(listener graphsync.OnRequestorCancelledListener) graphsync.UnregisterHookFunc {
 	fgs.RequestorCancelledListener = listener
+	return nil
+}
+
+// RegisterBlockSentListener adds a listener on the responder as blocks go out
+func (fgs *FakeGraphSync) RegisterBlockSentListener(listener graphsync.OnBlockSentListener) graphsync.UnregisterHookFunc {
+	fgs.BlockSentListener = listener
+	return nil
+}
+
+// RegisterNetworkErrorListener adds a listener on the responder as blocks go out
+func (fgs *FakeGraphSync) RegisterNetworkErrorListener(listener graphsync.OnNetworkErrorListener) graphsync.UnregisterHookFunc {
+	fgs.NetworkErrorListener = listener
 	return nil
 }
 

@@ -28,6 +28,7 @@ func TestDataTransferInitiating(t *testing.T) {
 	ctx := context.Background()
 	testCases := map[string]struct {
 		expectedEvents []datatransfer.EventCode
+		options        []DataTransferOption
 		verify         func(t *testing.T, h *harness)
 	}{
 		"OpenPushDataTransfer": {
@@ -83,17 +84,23 @@ func TestDataTransferInitiating(t *testing.T) {
 			},
 		},
 		"Remove Timed-out request": {
-			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.Cancel, datatransfer.CleanupComplete},
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.Error, datatransfer.CleanupComplete},
+			options:        []DataTransferOption{ChannelRemoveTimeout(10 * time.Millisecond)},
 			verify: func(t *testing.T, h *harness) {
-				orig := ChannelRemoveTimeout
-				ChannelRemoveTimeout = 10 * time.Millisecond
-				defer func() {
-					ChannelRemoveTimeout = orig
-				}()
-
 				channelID, err := h.dt.OpenPullDataChannel(h.ctx, h.peers[1], h.voucher, h.baseCid, h.stor)
 				require.NoError(t, err)
 				require.NoError(t, h.transport.EventHandler.OnRequestTimedOut(ctx, channelID))
+				// need time for the events to take place
+				time.Sleep(1 * time.Second)
+			},
+		},
+		"Remove disconnected request": {
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.Disconnected, datatransfer.Error, datatransfer.CleanupComplete},
+			options:        []DataTransferOption{ChannelRemoveTimeout(10 * time.Millisecond)},
+			verify: func(t *testing.T, h *harness) {
+				channelID, err := h.dt.OpenPullDataChannel(h.ctx, h.peers[1], h.voucher, h.baseCid, h.stor)
+				require.NoError(t, err)
+				require.NoError(t, h.transport.EventHandler.OnRequestDisconnected(ctx, channelID))
 				// need time for the events to take place
 				time.Sleep(1 * time.Second)
 			},
@@ -344,7 +351,7 @@ func TestDataTransferInitiating(t *testing.T) {
 			h.transport = testutil.NewFakeTransport()
 			h.ds = dss.MutexWrap(datastore.NewMapDatastore())
 			h.storedCounter = storedcounter.New(h.ds, datastore.NewKey("counter"))
-			dt, err := NewDataTransfer(h.ds, h.network, h.transport, h.storedCounter)
+			dt, err := NewDataTransfer(h.ds, h.network, h.transport, h.storedCounter, verify.options...)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt)
 			h.dt = dt

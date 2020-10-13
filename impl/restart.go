@@ -14,6 +14,7 @@ import (
 	"github.com/filecoin-project/go-data-transfer/message"
 )
 
+// ChannelDataTransferType identifies the type of a data transfer channel for the purposes of a restart
 type ChannelDataTransferType int
 
 const (
@@ -23,10 +24,10 @@ const (
 	// ManagerPeerCreatePush is the type of a channel wherein the manager peer created a Push Data Transfer
 	ManagerPeerCreatePush
 
-	// ManagerPeerCreatePush is the type of a channel wherein the manager peer received a Pull Data Transfer Request
+	// ManagerPeerReceivePull is the type of a channel wherein the manager peer received a Pull Data Transfer Request
 	ManagerPeerReceivePull
 
-	// ManagerPeerCreatePush is the type of a channel wherein the manager peer received a Push Data Transfer Request
+	// ManagerPeerReceivePush is the type of a channel wherein the manager peer received a Push Data Transfer Request
 	ManagerPeerReceivePush
 )
 

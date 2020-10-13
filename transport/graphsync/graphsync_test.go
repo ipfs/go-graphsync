@@ -628,6 +628,16 @@ func TestManager(t *testing.T) {
 				assertDecodesToMessage(t, gsData.incomingRequestHookActions.SentExtension.Data, gsData.incoming)
 			},
 		},
+		"recognized incoming request will record network error": {
+			action: func(gsData *harness) {
+				gsData.incomingRequestHook()
+				gsData.networkErrorListener(errors.New("something went wrong"))
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				require.Equal(t, 1, events.OnRequestReceivedCallCount)
+				require.True(t, events.OnRequestDisconnectedCalled)
+			},
+		},
 		"open channel adds doNotSendCids to the DoNotSend extension": {
 			action: func(gsData *harness) {
 				cids := testutil.GenerateCids(2)
@@ -684,6 +694,85 @@ func TestManager(t *testing.T) {
 
 				require.Error(t, requestReceived1.Ctx.Err())
 				require.NoError(t, requestReceived2.Ctx.Err())
+			},
+		},
+		"OnChannelCompleted called when outgoing request completes successfully": {
+			action: func(gsData *harness) {
+				gsData.fgs.LeaveRequestsOpen()
+				stor, _ := gsData.outgoing.Selector()
+
+				_ = gsData.transport.OpenChannel(
+					gsData.ctx,
+					gsData.other,
+					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
+					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
+					stor,
+					nil,
+					gsData.outgoing)
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+				close(requestReceived.ResponseErrChan)
+
+				require.Eventually(t, func() bool {
+					return events.OnChannelCompletedCalled == true
+				}, 2*time.Second, 100*time.Millisecond)
+				require.True(t, events.ChannelCompletedSuccess)
+			},
+		},
+		"OnChannelCompleted called when outgoing request completes with error": {
+			action: func(gsData *harness) {
+				gsData.fgs.LeaveRequestsOpen()
+				stor, _ := gsData.outgoing.Selector()
+
+				_ = gsData.transport.OpenChannel(
+					gsData.ctx,
+					gsData.other,
+					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
+					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
+					stor,
+					nil,
+					gsData.outgoing)
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+				requestReceived.ResponseErrChan <- graphsync.RequestFailedUnknownErr{}
+				close(requestReceived.ResponseErrChan)
+
+				require.Eventually(t, func() bool {
+					return events.OnChannelCompletedCalled == true
+				}, 2*time.Second, 100*time.Millisecond)
+				require.False(t, events.ChannelCompletedSuccess)
+			},
+		},
+		"OnChannelComplete when outgoing request cancelled by caller": {
+			action: func(gsData *harness) {
+				gsData.fgs.LeaveRequestsOpen()
+				stor, _ := gsData.outgoing.Selector()
+
+				_ = gsData.transport.OpenChannel(
+					gsData.ctx,
+					gsData.other,
+					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
+					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
+					stor,
+					nil,
+					gsData.outgoing)
+
+				gsData.outgoingRequestHook()
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+				extensions := make(map[graphsync.ExtensionName][]byte)
+				for _, ext := range requestReceived.Extensions {
+					extensions[ext.Name] = ext.Data
+				}
+				request := testutil.NewFakeRequest(graphsync.RequestID(rand.Int31()), extensions)
+				gsData.fgs.OutgoingRequestHook(gsData.other, request, gsData.outgoingRequestHookActions)
+				_ = gsData.transport.CloseChannel(gsData.ctx, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self})
+				require.Eventually(t, func() bool {
+					return requestReceived.Ctx.Err() != nil
+				}, 2*time.Second, 100*time.Millisecond)
 			},
 		},
 		"request times out if we get request context cancelled error": {
@@ -849,8 +938,10 @@ type fakeEvents struct {
 	OnChannelCompletedCalled    bool
 	OnChannelCompletedErr       error
 
-	OnRequestTimedOutCalled    bool
-	OnRequestTimedOutChannelId datatransfer.ChannelID
+	OnRequestTimedOutCalled        bool
+	OnRequestTimedOutChannelId     datatransfer.ChannelID
+	OnRequestDisconnectedCalled    bool
+	OnRequestDisconnectedChannelID datatransfer.ChannelID
 
 	ChannelCompletedSuccess  bool
 	DataSentMessage          datatransfer.Message
@@ -863,6 +954,12 @@ func (fe *fakeEvents) OnRequestTimedOut(_ context.Context, chid datatransfer.Cha
 	fe.OnRequestTimedOutCalled = true
 	fe.OnRequestTimedOutChannelId = chid
 
+	return nil
+}
+
+func (fe *fakeEvents) OnRequestDisconnected(_ context.Context, chid datatransfer.ChannelID) error {
+	fe.OnRequestDisconnectedCalled = true
+	fe.OnRequestDisconnectedChannelID = chid
 	return nil
 }
 
@@ -953,6 +1050,9 @@ func (ha *harness) responseCompletedListener() {
 }
 func (ha *harness) requestorCancelledListener() {
 	ha.fgs.RequestorCancelledListener(ha.other, ha.request)
+}
+func (ha *harness) networkErrorListener(err error) {
+	ha.fgs.NetworkErrorListener(ha.other, ha.request, err)
 }
 
 type dtConfig struct {

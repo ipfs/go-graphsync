@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/hannahhoward/go-pubsub"
 	"github.com/hashicorp/go-multierror"
@@ -39,6 +40,7 @@ type manager struct {
 	peerID               peer.ID
 	transport            datatransfer.Transport
 	storedCounter        *storedcounter.StoredCounter
+	channelRemoveTimeout time.Duration
 }
 
 type internalEvent struct {
@@ -72,8 +74,20 @@ func readyDispatcher(evt pubsub.Event, fn pubsub.SubscriberFn) error {
 	return nil
 }
 
+// DataTransferOption configures the data transfer manager
+type DataTransferOption func(*manager)
+
+// ChannelRemoveTimeout sets the timeout after which channels are removed from the manager
+func ChannelRemoveTimeout(timeout time.Duration) DataTransferOption {
+	return func(m *manager) {
+		m.channelRemoveTimeout = timeout
+	}
+}
+
+const defaultChannelRemoveTimeout = 1 * time.Hour
+
 // NewDataTransfer initializes a new instance of a data transfer manager
-func NewDataTransfer(ds datastore.Batching, dataTransferNetwork network.DataTransferNetwork, transport datatransfer.Transport, storedCounter *storedcounter.StoredCounter) (datatransfer.Manager, error) {
+func NewDataTransfer(ds datastore.Batching, dataTransferNetwork network.DataTransferNetwork, transport datatransfer.Transport, storedCounter *storedcounter.StoredCounter, options ...DataTransferOption) (datatransfer.Manager, error) {
 	m := &manager{
 		dataTransferNetwork:  dataTransferNetwork,
 		validatedTypes:       registry.NewRegistry(),
@@ -85,12 +99,16 @@ func NewDataTransfer(ds datastore.Batching, dataTransferNetwork network.DataTran
 		peerID:               dataTransferNetwork.ID(),
 		transport:            transport,
 		storedCounter:        storedCounter,
+		channelRemoveTimeout: defaultChannelRemoveTimeout,
 	}
 	channels, err := channels.New(ds, m.notifier, m.voucherDecoder, m.resultTypes.Decoder, &channelEnvironment{m}, dataTransferNetwork.ID())
 	if err != nil {
 		return nil, err
 	}
 	m.channels = channels
+	for _, option := range options {
+		option(m)
+	}
 	return m, nil
 }
 
@@ -230,7 +248,7 @@ func (m *manager) SendVoucher(ctx context.Context, channelID datatransfer.Channe
 	}
 	if err := m.dataTransferNetwork.SendMessage(ctx, chst.OtherPeer(), updateRequest); err != nil {
 		err = fmt.Errorf("Unable to send request: %w", err)
-		_ = m.channels.Error(channelID, err)
+		_ = m.OnRequestDisconnected(ctx, channelID)
 		return err
 	}
 	return m.channels.NewVoucher(channelID, voucher)
@@ -249,7 +267,7 @@ func (m *manager) CloseDataTransferChannel(ctx context.Context, chid datatransfe
 
 	if err := m.dataTransferNetwork.SendMessage(ctx, chst.OtherPeer(), m.cancelMessage(chid)); err != nil {
 		err = fmt.Errorf("Unable to send cancel message: %w", err)
-		_ = m.channels.Error(chid, err)
+		_ = m.OnRequestDisconnected(ctx, chid)
 		return err
 	}
 
@@ -271,7 +289,7 @@ func (m *manager) PauseDataTransferChannel(ctx context.Context, chid datatransfe
 
 	if err := m.dataTransferNetwork.SendMessage(ctx, chid.OtherParty(m.peerID), m.pauseMessage(chid)); err != nil {
 		err = fmt.Errorf("Unable to send pause message: %w", err)
-		_ = m.channels.Error(chid, err)
+		_ = m.OnRequestDisconnected(ctx, chid)
 		return err
 	}
 

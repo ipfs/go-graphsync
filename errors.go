@@ -33,3 +33,9 @@ const ErrRejected = errorType("response rejected")
 
 // ErrUnsupported indicates an operation is not supported by the transport protocol
 const ErrUnsupported = errorType("unsupported")
+
+// ErrDisconnected indicates the other peer may have hung up and you should try restarting the channel.
+const ErrDisconnected = errorType("other peer appears to have hung up. restart Channel")
+
+// ErrRemoved indicates the channel was inactive long enough that it was put in a permaneant error state
+const ErrRemoved = errorType("channel removed due to inactivity")
