@@ -33,12 +33,7 @@ type Event struct {
 	Err  error
 }
 
-type TopicIndex uint64
-
-type Topic struct {
-	P     peer.ID
-	Index TopicIndex
-}
+type Topic uint64
 
 // MessageNetwork is any network that can connect peers and generate a message
 // sender.
@@ -60,7 +55,7 @@ type MessageQueue struct {
 	nextMessage        gsmsg.GraphSyncMessage
 	nextMessageTopic   Topic
 	nextMessageLk      sync.RWMutex
-	nextAvailableTopic TopicIndex
+	nextAvailableTopic Topic
 	processedNotifiers []chan struct{}
 	sender             gsnet.MessageSender
 	eventPublisher     notifications.Publisher
@@ -139,10 +134,7 @@ func (mq *MessageQueue) mutateNextMessage(mutator func(gsmsg.GraphSyncMessage), 
 	defer mq.nextMessageLk.Unlock()
 	if mq.nextMessage == nil {
 		mq.nextMessage = gsmsg.New()
-		mq.nextMessageTopic = Topic{
-			P:     mq.p,
-			Index: mq.nextAvailableTopic,
-		}
+		mq.nextMessageTopic = mq.nextAvailableTopic
 		mq.nextAvailableTopic++
 	}
 	mutator(mq.nextMessage)
