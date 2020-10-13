@@ -210,7 +210,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	})
 
 	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
-	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestID, status graphsync.ResponseStatusCode) {
+	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
 		select {
 		case finalResponseStatusChan <- status:
 		default:
@@ -253,7 +253,7 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 	responder := td.GraphSyncHost2()
 
 	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
-	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestID, status graphsync.ResponseStatusCode) {
+	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
 		select {
 		case finalResponseStatusChan <- status:
 		default:
@@ -584,7 +584,7 @@ func TestNetworkDisconnect(t *testing.T) {
 		}
 	})
 	networkError := make(chan error, 1)
-	responder.RegisterNetworkErrorListener(func(p peer.ID, requestID graphsync.RequestID, err error) {
+	responder.RegisterNetworkErrorListener(func(p peer.ID, request graphsync.RequestData, err error) {
 		select {
 		case networkError <- err:
 		default:

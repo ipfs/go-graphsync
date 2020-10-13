@@ -13,15 +13,15 @@ type CompletedResponseListeners struct {
 }
 
 type internalCompletedResponseEvent struct {
-	p         peer.ID
-	requestID graphsync.RequestID
-	status    graphsync.ResponseStatusCode
+	p       peer.ID
+	request graphsync.RequestData
+	status  graphsync.ResponseStatusCode
 }
 
 func completedResponseDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
 	ie := event.(internalCompletedResponseEvent)
 	listener := subscriberFn.(graphsync.OnResponseCompletedListener)
-	listener(ie.p, ie.requestID, ie.status)
+	listener(ie.p, ie.request, ie.status)
 	return nil
 }
 
@@ -36,8 +36,8 @@ func (crl *CompletedResponseListeners) Register(listener graphsync.OnResponseCom
 }
 
 // NotifyCompletedListeners runs notifies all completed listeners that a response has completed
-func (crl *CompletedResponseListeners) NotifyCompletedListeners(p peer.ID, requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
-	_ = crl.pubSub.Publish(internalCompletedResponseEvent{p, requestID, status})
+func (crl *CompletedResponseListeners) NotifyCompletedListeners(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+	_ = crl.pubSub.Publish(internalCompletedResponseEvent{p, request, status})
 }
 
 // RequestorCancelledListeners is a set of listeners for when requestors cancel
@@ -46,14 +46,14 @@ type RequestorCancelledListeners struct {
 }
 
 type internalRequestorCancelledEvent struct {
-	p         peer.ID
-	requestID graphsync.RequestID
+	p       peer.ID
+	request graphsync.RequestData
 }
 
 func requestorCancelledDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
 	ie := event.(internalRequestorCancelledEvent)
 	listener := subscriberFn.(graphsync.OnRequestorCancelledListener)
-	listener(ie.p, ie.requestID)
+	listener(ie.p, ie.request)
 	return nil
 }
 
@@ -68,8 +68,8 @@ func (rcl *RequestorCancelledListeners) Register(listener graphsync.OnRequestorC
 }
 
 // NotifyCancelledListeners notifies all listeners that a requestor cancelled a response
-func (rcl *RequestorCancelledListeners) NotifyCancelledListeners(p peer.ID, requestID graphsync.RequestID) {
-	_ = rcl.pubSub.Publish(internalRequestorCancelledEvent{p, requestID})
+func (rcl *RequestorCancelledListeners) NotifyCancelledListeners(p peer.ID, request graphsync.RequestData) {
+	_ = rcl.pubSub.Publish(internalRequestorCancelledEvent{p, request})
 }
 
 // BlockSentListeners is a set of listeners for when requestors cancel
@@ -78,15 +78,15 @@ type BlockSentListeners struct {
 }
 
 type internalBlockSentEvent struct {
-	p         peer.ID
-	requestID graphsync.RequestID
-	block     graphsync.BlockData
+	p       peer.ID
+	request graphsync.RequestData
+	block   graphsync.BlockData
 }
 
 func blockSentDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
 	ie := event.(internalBlockSentEvent)
 	listener := subscriberFn.(graphsync.OnBlockSentListener)
-	listener(ie.p, ie.requestID, ie.block)
+	listener(ie.p, ie.request, ie.block)
 	return nil
 }
 
@@ -101,8 +101,8 @@ func (bsl *BlockSentListeners) Register(listener graphsync.OnBlockSentListener) 
 }
 
 // NotifyBlockSentListeners notifies all listeners that a requestor cancelled a response
-func (bsl *BlockSentListeners) NotifyBlockSentListeners(p peer.ID, requestID graphsync.RequestID, block graphsync.BlockData) {
-	_ = bsl.pubSub.Publish(internalBlockSentEvent{p, requestID, block})
+func (bsl *BlockSentListeners) NotifyBlockSentListeners(p peer.ID, request graphsync.RequestData, block graphsync.BlockData) {
+	_ = bsl.pubSub.Publish(internalBlockSentEvent{p, request, block})
 }
 
 // NetworkErrorListeners is a set of listeners for when requestors cancel
@@ -111,15 +111,15 @@ type NetworkErrorListeners struct {
 }
 
 type internalNetworkErrorEvent struct {
-	p         peer.ID
-	requestID graphsync.RequestID
-	err       error
+	p       peer.ID
+	request graphsync.RequestData
+	err     error
 }
 
 func networkErrorDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
 	ie := event.(internalNetworkErrorEvent)
 	listener := subscriberFn.(graphsync.OnNetworkErrorListener)
-	listener(ie.p, ie.requestID, ie.err)
+	listener(ie.p, ie.request, ie.err)
 	return nil
 }
 
@@ -134,6 +134,6 @@ func (nel *NetworkErrorListeners) Register(listener graphsync.OnNetworkErrorList
 }
 
 // NotifyNetworkErrorListeners notifies all listeners that a requestor cancelled a response
-func (nel *NetworkErrorListeners) NotifyNetworkErrorListeners(p peer.ID, requestID graphsync.RequestID, err error) {
-	_ = nel.pubSub.Publish(internalNetworkErrorEvent{p, requestID, err})
+func (nel *NetworkErrorListeners) NotifyNetworkErrorListeners(p peer.ID, request graphsync.RequestData, err error) {
+	_ = nel.pubSub.Publish(internalNetworkErrorEvent{p, request, err})
 }

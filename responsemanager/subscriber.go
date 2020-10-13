@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/ipfs/go-graphsync"
+	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -13,6 +14,8 @@ import (
 var errNetworkError = errors.New("network error")
 
 type subscriber struct {
+	p                     peer.ID
+	request               gsmsg.GraphSyncRequest
 	ctx                   context.Context
 	messages              chan responseManagerMessage
 	blockSentListeners    BlockSentListeners
@@ -20,48 +23,36 @@ type subscriber struct {
 	completedListeners    CompletedListeners
 }
 
-type blockSentNotification struct {
-	p         peer.ID
-	requestID graphsync.RequestID
-	blockData graphsync.BlockData
-}
-
-type statusNotification struct {
-	p         peer.ID
-	requestID graphsync.RequestID
-	status    graphsync.ResponseStatusCode
-}
-
 func (s *subscriber) OnNext(topic notifications.Topic, event notifications.Event) {
 	responseEvent, ok := event.(peerresponsemanager.Event)
 	if !ok {
 		return
 	}
-	bsn, isBsn := topic.(blockSentNotification)
-	if isBsn {
+	blockData, isBlockData := topic.(graphsync.BlockData)
+	if isBlockData {
 		switch responseEvent.Name {
 		case peerresponsemanager.Error:
-			s.networkErrorListeners.NotifyNetworkErrorListeners(bsn.p, bsn.requestID, responseEvent.Err)
+			s.networkErrorListeners.NotifyNetworkErrorListeners(s.p, s.request, responseEvent.Err)
 			select {
-			case s.messages <- &errorRequestMessage{bsn.p, bsn.requestID, errNetworkError, make(chan error, 1)}:
+			case s.messages <- &errorRequestMessage{s.p, s.request.ID(), errNetworkError, make(chan error, 1)}:
 			case <-s.ctx.Done():
 			}
 		case peerresponsemanager.Sent:
-			s.blockSentListeners.NotifyBlockSentListeners(bsn.p, bsn.requestID, bsn.blockData)
+			s.blockSentListeners.NotifyBlockSentListeners(s.p, s.request, blockData)
 		}
 		return
 	}
-	sn, isSn := topic.(statusNotification)
-	if isSn {
+	status, isStatus := topic.(graphsync.ResponseStatusCode)
+	if isStatus {
 		switch responseEvent.Name {
 		case peerresponsemanager.Error:
-			s.networkErrorListeners.NotifyNetworkErrorListeners(sn.p, sn.requestID, responseEvent.Err)
+			s.networkErrorListeners.NotifyNetworkErrorListeners(s.p, s.request, responseEvent.Err)
 			select {
-			case s.messages <- &errorRequestMessage{sn.p, sn.requestID, errNetworkError, make(chan error, 1)}:
+			case s.messages <- &errorRequestMessage{s.p, s.request.ID(), errNetworkError, make(chan error, 1)}:
 			case <-s.ctx.Done():
 			}
 		case peerresponsemanager.Sent:
-			s.completedListeners.NotifyCompletedListeners(sn.p, sn.requestID, sn.status)
+			s.completedListeners.NotifyCompletedListeners(s.p, s.request, status)
 		}
 	}
 }

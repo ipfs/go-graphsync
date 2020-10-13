@@ -37,7 +37,6 @@ type queryExecutor struct {
 	ctx                context.Context
 	workSignal         chan struct{}
 	ticker             *time.Ticker
-	sub                notifications.MappableSubscriber
 }
 
 func (qe *queryExecutor) processQueriesWorker() {
@@ -76,7 +75,7 @@ func (qe *queryExecutor) processQueriesWorker() {
 			status, err := qe.executeTask(key, taskData)
 			isCancelled := err != nil && isContextErr(err)
 			if isCancelled {
-				qe.cancelledListeners.NotifyCancelledListeners(key.p, taskData.request.ID())
+				qe.cancelledListeners.NotifyCancelledListeners(key.p, taskData.request)
 			}
 			select {
 			case qe.messages <- &finishTaskRequest{key, status, err}:
@@ -95,7 +94,7 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 	traverser := taskData.traverser
 	if loader == nil || traverser == nil {
 		var isPaused bool
-		loader, traverser, isPaused, err = qe.prepareQuery(taskData.ctx, key.p, taskData.request, taskData.signals)
+		loader, traverser, isPaused, err = qe.prepareQuery(taskData.ctx, key.p, taskData.request, taskData.signals, taskData.subscriber)
 		if err != nil {
 			return graphsync.RequestFailedUnknown, err
 		}
@@ -108,17 +107,17 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 			return graphsync.RequestPaused, hooks.ErrPaused{}
 		}
 	}
-	return qe.executeQuery(key.p, taskData.request, loader, traverser, taskData.signals)
+	return qe.executeQuery(key.p, taskData.request, loader, traverser, taskData.signals, taskData.subscriber)
 }
 
 func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	p peer.ID,
-	request gsmsg.GraphSyncRequest, signals signals) (ipld.Loader, ipldutil.Traverser, bool, error) {
+	request gsmsg.GraphSyncRequest, signals signals, sub notifications.MappableSubscriber) (ipld.Loader, ipldutil.Traverser, bool, error) {
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
 	peerResponseSender := qe.peerManager.SenderForPeer(p)
 	var transactionError error
 	var isPaused bool
-	failNotifee := notifications.Notifee{Topic: statusNotification{p, request.ID(), graphsync.RequestFailedUnknown}, Subscriber: qe.sub}
+	failNotifee := notifications.Notifee{Topic: graphsync.RequestFailedUnknown, Subscriber: sub}
 	err := peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
 		for _, extension := range result.Extensions {
 			transaction.SendExtensionData(extension)
@@ -199,7 +198,8 @@ func (qe *queryExecutor) executeQuery(
 	request gsmsg.GraphSyncRequest,
 	loader ipld.Loader,
 	traverser ipldutil.Traverser,
-	signals signals) (graphsync.ResponseStatusCode, error) {
+	signals signals,
+	sub notifications.MappableSubscriber) (graphsync.ResponseStatusCode, error) {
 	updateChan := make(chan []gsmsg.GraphSyncRequest)
 	peerResponseSender := qe.peerManager.SenderForPeer(p)
 	err := runtraversal.RunTraversal(loader, traverser, func(link ipld.Link, data []byte) error {
@@ -210,7 +210,7 @@ func (qe *queryExecutor) executeQuery(
 				return nil
 			}
 			blockData := transaction.SendResponse(link, data)
-			transaction.AddNotifee(notifications.Notifee{Topic: blockSentNotification{p, request.ID(), blockData}, Subscriber: qe.sub})
+			transaction.AddNotifee(notifications.Notifee{Topic: blockData, Subscriber: sub})
 			if blockData.BlockSize() > 0 {
 				result := qe.blockHooks.ProcessBlockHooks(p, request, blockData)
 				for _, extension := range result.Extensions {
@@ -253,7 +253,7 @@ func (qe *queryExecutor) executeQuery(
 		} else {
 			code = peerResponseSender.FinishRequest()
 		}
-		peerResponseSender.AddNotifee(notifications.Notifee{Topic: statusNotification{p, request.ID(), code}, Subscriber: qe.sub})
+		peerResponseSender.AddNotifee(notifications.Notifee{Topic: code, Subscriber: sub})
 		return nil
 	})
 	return code, err

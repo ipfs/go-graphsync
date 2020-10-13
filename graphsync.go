@@ -284,16 +284,16 @@ type OnOutgoingBlockHook func(p peer.ID, request RequestData, block BlockData, h
 type OnRequestUpdatedHook func(p peer.ID, request RequestData, updateRequest RequestData, hookActions RequestUpdatedHookActions)
 
 // OnBlockSentListener runs when a block is sent over the wire
-type OnBlockSentListener func(p peer.ID, requestID RequestID, block BlockData)
+type OnBlockSentListener func(p peer.ID, request RequestData, block BlockData)
 
 // OnNetworkErrorListener runs when queued data is not able to be sent
-type OnNetworkErrorListener func(p peer.ID, requestID RequestID, err error)
+type OnNetworkErrorListener func(p peer.ID, request RequestData, err error)
 
 // OnResponseCompletedListener provides a way to listen for when responder has finished serving a response
-type OnResponseCompletedListener func(p peer.ID, requestID RequestID, status ResponseStatusCode)
+type OnResponseCompletedListener func(p peer.ID, request RequestData, status ResponseStatusCode)
 
 // OnRequestorCancelledListener provides a way to listen for responses the requestor canncels
-type OnRequestorCancelledListener func(p peer.ID, requestID RequestID)
+type OnRequestorCancelledListener func(p peer.ID, request RequestData)
 
 // UnregisterHookFunc is a function call to unregister a hook that was previously registered
 type UnregisterHookFunc func()

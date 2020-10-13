@@ -51,7 +51,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	responseManager := td.newResponseManager()
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	cancelledListenerCalled := make(chan struct{}, 1)
-	td.cancelledListeners.Register(func(p peer.ID, request graphsync.RequestID) {
+	td.cancelledListeners.Register(func(p peer.ID, request graphsync.RequestData) {
 		cancelledListenerCalled <- struct{}{}
 	})
 	responseManager.Startup()
@@ -964,19 +964,19 @@ func newTestData(t *testing.T) testData {
 	td.cancelledListeners = hooks.NewRequestorCancelledListeners()
 	td.blockSentListeners = hooks.NewBlockSentListeners()
 	td.networkErrorListeners = hooks.NewNetworkErrorListeners()
-	td.completedListeners.Register(func(p peer.ID, requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
+	td.completedListeners.Register(func(p peer.ID, requestID graphsync.RequestData, status graphsync.ResponseStatusCode) {
 		select {
 		case td.completedResponseStatuses <- status:
 		default:
 		}
 	})
-	td.blockSentListeners.Register(func(p peer.ID, requestID graphsync.RequestID, blockData graphsync.BlockData) {
+	td.blockSentListeners.Register(func(p peer.ID, requestID graphsync.RequestData, blockData graphsync.BlockData) {
 		select {
 		case td.blockSends <- blockData:
 		default:
 		}
 	})
-	td.networkErrorListeners.Register(func(p peer.ID, requestID graphsync.RequestID, err error) {
+	td.networkErrorListeners.Register(func(p peer.ID, requestID graphsync.RequestData, err error) {
 		select {
 		case td.networkErrorChan <- err:
 		default:
@@ -1104,28 +1104,28 @@ func (td *testData) assertIgnoredCids(set *cid.Set) {
 
 func (td *testData) notifyStatusMessagesSent() {
 	td.notifeePublisher.PublishMatchingEvents(func(topic notifications.Topic) bool {
-		_, isSn := topic.(statusNotification)
+		_, isSn := topic.(graphsync.ResponseStatusCode)
 		return isSn
 	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Sent}})
 }
 
 func (td *testData) notifyBlockSendsSent() {
 	td.notifeePublisher.PublishMatchingEvents(func(topic notifications.Topic) bool {
-		_, isBsn := topic.(blockSentNotification)
+		_, isBsn := topic.(graphsync.BlockData)
 		return isBsn
 	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Sent}})
 }
 
 func (td *testData) notifyStatusMessagesNetworkError(err error) {
 	td.notifeePublisher.PublishMatchingEvents(func(topic notifications.Topic) bool {
-		_, isSn := topic.(statusNotification)
+		_, isSn := topic.(graphsync.ResponseStatusCode)
 		return isSn
 	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Error, Err: err}})
 }
 
 func (td *testData) notifyBlockSendsNetworkError(err error) {
 	td.notifeePublisher.PublishMatchingEvents(func(topic notifications.Topic) bool {
-		_, isBsn := topic.(blockSentNotification)
+		_, isBsn := topic.(graphsync.BlockData)
 		return isBsn
 	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Error, Err: err}})
 }
