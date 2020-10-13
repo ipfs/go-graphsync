@@ -18,6 +18,7 @@ import (
 	"github.com/ipfs/go-graphsync/dedupkey"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/testloader"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
@@ -34,7 +35,7 @@ type fakePeerHandler struct {
 }
 
 func (fph *fakePeerHandler) SendRequest(p peer.ID,
-	graphSyncRequest gsmsg.GraphSyncRequest) {
+	graphSyncRequest gsmsg.GraphSyncRequest, notifees ...notifications.Notifee) {
 	fph.requestRecordChan <- requestRecord{
 		gsr: graphSyncRequest,
 		p:   p,

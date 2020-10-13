@@ -2,6 +2,7 @@ package peerresponsemanager
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -13,6 +14,8 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/linktracker"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/messagequeue"
+	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/responsemanager/responsebuilder"
 )
@@ -24,10 +27,26 @@ const (
 
 var log = logging.Logger("graphsync")
 
+// EventName is a type of event that is published by the peer response sender
+type EventName uint64
+
+const (
+	// Sent indicates the item was sent over the wire
+	Sent EventName = iota
+	// Error indicates an error sending an item
+	Error
+)
+
+// Event is an event that is published by the peer response sender
+type Event struct {
+	Name EventName
+	Err  error
+}
+
 // PeerMessageHandler is an interface that can send a response for a given peer across
 // the network.
 type PeerMessageHandler interface {
-	SendResponse(peer.ID, []gsmsg.GraphSyncResponse, []blocks.Block) <-chan struct{}
+	SendResponse(peer.ID, []gsmsg.GraphSyncResponse, []blocks.Block, ...notifications.Notifee)
 }
 
 // Transaction is a series of operations that should be send together in a single response
@@ -46,6 +65,10 @@ type peerResponseSender struct {
 	dedupKeys          map[graphsync.RequestID]string
 	responseBuildersLk sync.RWMutex
 	responseBuilders   []*responsebuilder.ResponseBuilder
+	nextBuilderTopic   responsebuilder.Topic
+	queuedMessages     chan responsebuilder.Topic
+	subscriber         notifications.MappableSubscriber
+	publisher          notifications.Publisher
 }
 
 // PeerResponseSender handles batching, deduping, and sending responses for
@@ -58,15 +81,16 @@ type PeerResponseSender interface {
 		requestID graphsync.RequestID,
 		link ipld.Link,
 		data []byte,
+		notifees ...notifications.Notifee,
 	) graphsync.BlockData
-	SendExtensionData(graphsync.RequestID, graphsync.ExtensionData)
+	SendExtensionData(graphsync.RequestID, graphsync.ExtensionData, ...notifications.Notifee)
 	FinishWithCancel(requestID graphsync.RequestID)
-	FinishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode
-	FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode)
+	FinishRequest(requestID graphsync.RequestID, notifees ...notifications.Notifee) graphsync.ResponseStatusCode
+	FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode, notifees ...notifications.Notifee)
 	// Transaction calls multiple operations at once so they end up in a single response
 	// Note: if the transaction function errors, the results will not execute
 	Transaction(requestID graphsync.RequestID, transaction Transaction) error
-	PauseRequest(requestID graphsync.RequestID)
+	PauseRequest(requestID graphsync.RequestID, notifees ...notifications.Notifee)
 }
 
 // PeerResponseTransactionSender is a limited interface for sending responses inside a transaction
@@ -80,22 +104,27 @@ type PeerResponseTransactionSender interface {
 	FinishRequest() graphsync.ResponseStatusCode
 	FinishWithError(status graphsync.ResponseStatusCode)
 	PauseRequest()
+	AddNotifee(notifications.Notifee)
 }
 
 // NewResponseSender generates a new PeerResponseSender for the given context, peer ID,
 // using the given peer message handler.
 func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHandler) PeerResponseSender {
 	ctx, cancel := context.WithCancel(ctx)
-	return &peerResponseSender{
-		p:            p,
-		ctx:          ctx,
-		cancel:       cancel,
-		peerHandler:  peerHandler,
-		outgoingWork: make(chan struct{}, 1),
-		linkTracker:  linktracker.New(),
-		dedupKeys:    make(map[graphsync.RequestID]string),
-		altTrackers:  make(map[string]*linktracker.LinkTracker),
+	prs := &peerResponseSender{
+		p:              p,
+		ctx:            ctx,
+		cancel:         cancel,
+		peerHandler:    peerHandler,
+		outgoingWork:   make(chan struct{}, 1),
+		linkTracker:    linktracker.New(),
+		dedupKeys:      make(map[graphsync.RequestID]string),
+		altTrackers:    make(map[string]*linktracker.LinkTracker),
+		queuedMessages: make(chan responsebuilder.Topic, 1),
+		publisher:      notifications.NewPublisher(),
 	}
+	prs.subscriber = notifications.NewMappableSubscriber(&subscriber{prs}, notifications.IdentityTransform)
+	return prs
 }
 
 // Startup initiates message sending for a peer
@@ -135,7 +164,7 @@ type responseOperation interface {
 	size() uint64
 }
 
-func (prs *peerResponseSender) execute(operations []responseOperation) {
+func (prs *peerResponseSender) execute(operations []responseOperation, notifees []notifications.Notifee) {
 	size := uint64(0)
 	for _, op := range operations {
 		size += op.size()
@@ -144,7 +173,7 @@ func (prs *peerResponseSender) execute(operations []responseOperation) {
 		for _, op := range operations {
 			op.build(responseBuilder)
 		}
-	}) {
+	}, notifees) {
 		prs.signalWork()
 	}
 }
@@ -167,13 +196,14 @@ func (eo extensionOperation) size() uint64 {
 	return uint64(len(eo.extension.Data))
 }
 
-func (prs *peerResponseSender) SendExtensionData(requestID graphsync.RequestID, extension graphsync.ExtensionData) {
-	prs.execute([]responseOperation{extensionOperation{requestID, extension}})
+func (prs *peerResponseSender) SendExtensionData(requestID graphsync.RequestID, extension graphsync.ExtensionData, notifees ...notifications.Notifee) {
+	prs.execute([]responseOperation{extensionOperation{requestID, extension}}, notifees)
 }
 
 type peerResponseTransactionSender struct {
 	requestID  graphsync.RequestID
 	operations []responseOperation
+	notifees   []notifications.Notifee
 	prs        *peerResponseSender
 }
 
@@ -205,6 +235,10 @@ func (prts *peerResponseTransactionSender) FinishWithCancel() {
 	_ = prts.prs.finishTracking(prts.requestID)
 }
 
+func (prts *peerResponseTransactionSender) AddNotifee(notifee notifications.Notifee) {
+	prts.notifees = append(prts.notifees, notifee)
+}
+
 func (prs *peerResponseSender) Transaction(requestID graphsync.RequestID, transaction Transaction) error {
 	prts := &peerResponseTransactionSender{
 		requestID: requestID,
@@ -212,7 +246,7 @@ func (prs *peerResponseSender) Transaction(requestID graphsync.RequestID, transa
 	}
 	err := transaction(prts)
 	if err == nil {
-		prs.execute(prts.operations)
+		prs.execute(prts.operations, prts.notifees)
 	}
 	return err
 }
@@ -276,9 +310,10 @@ func (prs *peerResponseSender) SendResponse(
 	requestID graphsync.RequestID,
 	link ipld.Link,
 	data []byte,
+	notifees ...notifications.Notifee,
 ) graphsync.BlockData {
 	op := prs.setupBlockOperation(requestID, link, data)
-	prs.execute([]responseOperation{op})
+	prs.execute([]responseOperation{op}, notifees)
 	return op
 }
 
@@ -322,9 +357,9 @@ func (prs *peerResponseSender) setupFinishOperation(requestID graphsync.RequestI
 }
 
 // FinishRequest marks the given requestID as having sent all responses
-func (prs *peerResponseSender) FinishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode {
+func (prs *peerResponseSender) FinishRequest(requestID graphsync.RequestID, notifees ...notifications.Notifee) graphsync.ResponseStatusCode {
 	op := prs.setupFinishOperation(requestID)
-	prs.execute([]responseOperation{op})
+	prs.execute([]responseOperation{op}, notifees)
 	return op.status
 }
 
@@ -334,27 +369,32 @@ func (prs *peerResponseSender) setupFinishWithErrOperation(requestID graphsync.R
 }
 
 // FinishWithError marks the given requestID as having terminated with an error
-func (prs *peerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
+func (prs *peerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode, notifees ...notifications.Notifee) {
 	op := prs.setupFinishWithErrOperation(requestID, status)
-	prs.execute([]responseOperation{op})
+	prs.execute([]responseOperation{op}, notifees)
 }
 
-func (prs *peerResponseSender) PauseRequest(requestID graphsync.RequestID) {
-	prs.execute([]responseOperation{statusOperation{requestID, graphsync.RequestPaused}})
+func (prs *peerResponseSender) PauseRequest(requestID graphsync.RequestID, notifees ...notifications.Notifee) {
+	prs.execute([]responseOperation{statusOperation{requestID, graphsync.RequestPaused}}, notifees)
 }
 
 func (prs *peerResponseSender) FinishWithCancel(requestID graphsync.RequestID) {
 	_ = prs.finishTracking(requestID)
 }
 
-func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn func(*responsebuilder.ResponseBuilder)) bool {
+func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn func(*responsebuilder.ResponseBuilder), notifees []notifications.Notifee) bool {
 	prs.responseBuildersLk.Lock()
 	defer prs.responseBuildersLk.Unlock()
 	if shouldBeginNewResponse(prs.responseBuilders, blkSize) {
-		prs.responseBuilders = append(prs.responseBuilders, responsebuilder.New())
+		topic := prs.nextBuilderTopic
+		prs.nextBuilderTopic++
+		prs.responseBuilders = append(prs.responseBuilders, responsebuilder.New(topic))
 	}
 	responseBuilder := prs.responseBuilders[len(prs.responseBuilders)-1]
 	buildResponseFn(responseBuilder)
+	for _, notifee := range notifees {
+		notifications.SubscribeOn(prs.publisher, responseBuilder.Topic(), notifee)
+	}
 	return !responseBuilder.Empty()
 }
 
@@ -401,13 +441,55 @@ func (prs *peerResponseSender) sendResponseMessages() {
 			log.Errorf("Unable to assemble GraphSync response: %s", err.Error())
 		}
 
-		done := prs.peerHandler.SendResponse(prs.p, responses, blks)
+		prs.peerHandler.SendResponse(prs.p, responses, blks, notifications.Notifee{
+			Topic:      builder.Topic(),
+			Subscriber: prs.subscriber,
+		})
 
 		// wait for message to be processed
+		prs.waitForMessageQueud(builder.Topic())
+	}
+}
+
+func (prs *peerResponseSender) waitForMessageQueud(topic responsebuilder.Topic) {
+	for {
 		select {
-		case <-done:
 		case <-prs.ctx.Done():
+			return
+		case queuedTopic := <-prs.queuedMessages:
+			if topic == queuedTopic {
+				return
+			}
 		}
 	}
+}
 
+type subscriber struct {
+	prs *peerResponseSender
+}
+
+func (s *subscriber) OnNext(topic notifications.Topic, event notifications.Event) {
+	builderTopic, ok := topic.(responsebuilder.Topic)
+	if !ok {
+		return
+	}
+	msgEvent, ok := event.(messagequeue.Event)
+	if !ok {
+		return
+	}
+	switch msgEvent.Name {
+	case messagequeue.Sent:
+		s.prs.publisher.Publish(builderTopic, Event{Name: Sent})
+	case messagequeue.Error:
+		s.prs.publisher.Publish(builderTopic, Event{Name: Error, Err: fmt.Errorf("error sending message: %w", msgEvent.Err)})
+	case messagequeue.Queued:
+		select {
+		case s.prs.queuedMessages <- builderTopic:
+		case <-s.prs.ctx.Done():
+		}
+	}
+}
+
+func (s *subscriber) OnClose(topic notifications.Topic) {
+	s.prs.publisher.Close(topic)
 }

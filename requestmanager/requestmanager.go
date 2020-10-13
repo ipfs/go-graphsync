@@ -19,6 +19,7 @@ import (
 	ipldutil "github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
@@ -44,7 +45,7 @@ type inProgressRequestStatus struct {
 
 // PeerHandler is an interface that can send requests to peers
 type PeerHandler interface {
-	SendRequest(p peer.ID, graphSyncRequest gsmsg.GraphSyncRequest)
+	SendRequest(p peer.ID, graphSyncRequest gsmsg.GraphSyncRequest, notifees ...notifications.Notifee)
 }
 
 // AsyncLoader is an interface for loading links asynchronously, returning

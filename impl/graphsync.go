@@ -44,6 +44,8 @@ type GraphSync struct {
 	requestUpdatedHooks         *responderhooks.RequestUpdatedHooks
 	completedResponseListeners  *responderhooks.CompletedResponseListeners
 	requestorCancelledListeners *responderhooks.RequestorCancelledListeners
+	blockSentListeners          *responderhooks.BlockSentListeners
+	networkErrorListeners       *responderhooks.NetworkErrorListeners
 	incomingResponseHooks       *requestorhooks.IncomingResponseHooks
 	outgoingRequestHooks        *requestorhooks.OutgoingRequestHooks
 	incomingBlockHooks          *requestorhooks.IncomingBlockHooks
@@ -91,7 +93,9 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	requestUpdatedHooks := responderhooks.NewUpdateHooks()
 	completedResponseListeners := responderhooks.NewCompletedResponseListeners()
 	requestorCancelledListeners := responderhooks.NewRequestorCancelledListeners()
-	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners)
+	blockSentListeners := responderhooks.NewBlockSentListeners()
+	networkErrorListeners := responderhooks.NewNetworkErrorListeners()
+	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners)
 	unregisterDefaultValidator := incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
 		network:                     network,
@@ -106,6 +110,8 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestUpdatedHooks:         requestUpdatedHooks,
 		completedResponseListeners:  completedResponseListeners,
 		requestorCancelledListeners: requestorCancelledListeners,
+		blockSentListeners:          blockSentListeners,
+		networkErrorListeners:       networkErrorListeners,
 		incomingResponseHooks:       incomingResponseHooks,
 		outgoingRequestHooks:        outgoingRequestHooks,
 		incomingBlockHooks:          incomingBlockHooks,
@@ -194,6 +200,16 @@ func (gs *GraphSync) RegisterIncomingBlockHook(hook graphsync.OnIncomingBlockHoo
 // responses cancelled by the requestor
 func (gs *GraphSync) RegisterRequestorCancelledListener(listener graphsync.OnRequestorCancelledListener) graphsync.UnregisterHookFunc {
 	return gs.requestorCancelledListeners.Register(listener)
+}
+
+// RegisterBlockSentListener adds a listener for when blocks are actually sent over the wire
+func (gs *GraphSync) RegisterBlockSentListener(listener graphsync.OnBlockSentListener) graphsync.UnregisterHookFunc {
+	return gs.blockSentListeners.Register(listener)
+}
+
+// RegisterNetworkErrorListener adds a listener for when errors occur sending data over the wire
+func (gs *GraphSync) RegisterNetworkErrorListener(listener graphsync.OnNetworkErrorListener) graphsync.UnregisterHookFunc {
+	return gs.networkErrorListeners.Register(listener)
 }
 
 // UnpauseRequest unpauses a request that was paused in a block hook based request ID

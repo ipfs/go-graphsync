@@ -16,6 +16,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
+	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -158,13 +159,13 @@ func TestProcessingNotification(t *testing.T) {
 	}
 	status := graphsync.RequestCompletedFull
 	newMessage.AddResponse(gsmsg.NewResponse(responseID, status, extension))
-	processing := messageQueue.AddResponses(newMessage.Responses(), blks)
-	testutil.AssertChannelEmpty(t, processing, "processing notification sent while queue is shutdown")
+	expectedTopic := "testTopic"
+	notifee, verifier := testutil.NewTestNotifee(expectedTopic, 5)
+	messageQueue.AddResponses(newMessage.Responses(), blks, notifee)
 
 	// wait for send attempt
 	messageQueue.Startup()
 	waitGroup.Wait()
-	testutil.AssertDoesReceive(ctx, t, processing, "message was not processed")
 
 	var message gsmsg.GraphSyncMessage
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
@@ -178,6 +179,12 @@ func TestProcessingNotification(t *testing.T) {
 	require.Equal(t, status, firstResponse.Status())
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
+
+	verifier.ExpectEvents(ctx, t, []notifications.Event{
+		Event{Name: Queued},
+		Event{Name: Sent},
+	})
+	verifier.ExpectClose(ctx, t)
 }
 
 func TestDedupingMessages(t *testing.T) {
