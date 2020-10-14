@@ -1,5 +1,25 @@
 # go-graphsync changelog
 
+# go-graphsync 0.3.0
+
+Significant updates allow for:
+- completed response hooks run when response is done going over wire (or at least transmitted)
+- listening for when blocks are actually sent
+- being notified of network send errors on responder
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - docs(CHANGELOG): update for 0.2.1 ([ipfs/go-graphsync#103](https://github.com/ipfs/go-graphsync/pull/103))
+  - Track actual network operations in a response (#102) ([ipfs/go-graphsync#102](https://github.com/ipfs/go-graphsync/pull/102))
+  - feat(responsecache): prune blocks more intelligently (#101) ([ipfs/go-graphsync#101](https://github.com/ipfs/go-graphsync/pull/101))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 2 | +1983/-927 | 29 |
+
 # go-graphsync 0.2.1
 
 Compatibility fix for 0.2.0
