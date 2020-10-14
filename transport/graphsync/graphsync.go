@@ -31,6 +31,18 @@ type responseProgress struct {
 	maximumSent uint64
 }
 
+var defaultSupportedExtensions = []graphsync.ExtensionName{extension.ExtensionDataTransfer1_1, extension.ExtensionDataTransfer1_0}
+
+// Option is an option for setting up the graphsync transport
+type Option func(*Transport)
+
+// SupportedExtensions sets what data transfer extensions are supported
+func SupportedExtensions(supportedExtensions []graphsync.ExtensionName) Option {
+	return func(t *Transport) {
+		t.supportedExtensions = supportedExtensions
+	}
+}
+
 // Transport manages graphsync hooks for data transfer, translating from
 // graphsync hooks to semantic data transfer events
 type Transport struct {
@@ -46,11 +58,12 @@ type Transport struct {
 	pendingExtensions     map[datatransfer.ChannelID][]graphsync.ExtensionData
 	responseProgressMap   map[datatransfer.ChannelID]*responseProgress
 	stores                map[datatransfer.ChannelID]struct{}
+	supportedExtensions   []graphsync.ExtensionName
 }
 
 // NewTransport makes a new hooks manager with the given hook events interface
-func NewTransport(peerID peer.ID, gs graphsync.GraphExchange) *Transport {
-	return &Transport{
+func NewTransport(peerID peer.ID, gs graphsync.GraphExchange, options ...Option) *Transport {
+	t := &Transport{
 		gs:                    gs,
 		peerID:                peerID,
 		graphsyncRequestMap:   make(map[graphsyncKey]datatransfer.ChannelID),
@@ -61,7 +74,12 @@ func NewTransport(peerID peer.ID, gs graphsync.GraphExchange) *Transport {
 		responseProgressMap:   make(map[datatransfer.ChannelID]*responseProgress),
 		pending:               make(map[datatransfer.ChannelID]chan struct{}),
 		stores:                make(map[datatransfer.ChannelID]struct{}),
+		supportedExtensions:   defaultSupportedExtensions,
 	}
+	for _, option := range options {
+		option(t)
+	}
+	return t
 }
 
 // OpenChannel initiates an outgoing request for the other peer to send data
@@ -79,10 +97,11 @@ func (t *Transport) OpenChannel(ctx context.Context,
 	if t.events == nil {
 		return datatransfer.ErrHandlerNotSet
 	}
-	ext, err := extension.ToExtensionData(msg)
+	exts, err := extension.ToExtensionData(msg, t.supportedExtensions)
 	if err != nil {
 		return err
 	}
+
 	internalCtx, internalCancel := context.WithCancel(ctx)
 
 	t.dataLock.Lock()
@@ -94,7 +113,6 @@ func (t *Transport) OpenChannel(ctx context.Context,
 	t.contextCancelMap[channelID] = internalCancel
 	t.dataLock.Unlock()
 
-	exts := []graphsync.ExtensionData{ext}
 	if len(doNotSendCids) != 0 {
 		set := cid.NewSet()
 		for _, c := range doNotSendCids {
@@ -212,11 +230,10 @@ func (t *Transport) ResumeChannel(ctx context.Context,
 	}
 	var extensions []graphsync.ExtensionData
 	if msg != nil {
-		msgExt, err := extension.ToExtensionData(msg)
+		extensions, err = extension.ToExtensionData(msg, t.supportedExtensions)
 		if err != nil {
 			return err
 		}
-		extensions = append(extensions, msgExt)
 	}
 	if gsKey.p == t.peerID {
 		return t.gs.UnpauseRequest(gsKey.requestID, extensions...)
@@ -383,12 +400,14 @@ func (t *Transport) gsOutgoingBlockHook(p peer.ID, request graphsync.RequestData
 	}
 
 	if msg != nil {
-		extension, err := extension.ToExtensionData(msg)
+		extensions, err := extension.ToExtensionData(msg, t.supportedExtensions)
 		if err != nil {
 			hookActions.TerminateWithError(err)
 			return
 		}
-		hookActions.SendExtensionData(extension)
+		for _, extension := range extensions {
+			hookActions.SendExtensionData(extension)
+		}
 	}
 }
 
@@ -423,12 +442,14 @@ func (t *Transport) gsReqRecdHook(p peer.ID, request graphsync.RequestData, hook
 	}
 
 	if responseMessage != nil {
-		extension, extensionErr := extension.ToExtensionData(responseMessage)
+		extensions, extensionErr := extension.ToExtensionData(responseMessage, t.supportedExtensions)
 		if extensionErr != nil {
 			hookActions.TerminateWithError(err)
 			return
 		}
-		hookActions.SendExtensionData(extension)
+		for _, extension := range extensions {
+			hookActions.SendExtensionData(extension)
+		}
 	}
 
 	if err != nil && err != datatransfer.ErrPause {
@@ -516,12 +537,14 @@ func (t *Transport) gsRequestUpdatedHook(p peer.ID, request graphsync.RequestDat
 	responseMessage, err := t.processExtension(chid, update, p)
 
 	if responseMessage != nil {
-		extension, extensionErr := extension.ToExtensionData(responseMessage)
+		extensions, extensionErr := extension.ToExtensionData(responseMessage, t.supportedExtensions)
 		if extensionErr != nil {
 			hookActions.TerminateWithError(err)
 			return
 		}
-		hookActions.SendExtensionData(extension)
+		for _, extension := range extensions {
+			hookActions.SendExtensionData(extension)
+		}
 	}
 
 	if err != nil && err != datatransfer.ErrPause {
@@ -544,12 +567,14 @@ func (t *Transport) gsIncomingResponseHook(p peer.ID, response graphsync.Respons
 	responseMessage, err := t.processExtension(chid, response, p)
 
 	if responseMessage != nil {
-		extension, extensionErr := extension.ToExtensionData(responseMessage)
+		extensions, extensionErr := extension.ToExtensionData(responseMessage, t.supportedExtensions)
 		if extensionErr != nil {
 			hookActions.TerminateWithError(err)
 			return
 		}
-		hookActions.UpdateRequestWithExtensions(extension)
+		for _, extension := range extensions {
+			hookActions.UpdateRequestWithExtensions(extension)
+		}
 	}
 
 	if err != nil {

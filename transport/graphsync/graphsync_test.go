@@ -237,11 +237,10 @@ func TestManager(t *testing.T) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
 				require.Equal(t, 0, events.OnResponseReceivedCallCount)
 				require.Equal(t, events.RequestReceivedChannelID, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other})
-				dtRequestData, _ := gsData.request.Extension(extension.ExtensionDataTransfer)
+				dtRequestData, _ := gsData.request.Extension(extension.ExtensionDataTransfer1_1)
 				assertDecodesToMessage(t, dtRequestData, events.RequestReceivedRequest)
 				require.True(t, gsData.incomingRequestHookActions.Validated)
-				require.Equal(t, extension.ExtensionDataTransfer, gsData.incomingRequestHookActions.SentExtension.Name)
-				assertDecodesToMessage(t, gsData.incomingRequestHookActions.SentExtension.Data, events.RequestReceivedResponse)
+				assertHasOutgoingMessage(t, gsData.incomingRequestHookActions.SentExtensions, events.RequestReceivedResponse)
 				require.NoError(t, gsData.incomingRequestHookActions.TerminationError)
 			},
 		},
@@ -256,7 +255,7 @@ func TestManager(t *testing.T) {
 				require.Equal(t, 0, events.OnRequestReceivedCallCount)
 				require.Equal(t, 1, events.OnResponseReceivedCallCount)
 				require.Equal(t, events.ResponseReceivedChannelID, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self})
-				dtResponseData, _ := gsData.request.Extension(extension.ExtensionDataTransfer)
+				dtResponseData, _ := gsData.request.Extension(extension.ExtensionDataTransfer1_1)
 				assertDecodesToMessage(t, dtResponseData, events.ResponseReceivedResponse)
 				require.True(t, gsData.incomingRequestHookActions.Validated)
 				require.NoError(t, gsData.incomingRequestHookActions.TerminationError)
@@ -287,11 +286,10 @@ func TestManager(t *testing.T) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
 				require.Equal(t, 0, events.OnResponseReceivedCallCount)
 				require.Equal(t, events.RequestReceivedChannelID, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other})
-				dtRequestData, _ := gsData.request.Extension(extension.ExtensionDataTransfer)
+				dtRequestData, _ := gsData.request.Extension(extension.ExtensionDataTransfer1_1)
 				assertDecodesToMessage(t, dtRequestData, events.RequestReceivedRequest)
 				require.False(t, gsData.incomingRequestHookActions.Validated)
-				require.Equal(t, extension.ExtensionDataTransfer, gsData.incomingRequestHookActions.SentExtension.Name)
-				assertDecodesToMessage(t, gsData.incomingRequestHookActions.SentExtension.Data, events.RequestReceivedResponse)
+				assertHasOutgoingMessage(t, gsData.incomingRequestHookActions.SentExtensions, events.RequestReceivedResponse)
 				require.Error(t, gsData.incomingRequestHookActions.TerminationError)
 			},
 		},
@@ -374,7 +372,7 @@ func TestManager(t *testing.T) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
 				require.True(t, events.OnDataSentCalled)
 				require.NoError(t, gsData.outgoingBlockHookActions.TerminationError)
-				assertHasOutgoingMessage(t, []graphsync.ExtensionData{gsData.outgoingBlockHookActions.SentExtension},
+				assertHasOutgoingMessage(t, gsData.outgoingBlockHookActions.SentExtensions,
 					events.DataSentMessage)
 			},
 		},
@@ -469,7 +467,7 @@ func TestManager(t *testing.T) {
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.Equal(t, 2, events.OnRequestReceivedCallCount)
 				require.NoError(t, gsData.requestUpdatedHookActions.TerminationError)
-				assertHasOutgoingMessage(t, []graphsync.ExtensionData{gsData.requestUpdatedHookActions.SentExtension},
+				assertHasOutgoingMessage(t, gsData.requestUpdatedHookActions.SentExtensions,
 					events.RequestReceivedResponse)
 			},
 		},
@@ -625,7 +623,7 @@ func TestManager(t *testing.T) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
 				gsData.fgs.AssertNoResumeResponseReceived(t)
 				gsData.incomingRequestHook()
-				assertDecodesToMessage(t, gsData.incomingRequestHookActions.SentExtension.Data, gsData.incoming)
+				assertHasOutgoingMessage(t, gsData.incomingRequestHookActions.SentExtensions, gsData.incoming)
 			},
 		},
 		"recognized incoming request will record network error": {
@@ -655,8 +653,8 @@ func TestManager(t *testing.T) {
 				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
 
 				ext := requestReceived.Extensions
-				require.Len(t, ext, 2)
-				doNotSend := ext[1]
+				require.Len(t, ext, 3)
+				doNotSend := ext[2]
 
 				name := doNotSend.Name
 				require.Equal(t, graphsync.ExtensionDoNotSendCIDs, name)
@@ -1065,7 +1063,7 @@ func (dtc *dtConfig) extensions(t *testing.T, transferID datatransfer.TransferID
 	extensions := make(map[graphsync.ExtensionName][]byte)
 	if !dtc.dtExtensionMissing {
 		if dtc.dtExtensionMalformed {
-			extensions[extension.ExtensionDataTransfer] = testutil.RandomBytes(100)
+			extensions[extension.ExtensionDataTransfer1_1] = testutil.RandomBytes(100)
 		} else {
 			var msg datatransfer.Message
 			if dtc.dtIsResponse {
@@ -1076,7 +1074,7 @@ func (dtc *dtConfig) extensions(t *testing.T, transferID datatransfer.TransferID
 			buf := new(bytes.Buffer)
 			err := msg.ToNet(buf)
 			require.NoError(t, err)
-			extensions[extension.ExtensionDataTransfer] = buf.Bytes()
+			extensions[extension.ExtensionDataTransfer1_1] = buf.Bytes()
 		}
 	}
 	return extensions
@@ -1127,7 +1125,7 @@ func assertHasOutgoingMessage(t *testing.T, extensions []graphsync.ExtensionData
 	err := expected.ToNet(buf)
 	require.NoError(t, err)
 	expectedExt := graphsync.ExtensionData{
-		Name: extension.ExtensionDataTransfer,
+		Name: extension.ExtensionDataTransfer1_1,
 		Data: buf.Bytes(),
 	}
 	require.Contains(t, extensions, expectedExt)

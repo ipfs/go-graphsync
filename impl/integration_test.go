@@ -1163,7 +1163,7 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 		extData := buf.Bytes()
 
 		request := gsmsg.NewRequest(graphsync.RequestID(rand.Int31()), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
-			Name: extension.ExtensionDataTransfer,
+			Name: extension.ExtensionDataTransfer1_1,
 			Data: extData,
 		})
 		gsmessage := gsmsg.New()
@@ -1183,7 +1183,7 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 		extData := buf.Bytes()
 
 		request := gsmsg.NewRequest(graphsync.RequestID(rand.Int31()), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
-			Name: extension.ExtensionDataTransfer,
+			Name: extension.ExtensionDataTransfer1_1,
 			Data: extData,
 		})
 		gsmessage := gsmsg.New()
@@ -1275,7 +1275,7 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 				extData := buf.Bytes()
 
 				gsRequest := gsmsg.NewRequest(graphsync.RequestID(rand.Int31()), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
-					Name: extension.ExtensionDataTransfer,
+					Name: extension.ExtensionDataTransfer1_1,
 					Data: extData,
 				})
 
@@ -1304,7 +1304,7 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 				require.NoError(t, err)
 				extData := buf.Bytes()
 				request := gsmsg.NewRequest(graphsync.RequestID(rand.Int31()), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
-					Name: extension.ExtensionDataTransfer,
+					Name: extension.ExtensionDataTransfer1_1,
 					Data: extData,
 				})
 				gsmessage := gsmsg.New()

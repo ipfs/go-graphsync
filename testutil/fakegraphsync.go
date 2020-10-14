@@ -24,7 +24,7 @@ import (
 func matchDtMessage(t *testing.T, extensions []graphsync.ExtensionData) datatransfer.Message {
 	var matchedExtension *graphsync.ExtensionData
 	for _, ext := range extensions {
-		if ext.Name == extension.ExtensionDataTransfer {
+		if ext.Name == extension.ExtensionDataTransfer1_1 {
 			matchedExtension = &ext
 			break
 		}
@@ -512,12 +512,12 @@ var _ graphsync.IncomingBlockHookActions = &FakeIncomingBlockHookActions{}
 
 type FakeOutgoingBlockHookActions struct {
 	TerminationError error
-	SentExtension    graphsync.ExtensionData
+	SentExtensions   []graphsync.ExtensionData
 	Paused           bool
 }
 
 func (fa *FakeOutgoingBlockHookActions) SendExtensionData(extension graphsync.ExtensionData) {
-	fa.SentExtension = extension
+	fa.SentExtensions = append(fa.SentExtensions, extension)
 }
 
 func (fa *FakeOutgoingBlockHookActions) TerminateWithError(err error) {
@@ -534,12 +534,12 @@ type FakeIncomingRequestHookActions struct {
 	PersistenceOption string
 	TerminationError  error
 	Validated         bool
-	SentExtension     graphsync.ExtensionData
+	SentExtensions    []graphsync.ExtensionData
 	Paused            bool
 }
 
 func (fa *FakeIncomingRequestHookActions) SendExtensionData(ext graphsync.ExtensionData) {
-	fa.SentExtension = ext
+	fa.SentExtensions = append(fa.SentExtensions, ext)
 }
 
 func (fa *FakeIncomingRequestHookActions) UsePersistenceOption(name string) {
@@ -565,12 +565,12 @@ var _ graphsync.IncomingRequestHookActions = &FakeIncomingRequestHookActions{}
 
 type FakeRequestUpdatedActions struct {
 	TerminationError error
-	SentExtension    graphsync.ExtensionData
+	SentExtensions   []graphsync.ExtensionData
 	Unpaused         bool
 }
 
 func (fa *FakeRequestUpdatedActions) SendExtensionData(extension graphsync.ExtensionData) {
-	fa.SentExtension = extension
+	fa.SentExtensions = append(fa.SentExtensions, extension)
 }
 
 func (fa *FakeRequestUpdatedActions) TerminateWithError(err error) {

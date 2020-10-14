@@ -43,6 +43,7 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/network"
 	gstransport "github.com/filecoin-project/go-data-transfer/transport/graphsync"
+	"github.com/filecoin-project/go-data-transfer/transport/graphsync/extension"
 )
 
 var allSelector ipld.Node
@@ -58,9 +59,16 @@ func init() {
 const unixfsChunkSize uint64 = 1 << 10
 const unixfsLinksPerLevel = 1024
 
+var extsForProtocol = map[protocol.ID]graphsync.ExtensionName{
+	datatransfer.ProtocolDataTransfer1_1: extension.ExtensionDataTransfer1_1,
+	datatransfer.ProtocolDataTransfer1_0: extension.ExtensionDataTransfer1_0,
+}
+
 // GraphsyncTestingData is a test harness for testing data transfer on top of
 // graphsync
 type GraphsyncTestingData struct {
+	host1Protocols []protocol.ID
+	host2Protocols []protocol.ID
 	Ctx            context.Context
 	Mn             mocknet.Mocknet
 	StoredCounter1 *storedcounter.StoredCounter
@@ -147,7 +155,8 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T, host1Protocols [
 
 	// create a selector for the whole UnixFS dag
 	gsData.AllSelector = allSelector
-
+	gsData.host1Protocols = host1Protocols
+	gsData.host2Protocols = host2Protocols
 	return gsData
 }
 
@@ -161,7 +170,15 @@ func (gsData *GraphsyncTestingData) SetupGraphsyncHost1() graphsync.GraphExchang
 func (gsData *GraphsyncTestingData) SetupGSTransportHost1() datatransfer.Transport {
 	// setup graphsync
 	gs := gsData.SetupGraphsyncHost1()
-	return gstransport.NewTransport(gsData.Host1.ID(), gs)
+	var opts []gstransport.Option
+	if len(gsData.host1Protocols) != 0 {
+		supportedExtensions := make([]graphsync.ExtensionName, 0, len(gsData.host1Protocols))
+		for _, protoID := range gsData.host1Protocols {
+			supportedExtensions = append(supportedExtensions, extsForProtocol[protoID])
+		}
+		opts = append(opts, gstransport.SupportedExtensions(supportedExtensions))
+	}
+	return gstransport.NewTransport(gsData.Host1.ID(), gs, opts...)
 }
 
 // SetupGraphsyncHost2 sets up a new, real graphsync instance on top of the second host
@@ -174,7 +191,15 @@ func (gsData *GraphsyncTestingData) SetupGraphsyncHost2() graphsync.GraphExchang
 func (gsData *GraphsyncTestingData) SetupGSTransportHost2() datatransfer.Transport {
 	// setup graphsync
 	gs := gsData.SetupGraphsyncHost2()
-	return gstransport.NewTransport(gsData.Host2.ID(), gs)
+	var opts []gstransport.Option
+	if len(gsData.host2Protocols) != 0 {
+		supportedExtensions := make([]graphsync.ExtensionName, 0, len(gsData.host2Protocols))
+		for _, protoID := range gsData.host2Protocols {
+			supportedExtensions = append(supportedExtensions, extsForProtocol[protoID])
+		}
+		opts = append(opts, gstransport.SupportedExtensions(supportedExtensions))
+	}
+	return gstransport.NewTransport(gsData.Host2.ID(), gs, opts...)
 }
 
 // LoadUnixFSFile loads a fixtures file we can test dag transfer with
