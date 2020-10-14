@@ -379,6 +379,14 @@ func TestKnownFuzzIssues(t *testing.T) {
 	inputs := []string{
 		"$\x1a \x8000\x1a\x16002\xf4\xff\xff\xff\xff\xff\xff\xff\xff" +
 			"00000000000000000",
+		"���\x01",
+		"Dخ0000000000\x12000000" +
+			"00000000000000000000" +
+			"000000000 0000000000" +
+			"000000000",
+		"�\xefĽ�\x01\"#    \n\v5 " +
+			"         \n\x10\x01\x80\x01\x19@\xbf\xbd\xff " +
+			"   \n\v     ",
 	}
 	for _, input := range inputs {
 		//inputAsBytes, err := hex.DecodeString(input)

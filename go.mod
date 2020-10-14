@@ -34,7 +34,7 @@ require (
 	github.com/libp2p/go-libp2p-netutil v0.1.0
 	github.com/libp2p/go-libp2p-record v0.1.1 // indirect
 	github.com/libp2p/go-libp2p-testing v0.1.1
-	github.com/libp2p/go-msgio v0.0.4
+	github.com/libp2p/go-msgio v0.0.6
 	github.com/multiformats/go-multiaddr v0.2.1
 	github.com/multiformats/go-multihash v0.0.13
 	github.com/polydawn/refmt v0.0.0-20190809202753-05966cbd336a // indirect
