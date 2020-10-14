@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 
+	"github.com/libp2p/go-libp2p-core/peer"
+
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
-	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 var errNetworkError = errors.New("network error")
