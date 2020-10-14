@@ -1,5 +1,30 @@
 # go-data-transfer changelog
 
+# go-data-transfer 0.9.0
+
+Major release of the 1.1 data transfer protocol, which supports restarts of data transfers.
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Message compatibility on graphsync (#102) ([filecoin-project/go-data-transfer#102](https://github.com/filecoin-project/go-data-transfer/pull/102))
+  - Handle network errors/stalls (#101) ([filecoin-project/go-data-transfer#101](https://github.com/filecoin-project/go-data-transfer/pull/101))
+  - Resume Data Transfer (#100) ([filecoin-project/go-data-transfer#100](https://github.com/filecoin-project/go-data-transfer/pull/100))
+  - docs(CHANGELOG): update for 0.6.7 release ([filecoin-project/go-data-transfer#98](https://github.com/filecoin-project/go-data-transfer/pull/98))
+- github.com/ipfs/go-graphsync (v0.2.1 -> v0.3.0):
+  - feat(CHANGELOG): update for 0.3.0
+  - docs(CHANGELOG): update for 0.2.1 ([ipfs/go-graphsync#103](https://github.com/ipfs/go-graphsync/pull/103))
+  - Track actual network operations in a response (#102) ([ipfs/go-graphsync#102](https://github.com/ipfs/go-graphsync/pull/102))
+  - feat(responsecache): prune blocks more intelligently (#101) ([ipfs/go-graphsync#101](https://github.com/ipfs/go-graphsync/pull/101))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 1 | +9597/-2220 | 67 |
+| Hannah Howard | 4 | +2355/-1018 | 51 |
+| hannahhoward | 1 | +25/-3 | 4 |
+
 # go-data-transfer 0.6.7
 
 Minor update w/ fixes to support go-fil-markets 0.7.0
