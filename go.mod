@@ -4,7 +4,6 @@ go 1.12
 
 require (
 	github.com/gogo/protobuf v1.3.1
-	github.com/golang/protobuf v1.3.2 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20190812055157-5d271430af9f // indirect
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20200817222906-ea96cece81f1
 	github.com/hannahhoward/go-pubsub v0.0.0-20200423002714-8d62886cc36e
@@ -35,6 +34,7 @@ require (
 	github.com/libp2p/go-libp2p-netutil v0.1.0
 	github.com/libp2p/go-libp2p-record v0.1.1 // indirect
 	github.com/libp2p/go-libp2p-testing v0.1.1
+	github.com/libp2p/go-msgio v0.0.4
 	github.com/multiformats/go-multiaddr v0.2.1
 	github.com/multiformats/go-multihash v0.0.13
 	github.com/polydawn/refmt v0.0.0-20190809202753-05966cbd336a // indirect
@@ -44,4 +44,5 @@ require (
 	go.uber.org/multierr v1.4.0 // indirect
 	golang.org/x/tools v0.0.0-20200827010519-17fd2f27a9e3 // indirect
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
+	google.golang.org/protobuf v1.25.0
 )

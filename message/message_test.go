@@ -57,7 +57,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.Equal(t, selectorEncoded, pbRequest.Selector)
 	require.Equal(t, map[string][]byte{"graphsync/awesome": extension.Data}, pbRequest.Extensions)
 
-	deserialized, err := newMessageFromProto(*pbMessage)
+	deserialized, err := newMessageFromProto(pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedRequests := deserialized.Requests()
 	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
@@ -101,7 +101,7 @@ func TestAppendingResponses(t *testing.T) {
 	require.Equal(t, int32(status), pbResponse.Status)
 	require.Equal(t, map[string][]byte{"graphsync/awesome": extension.Data}, pbResponse.Extensions)
 
-	deserialized, err := newMessageFromProto(*pbMessage)
+	deserialized, err := newMessageFromProto(pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedResponses := deserialized.Responses()
 	require.Len(t, deserializedResponses, 1, "did not add response to deserialized message")
@@ -373,4 +373,16 @@ func TestMergeExtensions(t *testing.T) {
 		require.True(t, has)
 		require.Equal(t, []byte("cheese"), extData3)
 	})
+}
+
+func TestKnownFuzzIssues(t *testing.T) {
+	inputs := []string{
+		"$\x1a \x8000\x1a\x16002\xf4\xff\xff\xff\xff\xff\xff\xff\xff" +
+			"00000000000000000",
+	}
+	for _, input := range inputs {
+		//inputAsBytes, err := hex.DecodeString(input)
+		///require.NoError(t, err)
+		_, _ = FromNet(bytes.NewReader([]byte(input)))
+	}
 }
