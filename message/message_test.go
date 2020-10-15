@@ -387,10 +387,22 @@ func TestKnownFuzzIssues(t *testing.T) {
 		"�\xefĽ�\x01\"#    \n\v5 " +
 			"         \n\x10\x01\x80\x01\x19@\xbf\xbd\xff " +
 			"   \n\v     ",
+		"\x0600\x1a\x02\x180",
 	}
 	for _, input := range inputs {
 		//inputAsBytes, err := hex.DecodeString(input)
 		///require.NoError(t, err)
-		_, _ = FromNet(bytes.NewReader([]byte(input)))
+		msg1, err := FromNet(bytes.NewReader([]byte(input)))
+		if err != nil {
+			continue
+		}
+		buf2 := new(bytes.Buffer)
+		err = msg1.ToNet(buf2)
+		require.NoError(t, err)
+
+		msg2, err := FromNet(buf2)
+		require.NoError(t, err)
+
+		require.Equal(t, msg1, msg2)
 	}
 }

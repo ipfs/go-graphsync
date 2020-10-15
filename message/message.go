@@ -195,14 +195,22 @@ func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
 				return nil, err
 			}
 		}
-		gsm.AddRequest(newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, req.GetExtensions()))
+		exts := req.GetExtensions()
+		if exts == nil {
+			exts = make(map[string][]byte)
+		}
+		gsm.AddRequest(newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts))
 	}
 
 	for _, res := range pbm.Responses {
 		if res == nil {
 			return nil, errors.New("response is nil")
 		}
-		gsm.AddResponse(newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), res.GetExtensions()))
+		exts := res.GetExtensions()
+		if exts == nil {
+			exts = make(map[string][]byte)
+		}
+		gsm.AddResponse(newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), exts))
 	}
 
 	for _, b := range pbm.GetData() {
