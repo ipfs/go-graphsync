@@ -12,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"google.golang.org/protobuf/proto"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
@@ -139,7 +140,7 @@ func (n *network) SendMessage(
 		if err != nil {
 			return err
 		}
-		size := pbMsg.Size()
+		size := proto.Size(pbMsg)
 		bandwidthDelay = rateLimiter.Limit(size)
 	} else {
 		bandwidthDelay = 0

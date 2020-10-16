@@ -6,12 +6,12 @@ import (
 	"io"
 	"time"
 
-	ggio "github.com/gogo/protobuf/io"
 	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
@@ -136,9 +136,9 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 		return
 	}
 
-	reader := ggio.NewDelimitedReader(s, network.MessageSizeMax)
+	reader := msgio.NewVarintReaderSize(s, network.MessageSizeMax)
 	for {
-		received, err := gsmsg.FromPBReader(reader)
+		received, err := gsmsg.FromMsgReader(reader)
 		if err != nil {
 			if err != io.EOF {
 				_ = s.Reset()

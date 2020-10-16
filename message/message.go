@@ -1,6 +1,7 @@
 package message
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -9,6 +10,8 @@ import (
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-msgio"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
@@ -170,9 +173,12 @@ func newResponse(requestID graphsync.RequestID,
 		extensions: extensions,
 	}
 }
-func newMessageFromProto(pbm pb.Message) (GraphSyncMessage, error) {
+func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
 	gsm := newMsg()
 	for _, req := range pbm.Requests {
+		if req == nil {
+			return nil, errors.New("request is nil")
+		}
 		var root cid.Cid
 		var err error
 		if !req.Cancel && !req.Update {
@@ -189,14 +195,29 @@ func newMessageFromProto(pbm pb.Message) (GraphSyncMessage, error) {
 				return nil, err
 			}
 		}
-		gsm.AddRequest(newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, req.GetExtensions()))
+		exts := req.GetExtensions()
+		if exts == nil {
+			exts = make(map[string][]byte)
+		}
+		gsm.AddRequest(newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts))
 	}
 
 	for _, res := range pbm.Responses {
-		gsm.AddResponse(newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), res.GetExtensions()))
+		if res == nil {
+			return nil, errors.New("response is nil")
+		}
+		exts := res.GetExtensions()
+		if exts == nil {
+			exts = make(map[string][]byte)
+		}
+		gsm.AddResponse(newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), exts))
 	}
 
 	for _, b := range pbm.GetData() {
+		if b == nil {
+			return nil, errors.New("block is nil")
+		}
+
 		pref, err := cid.PrefixFromBytes(b.GetPrefix())
 		if err != nil {
 			return nil, err
@@ -260,23 +281,30 @@ func (gsm *graphSyncMessage) AddBlock(b blocks.Block) {
 
 // FromNet can read a network stream to deserialized a GraphSyncMessage
 func FromNet(r io.Reader) (GraphSyncMessage, error) {
-	pbr := ggio.NewDelimitedReader(r, network.MessageSizeMax)
-	return FromPBReader(pbr)
+	reader := msgio.NewVarintReaderSize(r, network.MessageSizeMax)
+	return FromMsgReader(reader)
 }
 
-// FromPBReader can deserialize a protobuf message into a GraphySyncMessage.
-func FromPBReader(pbr ggio.Reader) (GraphSyncMessage, error) {
-	pb := new(pb.Message)
-	if err := pbr.ReadMsg(pb); err != nil {
+// FromMsgReader can deserialize a protobuf message into a GraphySyncMessage.
+func FromMsgReader(r msgio.Reader) (GraphSyncMessage, error) {
+	msg, err := r.ReadMsg()
+	if err != nil {
 		return nil, err
 	}
 
-	return newMessageFromProto(*pb)
+	var pb pb.Message
+	err = proto.Unmarshal(msg, &pb)
+	r.ReleaseMsg(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return newMessageFromProto(&pb)
 }
 
 func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 	pbm := new(pb.Message)
-	pbm.Requests = make([]pb.Message_Request, 0, len(gsm.requests))
+	pbm.Requests = make([]*pb.Message_Request, 0, len(gsm.requests))
 	for _, request := range gsm.requests {
 		var selector []byte
 		var err error
@@ -286,7 +314,7 @@ func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 				return nil, err
 			}
 		}
-		pbm.Requests = append(pbm.Requests, pb.Message_Request{
+		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
 			Id:         int32(request.id),
 			Root:       request.root.Bytes(),
 			Selector:   selector,
@@ -297,9 +325,9 @@ func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 		})
 	}
 
-	pbm.Responses = make([]pb.Message_Response, 0, len(gsm.responses))
+	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.responses))
 	for _, response := range gsm.responses {
-		pbm.Responses = append(pbm.Responses, pb.Message_Response{
+		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
 			Id:         int32(response.requestID),
 			Status:     int32(response.status),
 			Extensions: response.extensions,
@@ -307,9 +335,9 @@ func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 	}
 
 	blocks := gsm.Blocks()
-	pbm.Data = make([]pb.Message_Block, 0, len(blocks))
+	pbm.Data = make([]*pb.Message_Block, 0, len(blocks))
 	for _, b := range blocks {
-		pbm.Data = append(pbm.Data, pb.Message_Block{
+		pbm.Data = append(pbm.Data, &pb.Message_Block{
 			Data:   b.RawData(),
 			Prefix: b.Cid().Prefix().Bytes(),
 		})
