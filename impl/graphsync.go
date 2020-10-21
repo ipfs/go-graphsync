@@ -17,6 +17,7 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
 	requestorhooks "github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager"
+	"github.com/ipfs/go-graphsync/responsemanager/allocator"
 	responderhooks "github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
@@ -26,6 +27,8 @@ import (
 var log = logging.Logger("graphsync")
 
 const maxRecursionDepth = 100
+const defaultTotalMaxMemory = uint64(4 * 1 << 30)
+const defaultMaxMemoryPerPeer = uint64(1 << 30)
 
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
@@ -53,6 +56,9 @@ type GraphSync struct {
 	ctx                         context.Context
 	cancel                      context.CancelFunc
 	unregisterDefaultValidator  graphsync.UnregisterHookFunc
+	allocator                   *allocator.Allocator
+	totalMaxMemory              uint64
+	maxMemoryPerPeer            uint64
 }
 
 // Option defines the functional option type that can be used to configure
@@ -64,6 +70,18 @@ type Option func(*GraphSync)
 func RejectAllRequestsByDefault() Option {
 	return func(gs *GraphSync) {
 		gs.unregisterDefaultValidator()
+	}
+}
+
+func MaxMemoryResponder(totalMaxMemory uint64) Option {
+	return func(gs *GraphSync) {
+		gs.totalMaxMemory = totalMaxMemory
+	}
+}
+
+func MaxMemoryPerPeerResponder(maxMemoryPerPeer uint64) Option {
+	return func(gs *GraphSync) {
+		gs.maxMemoryPerPeer = maxMemoryPerPeer
 	}
 }
 
@@ -83,10 +101,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	incomingBlockHooks := requestorhooks.NewBlockHooks()
 	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks)
 	peerTaskQueue := peertaskqueue.New()
-	createdResponseQueue := func(ctx context.Context, p peer.ID) peerresponsemanager.PeerResponseSender {
-		return peerresponsemanager.NewResponseSender(ctx, p, peerManager)
-	}
-	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
+
 	persistenceOptions := persistenceoptions.New()
 	incomingRequestHooks := responderhooks.NewRequestHooks(persistenceOptions)
 	outgoingBlockHooks := responderhooks.NewBlockHooks()
@@ -95,7 +110,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	requestorCancelledListeners := responderhooks.NewRequestorCancelledListeners()
 	blockSentListeners := responderhooks.NewBlockSentListeners()
 	networkErrorListeners := responderhooks.NewNetworkErrorListeners()
-	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners)
 	unregisterDefaultValidator := incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
 		network:                     network,
@@ -116,8 +130,8 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		outgoingRequestHooks:        outgoingRequestHooks,
 		incomingBlockHooks:          incomingBlockHooks,
 		peerTaskQueue:               peerTaskQueue,
-		peerResponseManager:         peerResponseManager,
-		responseManager:             responseManager,
+		totalMaxMemory:              defaultTotalMaxMemory,
+		maxMemoryPerPeer:            defaultMaxMemoryPerPeer,
 		ctx:                         ctx,
 		cancel:                      cancel,
 		unregisterDefaultValidator:  unregisterDefaultValidator,
@@ -126,7 +140,17 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	for _, option := range options {
 		option(graphSync)
 	}
+	allocator := allocator.NewAllocator(ctx, graphSync.totalMaxMemory, graphSync.maxMemoryPerPeer)
+	graphSync.allocator = allocator
+	createdResponseQueue := func(ctx context.Context, p peer.ID) peerresponsemanager.PeerResponseSender {
+		return peerresponsemanager.NewResponseSender(ctx, p, peerManager, allocator)
+	}
+	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
+	graphSync.peerResponseManager = peerResponseManager
+	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners)
+	graphSync.responseManager = responseManager
 
+	allocator.Start()
 	asyncLoader.Startup()
 	requestManager.SetDelegate(peerManager)
 	requestManager.Startup()

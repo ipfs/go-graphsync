@@ -49,6 +49,11 @@ type PeerMessageHandler interface {
 	SendResponse(peer.ID, []gsmsg.GraphSyncResponse, []blocks.Block, ...notifications.Notifee)
 }
 
+type Allocator interface {
+	AllocateBlockMemory(p peer.ID, amount uint64) <-chan error
+	ReleaseBlockMemory(p peer.ID, amount uint64) error
+}
+
 // Transaction is a series of operations that should be send together in a single response
 type Transaction func(PeerResponseTransactionSender) error
 
@@ -57,18 +62,20 @@ type peerResponseSender struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	peerHandler  PeerMessageHandler
+	allocator    Allocator
 	outgoingWork chan struct{}
 
-	linkTrackerLk      sync.RWMutex
-	linkTracker        *linktracker.LinkTracker
-	altTrackers        map[string]*linktracker.LinkTracker
-	dedupKeys          map[graphsync.RequestID]string
-	responseBuildersLk sync.RWMutex
-	responseBuilders   []*responsebuilder.ResponseBuilder
-	nextBuilderTopic   responsebuilder.Topic
-	queuedMessages     chan responsebuilder.Topic
-	subscriber         notifications.MappableSubscriber
-	publisher          notifications.Publisher
+	linkTrackerLk       sync.RWMutex
+	linkTracker         *linktracker.LinkTracker
+	altTrackers         map[string]*linktracker.LinkTracker
+	dedupKeys           map[graphsync.RequestID]string
+	responseBuildersLk  sync.RWMutex
+	responseBuilders    []*responsebuilder.ResponseBuilder
+	nextBuilderTopic    responsebuilder.Topic
+	queuedMessages      chan responsebuilder.Topic
+	subscriber          notifications.MappableSubscriber
+	allocatorSubscriber notifications.MappableSubscriber
+	publisher           notifications.Publisher
 }
 
 // PeerResponseSender handles batching, deduping, and sending responses for
@@ -109,7 +116,7 @@ type PeerResponseTransactionSender interface {
 
 // NewResponseSender generates a new PeerResponseSender for the given context, peer ID,
 // using the given peer message handler.
-func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHandler) PeerResponseSender {
+func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHandler, allocator Allocator) PeerResponseSender {
 	ctx, cancel := context.WithCancel(ctx)
 	prs := &peerResponseSender{
 		p:              p,
@@ -122,8 +129,10 @@ func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHa
 		altTrackers:    make(map[string]*linktracker.LinkTracker),
 		queuedMessages: make(chan responsebuilder.Topic, 1),
 		publisher:      notifications.NewPublisher(),
+		allocator:      allocator,
 	}
 	prs.subscriber = notifications.NewMappableSubscriber(&subscriber{prs}, notifications.IdentityTransform)
+	prs.allocatorSubscriber = notifications.NewMappableSubscriber(&allocatorSubscriber{prs}, notifications.IdentityTransform)
 	return prs
 }
 
@@ -383,6 +392,12 @@ func (prs *peerResponseSender) FinishWithCancel(requestID graphsync.RequestID) {
 }
 
 func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn func(*responsebuilder.ResponseBuilder), notifees []notifications.Notifee) bool {
+	allocResponse := prs.allocator.AllocateBlockMemory(prs.p, blkSize)
+	select {
+	case <-prs.ctx.Done():
+		return false
+	case <-allocResponse:
+	}
 	prs.responseBuildersLk.Lock()
 	defer prs.responseBuildersLk.Unlock()
 	if shouldBeginNewResponse(prs.responseBuilders, blkSize) {
@@ -438,6 +453,10 @@ func (prs *peerResponseSender) sendResponseMessages() {
 		if builder.Empty() {
 			continue
 		}
+		notifications.SubscribeOn(prs.publisher, builder.Topic(), notifications.Notifee{
+			Topic:      builder.BlockSize(),
+			Subscriber: prs.allocatorSubscriber,
+		})
 		responses, blks, err := builder.Build()
 		if err != nil {
 			log.Errorf("Unable to assemble GraphSync response: %s", err.Error())
@@ -494,4 +513,23 @@ func (s *subscriber) OnNext(topic notifications.Topic, event notifications.Event
 
 func (s *subscriber) OnClose(topic notifications.Topic) {
 	s.prs.publisher.Close(topic)
+}
+
+type allocatorSubscriber struct {
+	prs *peerResponseSender
+}
+
+func (as *allocatorSubscriber) OnNext(topic notifications.Topic, event notifications.Event) {
+	blkSize, ok := topic.(uint64)
+	if !ok {
+		return
+	}
+	_, ok = event.(Event)
+	if !ok {
+		return
+	}
+	_ = as.prs.allocator.ReleaseBlockMemory(as.prs.p, blkSize)
+}
+
+func (as *allocatorSubscriber) OnClose(topic notifications.Topic) {
 }
