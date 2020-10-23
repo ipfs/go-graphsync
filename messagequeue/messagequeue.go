@@ -111,6 +111,8 @@ func (mq *MessageQueue) Shutdown() {
 }
 
 func (mq *MessageQueue) runQueue() {
+	defer mq.eventPublisher.Shutdown()
+	mq.eventPublisher.Startup()
 	for {
 		select {
 		case <-mq.outgoingWork:

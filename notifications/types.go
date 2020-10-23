@@ -30,6 +30,7 @@ type Publisher interface {
 	Close(Topic)
 	Publish(Topic, Event)
 	Shutdown()
+	Startup()
 	Subscribable
 }
 
