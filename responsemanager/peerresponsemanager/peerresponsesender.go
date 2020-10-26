@@ -49,8 +49,10 @@ type PeerMessageHandler interface {
 	SendResponse(peer.ID, []gsmsg.GraphSyncResponse, []blocks.Block, ...notifications.Notifee)
 }
 
+// Allocator is an interface that can manage memory allocated for blocks
 type Allocator interface {
 	AllocateBlockMemory(p peer.ID, amount uint64) <-chan error
+	ReleasePeerMemory(p peer.ID) error
 	ReleaseBlockMemory(p peer.ID, amount uint64) error
 }
 
@@ -392,11 +394,13 @@ func (prs *peerResponseSender) FinishWithCancel(requestID graphsync.RequestID) {
 }
 
 func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn func(*responsebuilder.ResponseBuilder), notifees []notifications.Notifee) bool {
-	allocResponse := prs.allocator.AllocateBlockMemory(prs.p, blkSize)
-	select {
-	case <-prs.ctx.Done():
-		return false
-	case <-allocResponse:
+	if blkSize > 0 {
+		allocResponse := prs.allocator.AllocateBlockMemory(prs.p, blkSize)
+		select {
+		case <-prs.ctx.Done():
+			return false
+		case <-allocResponse:
+		}
 	}
 	prs.responseBuildersLk.Lock()
 	defer prs.responseBuildersLk.Unlock()
@@ -431,7 +435,10 @@ func (prs *peerResponseSender) signalWork() {
 }
 
 func (prs *peerResponseSender) run() {
-	defer prs.publisher.Shutdown()
+	defer func() {
+		prs.publisher.Shutdown()
+		prs.allocator.ReleasePeerMemory(prs.p)
+	}()
 	prs.publisher.Startup()
 	for {
 		select {

@@ -37,7 +37,7 @@ func (a *Allocator) AllocateBlockMemory(p peer.ID, amount uint64) <-chan error {
 	select {
 	case <-a.ctx.Done():
 		responseChan <- errors.New("context closed")
-	case a.messages <- allocationRequest{p, amount, false, responseChan, done}:
+	case a.messages <- allocationRequest{p, amount, allocOperation, responseChan, done}:
 	}
 	select {
 	case <-a.ctx.Done():
@@ -51,7 +51,22 @@ func (a *Allocator) ReleaseBlockMemory(p peer.ID, amount uint64) error {
 	select {
 	case <-a.ctx.Done():
 		responseChan <- errors.New("context closed")
-	case a.messages <- allocationRequest{p, amount, true, responseChan, nil}:
+	case a.messages <- allocationRequest{p, amount, deallocOperation, responseChan, nil}:
+	}
+	select {
+	case <-a.ctx.Done():
+		return errors.New("context closed")
+	case err := <-responseChan:
+		return err
+	}
+}
+
+func (a *Allocator) ReleasePeerMemory(p peer.ID) error {
+	responseChan := make(chan error, 1)
+	select {
+	case <-a.ctx.Done():
+		responseChan <- errors.New("context closed")
+	case a.messages <- allocationRequest{p, 0, deallocPeerOperation, responseChan, nil}:
 	}
 	select {
 	case <-a.ctx.Done():
@@ -75,13 +90,8 @@ func (a *Allocator) run() {
 			return
 		case request := <-a.messages:
 			status, ok := a.peerStatuses[request.p]
-			if request.isDelloc {
-				if !ok {
-					request.response <- errors.New("cannot deallocate from peer with no allocations")
-					continue
-				}
-				a.handleDeallocRequest(request, status)
-			} else {
+			switch request.operation {
+			case allocOperation:
 				if !ok {
 					status = &peerStatus{
 						p:              request.p,
@@ -91,6 +101,18 @@ func (a *Allocator) run() {
 					a.peerStatuses[request.p] = status
 				}
 				a.handleAllocRequest(request, status)
+			case deallocOperation:
+				if !ok {
+					request.response <- errors.New("cannot deallocate from peer with no allocations")
+					continue
+				}
+				a.handleDeallocRequest(request, status)
+			case deallocPeerOperation:
+				if !ok {
+					request.response <- errors.New("cannot deallocate from peer with no allocations")
+					continue
+				}
+				a.handleDeallocPeerRequest(request, status)
 			}
 		}
 	}
@@ -138,6 +160,17 @@ func (a *Allocator) handleDeallocRequest(request allocationRequest, status *peer
 	request.response <- nil
 }
 
+func (a *Allocator) handleDeallocPeerRequest(request allocationRequest, status *peerStatus) {
+	a.peerStatusQueue.Remove(status.Index())
+	for _, pendingAllocation := range status.pendingAllocations {
+		pendingAllocation.response <- errors.New("Peer has been deallocated")
+	}
+	a.total -= status.totalAllocated
+	for a.processNextPendingAllocation() {
+	}
+	request.response <- nil
+}
+
 func (a *Allocator) processNextPendingAllocation() bool {
 	if a.peerStatusQueue.Len() == 0 {
 		return false
@@ -175,12 +208,20 @@ func (a *Allocator) processNextPendingAllocationForPeer(nextPeer *peerStatus) bo
 	return true
 }
 
+type operationType uint64
+
+const (
+	allocOperation operationType = iota
+	deallocOperation
+	deallocPeerOperation
+)
+
 type allocationRequest struct {
-	p        peer.ID
-	amount   uint64
-	isDelloc bool
-	response chan error
-	done     chan struct{}
+	p         peer.ID
+	amount    uint64
+	operation operationType
+	response  chan error
+	done      chan struct{}
 }
 
 type peerStatus struct {

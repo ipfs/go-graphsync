@@ -3,6 +3,7 @@ package allocator_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/ipfs/go-graphsync/responsemanager/allocator"
 	"github.com/ipfs/go-graphsync/testutil"
@@ -132,11 +133,35 @@ func TestAllocator(t *testing.T) {
 				{peers[0]: 700, peers[1]: 1000, peers[2]: 900},
 			},
 		},
+		"multiple peers, peer drops off": {
+			total:      2000,
+			maxPerPeer: 1000,
+			allocs: []alloc{
+				{peers[0], 1000, false},
+				{peers[1], 500, false},
+				{peers[2], 500, false},
+				{peers[1], 100, false},
+				{peers[2], 100, false},
+				{peers[2], 200, false},
+				{peers[1], 200, false},
+				{peers[2], 100, false},
+				{peers[1], 300, false},
+				// free peer 0 completely
+				{peers[0], 0, true},
+			},
+			totals: []map[peer.ID]uint64{
+				{peers[0]: 1000},
+				{peers[0]: 1000, peers[1]: 500},
+				{peers[0]: 1000, peers[1]: 500, peers[2]: 500},
+				{peers[0]: 0, peers[1]: 500, peers[2]: 500},
+				{peers[0]: 0, peers[1]: 800, peers[2]: 900},
+			},
+		},
 	}
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
-			//ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			//defer cancel()
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
 			allocator := allocator.NewAllocator(ctx, data.total, data.maxPerPeer)
 			allocator.Start()
 			totals := map[peer.ID]uint64{}
@@ -151,9 +176,15 @@ func TestAllocator(t *testing.T) {
 					currentTotal++
 				}
 				if alloc.isDealloc {
-					err := allocator.ReleaseBlockMemory(alloc.p, alloc.amount)
-					assert.NoError(t, err)
-					totals[alloc.p] = totals[alloc.p] - alloc.amount
+					if alloc.amount == 0 {
+						err := allocator.ReleasePeerMemory(alloc.p)
+						assert.NoError(t, err)
+						totals[alloc.p] = 0
+					} else {
+						err := allocator.ReleaseBlockMemory(alloc.p, alloc.amount)
+						assert.NoError(t, err)
+						totals[alloc.p] = totals[alloc.p] - alloc.amount
+					}
 					require.Less(t, currentTotal, len(data.totals))
 					require.Equal(t, data.totals[currentTotal], totals)
 					currentTotal++
@@ -206,6 +237,7 @@ func readPending(t *testing.T, pending []pendingResult, totals map[peer.ID]uint6
 	return pending, changedTotals
 }
 
+// amount 0 + isDealloc = true shuts down the whole peer
 type alloc struct {
 	p         peer.ID
 	amount    uint64
