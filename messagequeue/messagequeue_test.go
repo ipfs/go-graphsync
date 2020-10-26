@@ -147,6 +147,7 @@ func TestProcessingNotification(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 
 	messageQueue := New(ctx, peer, messageNetwork)
+	messageQueue.Startup()
 	waitGroup.Add(1)
 	blks := testutil.GenerateBlocksOfSize(3, 128)
 
@@ -164,7 +165,6 @@ func TestProcessingNotification(t *testing.T) {
 	messageQueue.AddResponses(newMessage.Responses(), blks, notifee)
 
 	// wait for send attempt
-	messageQueue.Startup()
 	waitGroup.Wait()
 
 	var message gsmsg.GraphSyncMessage

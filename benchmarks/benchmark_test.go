@@ -29,6 +29,7 @@ import (
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	peer "github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
 
@@ -61,6 +62,74 @@ func BenchmarkRoundtripSuccess(b *testing.B) {
 	b.Run("test-p2p-stress-10-128MB-1KB-chunks", func(b *testing.B) {
 		p2pStrestTest(ctx, b, 10, allFilesUniformSize(128*(1<<20), 1<<10, 1024), tdm)
 	})
+	b.Run("test-repeated-disconnects-20-10000", func(b *testing.B) {
+		benchmarkRepeatedDisconnects(ctx, b, 20, allFilesUniformSize(10000, defaultUnixfsChunkSize, defaultUnixfsLinksPerLevel), tdm)
+	})
+}
+
+func benchmarkRepeatedDisconnects(ctx context.Context, b *testing.B, numnodes int, df distFunc, tdm *tempDirMaker) {
+	ctx, cancel := context.WithCancel(ctx)
+	mn := mocknet.New(ctx)
+	net := tn.StreamNet(ctx, mn)
+	ig := testinstance.NewTestInstanceGenerator(ctx, net, nil, tdm)
+	instances, err := ig.Instances(numnodes + 1)
+	require.NoError(b, err)
+	var allCids [][]cid.Cid
+	for i := 0; i < b.N; i++ {
+		thisCids := df(ctx, b, instances[1:])
+		allCids = append(allCids, thisCids)
+	}
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+
+	allSelector := ssb.ExploreRecursive(ipldselector.RecursionLimitNone(),
+		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
+
+	runtime.GC()
+	b.ResetTimer()
+	b.ReportAllocs()
+	fetcher := instances[0]
+	for i := 0; i < b.N; i++ {
+		var wg sync.WaitGroup
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		require.NoError(b, err)
+		start := time.Now()
+		for j := 0; j < numnodes; j++ {
+			instance := instances[j+1]
+			_, errChan := fetcher.Exchange.Request(ctx, instance.Peer, cidlink.Link{Cid: allCids[i][j]}, allSelector)
+
+			wg.Add(1)
+			go func(other peer.ID) {
+				defer func() {
+					mn.DisconnectPeers(fetcher.Peer, other)
+					wg.Done()
+				}()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case err, ok := <-errChan:
+						if !ok {
+							return
+						}
+						b.Fatalf("received error on request: %s", err.Error())
+					}
+				}
+			}(instance.Peer)
+		}
+		wg.Wait()
+		result := runStats{
+			Time: time.Since(start),
+			Name: b.Name(),
+		}
+		benchmarkLog = append(benchmarkLog, result)
+
+		cancel()
+	}
+	cancel()
+	time.Sleep(100 * time.Millisecond)
+	b.Logf("Number of running go-routines: %d", runtime.NumGoroutine())
+	testinstance.Close(instances)
+	ig.Close()
 }
 
 func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc, tdm *tempDirMaker) {

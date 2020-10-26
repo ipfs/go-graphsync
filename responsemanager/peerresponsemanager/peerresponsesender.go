@@ -416,6 +416,8 @@ func (prs *peerResponseSender) signalWork() {
 }
 
 func (prs *peerResponseSender) run() {
+	defer prs.publisher.Shutdown()
+	prs.publisher.Startup()
 	for {
 		select {
 		case <-prs.ctx.Done():

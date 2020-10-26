@@ -32,8 +32,11 @@ func NewPublisher() Publisher {
 		cmdChan: make(chan cmd),
 		closed:  make(chan struct{}),
 	}
-	go ps.start()
 	return ps
+}
+
+func (ps *publisher) Startup() {
+	go ps.start()
 }
 
 // Publish publishes an event for the given message id

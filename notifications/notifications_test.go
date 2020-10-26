@@ -143,7 +143,9 @@ func TestSubscribeOn(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 			defer cancel()
 			ps := notifications.NewPublisher()
+			ps.Startup()
 			testPublisher(ctx, t, ps)
+			ps.Shutdown()
 		})
 	}
 
