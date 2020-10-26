@@ -6,6 +6,10 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
+type settableWriter interface {
+	SetBytes([]byte) error
+}
+
 // UnverifiedBlockStore holds an in memory cache of receied blocks from the network
 // that have not been verified to be part of a traversal
 type UnverifiedBlockStore struct {
@@ -55,7 +59,11 @@ func (ubs *UnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, err = buffer.Write(data)
+	if settable, ok := buffer.(settableWriter); ok {
+		err = settable.SetBytes(data)
+	} else {
+		_, err = buffer.Write(data)
+	}
 	if err != nil {
 		return nil, err
 	}

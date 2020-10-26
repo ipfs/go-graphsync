@@ -31,6 +31,7 @@ require (
 	github.com/ipld/go-ipld-prime-proto v0.1.0
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/jbenet/goprocess v0.1.4 // indirect
+	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-libp2p v0.6.0
 	github.com/libp2p/go-libp2p-core v0.5.0
 	github.com/libp2p/go-libp2p-netutil v0.1.0
