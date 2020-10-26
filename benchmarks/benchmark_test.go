@@ -35,6 +35,7 @@ import (
 
 	"github.com/ipfs/go-graphsync/benchmarks/testinstance"
 	tn "github.com/ipfs/go-graphsync/benchmarks/testnet"
+	graphsync "github.com/ipfs/go-graphsync/impl"
 )
 
 const stdBlockSize = 8000
@@ -51,19 +52,25 @@ func BenchmarkRoundtripSuccess(b *testing.B) {
 	tdm, err := newTempDirMaker(b)
 	require.NoError(b, err)
 	b.Run("test-20-10000", func(b *testing.B) {
-		subtestDistributeAndFetch(ctx, b, 20, delay.Fixed(0), time.Duration(0), allFilesUniformSize(10000, defaultUnixfsChunkSize, defaultUnixfsLinksPerLevel), tdm)
+		subtestDistributeAndFetch(ctx, b, 20, delay.Fixed(0), time.Duration(0), allFilesUniformSize(10000, defaultUnixfsChunkSize, defaultUnixfsLinksPerLevel, true), tdm)
 	})
 	b.Run("test-20-128MB", func(b *testing.B) {
-		subtestDistributeAndFetch(ctx, b, 10, delay.Fixed(0), time.Duration(0), allFilesUniformSize(128*(1<<20), defaultUnixfsChunkSize, defaultUnixfsLinksPerLevel), tdm)
+		subtestDistributeAndFetch(ctx, b, 20, delay.Fixed(0), time.Duration(0), allFilesUniformSize(128*(1<<20), defaultUnixfsChunkSize, defaultUnixfsLinksPerLevel, true), tdm)
 	})
 	b.Run("test-p2p-stress-10-128MB", func(b *testing.B) {
-		p2pStrestTest(ctx, b, 20, allFilesUniformSize(128*(1<<20), 1<<20, 1024), tdm)
+		p2pStrestTest(ctx, b, 10, allFilesUniformSize(128*(1<<20), 1<<20, 1024, true), tdm, nil, false)
 	})
 	b.Run("test-p2p-stress-10-128MB-1KB-chunks", func(b *testing.B) {
-		p2pStrestTest(ctx, b, 10, allFilesUniformSize(128*(1<<20), 1<<10, 1024), tdm)
+		p2pStrestTest(ctx, b, 10, allFilesUniformSize(128*(1<<20), 1<<10, 1024, true), tdm, nil, false)
+	})
+	b.Run("test-p2p-stress-1-1GB-memory-pressure", func(b *testing.B) {
+		p2pStrestTest(ctx, b, 1, allFilesUniformSize(1*(1<<30), 1<<20, 1024, true), tdm, []graphsync.Option{}, true)
+	})
+	b.Run("test-p2p-stress-1-1GB-memory-pressure-no-raw-nodes", func(b *testing.B) {
+		p2pStrestTest(ctx, b, 1, allFilesUniformSize(1*(1<<30), 1<<20, 1024, false), tdm, []graphsync.Option{}, true)
 	})
 	b.Run("test-repeated-disconnects-20-10000", func(b *testing.B) {
-		benchmarkRepeatedDisconnects(ctx, b, 20, allFilesUniformSize(10000, defaultUnixfsChunkSize, defaultUnixfsLinksPerLevel), tdm)
+		benchmarkRepeatedDisconnects(ctx, b, 20, allFilesUniformSize(10000, defaultUnixfsChunkSize, defaultUnixfsLinksPerLevel, true), tdm)
 	})
 }
 
@@ -71,7 +78,7 @@ func benchmarkRepeatedDisconnects(ctx context.Context, b *testing.B, numnodes in
 	ctx, cancel := context.WithCancel(ctx)
 	mn := mocknet.New(ctx)
 	net := tn.StreamNet(ctx, mn)
-	ig := testinstance.NewTestInstanceGenerator(ctx, net, nil, tdm)
+	ig := testinstance.NewTestInstanceGenerator(ctx, net, nil, tdm, false)
 	instances, err := ig.Instances(numnodes + 1)
 	require.NoError(b, err)
 	var allCids [][]cid.Cid
@@ -132,13 +139,13 @@ func benchmarkRepeatedDisconnects(ctx context.Context, b *testing.B, numnodes in
 	ig.Close()
 }
 
-func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc, tdm *tempDirMaker) {
+func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc, tdm *tempDirMaker, options []graphsync.Option, diskBasedDatastore bool) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	mn := mocknet.New(ctx)
 	mn.SetLinkDefaults(mocknet.LinkOptions{Latency: 100 * time.Millisecond, Bandwidth: 3000000})
 	net := tn.StreamNet(ctx, mn)
-	ig := testinstance.NewTestInstanceGenerator(ctx, net, nil, tdm)
+	ig := testinstance.NewTestInstanceGenerator(ctx, net, options, tdm, diskBasedDatastore)
 	instances, err := ig.Instances(1 + b.N)
 	require.NoError(b, err)
 	var allCids []cid.Cid
@@ -160,32 +167,16 @@ func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc,
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		require.NoError(b, err)
 		start := time.Now()
-		disconnectOn := rand.Intn(numfiles)
 		for j := 0; j < numfiles; j++ {
-			resultChan, errChan := fetcher.Exchange.Request(ctx, instances[0].Peer, cidlink.Link{Cid: allCids[j]}, allSelector)
+			responseChan, errChan := fetcher.Exchange.Request(ctx, instances[0].Peer, cidlink.Link{Cid: allCids[j]}, allSelector)
 
 			wg.Add(1)
 			go func(j int) {
 				defer wg.Done()
-				results := 0
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case <-resultChan:
-						results++
-						if results == 100 && j == disconnectOn {
-							mn.DisconnectPeers(instances[0].Peer, instances[i+1].Peer)
-							mn.UnlinkPeers(instances[0].Peer, instances[i+1].Peer)
-							time.Sleep(100 * time.Millisecond)
-							mn.LinkPeers(instances[0].Peer, instances[i+1].Peer)
-						}
-					case err, ok := <-errChan:
-						if !ok {
-							return
-						}
-						b.Fatalf("received error on request: %s", err.Error())
-					}
+				for _ = range responseChan {
+				}
+				for err := range errChan {
+					b.Fatalf("received error on request: %s", err.Error())
 				}
 			}(j)
 		}
@@ -205,7 +196,7 @@ func subtestDistributeAndFetch(ctx context.Context, b *testing.B, numnodes int, 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	net := tn.VirtualNetwork(d)
-	ig := testinstance.NewTestInstanceGenerator(ctx, net, nil, tdm)
+	ig := testinstance.NewTestInstanceGenerator(ctx, net, nil, tdm, false)
 	instances, err := ig.Instances(numnodes + b.N)
 	require.NoError(b, err)
 	destCids := df(ctx, b, instances[:numnodes])
@@ -268,7 +259,7 @@ type distFunc func(ctx context.Context, b *testing.B, provs []testinstance.Insta
 const defaultUnixfsChunkSize uint64 = 1 << 10
 const defaultUnixfsLinksPerLevel = 1024
 
-func loadRandomUnixFxFile(ctx context.Context, b *testing.B, bs blockstore.Blockstore, size uint64, unixfsChunkSize uint64, unixfsLinksPerLevel int) cid.Cid {
+func loadRandomUnixFxFile(ctx context.Context, b *testing.B, bs blockstore.Blockstore, size uint64, unixfsChunkSize uint64, unixfsLinksPerLevel int, useRawNodes bool) cid.Cid {
 
 	data := make([]byte, size)
 	_, err := rand.Read(data)
@@ -283,7 +274,7 @@ func loadRandomUnixFxFile(ctx context.Context, b *testing.B, bs blockstore.Block
 
 	params := ihelper.DagBuilderParams{
 		Maxlinks:   unixfsLinksPerLevel,
-		RawLeaves:  true,
+		RawLeaves:  useRawNodes,
 		CidBuilder: nil,
 		Dagserv:    bufferedDS,
 	}
@@ -300,11 +291,11 @@ func loadRandomUnixFxFile(ctx context.Context, b *testing.B, bs blockstore.Block
 	return nd.Cid()
 }
 
-func allFilesUniformSize(size uint64, unixfsChunkSize uint64, unixfsLinksPerLevel int) distFunc {
+func allFilesUniformSize(size uint64, unixfsChunkSize uint64, unixfsLinksPerLevel int, useRawNodes bool) distFunc {
 	return func(ctx context.Context, b *testing.B, provs []testinstance.Instance) []cid.Cid {
 		cids := make([]cid.Cid, 0, len(provs))
 		for _, prov := range provs {
-			c := loadRandomUnixFxFile(ctx, b, prov.BlockStore, size, unixfsChunkSize, unixfsLinksPerLevel)
+			c := loadRandomUnixFxFile(ctx, b, prov.BlockStore, size, unixfsChunkSize, unixfsLinksPerLevel, useRawNodes)
 			cids = append(cids, c)
 		}
 		return cids
