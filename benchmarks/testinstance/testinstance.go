@@ -8,6 +8,7 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"
+	badgerds "github.com/ipfs/go-ds-badger"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/ipld/go-ipld-prime"
@@ -29,26 +30,28 @@ type TempDirGenerator interface {
 
 // NewTestInstanceGenerator generates a new InstanceGenerator for the given
 // testnet
-func NewTestInstanceGenerator(ctx context.Context, net tn.Network, gsOptions []gsimpl.Option, tempDirGenerator TempDirGenerator) InstanceGenerator {
+func NewTestInstanceGenerator(ctx context.Context, net tn.Network, gsOptions []gsimpl.Option, tempDirGenerator TempDirGenerator, diskBasedDatastore bool) InstanceGenerator {
 	ctx, cancel := context.WithCancel(ctx)
 	return InstanceGenerator{
-		net:              net,
-		seq:              0,
-		ctx:              ctx, // TODO take ctx as param to Next, Instances
-		cancel:           cancel,
-		gsOptions:        gsOptions,
-		tempDirGenerator: tempDirGenerator,
+		net:                net,
+		seq:                0,
+		ctx:                ctx, // TODO take ctx as param to Next, Instances
+		cancel:             cancel,
+		gsOptions:          gsOptions,
+		tempDirGenerator:   tempDirGenerator,
+		diskBasedDatastore: diskBasedDatastore,
 	}
 }
 
 // InstanceGenerator generates new test instances of bitswap+dependencies
 type InstanceGenerator struct {
-	seq              int
-	net              tn.Network
-	ctx              context.Context
-	cancel           context.CancelFunc
-	gsOptions        []gsimpl.Option
-	tempDirGenerator TempDirGenerator
+	seq                int
+	net                tn.Network
+	ctx                context.Context
+	cancel             context.CancelFunc
+	gsOptions          []gsimpl.Option
+	tempDirGenerator   TempDirGenerator
+	diskBasedDatastore bool
 }
 
 // Close closes the clobal context, shutting down all test instances
@@ -64,7 +67,7 @@ func (g *InstanceGenerator) Next() (Instance, error) {
 	if err != nil {
 		return Instance{}, err
 	}
-	return NewInstance(g.ctx, g.net, p, g.gsOptions, g.tempDirGenerator.TempDir())
+	return NewInstance(g.ctx, g.net, p, g.gsOptions, g.tempDirGenerator.TempDir(), g.diskBasedDatastore)
 }
 
 // Instances creates N test instances of bitswap + dependencies and connects
@@ -138,11 +141,23 @@ func (i *Instance) SetBlockstoreLatency(t time.Duration) time.Duration {
 // NB: It's easy make mistakes by providing the same peer ID to two different
 // instances. To safeguard, use the InstanceGenerator to generate instances. It's
 // just a much better idea.
-func NewInstance(ctx context.Context, net tn.Network, p tnet.Identity, gsOptions []gsimpl.Option, tempDir string) (Instance, error) {
+func NewInstance(ctx context.Context, net tn.Network, p tnet.Identity, gsOptions []gsimpl.Option, tempDir string, diskBasedDatastore bool) (Instance, error) {
 	bsdelay := delay.Fixed(0)
 
 	adapter := net.Adapter(p)
-	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
+	var dstore datastore.Batching
+	var err error
+	if diskBasedDatastore {
+		defopts := badgerds.DefaultOptions
+		defopts.SyncWrites = false
+		defopts.Truncate = true
+		dstore, err = badgerds.NewDatastore(tempDir, &defopts)
+		if err != nil {
+			return Instance{}, err
+		}
+	} else {
+		dstore = ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
+	}
 	bstore, err := blockstore.CachedBlockstore(ctx,
 		blockstore.NewBlockstore(dstore),
 		blockstore.DefaultCacheOpts())

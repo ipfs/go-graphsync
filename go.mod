@@ -11,12 +11,14 @@ require (
 	github.com/ipfs/go-blockservice v0.1.3
 	github.com/ipfs/go-cid v0.0.6
 	github.com/ipfs/go-datastore v0.4.4
+	github.com/ipfs/go-ds-badger v0.2.1
 	github.com/ipfs/go-ipfs-blockstore v0.1.4
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-chunker v0.0.5
 	github.com/ipfs/go-ipfs-delay v0.0.1
 	github.com/ipfs/go-ipfs-exchange-offline v0.0.1
 	github.com/ipfs/go-ipfs-files v0.0.8
+	github.com/ipfs/go-ipfs-pq v0.0.2
 	github.com/ipfs/go-ipfs-routing v0.1.0
 	github.com/ipfs/go-ipfs-util v0.0.1
 	github.com/ipfs/go-ipld-cbor v0.0.4 // indirect
@@ -32,6 +34,7 @@ require (
 	github.com/libp2p/go-libp2p v0.6.0
 	github.com/libp2p/go-libp2p-core v0.5.0
 	github.com/libp2p/go-libp2p-netutil v0.1.0
+	github.com/libp2p/go-libp2p-peer v0.2.0
 	github.com/libp2p/go-libp2p-record v0.1.1 // indirect
 	github.com/libp2p/go-libp2p-testing v0.1.1
 	github.com/libp2p/go-msgio v0.0.6

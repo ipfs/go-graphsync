@@ -18,6 +18,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/responsemanager/allocator"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -41,7 +42,8 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	peerResponseSender := NewResponseSender(ctx, p, fph)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 
 	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData(), sendResponseNotifee1)
@@ -125,7 +127,8 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	peerResponseSender := NewResponseSender(ctx, p, fph)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 
 	peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
@@ -185,7 +188,8 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	peerResponseSender := NewResponseSender(ctx, p, fph)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 
 	peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
@@ -228,7 +232,8 @@ func TestPeerResponseSenderSendsResponsesInTransaction(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	peerResponseSender := NewResponseSender(ctx, p, fph)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 	notifee, notifeeVerifier := testutil.NewTestNotifee("transaction", 10)
 	err := peerResponseSender.Transaction(requestID1, func(peerResponseSender PeerResponseTransactionSender) error {
@@ -270,7 +275,8 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	peerResponseSender := NewResponseSender(ctx, p, fph)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 
 	peerResponseSender.IgnoreBlocks(requestID1, links)
@@ -326,7 +332,8 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	peerResponseSender := NewResponseSender(ctx, p, fph)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 
 	peerResponseSender.DedupKey(requestID1, "applesauce")
@@ -380,6 +387,64 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	fph.RefuteBlocks()
 	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
 
+}
+
+func TestPeerResponseSenderSendsResponsesMemoryPressure(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	p := testutil.GeneratePeers(1)[0]
+	requestID1 := graphsync.RequestID(rand.Int31())
+	blks := testutil.GenerateBlocksOfSize(5, 100)
+	links := make([]ipld.Link, 0, len(blks))
+	for _, block := range blks {
+		links = append(links, cidlink.Link{Cid: block.Cid()})
+	}
+	fph := newFakePeerHandler(ctx, t)
+	allocator := allocator.NewAllocator(300, 300)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
+	peerResponseSender.Startup()
+
+	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
+	assertSentOnWire(t, bd, blks[0])
+	fph.AssertHasMessage("did not send first message")
+
+	fph.AssertBlocks(blks[0])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
+
+	finishes := make(chan string, 2)
+	go func() {
+		_ = peerResponseSender.Transaction(requestID1, func(peerResponseSender PeerResponseTransactionSender) error {
+			bd = peerResponseSender.SendResponse(links[1], blks[1].RawData())
+			assertSentOnWire(t, bd, blks[1])
+			bd = peerResponseSender.SendResponse(links[2], blks[2].RawData())
+			assertSentOnWire(t, bd, blks[2])
+			bd = peerResponseSender.SendResponse(links[3], blks[3].RawData())
+			assertSentOnWire(t, bd, blks[3])
+			peerResponseSender.FinishRequest()
+			return nil
+		})
+		finishes <- "sent message"
+	}()
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		// let peer reponse manager know last message was sent so message sending can continue
+		finishes <- "freed memory"
+		fph.notifySuccess()
+	}()
+
+	var finishMessages []string
+	for i := 0; i < 2; i++ {
+		var finishMessage string
+		testutil.AssertReceive(ctx, t, finishes, &finishMessage, "should have completed")
+		finishMessages = append(finishMessages, finishMessage)
+	}
+	require.Equal(t, []string{"freed memory", "sent message"}, finishMessages)
+	fph.AssertHasMessage("did not send second message")
+	fph.AssertBlocks(blks[1], blks[2], blks[3])
+	fph.AssertResponses(expectedResponses{
+		requestID1: graphsync.RequestCompletedFull,
+	})
 }
 
 func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID graphsync.RequestID) (gsmsg.GraphSyncResponse, error) {
