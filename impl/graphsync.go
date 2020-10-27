@@ -27,8 +27,8 @@ import (
 var log = logging.Logger("graphsync")
 
 const maxRecursionDepth = 100
-const defaultTotalMaxMemory = uint64(1 << 28)
-const defaultMaxMemoryPerPeer = uint64(1 << 24)
+const defaultTotalMaxMemory = uint64(256 << 20)
+const defaultMaxMemoryPerPeer = uint64(16 << 20)
 
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
