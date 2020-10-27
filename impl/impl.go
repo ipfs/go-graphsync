@@ -262,7 +262,7 @@ func (m *manager) CloseDataTransferChannel(ctx context.Context, chid datatransfe
 	}
 	err = m.transport.CloseChannel(ctx, chid)
 	if err != nil {
-		return err
+		log.Warnf("unable to close channel: %w", err)
 	}
 
 	if err := m.dataTransferNetwork.SendMessage(ctx, chst.OtherPeer(), m.cancelMessage(chid)); err != nil {
