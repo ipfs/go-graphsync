@@ -3,11 +3,12 @@ package allocator_test
 import (
 	"testing"
 
-	"github.com/ipfs/go-graphsync/responsemanager/allocator"
-	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync/responsemanager/allocator"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestAllocator(t *testing.T) {
