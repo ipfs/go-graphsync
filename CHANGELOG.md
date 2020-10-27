@@ -1,5 +1,24 @@
 # go-graphsync changelog
 
+# go-graphsync 0.4.0
+
+Feature release - add memory backpressure to responses to minimize extra memory usage
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - docs(CHANGELOG): update for 0.3.1 ([ipfs/go-graphsync#112](https://github.com/ipfs/go-graphsync/pull/112))
+  - Update ipld-prime (#111) ([ipfs/go-graphsync#111](https://github.com/ipfs/go-graphsync/pull/111))
+  - Add allocator for memory backpressure (#108) ([ipfs/go-graphsync#108](https://github.com/ipfs/go-graphsync/pull/108))
+  - Shutdown notifications go routines (#109) ([ipfs/go-graphsync#109](https://github.com/ipfs/go-graphsync/pull/109))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 3 | +724/-83 | 18 |
+
+
 # go-graphsync 0.3.1
 
 Security fix -- switch to google protobufs
