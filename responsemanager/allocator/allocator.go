@@ -89,10 +89,7 @@ func (a *Allocator) ReleasePeerMemory(p peer.ID) error {
 }
 
 func (a *Allocator) processPendingAllocations() {
-	for {
-		if a.peerStatusQueue.Len() == 0 {
-			return
-		}
+	for a.peerStatusQueue.Len() > 0 {
 		nextPeer := a.peerStatusQueue.Peek().(*peerStatus)
 
 		if len(nextPeer.pendingAllocations) > 0 {
