@@ -1,5 +1,21 @@
 # go-graphsync changelog
 
+# go-graphsync 0.4.1
+
+critical bug fix for 0.4.0
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - fix(allocator): remove peer from peer status list
+  - docs(CHANGELOG): update for v0.4.0
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| hannahhoward | 2 | +23/-2 | 3 |
+
 # go-graphsync 0.4.0
 
 Feature release - add memory backpressure to responses to minimize extra memory usage
