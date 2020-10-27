@@ -42,8 +42,7 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(ctx, 1<<30, 1<<30)
-	allocator.Start()
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
 	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 
@@ -128,8 +127,7 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(ctx, 1<<30, 1<<30)
-	allocator.Start()
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
 	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 
@@ -190,8 +188,7 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(ctx, 1<<30, 1<<30)
-	allocator.Start()
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
 	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 
@@ -235,8 +232,7 @@ func TestPeerResponseSenderSendsResponsesInTransaction(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(ctx, 1<<30, 1<<30)
-	allocator.Start()
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
 	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 	notifee, notifeeVerifier := testutil.NewTestNotifee("transaction", 10)
@@ -279,8 +275,7 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(ctx, 1<<30, 1<<30)
-	allocator.Start()
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
 	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 
@@ -337,8 +332,7 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(ctx, 1<<30, 1<<30)
-	allocator.Start()
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
 	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 
@@ -407,8 +401,7 @@ func TestPeerResponseSenderSendsResponsesMemoryPressure(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(ctx, 300, 300)
-	allocator.Start()
+	allocator := allocator.NewAllocator(300, 300)
 	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 

@@ -395,11 +395,10 @@ func (prs *peerResponseSender) FinishWithCancel(requestID graphsync.RequestID) {
 
 func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn func(*responsebuilder.ResponseBuilder), notifees []notifications.Notifee) bool {
 	if blkSize > 0 {
-		allocResponse := prs.allocator.AllocateBlockMemory(prs.p, blkSize)
 		select {
+		case <-prs.allocator.AllocateBlockMemory(prs.p, blkSize):
 		case <-prs.ctx.Done():
 			return false
-		case <-allocResponse:
 		}
 	}
 	prs.responseBuildersLk.Lock()

@@ -1,9 +1,7 @@
 package allocator_test
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/ipfs/go-graphsync/responsemanager/allocator"
 	"github.com/ipfs/go-graphsync/testutil"
@@ -14,7 +12,6 @@ import (
 
 func TestAllocator(t *testing.T) {
 	peers := testutil.GeneratePeers(3)
-	ctx := context.Background()
 	testCases := map[string]struct {
 		total      uint64
 		maxPerPeer uint64
@@ -160,10 +157,7 @@ func TestAllocator(t *testing.T) {
 	}
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			allocator := allocator.NewAllocator(ctx, data.total, data.maxPerPeer)
-			allocator.Start()
+			allocator := allocator.NewAllocator(data.total, data.maxPerPeer)
 			totals := map[peer.ID]uint64{}
 			currentTotal := 0
 			var pending []pendingResult

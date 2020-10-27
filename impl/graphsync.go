@@ -27,8 +27,8 @@ import (
 var log = logging.Logger("graphsync")
 
 const maxRecursionDepth = 100
-const defaultTotalMaxMemory = uint64(4 * 1 << 30)
-const defaultMaxMemoryPerPeer = uint64(1 << 30)
+const defaultTotalMaxMemory = uint64(1 << 28)
+const defaultMaxMemoryPerPeer = uint64(1 << 24)
 
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
@@ -140,7 +140,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	for _, option := range options {
 		option(graphSync)
 	}
-	allocator := allocator.NewAllocator(ctx, graphSync.totalMaxMemory, graphSync.maxMemoryPerPeer)
+	allocator := allocator.NewAllocator(graphSync.totalMaxMemory, graphSync.maxMemoryPerPeer)
 	graphSync.allocator = allocator
 	createdResponseQueue := func(ctx context.Context, p peer.ID) peerresponsemanager.PeerResponseSender {
 		return peerresponsemanager.NewResponseSender(ctx, p, peerManager, allocator)
@@ -150,7 +150,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners)
 	graphSync.responseManager = responseManager
 
-	allocator.Start()
 	asyncLoader.Startup()
 	requestManager.SetDelegate(peerManager)
 	requestManager.Startup()
