@@ -80,6 +80,7 @@ func (a *Allocator) ReleasePeerMemory(p peer.ID) error {
 		return errors.New("cannot deallocate peer with no allocations")
 	}
 	a.peerStatusQueue.Remove(status.Index())
+	delete(a.peerStatuses, p)
 	for _, pendingAllocation := range status.pendingAllocations {
 		pendingAllocation.response <- errors.New("Peer has been deallocated")
 	}
