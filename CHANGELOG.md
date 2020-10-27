@@ -1,5 +1,21 @@
 # go-graphsync changelog
 
+# go-graphsync 0.3.1
+
+Security fix -- switch to google protobufs
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Switch to google protobuf generator (#105) ([ipfs/go-graphsync#105](https://github.com/ipfs/go-graphsync/pull/105))
+  - feat(CHANGELOG): update for 0.3.0 ([ipfs/go-graphsync#104](https://github.com/ipfs/go-graphsync/pull/104))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +472/-1553 | 8 |
+
 # go-graphsync 0.3.0
 
 Significant updates allow for:
