@@ -48,7 +48,17 @@ var ChannelEvents = fsm.Events{
 		chst.Sent += delta
 		return nil
 	}),
-
+	fsm.Event(datatransfer.DataQueued).FromMany(
+		datatransfer.Requested,
+		datatransfer.Ongoing,
+		datatransfer.InitiatorPaused,
+		datatransfer.ResponderPaused,
+		datatransfer.BothPaused,
+		datatransfer.ResponderCompleted,
+		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64, c cid.Cid) error {
+		chst.Queued += delta
+		return nil
+	}),
 	fsm.Event(datatransfer.Disconnected).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
 		chst.Message = datatransfer.ErrDisconnected.Error()
 		return nil

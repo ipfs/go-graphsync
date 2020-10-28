@@ -297,6 +297,9 @@ func (t *Transport) SetEventHandler(events datatransfer.EventsHandler) error {
 	t.gs.RegisterCompletedResponseListener(t.gsCompletedResponseListener)
 	t.gs.RegisterIncomingBlockHook(t.gsIncomingBlockHook)
 	t.gs.RegisterOutgoingBlockHook(t.gsOutgoingBlockHook)
+
+	t.gs.RegisterBlockSentListener(t.gsBlockSentHook)
+
 	t.gs.RegisterOutgoingRequestHook(t.gsOutgoingRequestHook)
 	t.gs.RegisterIncomingResponseHook(t.gsIncomingResponseHook)
 	t.gs.RegisterRequestUpdatedHook(t.gsRequestUpdatedHook)
@@ -374,6 +377,19 @@ func (t *Transport) gsIncomingBlockHook(p peer.ID, response graphsync.ResponseDa
 	}
 }
 
+func (t *Transport) gsBlockSentHook(p peer.ID, request graphsync.RequestData, block graphsync.BlockData) {
+	t.dataLock.RLock()
+	chid, ok := t.graphsyncRequestMap[graphsyncKey{request.ID(), p}]
+	t.dataLock.RUnlock()
+	if !ok {
+		return
+	}
+
+	if err := t.events.OnDataSent(chid, block.Link(), block.BlockSize()); err != nil {
+		log.Errorf("failed to process data sent: %+v", err)
+	}
+}
+
 func (t *Transport) gsOutgoingBlockHook(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
 	t.dataLock.RLock()
 	chid, ok := t.graphsyncRequestMap[graphsyncKey{request.ID(), p}]
@@ -389,7 +405,7 @@ func (t *Transport) gsOutgoingBlockHook(p peer.ID, request graphsync.RequestData
 	}
 	rp.maximumSent = rp.currentSent
 
-	msg, err := t.events.OnDataSent(chid, block.Link(), block.BlockSize())
+	msg, err := t.events.OnDataQueued(chid, block.Link(), block.BlockSize())
 	if err != nil && err != datatransfer.ErrPause {
 		hookActions.TerminateWithError(err)
 		return

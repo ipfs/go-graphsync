@@ -34,6 +34,8 @@ type channelState struct {
 	status datatransfer.Status
 	// isPull indicates if this is a push or pull request
 	isPull bool
+	// total bytes read from this node and queued for sending (0 if receiver)
+	queued uint64
 	// total bytes sent from this node (0 if receiver)
 	sent uint64
 	// total bytes received by this node (0 if sender)
@@ -55,6 +57,9 @@ var EmptyChannelState = channelState{}
 
 // Status is the current status of this channel
 func (c channelState) Status() datatransfer.Status { return c.status }
+
+// Received returns the number of bytes received
+func (c channelState) Queued() uint64 { return c.queued }
 
 // Sent returns the number of bytes sent
 func (c channelState) Sent() uint64 { return c.sent }
@@ -171,6 +176,7 @@ func fromInternalChannelState(c internal.ChannelState, voucherDecoder DecoderByT
 		recipient:            c.Recipient,
 		totalSize:            c.TotalSize,
 		status:               c.Status,
+		queued:               c.Queued,
 		sent:                 c.Sent,
 		received:             c.Received,
 		message:              c.Message,

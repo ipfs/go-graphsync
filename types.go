@@ -94,9 +94,6 @@ type Channel interface {
 
 	// OtherPeer returns the counter party peer for this channel
 	OtherPeer() peer.ID
-
-	// ReceivedCids returns the cids received so far on the channel
-	ReceivedCids() []cid.Cid
 }
 
 // ChannelState is channel parameters plus it's current state
@@ -129,4 +126,10 @@ type ChannelState interface {
 
 	// LastVoucherResult returns the last voucher result sent on the channel
 	LastVoucherResult() VoucherResult
+
+	// ReceivedCids returns the cids received so far on the channel
+	ReceivedCids() []cid.Cid
+
+	// Queued returns the number of bytes read from the node and queued for sending
+	Queued() uint64
 }

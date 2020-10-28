@@ -48,6 +48,8 @@ type ChannelState struct {
 	TotalSize uint64
 	// current status of this deal
 	Status datatransfer.Status
+	// total bytes read from this node and queued for sending (0 if receiver)
+	Queued uint64
 	// total bytes sent from this node (0 if receiver)
 	Sent uint64
 	// total bytes received by this node (0 if sender)

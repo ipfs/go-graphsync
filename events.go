@@ -70,6 +70,9 @@ const (
 	// CompleteCleanupOnRestart is emitted when a data transfer channel is restarted to signal
 	// that channels that were cleaning up should finish cleanup
 	CompleteCleanupOnRestart
+
+	// DataQueued is emmited is read and queued for sending to the remote peer
+	DataQueued
 )
 
 // Events are human readable names for data transfer events
@@ -93,6 +96,7 @@ var Events = map[EventCode]string{
 	BeginFinalizing:             "BeginFinalizing",
 	Complete:                    "Complete",
 	CompleteCleanupOnRestart:    "CompleteCleanupOnRestart",
+	DataQueued:                  "DataQueued",
 }
 
 // Event is a struct containing information about a data transfer event

@@ -190,6 +190,10 @@ func (c *Channels) DataSent(chid datatransfer.ChannelID, cid cid.Cid, delta uint
 	return c.send(chid, datatransfer.DataSent, delta, cid)
 }
 
+func (c *Channels) DataQueued(chid datatransfer.ChannelID, cid cid.Cid, delta uint64) error {
+	return c.send(chid, datatransfer.DataQueued, delta, cid)
+}
+
 func (c *Channels) DataReceived(chid datatransfer.ChannelID, cid cid.Cid, delta uint64) error {
 	return c.send(chid, datatransfer.DataReceived, delta, cid)
 }

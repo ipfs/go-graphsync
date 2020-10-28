@@ -58,9 +58,8 @@ func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, si
 	return nil
 }
 
-func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) (datatransfer.Message, error) {
-	err := m.channels.DataSent(chid, link.(cidlink.Link).Cid, size)
-	if err != nil {
+func (m *manager) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size uint64) (datatransfer.Message, error) {
+	if err := m.channels.DataQueued(chid, link.(cidlink.Link).Cid, size); err != nil {
 		return nil, err
 	}
 	if chid.Initiator != m.peerID {
@@ -79,7 +78,12 @@ func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size u
 			return m.processRevalidationResult(chid, result, err)
 		}
 	}
+
 	return nil, nil
+}
+
+func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) error {
+	return m.channels.DataSent(chid, link.(cidlink.Link).Cid, size)
 }
 
 func (m *manager) OnRequestReceived(chid datatransfer.ChannelID, request datatransfer.Request) (datatransfer.Response, error) {

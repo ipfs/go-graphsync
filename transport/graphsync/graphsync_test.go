@@ -300,7 +300,7 @@ func TestManager(t *testing.T) {
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
-				require.True(t, events.OnDataSentCalled)
+				require.True(t, events.OnDataQueuedCalled)
 				require.NoError(t, gsData.outgoingBlockHookActions.TerminationError)
 			},
 		},
@@ -314,7 +314,7 @@ func TestManager(t *testing.T) {
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.Equal(t, 1, events.OnResponseReceivedCallCount)
-				require.True(t, events.OnDataSentCalled)
+				require.True(t, events.OnDataQueuedCalled)
 				require.NoError(t, gsData.outgoingBlockHookActions.TerminationError)
 			},
 		},
@@ -328,12 +328,12 @@ func TestManager(t *testing.T) {
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.Equal(t, 0, events.OnRequestReceivedCallCount)
-				require.False(t, events.OnDataSentCalled)
+				require.False(t, events.OnDataQueuedCalled)
 			},
 		},
 		"outgoing data send error will terminate request": {
 			events: fakeEvents{
-				OnDataSentError: errors.New("something went wrong"),
+				OnDataQueuedError: errors.New("something went wrong"),
 			},
 			action: func(gsData *harness) {
 				gsData.incomingRequestHook()
@@ -341,13 +341,13 @@ func TestManager(t *testing.T) {
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
-				require.True(t, events.OnDataSentCalled)
+				require.True(t, events.OnDataQueuedCalled)
 				require.Error(t, gsData.outgoingBlockHookActions.TerminationError)
 			},
 		},
 		"outgoing data send error == pause will pause request": {
 			events: fakeEvents{
-				OnDataSentError: datatransfer.ErrPause,
+				OnDataQueuedError: datatransfer.ErrPause,
 			},
 			action: func(gsData *harness) {
 				gsData.incomingRequestHook()
@@ -355,7 +355,7 @@ func TestManager(t *testing.T) {
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
-				require.True(t, events.OnDataSentCalled)
+				require.True(t, events.OnDataQueuedCalled)
 				require.True(t, gsData.outgoingBlockHookActions.Paused)
 				require.NoError(t, gsData.outgoingBlockHookActions.TerminationError)
 			},
@@ -366,14 +366,14 @@ func TestManager(t *testing.T) {
 				gsData.outgoingBlockHook()
 			},
 			events: fakeEvents{
-				DataSentMessage: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint64())),
+				OnDataQueuedMessage: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint64())),
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
-				require.True(t, events.OnDataSentCalled)
+				require.True(t, events.OnDataQueuedCalled)
 				require.NoError(t, gsData.outgoingBlockHookActions.TerminationError)
 				assertHasOutgoingMessage(t, gsData.outgoingBlockHookActions.SentExtensions,
-					events.DataSentMessage)
+					events.OnDataQueuedMessage)
 			},
 		},
 		"incoming gs request with recognized dt request can receive update": {
@@ -928,13 +928,15 @@ type fakeEvents struct {
 	OnDataReceivedCalled        bool
 	OnDataReceivedError         error
 	OnDataSentCalled            bool
-	OnDataSentError             error
 	OnRequestReceivedCallCount  int
 	OnRequestReceivedErrors     []error
 	OnResponseReceivedCallCount int
 	OnResponseReceivedErrors    []error
 	OnChannelCompletedCalled    bool
 	OnChannelCompletedErr       error
+	OnDataQueuedCalled          bool
+	OnDataQueuedMessage         datatransfer.Message
+	OnDataQueuedError           error
 
 	OnRequestTimedOutCalled        bool
 	OnRequestTimedOutChannelId     datatransfer.ChannelID
@@ -942,10 +944,15 @@ type fakeEvents struct {
 	OnRequestDisconnectedChannelID datatransfer.ChannelID
 
 	ChannelCompletedSuccess  bool
-	DataSentMessage          datatransfer.Message
 	RequestReceivedRequest   datatransfer.Request
 	RequestReceivedResponse  datatransfer.Response
 	ResponseReceivedResponse datatransfer.Response
+}
+
+func (fe *fakeEvents) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size uint64) (datatransfer.Message, error) {
+	fe.OnDataQueuedCalled = true
+
+	return fe.OnDataQueuedMessage, fe.OnDataQueuedError
 }
 
 func (fe *fakeEvents) OnRequestTimedOut(_ context.Context, chid datatransfer.ChannelID) error {
@@ -971,9 +978,9 @@ func (fe *fakeEvents) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link
 	return fe.OnDataReceivedError
 }
 
-func (fe *fakeEvents) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) (datatransfer.Message, error) {
+func (fe *fakeEvents) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) error {
 	fe.OnDataSentCalled = true
-	return fe.DataSentMessage, fe.OnDataSentError
+	return nil
 }
 
 func (fe *fakeEvents) OnRequestReceived(chid datatransfer.ChannelID, request datatransfer.Request) (datatransfer.Response, error) {

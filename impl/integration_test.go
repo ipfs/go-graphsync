@@ -117,9 +117,9 @@ func TestRoundTrip(t *testing.T) {
 				sent := make(chan uint64, 21)
 				received := make(chan uint64, 21)
 				var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-					if event.Code == datatransfer.DataSent {
-						if channelState.Sent() > 0 {
-							sent <- channelState.Sent()
+					if event.Code == datatransfer.DataQueued {
+						if channelState.Queued() > 0 {
+							sent <- channelState.Queued()
 						}
 					}
 
@@ -776,7 +776,7 @@ func TestPauseAndResume(t *testing.T) {
 	}
 	for testCase, isPull := range testCases {
 		t.Run(testCase, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel()
 
 			gsData := testutil.NewGraphsyncTestingData(ctx, t, nil, nil)
@@ -805,9 +805,9 @@ func TestPauseAndResume(t *testing.T) {
 			resumeResponder := make(chan struct{}, 2)
 			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 
-				if event.Code == datatransfer.DataSent {
-					if channelState.Sent() > 0 {
-						sent <- channelState.Sent()
+				if event.Code == datatransfer.DataQueued {
+					if channelState.Queued() > 0 {
+						sent <- channelState.Queued()
 					}
 				}
 

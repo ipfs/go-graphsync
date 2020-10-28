@@ -101,9 +101,9 @@ func TestRestartPush(t *testing.T) {
 			disConnChan := make(chan struct{})
 
 			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-				if event.Code == datatransfer.DataSent {
-					if channelState.Sent() > 0 {
-						sent <- channelState.Sent()
+				if event.Code == datatransfer.DataQueued {
+					if channelState.Queued() > 0 {
+						sent <- channelState.Queued()
 					}
 				}
 
@@ -289,9 +289,9 @@ func TestRestartPull(t *testing.T) {
 			disConnChan := make(chan struct{})
 
 			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-				if event.Code == datatransfer.DataSent {
-					if channelState.Sent() > 0 {
-						sent <- channelState.Sent()
+				if event.Code == datatransfer.DataQueued {
+					if channelState.Queued() > 0 {
+						sent <- channelState.Queued()
 					}
 				}
 

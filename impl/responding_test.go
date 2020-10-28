@@ -395,7 +395,7 @@ func TestDataTransferResponding(t *testing.T) {
 				datatransfer.Open,
 				datatransfer.NewVoucherResult,
 				datatransfer.Accept,
-				datatransfer.DataSent,
+				datatransfer.DataQueued,
 				datatransfer.NewVoucherResult,
 				datatransfer.PauseResponder,
 				datatransfer.NewVoucher,
@@ -415,7 +415,7 @@ func TestDataTransferResponding(t *testing.T) {
 			verify: func(t *testing.T, h *receiverHarness) {
 				_, err := h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.pullRequest)
 				require.NoError(t, err)
-				msg, err := h.transport.EventHandler.OnDataSent(
+				msg, err := h.transport.EventHandler.OnDataQueued(
 					channelID(h.id, h.peers),
 					cidlink.Link{Cid: testutil.GenerateCids(1)[0]},
 					12345)
