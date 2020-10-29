@@ -66,6 +66,13 @@ func (ps *publisher) Shutdown() {
 }
 
 func (ps *publisher) Close(id Topic) {
+	ps.lk.RLock()
+	defer ps.lk.RUnlock()
+	select {
+	case <-ps.closed:
+		return
+	default:
+	}
 	ps.cmdChan <- cmd{op: closeTopic, topics: []Topic{id}}
 }
 
