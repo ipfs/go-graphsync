@@ -710,6 +710,7 @@ func TestManager(t *testing.T) {
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+				close(requestReceived.ResponseChan)
 				close(requestReceived.ResponseErrChan)
 
 				require.Eventually(t, func() bool {
@@ -734,6 +735,7 @@ func TestManager(t *testing.T) {
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+				close(requestReceived.ResponseChan)
 				requestReceived.ResponseErrChan <- graphsync.RequestFailedUnknownErr{}
 				close(requestReceived.ResponseErrChan)
 
@@ -789,6 +791,7 @@ func TestManager(t *testing.T) {
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+				close(requestReceived.ResponseChan)
 				requestReceived.ResponseErrChan <- graphsync.RequestContextCancelledErr{}
 				close(requestReceived.ResponseErrChan)
 

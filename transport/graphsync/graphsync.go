@@ -126,29 +126,24 @@ func (t *Transport) OpenChannel(ctx context.Context,
 			Data: bz}
 		exts = append(exts, doNotSendExt)
 	}
-	_, errChan := t.gs.Request(internalCtx, dataSender, root, stor, exts...)
+	responseChan, errChan := t.gs.Request(internalCtx, dataSender, root, stor, exts...)
 
-	go t.executeGsRequest(ctx, channelID, errChan)
+	go t.executeGsRequest(ctx, channelID, responseChan, errChan)
 	return nil
 }
 
-func (t *Transport) consumeResponses(ctx context.Context, errChan <-chan error) error {
+func (t *Transport) consumeResponses(responseChan <-chan graphsync.ResponseProgress, errChan <-chan error) error {
 	var lastError error
-	for {
-		select {
-		case <-ctx.Done():
-			return errContextCancelled
-		case err, ok := <-errChan:
-			if !ok {
-				return lastError
-			}
-			lastError = err
-		}
+	for range responseChan {
 	}
+	for err := range errChan {
+		lastError = err
+	}
+	return lastError
 }
 
-func (t *Transport) executeGsRequest(ctx context.Context, channelID datatransfer.ChannelID, errChan <-chan error) {
-	lastError := t.consumeResponses(ctx, errChan)
+func (t *Transport) executeGsRequest(ctx context.Context, channelID datatransfer.ChannelID, responseChan <-chan graphsync.ResponseProgress, errChan <-chan error) {
+	lastError := t.consumeResponses(responseChan, errChan)
 
 	if _, ok := lastError.(graphsync.RequestContextCancelledErr); ok {
 		log.Warnf("graphsync request context cancelled, channel Id: %v", channelID)

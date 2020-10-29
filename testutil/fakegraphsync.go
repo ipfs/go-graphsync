@@ -43,6 +43,7 @@ type ReceivedGraphSyncRequest struct {
 	Root            ipld.Link
 	Selector        ipld.Node
 	Extensions      []graphsync.ExtensionData
+	ResponseChan    chan graphsync.ResponseProgress
 	ResponseErrChan chan error
 }
 
@@ -247,8 +248,8 @@ func (fgs *FakeGraphSync) AssertDoesNotHavePersistenceOption(t *testing.T, name 
 // Request initiates a new GraphSync request to the given peer using the given selector spec.
 func (fgs *FakeGraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
 	errors := make(chan error)
-	fgs.requests <- ReceivedGraphSyncRequest{ctx, p, root, selector, extensions, errors}
 	responses := make(chan graphsync.ResponseProgress)
+	fgs.requests <- ReceivedGraphSyncRequest{ctx, p, root, selector, extensions, responses, errors}
 	if !fgs.leaveRequestsOpen {
 		close(responses)
 		close(errors)
