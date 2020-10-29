@@ -1,5 +1,40 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.0.0
+
+Major release brings big graphsync improvements and better measuring of data transferred
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Update graphsync & fix in-progress request memory leak by consuming responses (#109) ([filecoin-project/go-data-transfer#109](https://github.com/filecoin-project/go-data-transfer/pull/109))
+  - Correct data transfer Sent stats (#106) ([filecoin-project/go-data-transfer#106](https://github.com/filecoin-project/go-data-transfer/pull/106))
+  - Rudimentary Benchmarking (#108) ([filecoin-project/go-data-transfer#108](https://github.com/filecoin-project/go-data-transfer/pull/108))
+  - Create SECURITY.md (#105) ([filecoin-project/go-data-transfer#105](https://github.com/filecoin-project/go-data-transfer/pull/105))
+  - fix(impl): don't error when channel missing (#107) ([filecoin-project/go-data-transfer#107](https://github.com/filecoin-project/go-data-transfer/pull/107))
+  - docs(CHANGELOG): update for 0.9.0 ([filecoin-project/go-data-transfer#103](https://github.com/filecoin-project/go-data-transfer/pull/103))
+- github.com/ipfs/go-graphsync (v0.3.0 -> v0.4.2):
+  - docs(CHANGELOG): update for 0.4.2
+  - fix(notifications): fix lock in close (#115) ([ipfs/go-graphsync#115](https://github.com/ipfs/go-graphsync/pull/115))
+  - docs(CHANGELOG): update for v0.4.1 ([ipfs/go-graphsync#114](https://github.com/ipfs/go-graphsync/pull/114))
+  - fix(allocator): remove peer from peer status list
+  - docs(CHANGELOG): update for v0.4.0
+  - docs(CHANGELOG): update for 0.3.1 ([ipfs/go-graphsync#112](https://github.com/ipfs/go-graphsync/pull/112))
+  - Update ipld-prime (#111) ([ipfs/go-graphsync#111](https://github.com/ipfs/go-graphsync/pull/111))
+  - Add allocator for memory backpressure (#108) ([ipfs/go-graphsync#108](https://github.com/ipfs/go-graphsync/pull/108))
+  - Shutdown notifications go routines (#109) ([ipfs/go-graphsync#109](https://github.com/ipfs/go-graphsync/pull/109))
+  - Switch to google protobuf generator (#105) ([ipfs/go-graphsync#105](https://github.com/ipfs/go-graphsync/pull/105))
+  - feat(CHANGELOG): update for 0.3.0 ([ipfs/go-graphsync#104](https://github.com/ipfs/go-graphsync/pull/104))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 8 | +1745/-1666 | 40 |
+| Aarsh Shah | 1 | +132/-40 | 14 |
+| hannahhoward | 5 | +74/-4 | 7 |
+| David Dias | 1 | +9/-0 | 1 |
+
 # go-data-transfer 0.9.0
 
 Major release of the 1.1 data transfer protocol, which supports restarts of data transfers.
