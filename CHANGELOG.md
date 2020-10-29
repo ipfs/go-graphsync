@@ -1,5 +1,21 @@
 # go-graphsync changelog
 
+# go-graphsync 0.4.2
+
+bug fix for 0.4.1
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - fix(notifications): fix lock in close (#115) ([ipfs/go-graphsync#115](https://github.com/ipfs/go-graphsync/pull/115))
+  - docs(CHANGELOG): update for v0.4.1 ([ipfs/go-graphsync#114](https://github.com/ipfs/go-graphsync/pull/114))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +7/-0 | 1 |
+
 # go-graphsync 0.4.1
 
 critical bug fix for 0.4.0
