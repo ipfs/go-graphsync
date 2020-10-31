@@ -87,6 +87,9 @@ func (c channelState) Selector() ipld.Node {
 
 // Voucher returns the voucher for this data transfer
 func (c channelState) Voucher() datatransfer.Voucher {
+	if len(c.vouchers) == 0 {
+		return nil
+	}
 	decoder, _ := c.voucherDecoder(c.vouchers[0].Type)
 	encodable, _ := decoder.DecodeFromCbor(c.vouchers[0].Voucher.Raw)
 	return encodable.(datatransfer.Voucher)
