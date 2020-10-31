@@ -17,11 +17,6 @@ This module encapsulates protocols for exchanging piece data between storage cli
     * [Subscribe to Events](https://github.com/filecoin-project/go-data-transfer/tree/master#subscribe-to-events)
 * [Contribute](https://github.com/filecoin-project/go-data-transfer/tree/master#contribute)
 
-## Background
-
-Please see the [design documentation](https://github.com/filecoin-project/go-data-transfer/tree/master/docs/DESIGNDOC)
-for this module for a high-level overview and and explanation of the terms and concepts.
-
 ## Usage
 
 **Requires go 1.13**
