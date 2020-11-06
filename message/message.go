@@ -1,14 +1,15 @@
 package message
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 
-	ggio "github.com/gogo/protobuf/io"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
+	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-msgio"
 	"google.golang.org/protobuf/proto"
@@ -346,12 +347,19 @@ func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 }
 
 func (gsm *graphSyncMessage) ToNet(w io.Writer) error {
-	pbw := ggio.NewDelimitedWriter(w)
 	msg, err := gsm.ToProto()
+	size := proto.Size(msg)
+	buf := pool.Get(size + binary.MaxVarintLen64)
+	defer pool.Put(buf)
+
+	n := binary.PutUvarint(buf, uint64(size))
+
+	out, err := proto.MarshalOptions{}.MarshalAppend(buf[:n], msg)
 	if err != nil {
 		return err
 	}
-	return pbw.WriteMsg(msg)
+	_, err = w.Write(out)
+	return err
 }
 
 func (gsm *graphSyncMessage) Loggable() map[string]interface{} {
