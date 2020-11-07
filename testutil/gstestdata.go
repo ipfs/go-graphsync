@@ -91,6 +91,8 @@ type GraphsyncTestingData struct {
 	DtNet2         network.DataTransferNetwork
 	AllSelector    ipld.Node
 	OrigBytes      []byte
+	gs1Cancel      func()
+	gs2Cancel      func()
 }
 
 // NewGraphsyncTestingData returns a new GraphsyncTestingData instance
@@ -163,7 +165,12 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T, host1Protocols [
 // SetupGraphsyncHost1 sets up a new, real graphsync instance on top of the first host
 func (gsData *GraphsyncTestingData) SetupGraphsyncHost1() graphsync.GraphExchange {
 	// setup graphsync
-	return gsimpl.New(gsData.Ctx, gsData.GsNet1, gsData.Loader1, gsData.Storer1)
+	if gsData.gs1Cancel != nil {
+		gsData.gs1Cancel()
+	}
+	gsCtx, gsCancel := context.WithCancel(gsData.Ctx)
+	gsData.gs1Cancel = gsCancel
+	return gsimpl.New(gsCtx, gsData.GsNet1, gsData.Loader1, gsData.Storer1)
 }
 
 // SetupGSTransportHost1 sets up a new grapshync transport over real graphsync on the first host
@@ -184,7 +191,12 @@ func (gsData *GraphsyncTestingData) SetupGSTransportHost1() datatransfer.Transpo
 // SetupGraphsyncHost2 sets up a new, real graphsync instance on top of the second host
 func (gsData *GraphsyncTestingData) SetupGraphsyncHost2() graphsync.GraphExchange {
 	// setup graphsync
-	return gsimpl.New(gsData.Ctx, gsData.GsNet2, gsData.Loader2, gsData.Storer2)
+	if gsData.gs2Cancel != nil {
+		gsData.gs2Cancel()
+	}
+	gsCtx, gsCancel := context.WithCancel(gsData.Ctx)
+	gsData.gs2Cancel = gsCancel
+	return gsimpl.New(gsCtx, gsData.GsNet2, gsData.Loader2, gsData.Storer2)
 }
 
 // SetupGSTransportHost2 sets up a new grapshync transport over real graphsync on the second host

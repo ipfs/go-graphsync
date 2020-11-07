@@ -59,6 +59,7 @@ type Transport struct {
 	responseProgressMap   map[datatransfer.ChannelID]*responseProgress
 	stores                map[datatransfer.ChannelID]struct{}
 	supportedExtensions   []graphsync.ExtensionName
+	unregisterFuncs       []graphsync.UnregisterHookFunc
 }
 
 // NewTransport makes a new hooks manager with the given hook events interface
@@ -288,18 +289,30 @@ func (t *Transport) SetEventHandler(events datatransfer.EventsHandler) error {
 		return datatransfer.ErrHandlerAlreadySet
 	}
 	t.events = events
-	t.gs.RegisterIncomingRequestHook(t.gsReqRecdHook)
-	t.gs.RegisterCompletedResponseListener(t.gsCompletedResponseListener)
-	t.gs.RegisterIncomingBlockHook(t.gsIncomingBlockHook)
-	t.gs.RegisterOutgoingBlockHook(t.gsOutgoingBlockHook)
 
-	t.gs.RegisterBlockSentListener(t.gsBlockSentHook)
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterIncomingRequestHook(t.gsReqRecdHook))
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterCompletedResponseListener(t.gsCompletedResponseListener))
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterIncomingBlockHook(t.gsIncomingBlockHook))
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterOutgoingBlockHook(t.gsOutgoingBlockHook))
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterBlockSentListener(t.gsBlockSentHook))
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterOutgoingRequestHook(t.gsOutgoingRequestHook))
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterIncomingResponseHook(t.gsIncomingResponseHook))
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterRequestUpdatedHook(t.gsRequestUpdatedHook))
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterRequestorCancelledListener(t.gsRequestorCancelledListener))
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterNetworkErrorListener(t.gsNetworkErrorListener))
+	return nil
+}
 
-	t.gs.RegisterOutgoingRequestHook(t.gsOutgoingRequestHook)
-	t.gs.RegisterIncomingResponseHook(t.gsIncomingResponseHook)
-	t.gs.RegisterRequestUpdatedHook(t.gsRequestUpdatedHook)
-	t.gs.RegisterRequestorCancelledListener(t.gsRequestorCancelledListener)
-	t.gs.RegisterNetworkErrorListener(t.gsNetworkErrorListener)
+// Shutdown disconnects a transport interface from graphsync
+func (t *Transport) Shutdown(ctx context.Context) error {
+	for _, unregisterFunc := range t.unregisterFuncs {
+		unregisterFunc()
+	}
+	t.dataLock.RLock()
+	for _, cancel := range t.contextCancelMap {
+		cancel()
+	}
+	t.dataLock.RUnlock()
 	return nil
 }
 
@@ -425,7 +438,6 @@ func (t *Transport) gsOutgoingBlockHook(p peer.ID, request graphsync.RequestData
 // gsReqRecdHook is a graphsync.OnRequestReceivedHook hook
 // if an incoming request does not match a previous push request, it returns an error.
 func (t *Transport) gsReqRecdHook(p peer.ID, request graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
-
 	// if this is a push request the sender is us.
 	msg, err := extension.GetTransferData(request)
 	if err != nil {

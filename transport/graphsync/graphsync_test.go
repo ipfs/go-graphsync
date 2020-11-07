@@ -801,6 +801,39 @@ func TestManager(t *testing.T) {
 				require.Equal(t, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self}, events.OnRequestTimedOutChannelId)
 			},
 		},
+		"request cancelled out if transport shuts down": {
+			action: func(gsData *harness) {
+				gsData.fgs.LeaveRequestsOpen()
+				stor, _ := gsData.outgoing.Selector()
+
+				_ = gsData.transport.OpenChannel(
+					gsData.ctx,
+					gsData.other,
+					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
+					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
+					stor,
+					nil,
+					gsData.outgoing)
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+
+				gsData.transport.Shutdown(gsData.ctx)
+				require.Eventually(t, func() bool {
+					return requestReceived.Ctx.Err() != nil
+				}, 2*time.Second, 100*time.Millisecond)
+				require.Nil(t, gsData.fgs.IncomingRequestHook)
+				require.Nil(t, gsData.fgs.CompletedResponseListener)
+				require.Nil(t, gsData.fgs.IncomingBlockHook)
+				require.Nil(t, gsData.fgs.OutgoingBlockHook)
+				require.Nil(t, gsData.fgs.BlockSentListener)
+				require.Nil(t, gsData.fgs.OutgoingRequestHook)
+				require.Nil(t, gsData.fgs.IncomingResponseHook)
+				require.Nil(t, gsData.fgs.RequestUpdatedHook)
+				require.Nil(t, gsData.fgs.RequestorCancelledListener)
+				require.Nil(t, gsData.fgs.NetworkErrorListener)
+			},
+		},
 		"request pause works even if called when request is still pending": {
 			action: func(gsData *harness) {
 				gsData.fgs.LeaveRequestsOpen()
@@ -1054,7 +1087,7 @@ func (ha *harness) incomingResponseHOok() {
 	ha.fgs.IncomingResponseHook(ha.other, ha.response, ha.incomingResponseHookActions)
 }
 func (ha *harness) responseCompletedListener() {
-	ha.fgs.ResponseCompletedListener(ha.other, ha.request, ha.response.Status())
+	ha.fgs.CompletedResponseListener(ha.other, ha.request, ha.response.Status())
 }
 func (ha *harness) requestorCancelledListener() {
 	ha.fgs.RequestorCancelledListener(ha.other, ha.request)

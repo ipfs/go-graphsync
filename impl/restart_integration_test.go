@@ -46,6 +46,8 @@ func TestRestartPush(t *testing.T) {
 			},
 			restartF: func(rh *restartHarness, chId datatransfer.ChannelID, subscriber datatransfer.Subscriber) {
 				var err error
+				require.NoError(t, rh.dt1.Stop(rh.testCtx))
+				time.Sleep(100 * time.Millisecond)
 				tp1 := rh.gsData.SetupGSTransportHost1()
 				rh.dt1, err = NewDataTransfer(rh.gsData.DtDs1, rh.gsData.DtNet1, tp1, rh.gsData.StoredCounter1)
 				require.NoError(rh.t, err)
@@ -65,6 +67,8 @@ func TestRestartPush(t *testing.T) {
 			},
 			restartF: func(rh *restartHarness, chId datatransfer.ChannelID, subscriber datatransfer.Subscriber) {
 				var err error
+				require.NoError(t, rh.dt2.Stop(rh.testCtx))
+				time.Sleep(100 * time.Millisecond)
 				tp2 := rh.gsData.SetupGSTransportHost2()
 				rh.dt2, err = NewDataTransfer(rh.gsData.DtDs2, rh.gsData.DtNet2, tp2, rh.gsData.StoredCounter2)
 				require.NoError(rh.t, err)
@@ -119,7 +123,6 @@ func TestRestartPush(t *testing.T) {
 						}
 					}
 				}
-
 				if channelState.Status() == datatransfer.Completed {
 					finishedPeersLk.Lock()
 					finishedPeers = append(finishedPeers, channelState.SelfPeer())
@@ -173,15 +176,15 @@ func TestRestartPush(t *testing.T) {
 			}
 
 			// WAIT FOR TRANSFER TO COMPLETE -> THIS SHOULD NOT HAPPEN
-			sentI, receivedI, err := waitF(10*time.Second, 1)
+			sentI, receivedI, err := waitF(2*time.Second, 1)
 			require.EqualError(t, err, "context timed-out without completing data transfer")
 			require.True(t, len(receivedI) < totalIncrements)
 			require.NotEmpty(t, sentI)
+			t.Logf("not request was completed after disconnect")
 
 			// Connect the peers and restart
 			require.NoError(t, rh.gsData.Mn.LinkAll())
 			// let linking take effect
-			time.Sleep(1 * time.Second)
 			conn, err := rh.gsData.Mn.ConnectPeers(rh.peer1, rh.peer2)
 			require.NoError(t, err)
 			require.NotNil(t, conn)
@@ -234,6 +237,8 @@ func TestRestartPull(t *testing.T) {
 			},
 			restartF: func(rh *restartHarness, chId datatransfer.ChannelID, subscriber datatransfer.Subscriber) {
 				var err error
+				require.NoError(t, rh.dt2.Stop(rh.testCtx))
+				time.Sleep(100 * time.Millisecond)
 				tp2 := rh.gsData.SetupGSTransportHost2()
 				rh.dt2, err = NewDataTransfer(rh.gsData.DtDs2, rh.gsData.DtNet2, tp2, rh.gsData.StoredCounter2)
 				require.NoError(rh.t, err)
@@ -253,6 +258,8 @@ func TestRestartPull(t *testing.T) {
 			},
 			restartF: func(rh *restartHarness, chId datatransfer.ChannelID, subscriber datatransfer.Subscriber) {
 				var err error
+				require.NoError(t, rh.dt1.Stop(rh.testCtx))
+				time.Sleep(100 * time.Millisecond)
 				tp1 := rh.gsData.SetupGSTransportHost1()
 				rh.dt1, err = NewDataTransfer(rh.gsData.DtDs1, rh.gsData.DtNet1, tp1, rh.gsData.StoredCounter1)
 				require.NoError(rh.t, err)
@@ -365,17 +372,13 @@ func TestRestartPull(t *testing.T) {
 			}
 
 			// WAIT FOR TRANSFER TO COMPLETE -> THIS SHOULD NOT HAPPEN
-			sentI, receivedI, err := waitF(10*time.Second, 1)
+			sentI, receivedI, err := waitF(1*time.Second, 1)
 			require.EqualError(t, err, "context timed-out without completing data transfer")
 			require.True(t, len(receivedI) < totalIncrements)
 			require.NotEmpty(t, sentI)
 
 			// Connect the peers and restart
 			require.NoError(t, rh.gsData.Mn.LinkAll())
-			// let linking take effect
-			time.Sleep(500 * time.Millisecond)
-			// let linking take effect
-			time.Sleep(500 * time.Millisecond)
 			conn, err := rh.gsData.Mn.ConnectPeers(rh.peer1, rh.peer2)
 			require.NoError(t, err)
 			require.NotNil(t, conn)
@@ -433,7 +436,7 @@ type restartHarness struct {
 
 func newRestartHarness(t *testing.T) *restartHarness {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 
 	// Setup host
 	gsData := testutil.NewGraphsyncTestingData(ctx, t, nil, nil)

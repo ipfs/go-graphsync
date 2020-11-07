@@ -107,7 +107,7 @@ type FakeGraphSync struct {
 	IncomingBlockHook          graphsync.OnIncomingBlockHook
 	OutgoingBlockHook          graphsync.OnOutgoingBlockHook
 	IncomingRequestHook        graphsync.OnIncomingRequestHook
-	ResponseCompletedListener  graphsync.OnResponseCompletedListener
+	CompletedResponseListener  graphsync.OnResponseCompletedListener
 	RequestUpdatedHook         graphsync.OnRequestUpdatedHook
 	IncomingResponseHook       graphsync.OnIncomingResponseHook
 	RequestorCancelledListener graphsync.OnRequestorCancelledListener
@@ -280,43 +280,57 @@ func (fgs *FakeGraphSync) UnregisterPersistenceOption(name string) error {
 // RegisterIncomingRequestHook adds a hook that runs when a request is received
 func (fgs *FakeGraphSync) RegisterIncomingRequestHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
 	fgs.IncomingRequestHook = hook
-	return nil
+	return func() {
+		fgs.IncomingRequestHook = nil
+	}
 }
 
 // RegisterIncomingResponseHook adds a hook that runs when a response is received
 func (fgs *FakeGraphSync) RegisterIncomingResponseHook(hook graphsync.OnIncomingResponseHook) graphsync.UnregisterHookFunc {
 	fgs.IncomingResponseHook = hook
-	return nil
+	return func() {
+		fgs.IncomingResponseHook = nil
+	}
 }
 
 // RegisterOutgoingRequestHook adds a hook that runs immediately prior to sending a new request
 func (fgs *FakeGraphSync) RegisterOutgoingRequestHook(hook graphsync.OnOutgoingRequestHook) graphsync.UnregisterHookFunc {
 	fgs.OutgoingRequestHook = hook
-	return nil
+	return func() {
+		fgs.OutgoingRequestHook = nil
+	}
 }
 
 // RegisterOutgoingBlockHook adds a hook that runs every time a block is sent from a responder
 func (fgs *FakeGraphSync) RegisterOutgoingBlockHook(hook graphsync.OnOutgoingBlockHook) graphsync.UnregisterHookFunc {
 	fgs.OutgoingBlockHook = hook
-	return nil
+	return func() {
+		fgs.OutgoingBlockHook = nil
+	}
 }
 
 // RegisterIncomingBlockHook adds a hook that runs every time a block is received by the requestor
 func (fgs *FakeGraphSync) RegisterIncomingBlockHook(hook graphsync.OnIncomingBlockHook) graphsync.UnregisterHookFunc {
 	fgs.IncomingBlockHook = hook
-	return nil
+	return func() {
+		fgs.IncomingBlockHook = nil
+	}
 }
 
 // RegisterRequestUpdatedHook adds a hook that runs every time an update to a request is received
 func (fgs *FakeGraphSync) RegisterRequestUpdatedHook(hook graphsync.OnRequestUpdatedHook) graphsync.UnregisterHookFunc {
 	fgs.RequestUpdatedHook = hook
-	return nil
+	return func() {
+		fgs.RequestUpdatedHook = nil
+	}
 }
 
 // RegisterCompletedResponseListener adds a listener on the responder for completed responses
 func (fgs *FakeGraphSync) RegisterCompletedResponseListener(listener graphsync.OnResponseCompletedListener) graphsync.UnregisterHookFunc {
-	fgs.ResponseCompletedListener = listener
-	return nil
+	fgs.CompletedResponseListener = listener
+	return func() {
+		fgs.CompletedResponseListener = nil
+	}
 }
 
 // UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
@@ -352,19 +366,25 @@ func (fgs *FakeGraphSync) CancelResponse(p peer.ID, requestID graphsync.RequestI
 // RegisterRequestorCancelledListener adds a listener on the responder for requests cancelled by the requestor
 func (fgs *FakeGraphSync) RegisterRequestorCancelledListener(listener graphsync.OnRequestorCancelledListener) graphsync.UnregisterHookFunc {
 	fgs.RequestorCancelledListener = listener
-	return nil
+	return func() {
+		fgs.RequestorCancelledListener = nil
+	}
 }
 
 // RegisterBlockSentListener adds a listener on the responder as blocks go out
 func (fgs *FakeGraphSync) RegisterBlockSentListener(listener graphsync.OnBlockSentListener) graphsync.UnregisterHookFunc {
 	fgs.BlockSentListener = listener
-	return nil
+	return func() {
+		fgs.BlockSentListener = nil
+	}
 }
 
 // RegisterNetworkErrorListener adds a listener on the responder as blocks go out
 func (fgs *FakeGraphSync) RegisterNetworkErrorListener(listener graphsync.OnNetworkErrorListener) graphsync.UnregisterHookFunc {
 	fgs.NetworkErrorListener = listener
-	return nil
+	return func() {
+		fgs.NetworkErrorListener = nil
+	}
 }
 
 var _ graphsync.GraphExchange = &FakeGraphSync{}

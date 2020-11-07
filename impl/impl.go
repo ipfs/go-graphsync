@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/hannahhoward/go-pubsub"
-	"github.com/hashicorp/go-multierror"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	logging "github.com/ipfs/go-log/v2"
@@ -151,19 +150,7 @@ func (m *manager) OnReady(ready datatransfer.ReadyFunc) {
 
 // Stop terminates all data transfers and ends processing
 func (m *manager) Stop(ctx context.Context) error {
-	openChannels, err := m.channels.InProgress()
-	if err != nil {
-		return xerrors.Errorf("error getting channels in progress: %w", err)
-	}
-
-	var result error
-	for chid := range openChannels {
-		if err := m.CloseDataTransferChannel(ctx, chid); err != nil {
-			result = multierror.Append(result, xerrors.Errorf("error closing channel with ID %v, err: %w", chid, err))
-		}
-	}
-
-	return result
+	return m.transport.Shutdown(ctx)
 }
 
 // RegisterVoucherType registers a validator for the given voucher type

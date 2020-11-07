@@ -76,6 +76,10 @@ func (ft *FakeTransport) SetEventHandler(events datatransfer.EventsHandler) erro
 	return ft.SetEventHandlerErr
 }
 
+func (ft *FakeTransport) Shutdown(ctx context.Context) error {
+	return nil
+}
+
 // PauseChannel paused the given channel ID
 func (ft *FakeTransport) PauseChannel(ctx context.Context, chid datatransfer.ChannelID) error {
 	ft.PausedChannels = append(ft.PausedChannels, chid)

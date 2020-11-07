@@ -97,6 +97,7 @@ type Transport interface {
 	// CleanupChannel is called on the otherside of a cancel - removes any associated
 	// data for the channel
 	CleanupChannel(chid ChannelID)
+	Shutdown(ctx context.Context) error
 }
 
 // PauseableTransport is a transport that can also pause and resume channels
