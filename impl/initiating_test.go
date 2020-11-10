@@ -105,6 +105,53 @@ func TestDataTransferInitiating(t *testing.T) {
 				time.Sleep(1 * time.Second)
 			},
 		},
+		"Remove disconnected push request": {
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.Accept, datatransfer.ResumeResponder, datatransfer.Disconnected, datatransfer.Error, datatransfer.CleanupComplete},
+			options:        []DataTransferOption{ChannelRemoveTimeout(10 * time.Millisecond)},
+			verify: func(t *testing.T, h *harness) {
+				channelID, err := h.dt.OpenPushDataChannel(h.ctx, h.peers[1], h.voucher, h.baseCid, h.stor)
+				require.NoError(t, err)
+				response, err := message.NewResponse(channelID.ID, true, false, datatransfer.EmptyTypeIdentifier, nil)
+				require.NoError(t, err)
+				err = h.transport.EventHandler.OnResponseReceived(channelID, response)
+				require.NoError(t, err)
+				require.NoError(t, h.transport.EventHandler.OnRequestDisconnected(ctx, channelID))
+				// need time for the events to take place
+				time.Sleep(1 * time.Second)
+			},
+		},
+		"Disconnected request resumes": {
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.Disconnected, datatransfer.DataReceived},
+			options:        []DataTransferOption{ChannelRemoveTimeout(10 * time.Millisecond)},
+			verify: func(t *testing.T, h *harness) {
+				channelID, err := h.dt.OpenPullDataChannel(h.ctx, h.peers[1], h.voucher, h.baseCid, h.stor)
+				require.NoError(t, err)
+				require.NoError(t, h.transport.EventHandler.OnRequestDisconnected(ctx, channelID))
+				testCids := testutil.GenerateCids(1)
+				require.NoError(t, h.transport.EventHandler.OnDataReceived(channelID, cidlink.Link{Cid: testCids[0]}, uint64(12345)))
+
+				// need time for the events to take place
+				time.Sleep(1 * time.Second)
+			},
+		},
+		"Disconnected request resumes, push": {
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.Accept, datatransfer.ResumeResponder, datatransfer.Disconnected, datatransfer.DataSent},
+			options:        []DataTransferOption{ChannelRemoveTimeout(10 * time.Millisecond)},
+			verify: func(t *testing.T, h *harness) {
+				channelID, err := h.dt.OpenPullDataChannel(h.ctx, h.peers[1], h.voucher, h.baseCid, h.stor)
+				require.NoError(t, err)
+				response, err := message.NewResponse(channelID.ID, true, false, datatransfer.EmptyTypeIdentifier, nil)
+				require.NoError(t, err)
+				err = h.transport.EventHandler.OnResponseReceived(channelID, response)
+				require.NoError(t, err)
+				require.NoError(t, h.transport.EventHandler.OnRequestDisconnected(ctx, channelID))
+				testCids := testutil.GenerateCids(1)
+				require.NoError(t, h.transport.EventHandler.OnDataSent(channelID, cidlink.Link{Cid: testCids[0]}, uint64(12345)))
+
+				// need time for the events to take place
+				time.Sleep(1 * time.Second)
+			},
+		},
 		"SendVoucher with no channel open": {
 			verify: func(t *testing.T, h *harness) {
 				err := h.dt.SendVoucher(h.ctx, datatransfer.ChannelID{Initiator: h.peers[1], Responder: h.peers[0], ID: 999999}, h.voucher)

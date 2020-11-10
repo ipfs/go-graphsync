@@ -23,5 +23,8 @@ func (ce *channelEnvironment) ID() peer.ID {
 }
 
 func (ce *channelEnvironment) CleanupChannel(chid datatransfer.ChannelID) {
+	ce.m.reconnectsLk.Lock()
+	delete(ce.m.reconnects, chid)
+	ce.m.reconnectsLk.Unlock()
 	ce.m.transport.CleanupChannel(chid)
 }

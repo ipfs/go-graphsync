@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/hannahhoward/go-pubsub"
@@ -40,6 +41,8 @@ type manager struct {
 	transport            datatransfer.Transport
 	storedCounter        *storedcounter.StoredCounter
 	channelRemoveTimeout time.Duration
+	reconnectsLk         sync.RWMutex
+	reconnects           map[datatransfer.ChannelID]chan struct{}
 }
 
 type internalEvent struct {
@@ -99,6 +102,7 @@ func NewDataTransfer(ds datastore.Batching, dataTransferNetwork network.DataTran
 		transport:            transport,
 		storedCounter:        storedCounter,
 		channelRemoveTimeout: defaultChannelRemoveTimeout,
+		reconnects:           make(map[datatransfer.ChannelID]chan struct{}),
 	}
 	channels, err := channels.New(ds, m.notifier, m.voucherDecoder, m.resultTypes.Decoder, &channelEnvironment{m}, dataTransferNetwork.ID())
 	if err != nil {

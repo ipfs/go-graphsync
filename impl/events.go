@@ -33,6 +33,20 @@ func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, si
 	if err != nil {
 		return err
 	}
+
+	m.reconnectsLk.RLock()
+	reconnect, ok := m.reconnects[chid]
+	var alreadyReconnected bool
+	select {
+	case <-reconnect:
+		alreadyReconnected = true
+	default:
+	}
+	if ok && !alreadyReconnected {
+		close(reconnect)
+	}
+	m.reconnectsLk.RUnlock()
+
 	if chid.Initiator != m.peerID {
 		var result datatransfer.VoucherResult
 		var err error
@@ -83,6 +97,18 @@ func (m *manager) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size
 }
 
 func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) error {
+	m.reconnectsLk.RLock()
+	reconnect, ok := m.reconnects[chid]
+	var alreadyReconnected bool
+	select {
+	case <-reconnect:
+		alreadyReconnected = true
+	default:
+	}
+	if ok && !alreadyReconnected {
+		close(reconnect)
+	}
+	m.reconnectsLk.RUnlock()
 	return m.channels.DataSent(chid, link.(cidlink.Link).Cid, size)
 }
 
@@ -169,10 +195,26 @@ func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response datat
 func (m *manager) OnRequestTimedOut(ctx context.Context, chid datatransfer.ChannelID) error {
 	log.Warnf("channel %+v has timed out", chid)
 
+	m.reconnectsLk.Lock()
+	reconnect, ok := m.reconnects[chid]
+	var alreadyReconnected bool
+	select {
+	case <-reconnect:
+		alreadyReconnected = true
+	default:
+	}
+	if !ok || alreadyReconnected {
+		reconnect = make(chan struct{})
+		m.reconnects[chid] = reconnect
+	}
+	m.reconnectsLk.Unlock()
+	timer := time.NewTimer(m.channelRemoveTimeout)
+
 	go func() {
 		select {
 		case <-ctx.Done():
-		case <-time.After(m.channelRemoveTimeout):
+		case <-reconnect:
+		case <-timer.C:
 			channel, err := m.channels.GetByID(ctx, chid)
 			if err == nil {
 				if !(channels.IsChannelTerminated(channel.Status()) ||
@@ -199,10 +241,25 @@ func (m *manager) OnRequestDisconnected(ctx context.Context, chid datatransfer.C
 		return err
 	}
 
+	m.reconnectsLk.Lock()
+	reconnect, ok := m.reconnects[chid]
+	var alreadyReconnected bool
+	select {
+	case <-reconnect:
+		alreadyReconnected = true
+	default:
+	}
+	if !ok || alreadyReconnected {
+		reconnect = make(chan struct{})
+		m.reconnects[chid] = reconnect
+	}
+	m.reconnectsLk.Unlock()
+	timer := time.NewTimer(m.channelRemoveTimeout)
 	go func() {
 		select {
 		case <-ctx.Done():
-		case <-time.After(m.channelRemoveTimeout):
+		case <-reconnect:
+		case <-timer.C:
 			channel, err := m.channels.GetByID(ctx, chid)
 			if err == nil {
 				if !(channels.IsChannelTerminated(channel.Status()) ||
