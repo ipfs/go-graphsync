@@ -1,5 +1,24 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.0.1
+
+Bug fix release that fixes channel closing and timeout issues
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix(impl): reset timeouts (#113) ([filecoin-project/go-data-transfer#113](https://github.com/filecoin-project/go-data-transfer/pull/113))
+  - feat(impl): fix shutdown (#112) ([filecoin-project/go-data-transfer#112](https://github.com/filecoin-project/go-data-transfer/pull/112))
+  - Remove link to missing design documentation (#111) ([filecoin-project/go-data-transfer#111](https://github.com/filecoin-project/go-data-transfer/pull/111))
+  - fix(channels): add nil check (#94) ([filecoin-project/go-data-transfer#94](https://github.com/filecoin-project/go-data-transfer/pull/94))
+  - docs(CHANGELOG): update for v1.0.0 ([filecoin-project/go-data-transfer#110](https://github.com/filecoin-project/go-data-transfer/pull/110))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 4 | +240/-64 | 16 |
+
 # go-data-transfer 1.0.0
 
 Major release brings big graphsync improvements and better measuring of data transferred
