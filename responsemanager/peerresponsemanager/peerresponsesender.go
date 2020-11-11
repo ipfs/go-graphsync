@@ -349,7 +349,14 @@ func (prs *peerResponseSender) finishTracking(requestID graphsync.RequestID) boo
 	key, ok := prs.dedupKeys[requestID]
 	if ok {
 		delete(prs.dedupKeys, requestID)
-		if linkTracker.Empty() {
+		var otherRequestsFound bool
+		for _, otherKey := range prs.dedupKeys {
+			if otherKey == key {
+				otherRequestsFound = true
+				break
+			}
+		}
+		if !otherRequestsFound {
 			delete(prs.altTrackers, key)
 		}
 	}
