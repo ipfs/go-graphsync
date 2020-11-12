@@ -8,7 +8,6 @@ import (
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/jpillora/backoff"
-	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -128,8 +127,6 @@ func (dtnet *libp2pDataTransferNetwork) SendMessage(
 		return err
 	}
 
-	// TODO(https://github.com/libp2p/go-libp2p-net/issues/28): Avoid this goroutine.
-	go helpers.AwaitEOF(s) // nolint: errcheck,gosec
 	return s.Close()
 }
 
