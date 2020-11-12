@@ -2,6 +2,21 @@
 
 # go-graphsync 0.4.3
 
+Update libp2p to 0.12. This libp2p release includes a breaking change to the libp2p stream interfaces.
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - feat: use go-libp2p-core 0.7.0 stream interfaces (#116) ([ipfs/go-graphsync#116](https://github.com/ipfs/go-graphsync/pull/116))
+
+Contributors
+
+| Contributor  | Commits | Lines ±  | Files Changed |
+|--------------|---------|----------|---------------|
+| Steven Allen |       1 | +195/-24 |             3 |
+
+# go-graphsync 0.4.3
+
 Minor fixes and patches
 
 ### Changelog
