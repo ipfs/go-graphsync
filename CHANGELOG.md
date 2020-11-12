@@ -1,5 +1,31 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.1.0
+
+This release primarily updates to go-libp2p 0.12 to use the new stream interfaces. Additionally, it pulls in a bug fix release of graphsync.
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - feat: update libp2p (#116) ([filecoin-project/go-data-transfer#116](https://github.com/filecoin-project/go-data-transfer/pull/116))
+  - docs(CHANGELOG): update for 1.0.1 release ([filecoin-project/go-data-transfer#114](https://github.com/filecoin-project/go-data-transfer/pull/114))
+- github.com/ipfs/go-graphsync (v0.4.2 -> v0.5.0):
+  - docs(CHANGELOG): update for 0.5.0
+  - feat: use go-libp2p-core 0.7.0 stream interfaces (#116) ([ipfs/go-graphsync#116](https://github.com/ipfs/go-graphsync/pull/116))
+  - Merge branch 'release/v0.4.3'
+  - chore(benchmarks): remove extra files
+  - fix(peerresponsemanager): avoid race condition that could result in NPE in link tracker (#118) ([ipfs/go-graphsync#118](https://github.com/ipfs/go-graphsync/pull/118))
+  - docs(CHANGELOG): update for 0.4.2 ([ipfs/go-graphsync#117](https://github.com/ipfs/go-graphsync/pull/117))
+  - feat(memory): improve memory usage (#110) ([ipfs/go-graphsync#110](https://github.com/ipfs/go-graphsync/pull/110))
+
+Contributors
+
+| Contributor   | Commits | Lines ±  | Files Changed |
+|---------------|---------|----------|---------------|
+| Steven Allen  |       3 | +393/-37 |             7 |
+| Hannah Howard |       2 | +49/-6   |             7 |
+| hannahhoward  |       2 | +19/-0   |             3 |
+
 # go-data-transfer 1.0.1
 
 Bug fix release that fixes channel closing and timeout issues
