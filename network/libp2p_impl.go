@@ -7,7 +7,6 @@ import (
 	"time"
 
 	logging "github.com/ipfs/go-log"
-	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -43,7 +42,7 @@ type streamMessageSender struct {
 }
 
 func (s *streamMessageSender) Close() error {
-	return helpers.FullClose(s.s)
+	return s.s.Close()
 }
 
 func (s *streamMessageSender) Reset() error {
@@ -110,11 +109,7 @@ func (gsnet *libp2pGraphSyncNetwork) SendMessage(
 		return err
 	}
 
-	// TODO(https://github.com/libp2p/go-libp2p-net/issues/28): Avoid this goroutine.
-	//nolint
-	go helpers.AwaitEOF(s)
 	return s.Close()
-
 }
 
 func (gsnet *libp2pGraphSyncNetwork) SetDelegate(r Receiver) {
