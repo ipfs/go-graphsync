@@ -1,5 +1,24 @@
 # go-graphsync changelog
 
+# go-graphsync 0.4.3
+
+Minor fixes and patches
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - chore(benchmarks): remove extra files
+  - fix(peerresponsemanager): avoid race condition that could result in NPE in link tracker (#118) ([ipfs/go-graphsync#118](https://github.com/ipfs/go-graphsync/pull/118))
+  - docs(CHANGELOG): update for 0.4.2 ([ipfs/go-graphsync#117](https://github.com/ipfs/go-graphsync/pull/117))
+  - feat(memory): improve memory usage (#110) ([ipfs/go-graphsync#110](https://github.com/ipfs/go-graphsync/pull/110))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 2 | +49/-6 | 7 |
+| hannahhoward | 1 | +0/-0 | 2 |
+
 # go-graphsync 0.4.2
 
 bug fix for 0.4.1
