@@ -1,5 +1,22 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.2.0
+
+This release moves CID tracking out of the core datastore structures to resolve an issue with hitting limits on number of CIDs we can track.
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Allow data transfers with more than 8192 received CIDs (#118) ([filecoin-project/go-data-transfer#118](https://github.com/filecoin-project/go-data-transfer/pull/118))
+  - docs(CHANGELOG): update for 1.1.0 ([filecoin-project/go-data-transfer#117](https://github.com/filecoin-project/go-data-transfer/pull/117))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +1803/-713 | 22 |
+
+
 # go-data-transfer 1.1.0
 
 This release primarily updates to go-libp2p 0.12 to use the new stream interfaces. Additionally, it pulls in a bug fix release of graphsync.
