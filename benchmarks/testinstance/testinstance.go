@@ -2,6 +2,7 @@ package testinstance
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -170,7 +171,7 @@ func NewInstance(ctx context.Context, net tn.Network, tempDir string, diskBasedD
 	gs := gsimpl.New(ctx, gsNet, loader, storer, gsimpl.RejectAllRequestsByDefault())
 	transport := gstransport.NewTransport(p, gs)
 	dtCounter := storedcounter.New(dstore, datastore.NewKey("/data-transfers/counter"))
-	dt, err := dtimpl.NewDataTransfer(namespace.Wrap(dstore, datastore.NewKey("/data-transfers/transfers")), dtNet, transport, dtCounter)
+	dt, err := dtimpl.NewDataTransfer(namespace.Wrap(dstore, datastore.NewKey("/data-transfers/transfers")), os.TempDir(), dtNet, transport, dtCounter)
 	if err != nil {
 		return Instance{}, err
 	}

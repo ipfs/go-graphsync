@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -17,9 +18,16 @@ import (
 	"github.com/stretchr/testify/require"
 	cbg "github.com/whyrusleeping/cbor-gen"
 
+	versioning "github.com/filecoin-project/go-ds-versioning/pkg"
+	versionedds "github.com/filecoin-project/go-ds-versioning/pkg/datastore"
+
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/channels"
+	"github.com/filecoin-project/go-data-transfer/channels/internal"
 	"github.com/filecoin-project/go-data-transfer/channels/internal/migrations"
+	v0 "github.com/filecoin-project/go-data-transfer/channels/internal/migrations/v0"
+	v1 "github.com/filecoin-project/go-data-transfer/channels/internal/migrations/v1"
+	"github.com/filecoin-project/go-data-transfer/cidlists"
 	"github.com/filecoin-project/go-data-transfer/encoding"
 	"github.com/filecoin-project/go-data-transfer/testutil"
 )
@@ -42,7 +50,10 @@ func TestChannels(t *testing.T) {
 	selector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
 	peers := testutil.GeneratePeers(4)
 
-	channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
+	dir := os.TempDir()
+	cidLists, err := cidlists.NewCIDLists(dir)
+	require.NoError(t, err)
+	channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
 	require.NoError(t, err)
 
 	err = channelList.Start(ctx)
@@ -116,7 +127,10 @@ func TestChannels(t *testing.T) {
 
 	t.Run("updating send/receive values", func(t *testing.T) {
 		ds := datastore.NewMapDatastore()
-		channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
+		dir := os.TempDir()
+		cidLists, err := cidlists.NewCIDLists(dir)
+		require.NoError(t, err)
+		channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
 		require.NoError(t, err)
 		err = channelList.Start(ctx)
 		require.NoError(t, err)
@@ -289,8 +303,10 @@ func TestChannels(t *testing.T) {
 		notifier := func(evt datatransfer.Event, chst datatransfer.ChannelState) {
 			received <- event{evt, chst}
 		}
-
-		channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
+		dir := os.TempDir()
+		cidLists, err := cidlists.NewCIDLists(dir)
+		require.NoError(t, err)
+		channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
 		require.NoError(t, err)
 		err = channelList.Start(ctx)
 		require.NoError(t, err)
@@ -339,7 +355,7 @@ func TestIsChannelCleaningUp(t *testing.T) {
 	require.False(t, channels.IsChannelCleaningUp(datatransfer.Cancelled))
 }
 
-func TestMigratins(t *testing.T) {
+func TestMigrationsV0(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -383,7 +399,7 @@ func TestMigratins(t *testing.T) {
 		voucherResults[i] = testutil.NewFakeDTType()
 		vrBytes, err := encoding.Encode(voucherResults[i])
 		require.NoError(t, err)
-		channel := migrations.ChannelState0{
+		channel := v0.ChannelState{
 			TransferID: transferIDs[i],
 			Initiator:  initiators[i],
 			Responder:  responders[i],
@@ -398,7 +414,7 @@ func TestMigratins(t *testing.T) {
 			Sent:      sents[i],
 			Received:  receiveds[i],
 			Message:   messages[i],
-			Vouchers: []migrations.EncodedVoucher0{
+			Vouchers: []v0.EncodedVoucher{
 				{
 					Type: vouchers[i].Type(),
 					Voucher: &cbg.Deferred{
@@ -406,7 +422,7 @@ func TestMigratins(t *testing.T) {
 					},
 				},
 			},
-			VoucherResults: []migrations.EncodedVoucherResult0{
+			VoucherResults: []v0.EncodedVoucherResult{
 				{
 					Type: voucherResults[i].Type(),
 					VoucherResult: &cbg.Deferred{
@@ -427,7 +443,10 @@ func TestMigratins(t *testing.T) {
 	}
 
 	selfPeer := testutil.GeneratePeers(1)[0]
-	channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, &fakeEnv{}, selfPeer)
+	dir := os.TempDir()
+	cidLists, err := cidlists.NewCIDLists(dir)
+	require.NoError(t, err)
+	channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, selfPeer)
 	require.NoError(t, err)
 	err = channelList.Start(ctx)
 	require.NoError(t, err)
@@ -454,6 +473,134 @@ func TestMigratins(t *testing.T) {
 		require.Equal(t, vouchers[i], channel.LastVoucher())
 		require.Equal(t, voucherResults[i], channel.LastVoucherResult())
 		require.Len(t, channel.ReceivedCids(), 0)
+	}
+}
+func TestMigrationsV1(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	ds := datastore.NewMapDatastore()
+	received := make(chan event)
+	notifier := func(evt datatransfer.Event, chst datatransfer.ChannelState) {
+		received <- event{evt, chst}
+	}
+	numChannels := 5
+	transferIDs := make([]datatransfer.TransferID, numChannels)
+	initiators := make([]peer.ID, numChannels)
+	responders := make([]peer.ID, numChannels)
+	baseCids := make([]cid.Cid, numChannels)
+
+	totalSizes := make([]uint64, numChannels)
+	sents := make([]uint64, numChannels)
+	receiveds := make([]uint64, numChannels)
+	messages := make([]string, numChannels)
+	vouchers := make([]datatransfer.Voucher, numChannels)
+	voucherResults := make([]datatransfer.VoucherResult, numChannels)
+	receivedCids := make([][]cid.Cid, numChannels)
+	allSelector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
+	allSelectorBuf := new(bytes.Buffer)
+	err := dagcbor.Encoder(allSelector, allSelectorBuf)
+	require.NoError(t, err)
+	allSelectorBytes := allSelectorBuf.Bytes()
+	selfPeer := testutil.GeneratePeers(1)[0]
+	dir := os.TempDir()
+	cidLists, err := cidlists.NewCIDLists(dir)
+	require.NoError(t, err)
+
+	list, err := migrations.GetChannelStateMigrations(selfPeer, cidLists)
+	require.NoError(t, err)
+	vds, up := versionedds.NewVersionedDatastore(ds, list, versioning.VersionKey("1"))
+	require.NoError(t, up(ctx))
+
+	for i := 0; i < numChannels; i++ {
+		transferIDs[i] = datatransfer.TransferID(rand.Uint64())
+		initiators[i] = testutil.GeneratePeers(1)[0]
+		responders[i] = testutil.GeneratePeers(1)[0]
+		baseCids[i] = testutil.GenerateCids(1)[0]
+		totalSizes[i] = rand.Uint64()
+		sents[i] = rand.Uint64()
+		receiveds[i] = rand.Uint64()
+		messages[i] = string(testutil.RandomBytes(20))
+		vouchers[i] = testutil.NewFakeDTType()
+		vBytes, err := encoding.Encode(vouchers[i])
+		require.NoError(t, err)
+		voucherResults[i] = testutil.NewFakeDTType()
+		vrBytes, err := encoding.Encode(voucherResults[i])
+		require.NoError(t, err)
+		receivedCids[i] = testutil.GenerateCids(100)
+		channel := v1.ChannelState{
+			TransferID: transferIDs[i],
+			Initiator:  initiators[i],
+			Responder:  responders[i],
+			BaseCid:    baseCids[i],
+			Selector: &cbg.Deferred{
+				Raw: allSelectorBytes,
+			},
+			Sender:    initiators[i],
+			Recipient: responders[i],
+			TotalSize: totalSizes[i],
+			Status:    datatransfer.Ongoing,
+			Sent:      sents[i],
+			Received:  receiveds[i],
+			Message:   messages[i],
+			Vouchers: []internal.EncodedVoucher{
+				{
+					Type: vouchers[i].Type(),
+					Voucher: &cbg.Deferred{
+						Raw: vBytes,
+					},
+				},
+			},
+			VoucherResults: []internal.EncodedVoucherResult{
+				{
+					Type: voucherResults[i].Type(),
+					VoucherResult: &cbg.Deferred{
+						Raw: vrBytes,
+					},
+				},
+			},
+			SelfPeer:     selfPeer,
+			ReceivedCids: receivedCids[i],
+		}
+		buf := new(bytes.Buffer)
+		err = channel.MarshalCBOR(buf)
+		require.NoError(t, err)
+		err = vds.Put(datastore.NewKey(datatransfer.ChannelID{
+			Initiator: initiators[i],
+			Responder: responders[i],
+			ID:        transferIDs[i],
+		}.String()), buf.Bytes())
+		require.NoError(t, err)
+	}
+
+	channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, selfPeer)
+	require.NoError(t, err)
+	err = channelList.Start(ctx)
+	require.NoError(t, err)
+
+	for i := 0; i < numChannels; i++ {
+
+		channel, err := channelList.GetByID(ctx, datatransfer.ChannelID{
+			Initiator: initiators[i],
+			Responder: responders[i],
+			ID:        transferIDs[i],
+		})
+		require.NoError(t, err)
+		require.Equal(t, selfPeer, channel.SelfPeer())
+		require.Equal(t, transferIDs[i], channel.TransferID())
+		require.Equal(t, baseCids[i], channel.BaseCID())
+		require.Equal(t, allSelector, channel.Selector())
+		require.Equal(t, initiators[i], channel.Sender())
+		require.Equal(t, responders[i], channel.Recipient())
+		require.Equal(t, totalSizes[i], channel.TotalSize())
+		require.Equal(t, datatransfer.Ongoing, channel.Status())
+		require.Equal(t, sents[i], channel.Sent())
+		require.Equal(t, receiveds[i], channel.Received())
+		require.Equal(t, messages[i], channel.Message())
+		require.Equal(t, vouchers[i], channel.LastVoucher())
+		require.Equal(t, voucherResults[i], channel.LastVoucherResult())
+		require.Equal(t, receivedCids[i], channel.ReceivedCids())
 	}
 }
 

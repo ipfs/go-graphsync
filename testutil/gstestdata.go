@@ -91,6 +91,8 @@ type GraphsyncTestingData struct {
 	DtNet2         network.DataTransferNetwork
 	AllSelector    ipld.Node
 	OrigBytes      []byte
+	TempDir1       string
+	TempDir2       string
 	gs1Cancel      func()
 	gs2Cancel      func()
 }
@@ -155,6 +157,12 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T, host1Protocols [
 	gsData.DtNet1 = network.NewFromLibp2pHost(gsData.Host1, opts1...)
 	gsData.DtNet2 = network.NewFromLibp2pHost(gsData.Host2, opts2...)
 
+	tempdir, err := ioutil.TempDir("", "dttest")
+	require.NoError(t, err)
+	gsData.TempDir1 = tempdir
+	tempdir, err = ioutil.TempDir("", "dttest")
+	require.NoError(t, err)
+	gsData.TempDir2 = tempdir
 	// create a selector for the whole UnixFS dag
 	gsData.AllSelector = allSelector
 	gsData.host1Protocols = host1Protocols

@@ -20,6 +20,7 @@ import (
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/channels"
+	"github.com/filecoin-project/go-data-transfer/cidlists"
 	"github.com/filecoin-project/go-data-transfer/encoding"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/network"
@@ -43,6 +44,7 @@ type manager struct {
 	channelRemoveTimeout time.Duration
 	reconnectsLk         sync.RWMutex
 	reconnects           map[datatransfer.ChannelID]chan struct{}
+	cidLists             cidlists.CIDLists
 }
 
 type internalEvent struct {
@@ -89,7 +91,7 @@ func ChannelRemoveTimeout(timeout time.Duration) DataTransferOption {
 const defaultChannelRemoveTimeout = 1 * time.Hour
 
 // NewDataTransfer initializes a new instance of a data transfer manager
-func NewDataTransfer(ds datastore.Batching, dataTransferNetwork network.DataTransferNetwork, transport datatransfer.Transport, storedCounter *storedcounter.StoredCounter, options ...DataTransferOption) (datatransfer.Manager, error) {
+func NewDataTransfer(ds datastore.Batching, cidListsDir string, dataTransferNetwork network.DataTransferNetwork, transport datatransfer.Transport, storedCounter *storedcounter.StoredCounter, options ...DataTransferOption) (datatransfer.Manager, error) {
 	m := &manager{
 		dataTransferNetwork:  dataTransferNetwork,
 		validatedTypes:       registry.NewRegistry(),
@@ -104,7 +106,12 @@ func NewDataTransfer(ds datastore.Batching, dataTransferNetwork network.DataTran
 		channelRemoveTimeout: defaultChannelRemoveTimeout,
 		reconnects:           make(map[datatransfer.ChannelID]chan struct{}),
 	}
-	channels, err := channels.New(ds, m.notifier, m.voucherDecoder, m.resultTypes.Decoder, &channelEnvironment{m}, dataTransferNetwork.ID())
+	cidLists, err := cidlists.NewCIDLists(cidListsDir)
+	if err != nil {
+		return nil, err
+	}
+	m.cidLists = cidLists
+	channels, err := channels.New(ds, cidLists, m.notifier, m.voucherDecoder, m.resultTypes.Decoder, &channelEnvironment{m}, dataTransferNetwork.ID())
 	if err != nil {
 		return nil, err
 	}

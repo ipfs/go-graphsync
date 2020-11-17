@@ -50,22 +50,24 @@ func BenchmarkRoundtripSuccess(b *testing.B) {
 	tdm, err := newTempDirMaker(b)
 	require.NoError(b, err)
 	b.Run("test-p2p-stress-10-128MB", func(b *testing.B) {
-		p2pStrestTest(ctx, b, 10, allFilesUniformSize(128*(1<<20), 1<<20, 1024, true), tdm, false)
+		p2pStrestTest(ctx, b, 10, allFilesUniformSize(128*(1<<20), 1<<20, 1024, true), tdm, false, false)
 	})
 	b.Run("test-p2p-stress-10-128MB-1KB-chunks", func(b *testing.B) {
-		p2pStrestTest(ctx, b, 10, allFilesUniformSize(128*(1<<20), 1<<10, 1024, true), tdm, false)
+		p2pStrestTest(ctx, b, 10, allFilesUniformSize(128*(1<<20), 1<<10, 1024, true), tdm, false, false)
 	})
 	b.Run("test-p2p-stress-1-1GB", func(b *testing.B) {
-		p2pStrestTest(ctx, b, 1, allFilesUniformSize(1*(1<<30), 1<<20, 1024, true), tdm, true)
+		p2pStrestTest(ctx, b, 1, allFilesUniformSize(1*(1<<30), 1<<20, 1024, true), tdm, true, true)
 	})
 	b.Run("test-p2p-stress-1-1GB-no-raw-nodes", func(b *testing.B) {
-		p2pStrestTest(ctx, b, 1, allFilesUniformSize(1*(1<<30), 1<<20, 1024, false), tdm, true)
+		p2pStrestTest(ctx, b, 1, allFilesUniformSize(1*(1<<30), 1<<20, 1024, false), tdm, true, true)
 	})
 }
 
-func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc, tdm *tempDirMaker, diskBasedDatastore bool) {
+func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc, tdm *tempDirMaker, diskBasedDatastore bool, limitBandwidth bool) {
 	mn := mocknet.New(ctx)
-	mn.SetLinkDefaults(mocknet.LinkOptions{Latency: 100 * time.Millisecond, Bandwidth: 16 << 20})
+	if limitBandwidth {
+		mn.SetLinkDefaults(mocknet.LinkOptions{Latency: 100 * time.Millisecond, Bandwidth: 16 << 20})
+	}
 	net := tn.StreamNet(ctx, mn)
 	ig := testinstance.NewTestInstanceGenerator(ctx, net, tdm, diskBasedDatastore)
 	instances, err := ig.Instances(1 + b.N)
@@ -93,11 +95,14 @@ func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc,
 	for i := 0; i < b.N; i++ {
 		receiver := instances[i+1]
 		receiver.Manager.SubscribeToEvents(func(event datatransfer.Event, state datatransfer.ChannelState) {
+			if state.Received() > 0 {
+				b.Logf("transferred: %d", state.Received())
+			}
 			if state.Status() == datatransfer.Completed {
 				done <- struct{}{}
 			}
 		})
-		timer := time.NewTimer(10 * time.Second)
+		timer := time.NewTimer(30 * time.Second)
 		start := time.Now()
 		for j := 0; j < numfiles; j++ {
 			_, err := pusher.Manager.OpenPushDataChannel(ctx, receiver.Peer, testutil.NewFakeDTType(), allCids[j], allSelector)

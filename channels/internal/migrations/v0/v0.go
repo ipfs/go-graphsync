@@ -1,4 +1,4 @@
-package internal
+package v0
 
 import (
 	"github.com/ipfs/go-cid"
@@ -8,9 +8,9 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 )
 
-//go:generate cbor-gen-for --map-encoding ChannelState EncodedVoucher EncodedVoucherResult
+//go:generate cbor-gen-for ChannelState EncodedVoucher EncodedVoucherResult
 
-// EncodedVoucher is how the voucher is stored on disk
+// EncodedVoucher is version 0 of EncodedVoucher
 type EncodedVoucher struct {
 	// Vouchers identifier for decoding
 	Type datatransfer.TypeIdentifier
@@ -18,7 +18,7 @@ type EncodedVoucher struct {
 	Voucher *cbg.Deferred
 }
 
-// EncodedVoucherResult is how the voucher result is stored on disk
+// EncodedVoucherResult is version 0 of EncodedVoucherResult
 type EncodedVoucherResult struct {
 	// Vouchers identifier for decoding
 	Type datatransfer.TypeIdentifier
@@ -26,10 +26,8 @@ type EncodedVoucherResult struct {
 	VoucherResult *cbg.Deferred
 }
 
-// ChannelState is the internal representation on disk for the channel fsm
+// ChannelState is version 0 of ChannelState
 type ChannelState struct {
-	// PeerId of the manager peer
-	SelfPeer peer.ID
 	// an identifier for this channel shared by request and responder, set by requester through protocol
 	TransferID datatransfer.TransferID
 	// Initiator is the person who intiated this datatransfer request
@@ -48,8 +46,6 @@ type ChannelState struct {
 	TotalSize uint64
 	// current status of this deal
 	Status datatransfer.Status
-	// total bytes read from this node and queued for sending (0 if receiver)
-	Queued uint64
 	// total bytes sent from this node (0 if receiver)
 	Sent uint64
 	// total bytes received by this node (0 if sender)

@@ -18,10 +18,13 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/channels/internal"
 	"github.com/filecoin-project/go-data-transfer/channels/internal/migrations"
+	"github.com/filecoin-project/go-data-transfer/cidlists"
 	"github.com/filecoin-project/go-data-transfer/encoding"
 )
 
 type DecoderByTypeFunc func(identifier datatransfer.TypeIdentifier) (encoding.Decoder, bool)
+
+type ChannelCIDsReader func(chid datatransfer.ChannelID) ([]cid.Cid, error)
 
 type Notifier func(datatransfer.Event, datatransfer.ChannelState)
 
@@ -38,6 +41,7 @@ type Channels struct {
 	voucherResultDecoder DecoderByTypeFunc
 	stateMachines        fsm.Group
 	migrateStateMachines func(context.Context) error
+	cidLists             cidlists.CIDLists
 }
 
 // ChannelEnvironment -- just a proxy for DTNetwork for now
@@ -50,17 +54,19 @@ type ChannelEnvironment interface {
 
 // New returns a new thread safe list of channels
 func New(ds datastore.Batching,
+	cidLists cidlists.CIDLists,
 	notifier Notifier,
 	voucherDecoder DecoderByTypeFunc,
 	voucherResultDecoder DecoderByTypeFunc,
 	env ChannelEnvironment,
 	selfPeer peer.ID) (*Channels, error) {
 	c := &Channels{
+		cidLists:             cidLists,
 		notifier:             notifier,
 		voucherDecoder:       voucherDecoder,
 		voucherResultDecoder: voucherResultDecoder,
 	}
-	channelMigrations, err := migrations.GetChannelStateMigrations(selfPeer)
+	channelMigrations, err := migrations.GetChannelStateMigrations(selfPeer, cidLists)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +78,7 @@ func New(ds datastore.Batching,
 		StateEntryFuncs: ChannelStateEntryFuncs,
 		Notifier:        c.dispatch,
 		FinalityStates:  ChannelFinalityStates,
-	}, channelMigrations, versioning.VersionKey("1"))
+	}, channelMigrations, versioning.VersionKey("2"))
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +105,7 @@ func (c *Channels) dispatch(eventName fsm.EventName, channel fsm.StateType) {
 		Timestamp: time.Now(),
 	}
 
-	c.notifier(evt, fromInternalChannelState(realChannel, c.voucherDecoder, c.voucherResultDecoder))
+	c.notifier(evt, fromInternalChannelState(realChannel, c.voucherDecoder, c.voucherResultDecoder, c.cidLists.ReadList))
 }
 
 // CreateNew creates a new channel id and channel state and saves to channels.
@@ -137,9 +143,12 @@ func (c *Channels) CreateNew(selfPeer peer.ID, tid datatransfer.TransferID, base
 				},
 			},
 		},
-		Status:       datatransfer.Requested,
-		ReceivedCids: nil,
+		Status: datatransfer.Requested,
 	})
+	if err != nil {
+		return datatransfer.ChannelID{}, err
+	}
+	err = c.cidLists.CreateList(chid, nil)
 	if err != nil {
 		return datatransfer.ChannelID{}, err
 	}
@@ -156,7 +165,7 @@ func (c *Channels) InProgress() (map[datatransfer.ChannelID]datatransfer.Channel
 	channels := make(map[datatransfer.ChannelID]datatransfer.ChannelState, len(internalChannels))
 	for _, internalChannel := range internalChannels {
 		channels[datatransfer.ChannelID{ID: internalChannel.TransferID, Responder: internalChannel.Responder, Initiator: internalChannel.Initiator}] =
-			fromInternalChannelState(internalChannel, c.voucherDecoder, c.voucherResultDecoder)
+			fromInternalChannelState(internalChannel, c.voucherDecoder, c.voucherResultDecoder, c.cidLists.ReadList)
 	}
 	return channels, nil
 }
@@ -169,7 +178,7 @@ func (c *Channels) GetByID(ctx context.Context, chid datatransfer.ChannelID) (da
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	return fromInternalChannelState(internalChannel, c.voucherDecoder, c.voucherResultDecoder), nil
+	return fromInternalChannelState(internalChannel, c.voucherDecoder, c.voucherResultDecoder, c.cidLists.ReadList), nil
 }
 
 // Accept marks a data transfer as accepted
@@ -187,15 +196,19 @@ func (c *Channels) CompleteCleanupOnRestart(chid datatransfer.ChannelID) error {
 }
 
 func (c *Channels) DataSent(chid datatransfer.ChannelID, cid cid.Cid, delta uint64) error {
-	return c.send(chid, datatransfer.DataSent, delta, cid)
+	return c.send(chid, datatransfer.DataSent, delta)
 }
 
 func (c *Channels) DataQueued(chid datatransfer.ChannelID, cid cid.Cid, delta uint64) error {
-	return c.send(chid, datatransfer.DataQueued, delta, cid)
+	return c.send(chid, datatransfer.DataQueued, delta)
 }
 
 func (c *Channels) DataReceived(chid datatransfer.ChannelID, cid cid.Cid, delta uint64) error {
-	return c.send(chid, datatransfer.DataReceived, delta, cid)
+	err := c.cidLists.AppendList(chid, cid)
+	if err != nil {
+		return err
+	}
+	return c.send(chid, datatransfer.DataReceived, delta)
 }
 
 // PauseInitiator pauses the initator of this channel

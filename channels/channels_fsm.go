@@ -1,7 +1,6 @@
 package channels
 
 import (
-	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	cbg "github.com/whyrusleeping/cbor-gen"
 
@@ -31,9 +30,8 @@ var ChannelEvents = fsm.Events{
 		datatransfer.ResponderPaused,
 		datatransfer.BothPaused,
 		datatransfer.ResponderCompleted,
-		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64, c cid.Cid) error {
+		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64) error {
 		chst.Received += delta
-		chst.ReceivedCids = append(chst.ReceivedCids, c)
 		return nil
 	}),
 
@@ -44,7 +42,7 @@ var ChannelEvents = fsm.Events{
 		datatransfer.ResponderPaused,
 		datatransfer.BothPaused,
 		datatransfer.ResponderCompleted,
-		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64, c cid.Cid) error {
+		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64) error {
 		chst.Sent += delta
 		return nil
 	}),
@@ -55,7 +53,7 @@ var ChannelEvents = fsm.Events{
 		datatransfer.ResponderPaused,
 		datatransfer.BothPaused,
 		datatransfer.ResponderCompleted,
-		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64, c cid.Cid) error {
+		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64) error {
 		chst.Queued += delta
 		return nil
 	}),

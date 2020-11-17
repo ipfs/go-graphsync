@@ -1,4 +1,4 @@
-package internal
+package v1
 
 import (
 	"github.com/ipfs/go-cid"
@@ -6,25 +6,10 @@ import (
 	cbg "github.com/whyrusleeping/cbor-gen"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
+	"github.com/filecoin-project/go-data-transfer/channels/internal"
 )
 
-//go:generate cbor-gen-for --map-encoding ChannelState EncodedVoucher EncodedVoucherResult
-
-// EncodedVoucher is how the voucher is stored on disk
-type EncodedVoucher struct {
-	// Vouchers identifier for decoding
-	Type datatransfer.TypeIdentifier
-	// used to verify this channel
-	Voucher *cbg.Deferred
-}
-
-// EncodedVoucherResult is how the voucher result is stored on disk
-type EncodedVoucherResult struct {
-	// Vouchers identifier for decoding
-	Type datatransfer.TypeIdentifier
-	// used to verify this channel
-	VoucherResult *cbg.Deferred
-}
+//go:generate cbor-gen-for --map-encoding ChannelState
 
 // ChannelState is the internal representation on disk for the channel fsm
 type ChannelState struct {
@@ -56,6 +41,9 @@ type ChannelState struct {
 	Received uint64
 	// more informative status on a channel
 	Message        string
-	Vouchers       []EncodedVoucher
-	VoucherResults []EncodedVoucherResult
+	Vouchers       []internal.EncodedVoucher
+	VoucherResults []internal.EncodedVoucherResult
+
+	// ReceivedCids is all the cids the initiator has received so far
+	ReceivedCids []cid.Cid
 }

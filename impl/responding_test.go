@@ -3,6 +3,7 @@ package impl_test
 import (
 	"context"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -559,7 +560,7 @@ func TestDataTransferResponding(t *testing.T) {
 			h.transport = testutil.NewFakeTransport()
 			h.ds = dss.MutexWrap(datastore.NewMapDatastore())
 			h.storedCounter = storedcounter.New(h.ds, datastore.NewKey("counter"))
-			dt, err := NewDataTransfer(h.ds, h.network, h.transport, h.storedCounter)
+			dt, err := NewDataTransfer(h.ds, os.TempDir(), h.network, h.transport, h.storedCounter)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt)
 			h.dt = dt
@@ -978,7 +979,7 @@ func TestDataTransferRestartResponding(t *testing.T) {
 			h.transport = testutil.NewFakeTransport()
 			h.ds = dss.MutexWrap(datastore.NewMapDatastore())
 			h.storedCounter = storedcounter.New(h.ds, datastore.NewKey("counter"))
-			dt, err := NewDataTransfer(h.ds, h.network, h.transport, h.storedCounter)
+			dt, err := NewDataTransfer(h.ds, os.TempDir(), h.network, h.transport, h.storedCounter)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt)
 			h.dt = dt
