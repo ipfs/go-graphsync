@@ -29,6 +29,7 @@ var log = logging.Logger("graphsync")
 const maxRecursionDepth = 100
 const defaultTotalMaxMemory = uint64(256 << 20)
 const defaultMaxMemoryPerPeer = uint64(16 << 20)
+const defaultMaxInProgressRequests = uint64(6)
 
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
@@ -59,6 +60,7 @@ type GraphSync struct {
 	allocator                   *allocator.Allocator
 	totalMaxMemory              uint64
 	maxMemoryPerPeer            uint64
+	maxInProgressRequests       uint64
 }
 
 // Option defines the functional option type that can be used to configure
@@ -73,15 +75,27 @@ func RejectAllRequestsByDefault() Option {
 	}
 }
 
+// MaxMemoryResponder defines the maximum amount of memory the responder
+// may consume queueing up messages for a response in total
 func MaxMemoryResponder(totalMaxMemory uint64) Option {
 	return func(gs *GraphSync) {
 		gs.totalMaxMemory = totalMaxMemory
 	}
 }
 
+// MaxMemoryPerPeerResponder defines the maximum amount of memory a peer
+// may consume queueing up messages for a response
 func MaxMemoryPerPeerResponder(maxMemoryPerPeer uint64) Option {
 	return func(gs *GraphSync) {
 		gs.maxMemoryPerPeer = maxMemoryPerPeer
+	}
+}
+
+// MaxInProgressRequests changes the maximum number of
+// graphsync requests that are processed in parallel (default 6)
+func MaxInProgressRequests(maxInProgressRequests uint64) Option {
+	return func(gs *GraphSync) {
+		gs.maxInProgressRequests = maxInProgressRequests
 	}
 }
 
@@ -132,6 +146,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		peerTaskQueue:               peerTaskQueue,
 		totalMaxMemory:              defaultTotalMaxMemory,
 		maxMemoryPerPeer:            defaultMaxMemoryPerPeer,
+		maxInProgressRequests:       defaultMaxInProgressRequests,
 		ctx:                         ctx,
 		cancel:                      cancel,
 		unregisterDefaultValidator:  unregisterDefaultValidator,
@@ -147,7 +162,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
 	graphSync.peerResponseManager = peerResponseManager
-	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners)
+	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, graphSync.maxInProgressRequests)
 	graphSync.responseManager = responseManager
 
 	asyncLoader.Startup()

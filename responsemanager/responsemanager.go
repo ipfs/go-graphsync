@@ -22,8 +22,7 @@ import (
 var log = logging.Logger("graphsync")
 
 const (
-	maxInProcessRequests = 6
-	thawSpeed            = time.Millisecond * 100
+	thawSpeed = time.Millisecond * 100
 )
 
 type inProgressResponseStatus struct {
@@ -129,6 +128,7 @@ type ResponseManager struct {
 	workSignal            chan struct{}
 	qe                    *queryExecutor
 	inProgressResponses   map[responseKey]*inProgressResponseStatus
+	maxInProcessRequests  uint64
 }
 
 // New creates a new response manager from the given context, loader,
@@ -144,6 +144,7 @@ func New(ctx context.Context,
 	cancelledListeners CancelledListeners,
 	blockSentListeners BlockSentListeners,
 	networkErrorListeners NetworkErrorListeners,
+	maxInProcessRequests uint64,
 ) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
 	messages := make(chan responseManagerMessage, 16)
@@ -175,6 +176,7 @@ func New(ctx context.Context,
 		workSignal:            workSignal,
 		qe:                    qe,
 		inProgressResponses:   make(map[responseKey]*inProgressResponseStatus),
+		maxInProcessRequests:  maxInProcessRequests,
 	}
 }
 
@@ -294,7 +296,7 @@ func (rm *ResponseManager) cleanupInProcessResponses() {
 
 func (rm *ResponseManager) run() {
 	defer rm.cleanupInProcessResponses()
-	for i := 0; i < maxInProcessRequests; i++ {
+	for i := uint64(0); i < rm.maxInProcessRequests; i++ {
 		go rm.qe.processQueriesWorker()
 	}
 
