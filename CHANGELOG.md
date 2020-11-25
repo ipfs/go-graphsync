@@ -1,5 +1,18 @@
 # go-graphsync changelog
 
+# go-graphsync 0.5.1
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - feat(responsemanager): allow configuration of max requests (#122) ([ipfs/go-graphsync#122](https://github.com/ipfs/go-graphsync/pull/122))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +23/-6 | 3 |
+
 # go-graphsync 0.4.3
 
 Update libp2p to 0.12. This libp2p release includes a breaking change to the libp2p stream interfaces.
