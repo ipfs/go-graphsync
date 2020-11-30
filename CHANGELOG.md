@@ -1,5 +1,19 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.2.1
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Fire cancel locally even if remote cancel fails (#120) ([filecoin-project/go-data-transfer#120](https://github.com/filecoin-project/go-data-transfer/pull/120))
+  - fix: respect context when opening stream (#119) ([filecoin-project/go-data-transfer#119](https://github.com/filecoin-project/go-data-transfer/pull/119))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 2 | +17/-3 | 2 |
+
 # go-data-transfer 1.1.0
 
 This release primarily updates to go-libp2p 0.12 to use the new stream interfaces. Additionally, it pulls in a bug fix release of graphsync.
