@@ -99,8 +99,13 @@ func (impl *libp2pDataTransferNetwork) openStream(ctx context.Context, id peer.I
 		if nAttempts == impl.maxStreamOpenAttempts {
 			return nil, xerrors.Errorf("exhausted %d attempts but failed to open stream, err: %w", impl.maxStreamOpenAttempts, err)
 		}
+
 		d := b.Duration()
-		time.Sleep(d)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(d):
+		}
 	}
 }
 
