@@ -263,13 +263,22 @@ func (m *manager) CloseDataTransferChannel(ctx context.Context, chid datatransfe
 		log.Warnf("unable to close channel: %w", err)
 	}
 
-	if err := m.dataTransferNetwork.SendMessage(ctx, chst.OtherPeer(), m.cancelMessage(chid)); err != nil {
+	err = m.dataTransferNetwork.SendMessage(ctx, chst.OtherPeer(), m.cancelMessage(chid))
+	if err != nil {
 		err = fmt.Errorf("Unable to send cancel message: %w", err)
 		_ = m.OnRequestDisconnected(ctx, chid)
-		return err
+		log.Warn(err)
 	}
 
-	return m.channels.Cancel(chid)
+	fsmerr := m.channels.Cancel(chid)
+	if err != nil {
+		return err
+	}
+	if fsmerr != nil {
+		return xerrors.Errorf("unable to send cancel to channel FSM: %w", err)
+	}
+
+	return nil
 }
 
 // pause a running data transfer channel
