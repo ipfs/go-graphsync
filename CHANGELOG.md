@@ -1,5 +1,18 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.2.2
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix(graphsync): fix UseStore for restarts (#115) ([filecoin-project/go-data-transfer#115](https://github.com/filecoin-project/go-data-transfer/pull/115))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +6/-2 | 1 |
+
 # go-data-transfer 1.2.1
 
 ### Changelog
