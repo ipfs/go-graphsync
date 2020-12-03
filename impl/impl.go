@@ -275,7 +275,7 @@ func (m *manager) CloseDataTransferChannel(ctx context.Context, chid datatransfe
 		return err
 	}
 	if fsmerr != nil {
-		return xerrors.Errorf("unable to send cancel to channel FSM: %w", err)
+		return xerrors.Errorf("unable to send cancel to channel FSM: %w", fsmerr)
 	}
 
 	return nil
