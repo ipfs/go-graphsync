@@ -2,27 +2,33 @@ package responsebuilder
 
 import (
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldbridge"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
-	"github.com/ipld/go-ipld-prime"
 )
 
 // ResponseBuilder captures componenst of a response message across multiple
 // requests for a given peer and then generates the corresponding
 // GraphSync message components once responses are ready to send.
 type ResponseBuilder struct {
+	topic              Topic
 	outgoingBlocks     []blocks.Block
-	blkSize            int
+	blkSize            uint64
 	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
 	outgoingResponses  map[graphsync.RequestID]metadata.Metadata
 	extensions         map[graphsync.RequestID][]graphsync.ExtensionData
 }
 
+// Topic is an identifier for notifications about this response builder
+type Topic uint64
+
 // New generates a new ResponseBuilder.
-func New() *ResponseBuilder {
+func New(topic Topic) *ResponseBuilder {
 	return &ResponseBuilder{
+		topic:              topic,
 		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
 		outgoingResponses:  make(map[graphsync.RequestID]metadata.Metadata),
 		extensions:         make(map[graphsync.RequestID][]graphsync.ExtensionData),
@@ -31,7 +37,7 @@ func New() *ResponseBuilder {
 
 // AddBlock adds the given block to the response.
 func (rb *ResponseBuilder) AddBlock(block blocks.Block) {
-	rb.blkSize += len(block.RawData())
+	rb.blkSize += uint64(len(block.RawData()))
 	rb.outgoingBlocks = append(rb.outgoingBlocks, block)
 }
 
@@ -41,20 +47,20 @@ func (rb *ResponseBuilder) AddExtensionData(requestID graphsync.RequestID, exten
 }
 
 // BlockSize returns the total size of all blocks in this response
-func (rb *ResponseBuilder) BlockSize() int {
+func (rb *ResponseBuilder) BlockSize() uint64 {
 	return rb.blkSize
 }
 
 // AddLink adds the given link and whether its block is present
 // to the response for the given request ID.
 func (rb *ResponseBuilder) AddLink(requestID graphsync.RequestID, link ipld.Link, blockPresent bool) {
-	rb.outgoingResponses[requestID] = append(rb.outgoingResponses[requestID], metadata.Item{Link: link, BlockPresent: blockPresent})
+	rb.outgoingResponses[requestID] = append(rb.outgoingResponses[requestID], metadata.Item{Link: link.(cidlink.Link).Cid, BlockPresent: blockPresent})
 }
 
-// AddCompletedRequest marks the given request as completed in the response,
+// AddResponseCode marks the given request as completed in the response,
 // as well as whether the graphsync request responded with complete or partial
 // data.
-func (rb *ResponseBuilder) AddCompletedRequest(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
+func (rb *ResponseBuilder) AddResponseCode(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
 	rb.completedResponses[requestID] = status
 	// make sure this completion goes out in next response even if no links are sent
 	_, ok := rb.outgoingResponses[requestID]
@@ -69,10 +75,10 @@ func (rb *ResponseBuilder) Empty() bool {
 }
 
 // Build assembles and encodes response data from the added requests, links, and blocks.
-func (rb *ResponseBuilder) Build(ipldBridge ipldbridge.IPLDBridge) ([]gsmsg.GraphSyncResponse, []blocks.Block, error) {
+func (rb *ResponseBuilder) Build() ([]gsmsg.GraphSyncResponse, []blocks.Block, error) {
 	responses := make([]gsmsg.GraphSyncResponse, 0, len(rb.outgoingResponses))
 	for requestID, linkMap := range rb.outgoingResponses {
-		mdRaw, err := metadata.EncodeMetadata(linkMap, ipldBridge)
+		mdRaw, err := metadata.EncodeMetadata(linkMap)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -84,6 +90,11 @@ func (rb *ResponseBuilder) Build(ipldBridge ipldbridge.IPLDBridge) ([]gsmsg.Grap
 		responses = append(responses, gsmsg.NewResponse(requestID, responseCode(status, isComplete), rb.extensions[requestID]...))
 	}
 	return responses, rb.outgoingBlocks, nil
+}
+
+// Topic returns the identifier for notifications sent about this response builder
+func (rb *ResponseBuilder) Topic() Topic {
+	return rb.topic
 }
 
 func responseCode(status graphsync.ResponseStatusCode, isComplete bool) graphsync.ResponseStatusCode {

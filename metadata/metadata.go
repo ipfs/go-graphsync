@@ -1,15 +1,17 @@
 package metadata
 
 import (
-	"github.com/ipfs/go-graphsync/ipldbridge"
-	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/fluent"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	"bytes"
+	"fmt"
+
+	"github.com/ipfs/go-cid"
+	cbg "github.com/whyrusleeping/cbor-gen"
+	xerrors "golang.org/x/xerrors"
 )
 
 // Item is a single link traversed in a repsonse
 type Item struct {
-	Link         ipld.Link
+	Link         cid.Cid
 	BlockPresent bool
 }
 
@@ -19,52 +21,57 @@ type Metadata []Item
 
 // DecodeMetadata assembles metadata from a raw byte array, first deserializing
 // as a node and then assembling into a metadata struct.
-func DecodeMetadata(data []byte, ipldBridge ipldbridge.IPLDBridge) (Metadata, error) {
-	node, err := ipldBridge.DecodeNode(data)
+func DecodeMetadata(data []byte) (Metadata, error) {
+	var metadata Metadata
+	r := bytes.NewReader(data)
+
+	br := cbg.GetPeeker(r)
+	scratch := make([]byte, 8)
+
+	maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
 	if err != nil {
 		return nil, err
 	}
-	var decodedData interface{}
-	err = fluent.Recover(func() {
-		simpleNode := fluent.WrapNode(node)
-		iterator := simpleNode.ListIterator()
-		var metadata Metadata
-		if simpleNode.Length() != -1 {
-			metadata = make(Metadata, 0, simpleNode.Length())
+
+	if extra > cbg.MaxLength {
+		return nil, fmt.Errorf("t.Metadata: array too large (%d)", extra)
+	}
+
+	if maj != cbg.MajArray {
+		return nil, fmt.Errorf("expected cbor array")
+	}
+
+	if extra > 0 {
+		metadata = make(Metadata, extra)
+	}
+
+	for i := 0; i < int(extra); i++ {
+
+		var v Item
+		if err := v.UnmarshalCBOR(br); err != nil {
+			return nil, err
 		}
 
-		for !iterator.Done() {
-			_, item := iterator.Next()
-			link := item.LookupString("link").AsLink()
-			blockPresent := item.LookupString("blockPresent").AsBool()
-			metadata = append(metadata, Item{link, blockPresent})
-		}
-		decodedData = metadata
-	})
-	if err != nil {
-		return nil, err
+		metadata[i] = v
 	}
-	return decodedData.(Metadata), err
+
+	return metadata, nil
 }
 
 // EncodeMetadata encodes metadata to an IPLD node then serializes to raw bytes
-func EncodeMetadata(entries Metadata, ipldBridge ipldbridge.IPLDBridge) ([]byte, error) {
-	var node ipld.Node
-	err := fluent.Recover(func() {
-		nb := fluent.WrapNodeBuilder(ipldfree.NodeBuilder())
-		node = nb.CreateList(func(lb ipldbridge.ListBuilder, nb ipldbridge.NodeBuilder) {
-			for _, item := range entries {
-				lb.Append(
-					nb.CreateMap(func(mb ipldbridge.MapBuilder, knb ipldbridge.NodeBuilder, vnb ipldbridge.NodeBuilder) {
-						mb.Insert(knb.CreateString("link"), vnb.CreateLink(item.Link))
-						mb.Insert(knb.CreateString("blockPresent"), vnb.CreateBool(item.BlockPresent))
-					}),
-				)
-			}
-		})
-	})
-	if err != nil {
+func EncodeMetadata(entries Metadata) ([]byte, error) {
+	w := new(bytes.Buffer)
+	scratch := make([]byte, 9)
+	if len(entries) > cbg.MaxLength {
+		return nil, xerrors.Errorf("Slice value was too long")
+	}
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajArray, uint64(len(entries))); err != nil {
 		return nil, err
 	}
-	return ipldBridge.EncodeNode(node)
+	for _, v := range entries {
+		if err := v.MarshalCBOR(w); err != nil {
+			return nil, err
+		}
+	}
+	return w.Bytes(), nil
 }

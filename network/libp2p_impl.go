@@ -6,14 +6,14 @@ import (
 	"io"
 	"time"
 
-	ggio "github.com/gogo/protobuf/io"
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	logging "github.com/ipfs/go-log"
-	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
+
+	gsmsg "github.com/ipfs/go-graphsync/message"
 )
 
 var log = logging.Logger("graphsync_network")
@@ -42,7 +42,7 @@ type streamMessageSender struct {
 }
 
 func (s *streamMessageSender) Close() error {
-	return helpers.FullClose(s.s)
+	return s.s.Close()
 }
 
 func (s *streamMessageSender) Reset() error {
@@ -62,7 +62,7 @@ func msgToStream(ctx context.Context, s network.Stream, msg gsmsg.GraphSyncMessa
 		deadline = dl
 	}
 	if err := s.SetWriteDeadline(deadline); err != nil {
-		log.Warningf("error setting deadline: %s", err)
+		log.Warnf("error setting deadline: %s", err)
 	}
 
 	switch s.Protocol() {
@@ -76,7 +76,7 @@ func msgToStream(ctx context.Context, s network.Stream, msg gsmsg.GraphSyncMessa
 	}
 
 	if err := s.SetWriteDeadline(time.Time{}); err != nil {
-		log.Warningf("error resetting deadline: %s", err)
+		log.Warnf("error resetting deadline: %s", err)
 	}
 	return nil
 }
@@ -105,14 +105,11 @@ func (gsnet *libp2pGraphSyncNetwork) SendMessage(
 	}
 
 	if err = msgToStream(ctx, s, outgoing); err != nil {
-		s.Reset()
+		_ = s.Reset()
 		return err
 	}
 
-	// TODO(https://github.com/libp2p/go-libp2p-net/issues/28): Avoid this goroutine.
-	go helpers.AwaitEOF(s)
 	return s.Close()
-
 }
 
 func (gsnet *libp2pGraphSyncNetwork) SetDelegate(r Receiver) {
@@ -130,16 +127,16 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 	defer s.Close()
 
 	if gsnet.receiver == nil {
-		s.Reset()
+		_ = s.Reset()
 		return
 	}
 
-	reader := ggio.NewDelimitedReader(s, network.MessageSizeMax)
+	reader := msgio.NewVarintReaderSize(s, network.MessageSizeMax)
 	for {
-		received, err := gsmsg.FromPBReader(reader)
+		received, err := gsmsg.FromMsgReader(reader)
 		if err != nil {
 			if err != io.EOF {
-				s.Reset()
+				_ = s.Reset()
 				go gsnet.receiver.ReceiveError(err)
 				log.Debugf("graphsync net handleNewStream from %s error: %s", s.Conn().RemotePeer(), err)
 			}

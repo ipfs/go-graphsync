@@ -2,302 +2,183 @@ package peerresponsemanager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
-	"reflect"
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testbridge"
-
 	blocks "github.com/ipfs/go-block-format"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync"
+	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/messagequeue"
+	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/responsemanager/allocator"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
-type fakePeerHandler struct {
-	lastBlocks    []blocks.Block
-	lastResponses []gsmsg.GraphSyncResponse
-	sent          chan struct{}
-	done          chan struct{}
-}
-
-func (fph *fakePeerHandler) SendResponse(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block) <-chan struct{} {
-	fph.lastResponses = responses
-	fph.lastBlocks = blks
-	fph.sent <- struct{}{}
-	return fph.done
-}
-
-func TestPeerResponseManagerSendsResponses(t *testing.T) {
+func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
 	requestID1 := graphsync.RequestID(rand.Int31())
 	requestID2 := graphsync.RequestID(rand.Int31())
 	requestID3 := graphsync.RequestID(rand.Int31())
+	sendResponseNotifee1, sendResponseVerifier1 := testutil.NewTestNotifee(requestID1, 10)
+	sendResponseNotifee2, sendResponseVerifier2 := testutil.NewTestNotifee(requestID2, 10)
+	sendResponseNotifee3, sendResponseVerifier3 := testutil.NewTestNotifee(requestID3, 10)
+	finishNotifee1, finishVerifier1 := testutil.NewTestNotifee(requestID1, 10)
+	finishNotifee2, finishVerifier2 := testutil.NewTestNotifee(requestID2, 10)
+
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	done := make(chan struct{}, 1)
-	sent := make(chan struct{}, 1)
-	fph := &fakePeerHandler{
-		done: done,
-		sent: sent,
-	}
-	ipldBridge := testbridge.NewMockIPLDBridge()
-	peerResponseManager := NewResponseSender(ctx, p, fph, ipldBridge)
-	peerResponseManager.Startup()
+	fph := newFakePeerHandler(ctx, t)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
+	peerResponseSender.Startup()
 
-	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())
+	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData(), sendResponseNotifee1)
+	assertSentOnWire(t, bd, blks[0])
+	fph.AssertHasMessage("did not send first message")
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Did not send first message")
-	case <-sent:
-	}
+	fph.AssertBlocks(blks[0])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	if len(fph.lastBlocks) != 1 || fph.lastBlocks[0].Cid() != blks[0].Cid() {
-		t.Fatal("Did not send correct blocks for first message")
-	}
-
-	if len(fph.lastResponses) != 1 || fph.lastResponses[0].RequestID() != requestID1 ||
-		fph.lastResponses[0].Status() != graphsync.PartialResponse {
-		t.Fatal("Did not send correct responses for first message")
-	}
-
-	peerResponseManager.SendResponse(requestID2, links[0], blks[0].RawData())
-	peerResponseManager.SendResponse(requestID1, links[1], blks[1].RawData())
-	peerResponseManager.SendResponse(requestID1, links[2], nil)
-	peerResponseManager.FinishRequest(requestID1)
+	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData(), sendResponseNotifee2)
+	assertSentNotOnWire(t, bd, blks[0])
+	bd = peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData(), sendResponseNotifee1)
+	assertSentOnWire(t, bd, blks[1])
+	bd = peerResponseSender.SendResponse(requestID1, links[2], nil, sendResponseNotifee1)
+	assertNotSent(t, bd, blks[2])
+	peerResponseSender.FinishRequest(requestID1, finishNotifee1)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifySuccess()
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Should have sent second message but didn't")
-	case <-sent:
-	}
+	fph.AssertHasMessage("did not send second message")
+	fph.AssertBlocks(blks[1])
+	fph.AssertResponses(expectedResponses{
+		requestID1: graphsync.RequestCompletedPartial,
+		requestID2: graphsync.PartialResponse,
+	})
 
-	if len(fph.lastBlocks) != 1 || fph.lastBlocks[0].Cid() != blks[1].Cid() {
-		t.Fatal("Did not dedup blocks correctly on second message")
-	}
-
-	if len(fph.lastResponses) != 2 {
-		t.Fatal("Did not send correct number of responses")
-	}
-	response1, err := findResponseForRequestID(fph.lastResponses, requestID1)
-	if err != nil {
-		t.Fatal("Did not send correct response for second message")
-	}
-	if response1.Status() != graphsync.RequestCompletedPartial {
-		t.Fatal("Did not send proper response code in second message")
-	}
-	response2, err := findResponseForRequestID(fph.lastResponses, requestID2)
-	if err != nil {
-		t.Fatal("Did not send correct response for second message")
-	}
-	if response2.Status() != graphsync.PartialResponse {
-		t.Fatal("Did not send proper response code in second message")
-	}
-
-	peerResponseManager.SendResponse(requestID2, links[3], blks[3].RawData())
-	peerResponseManager.SendResponse(requestID3, links[4], blks[4].RawData())
-	peerResponseManager.FinishRequest(requestID2)
+	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData(), sendResponseNotifee2)
+	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData(), sendResponseNotifee3)
+	peerResponseSender.FinishRequest(requestID2, finishNotifee2)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifySuccess()
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Should have sent third message but didn't")
-	case <-sent:
-	}
+	fph.AssertHasMessage("did not send third message")
+	fph.AssertBlocks(blks[3], blks[4])
+	fph.AssertResponses(expectedResponses{
+		requestID2: graphsync.RequestCompletedFull,
+		requestID3: graphsync.PartialResponse,
+	})
 
-	if len(fph.lastBlocks) != 2 ||
-		!testutil.ContainsBlock(fph.lastBlocks, blks[3]) ||
-		!testutil.ContainsBlock(fph.lastBlocks, blks[4]) {
-		t.Fatal("Did not send correct blocks for third message")
-	}
-
-	if len(fph.lastResponses) != 2 {
-		t.Fatal("Did not send correct number of responses")
-	}
-	response2, err = findResponseForRequestID(fph.lastResponses, requestID2)
-	if err != nil {
-		t.Fatal("Did not send correct response for third message")
-	}
-	if response2.Status() != graphsync.RequestCompletedFull {
-		t.Fatal("Did not send proper response code in third message")
-	}
-	response3, err := findResponseForRequestID(fph.lastResponses, requestID3)
-	if err != nil {
-		t.Fatal("Did not send correct response for third message")
-	}
-	if response3.Status() != graphsync.PartialResponse {
-		t.Fatal("Did not send proper response code in third message")
-	}
-
-	peerResponseManager.SendResponse(requestID3, links[0], blks[0].RawData())
-	peerResponseManager.SendResponse(requestID3, links[4], blks[4].RawData())
+	peerResponseSender.SendResponse(requestID3, links[0], blks[0].RawData(), sendResponseNotifee3)
+	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData(), sendResponseNotifee3)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifySuccess()
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Should have sent third message but didn't")
-	case <-sent:
-	}
+	fph.AssertHasMessage("did not send fourth message")
+	fph.AssertBlocks(blks[0])
+	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
 
-	if len(fph.lastBlocks) != 1 || fph.lastBlocks[0].Cid() != blks[0].Cid() {
-		t.Fatal("Should have resent block cause there were no in progress requests but did not")
-	}
+	fph.notifyError()
 
-	if len(fph.lastResponses) != 1 || fph.lastResponses[0].RequestID() != requestID3 ||
-		fph.lastResponses[0].Status() != graphsync.PartialResponse {
-		t.Fatal("Did not send correct responses for fourth message")
-	}
+	sendResponseVerifier1.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}, Event{Name: Sent}})
+	sendResponseVerifier1.ExpectClose(ctx, t)
+	sendResponseVerifier2.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}, Event{Name: Sent}})
+	sendResponseVerifier2.ExpectClose(ctx, t)
+	sendResponseVerifier3.ExpectEvents(ctx, t, []notifications.Event{
+		Event{Name: Sent},
+		Event{Name: Error, Err: fmt.Errorf("error sending message: %w", errors.New("something went wrong"))},
+	})
+	sendResponseVerifier3.ExpectClose(ctx, t)
+
+	finishVerifier1.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}})
+	finishVerifier1.ExpectClose(ctx, t)
+	finishVerifier2.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}})
+	finishVerifier2.ExpectClose(ctx, t)
 }
 
-func TestPeerResponseManagerSendsVeryLargeBlocksResponses(t *testing.T) {
+func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 
 	p := testutil.GeneratePeers(1)[0]
 	requestID1 := graphsync.RequestID(rand.Int31())
 	// generate large blocks before proceeding
 	blks := testutil.GenerateBlocksOfSize(5, 1000000)
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	done := make(chan struct{}, 1)
-	sent := make(chan struct{}, 1)
-	fph := &fakePeerHandler{
-		done: done,
-		sent: sent,
-	}
-	ipldBridge := testbridge.NewMockIPLDBridge()
-	peerResponseManager := NewResponseSender(ctx, p, fph, ipldBridge)
-	peerResponseManager.Startup()
+	fph := newFakePeerHandler(ctx, t)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
+	peerResponseSender.Startup()
 
-	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())
+	peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Did not send first message")
-	case <-sent:
-	}
-
-	if len(fph.lastBlocks) != 1 || fph.lastBlocks[0].Cid() != blks[0].Cid() {
-		t.Fatal("Did not send correct blocks for first message")
-	}
-
-	if len(fph.lastResponses) != 1 || fph.lastResponses[0].RequestID() != requestID1 ||
-		fph.lastResponses[0].Status() != graphsync.PartialResponse {
-		t.Fatal("Did not send correct responses for first message")
-	}
+	fph.AssertHasMessage("did not send first message")
+	fph.AssertBlocks(blks[0])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
 	// Send 3 very large blocks
-	peerResponseManager.SendResponse(requestID1, links[1], blks[1].RawData())
-	peerResponseManager.SendResponse(requestID1, links[2], blks[2].RawData())
-	peerResponseManager.SendResponse(requestID1, links[3], blks[3].RawData())
+	peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData())
+	peerResponseSender.SendResponse(requestID1, links[2], blks[2].RawData())
+	peerResponseSender.SendResponse(requestID1, links[3], blks[3].RawData())
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifySuccess()
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Should have sent second message but didn't")
-	case <-sent:
-	}
-
-	if len(fph.lastBlocks) != 1 || fph.lastBlocks[0].Cid() != blks[1].Cid() {
-		t.Fatal("Should have broken up message but didn't")
-	}
-
-	if len(fph.lastResponses) != 1 {
-		t.Fatal("Should have broken up message but didn't")
-	}
+	fph.AssertHasMessage("did not send second message")
+	fph.AssertBlocks(blks[1])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
 	// Send one more block while waiting
-	peerResponseManager.SendResponse(requestID1, links[4], blks[4].RawData())
-	peerResponseManager.FinishRequest(requestID1)
+	peerResponseSender.SendResponse(requestID1, links[4], blks[4].RawData())
+	peerResponseSender.FinishRequest(requestID1)
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifySuccess()
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Should have sent third message but didn't")
-	case <-sent:
-	}
-
-	if len(fph.lastBlocks) != 1 || fph.lastBlocks[0].Cid() != blks[2].Cid() {
-		t.Fatal("Should have broken up message but didn't")
-	}
-
-	if len(fph.lastResponses) != 1 {
-		t.Fatal("Should have broken up message but didn't")
-	}
+	fph.AssertHasMessage("did not send third message")
+	fph.AssertBlocks(blks[2])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifySuccess()
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Should have sent fourth message but didn't")
-	case <-sent:
-	}
-
-	if len(fph.lastBlocks) != 1 || fph.lastBlocks[0].Cid() != blks[3].Cid() {
-		t.Fatal("Should have broken up message but didn't")
-	}
-
-	if len(fph.lastResponses) != 1 {
-		t.Fatal("Should have broken up message but didn't")
-	}
+	fph.AssertHasMessage("did not send fourth message")
+	fph.AssertBlocks(blks[3])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifySuccess()
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Should have sent fifth message but didn't")
-	case <-sent:
-	}
-
-	if len(fph.lastBlocks) != 1 || fph.lastBlocks[0].Cid() != blks[4].Cid() {
-		t.Fatal("Should have broken up message but didn't")
-	}
-
-	if len(fph.lastResponses) != 1 {
-		t.Fatal("Should have broken up message but didn't")
-	}
-
-	response, err := findResponseForRequestID(fph.lastResponses, requestID1)
-	if err != nil {
-		t.Fatal("Did not send correct response for fifth message")
-	}
-	if response.Status() != graphsync.RequestCompletedFull {
-		t.Fatal("Did not send proper response code in fifth message")
-	}
+	fph.AssertHasMessage("did not send fifth message")
+	fph.AssertBlocks(blks[4])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.RequestCompletedFull})
 
 }
 
-func TestPeerResponseManagerSendsExtensionData(t *testing.T) {
+func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
 	requestID1 := graphsync.RequestID(rand.Int31())
@@ -306,32 +187,16 @@ func TestPeerResponseManagerSendsExtensionData(t *testing.T) {
 	for _, block := range blks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	done := make(chan struct{}, 1)
-	sent := make(chan struct{}, 1)
-	fph := &fakePeerHandler{
-		done: done,
-		sent: sent,
-	}
-	ipldBridge := testbridge.NewMockIPLDBridge()
-	peerResponseManager := NewResponseSender(ctx, p, fph, ipldBridge)
-	peerResponseManager.Startup()
+	fph := newFakePeerHandler(ctx, t)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
+	peerResponseSender.Startup()
 
-	peerResponseManager.SendResponse(requestID1, links[0], blks[0].RawData())
+	peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Did not send first message")
-	case <-sent:
-	}
-
-	if len(fph.lastBlocks) != 1 || fph.lastBlocks[0].Cid() != blks[0].Cid() {
-		t.Fatal("Did not send correct blocks for first message")
-	}
-
-	if len(fph.lastResponses) != 1 || fph.lastResponses[0].RequestID() != requestID1 ||
-		fph.lastResponses[0].Status() != graphsync.PartialResponse {
-		t.Fatal("Did not send correct responses for first message")
-	}
+	fph.AssertHasMessage("did not send first message")
+	fph.AssertBlocks(blks[0])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
 	extensionData1 := testutil.RandomBytes(100)
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
@@ -345,32 +210,241 @@ func TestPeerResponseManagerSendsExtensionData(t *testing.T) {
 		Name: extensionName2,
 		Data: extensionData2,
 	}
-	peerResponseManager.SendResponse(requestID1, links[1], blks[1].RawData())
-	peerResponseManager.SendExtensionData(requestID1, extension1)
-	peerResponseManager.SendExtensionData(requestID1, extension2)
+	peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData())
+	peerResponseSender.SendExtensionData(requestID1, extension1)
+	peerResponseSender.SendExtensionData(requestID1, extension2)
 	// let peer reponse manager know last message was sent so message sending can continue
-	done <- struct{}{}
+	fph.notifySuccess()
+	fph.AssertHasMessage("did not send second message")
+	fph.AssertExtensions([][]graphsync.ExtensionData{{extension1, extension2}})
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Should have sent second message but didn't")
-	case <-sent:
-	}
+}
 
-	if len(fph.lastResponses) != 1 {
-		t.Fatal("Did not send correct number of responses for second message")
+func TestPeerResponseSenderSendsResponsesInTransaction(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	p := testutil.GeneratePeers(1)[0]
+	requestID1 := graphsync.RequestID(rand.Int31())
+	blks := testutil.GenerateBlocksOfSize(5, 100)
+	links := make([]ipld.Link, 0, len(blks))
+	for _, block := range blks {
+		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
+	fph := newFakePeerHandler(ctx, t)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
+	peerResponseSender.Startup()
+	notifee, notifeeVerifier := testutil.NewTestNotifee("transaction", 10)
+	err := peerResponseSender.Transaction(requestID1, func(peerResponseSender PeerResponseTransactionSender) error {
+		bd := peerResponseSender.SendResponse(links[0], blks[0].RawData())
+		assertSentOnWire(t, bd, blks[0])
 
-	lastResponse := fph.lastResponses[0]
-	returnedData1, found := lastResponse.Extension(extensionName1)
-	if !found || !reflect.DeepEqual(extensionData1, returnedData1) {
-		t.Fatal("Failed to encode first extension")
-	}
+		fph.RefuteHasMessage()
+		fph.RefuteBlocks()
+		fph.RefuteResponses()
 
-	returnedData2, found := lastResponse.Extension(extensionName2)
-	if !found || !reflect.DeepEqual(extensionData2, returnedData2) {
-		t.Fatal("Failed to encode first extension")
+		bd = peerResponseSender.SendResponse(links[1], blks[1].RawData())
+		assertSentOnWire(t, bd, blks[1])
+		bd = peerResponseSender.SendResponse(links[2], nil)
+		assertNotSent(t, bd, blks[2])
+		peerResponseSender.FinishRequest()
+
+		peerResponseSender.AddNotifee(notifee)
+		fph.RefuteHasMessage()
+		return nil
+	})
+	require.NoError(t, err)
+	fph.AssertHasMessage("should sent first message")
+
+	fph.notifySuccess()
+	notifeeVerifier.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}})
+	notifeeVerifier.ExpectClose(ctx, t)
+}
+
+func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	p := testutil.GeneratePeers(1)[0]
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
+	blks := testutil.GenerateBlocksOfSize(5, 100)
+	links := make([]ipld.Link, 0, len(blks))
+	for _, block := range blks {
+		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
+	fph := newFakePeerHandler(ctx, t)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
+	peerResponseSender.Startup()
+
+	peerResponseSender.IgnoreBlocks(requestID1, links)
+
+	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
+	assertSentNotOnWire(t, bd, blks[0])
+
+	fph.AssertHasMessage("did not send first message")
+	fph.RefuteBlocks()
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
+
+	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData())
+	assertSentNotOnWire(t, bd, blks[0])
+	bd = peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData())
+	assertSentNotOnWire(t, bd, blks[1])
+	bd = peerResponseSender.SendResponse(requestID1, links[2], blks[2].RawData())
+	assertSentNotOnWire(t, bd, blks[2])
+	peerResponseSender.FinishRequest(requestID1)
+
+	// let peer reponse manager know last message was sent so message sending can continue
+	fph.notifySuccess()
+
+	fph.AssertHasMessage("did not send second message")
+	fph.RefuteBlocks()
+	fph.AssertResponses(expectedResponses{
+		requestID1: graphsync.RequestCompletedFull,
+		requestID2: graphsync.PartialResponse,
+	})
+
+	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData())
+	peerResponseSender.FinishRequest(requestID2)
+
+	// let peer reponse manager know last message was sent so message sending can continue
+	fph.notifySuccess()
+
+	fph.AssertHasMessage("did not send third message")
+	fph.AssertBlocks(blks[3])
+	fph.AssertResponses(expectedResponses{requestID2: graphsync.RequestCompletedFull})
+
+}
+
+func TestPeerResponseSenderDupKeys(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	p := testutil.GeneratePeers(1)[0]
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
+	requestID3 := graphsync.RequestID(rand.Int31())
+	blks := testutil.GenerateBlocksOfSize(5, 100)
+	links := make([]ipld.Link, 0, len(blks))
+	for _, block := range blks {
+		links = append(links, cidlink.Link{Cid: block.Cid()})
+	}
+	fph := newFakePeerHandler(ctx, t)
+	allocator := allocator.NewAllocator(1<<30, 1<<30)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
+	peerResponseSender.Startup()
+
+	peerResponseSender.DedupKey(requestID1, "applesauce")
+	peerResponseSender.DedupKey(requestID3, "applesauce")
+
+	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
+	assertSentOnWire(t, bd, blks[0])
+
+	fph.AssertHasMessage("did not send first message")
+	fph.AssertBlocks(blks[0])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
+
+	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData())
+	assertSentOnWire(t, bd, blks[0])
+	bd = peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData())
+	assertSentOnWire(t, bd, blks[1])
+	bd = peerResponseSender.SendResponse(requestID1, links[2], nil)
+	assertNotSent(t, bd, blks[2])
+
+	// let peer reponse manager know last message was sent so message sending can continue
+	fph.notifySuccess()
+
+	fph.AssertHasMessage("did not send second message")
+	fph.AssertBlocks(blks[0], blks[1])
+	fph.AssertResponses(expectedResponses{
+		requestID1: graphsync.PartialResponse,
+		requestID2: graphsync.PartialResponse,
+	})
+
+	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData())
+	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
+	peerResponseSender.FinishRequest(requestID2)
+
+	// let peer reponse manager know last message was sent so message sending can continue
+	fph.notifySuccess()
+
+	fph.AssertHasMessage("did not send third message")
+	fph.AssertBlocks(blks[3], blks[4])
+	fph.AssertResponses(expectedResponses{
+		requestID2: graphsync.RequestCompletedFull,
+		requestID3: graphsync.PartialResponse,
+	})
+
+	peerResponseSender.SendResponse(requestID3, links[0], blks[0].RawData())
+	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
+
+	// let peer reponse manager know last message was sent so message sending can continue
+	fph.notifySuccess()
+
+	fph.AssertHasMessage("did not send fourth message")
+	fph.RefuteBlocks()
+	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
+
+}
+
+func TestPeerResponseSenderSendsResponsesMemoryPressure(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	p := testutil.GeneratePeers(1)[0]
+	requestID1 := graphsync.RequestID(rand.Int31())
+	blks := testutil.GenerateBlocksOfSize(5, 100)
+	links := make([]ipld.Link, 0, len(blks))
+	for _, block := range blks {
+		links = append(links, cidlink.Link{Cid: block.Cid()})
+	}
+	fph := newFakePeerHandler(ctx, t)
+	allocator := allocator.NewAllocator(300, 300)
+	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
+	peerResponseSender.Startup()
+
+	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
+	assertSentOnWire(t, bd, blks[0])
+	fph.AssertHasMessage("did not send first message")
+
+	fph.AssertBlocks(blks[0])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
+
+	finishes := make(chan string, 2)
+	go func() {
+		_ = peerResponseSender.Transaction(requestID1, func(peerResponseSender PeerResponseTransactionSender) error {
+			bd = peerResponseSender.SendResponse(links[1], blks[1].RawData())
+			assertSentOnWire(t, bd, blks[1])
+			bd = peerResponseSender.SendResponse(links[2], blks[2].RawData())
+			assertSentOnWire(t, bd, blks[2])
+			bd = peerResponseSender.SendResponse(links[3], blks[3].RawData())
+			assertSentOnWire(t, bd, blks[3])
+			peerResponseSender.FinishRequest()
+			return nil
+		})
+		finishes <- "sent message"
+	}()
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		// let peer reponse manager know last message was sent so message sending can continue
+		finishes <- "freed memory"
+		fph.notifySuccess()
+	}()
+
+	var finishMessages []string
+	for i := 0; i < 2; i++ {
+		var finishMessage string
+		testutil.AssertReceive(ctx, t, finishes, &finishMessage, "should have completed")
+		finishMessages = append(finishMessages, finishMessage)
+	}
+	require.Equal(t, []string{"freed memory", "sent message"}, finishMessages)
+	fph.AssertHasMessage("did not send second message")
+	fph.AssertBlocks(blks[1], blks[2], blks[3])
+	fph.AssertResponses(expectedResponses{
+		requestID1: graphsync.RequestCompletedFull,
+	})
 }
 
 func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID graphsync.RequestID) (gsmsg.GraphSyncResponse, error) {
@@ -380,4 +454,102 @@ func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID gra
 		}
 	}
 	return gsmsg.GraphSyncResponse{}, fmt.Errorf("Response Not Found")
+}
+
+func assertSentNotOnWire(t *testing.T, bd graphsync.BlockData, blk blocks.Block) {
+	require.Equal(t, cidlink.Link{Cid: blk.Cid()}, bd.Link())
+	require.Equal(t, uint64(len(blk.RawData())), bd.BlockSize())
+	require.Equal(t, uint64(0), bd.BlockSizeOnWire())
+}
+
+func assertSentOnWire(t *testing.T, bd graphsync.BlockData, blk blocks.Block) {
+	require.Equal(t, cidlink.Link{Cid: blk.Cid()}, bd.Link())
+	require.Equal(t, uint64(len(blk.RawData())), bd.BlockSize())
+	require.Equal(t, uint64(len(blk.RawData())), bd.BlockSizeOnWire())
+}
+
+func assertNotSent(t *testing.T, bd graphsync.BlockData, blk blocks.Block) {
+	require.Equal(t, cidlink.Link{Cid: blk.Cid()}, bd.Link())
+	require.Equal(t, uint64(0), bd.BlockSize())
+	require.Equal(t, uint64(0), bd.BlockSizeOnWire())
+}
+
+type fakePeerHandler struct {
+	ctx              context.Context
+	t                *testing.T
+	lastBlocks       []blocks.Block
+	lastResponses    []gsmsg.GraphSyncResponse
+	sent             chan struct{}
+	notifeePublisher *testutil.MockPublisher
+}
+
+func newFakePeerHandler(ctx context.Context, t *testing.T) *fakePeerHandler {
+	return &fakePeerHandler{
+		ctx:              ctx,
+		t:                t,
+		sent:             make(chan struct{}, 1),
+		notifeePublisher: testutil.NewMockPublisher(),
+	}
+}
+
+func (fph *fakePeerHandler) AssertHasMessage(expectationCheck string) {
+	testutil.AssertDoesReceive(fph.ctx, fph.t, fph.sent, expectationCheck)
+}
+
+func (fph *fakePeerHandler) RefuteHasMessage() {
+	timer := time.NewTimer(100 * time.Millisecond)
+	testutil.AssertDoesReceiveFirst(fph.t, timer.C, "should not send a message", fph.sent)
+}
+
+func (fph *fakePeerHandler) AssertBlocks(blks ...blocks.Block) {
+	require.Len(fph.t, fph.lastBlocks, len(blks))
+	for _, blk := range blks {
+		testutil.AssertContainsBlock(fph.t, fph.lastBlocks, blk)
+	}
+}
+
+func (fph *fakePeerHandler) RefuteBlocks() {
+	require.Empty(fph.t, fph.lastBlocks)
+}
+
+type expectedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
+
+func (fph *fakePeerHandler) AssertResponses(responses expectedResponses) {
+	require.Len(fph.t, fph.lastResponses, len(responses))
+	for requestID, status := range responses {
+		response, err := findResponseForRequestID(fph.lastResponses, requestID)
+		require.NoError(fph.t, err)
+		require.Equal(fph.t, status, response.Status())
+	}
+}
+
+func (fph *fakePeerHandler) AssertExtensions(extensionSets [][]graphsync.ExtensionData) {
+	require.Len(fph.t, fph.lastResponses, len(extensionSets))
+	for i, extensions := range extensionSets {
+		response := fph.lastResponses[i]
+		for _, extension := range extensions {
+			returnedData, found := response.Extension(extension.Name)
+			require.True(fph.t, found)
+			require.Equal(fph.t, extension.Data, returnedData)
+		}
+	}
+}
+
+func (fph *fakePeerHandler) RefuteResponses() {
+	require.Empty(fph.t, fph.lastResponses)
+}
+
+func (fph *fakePeerHandler) SendResponse(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block, notifees ...notifications.Notifee) {
+	fph.lastResponses = responses
+	fph.lastBlocks = blks
+	fph.notifeePublisher.AddNotifees(notifees)
+	fph.sent <- struct{}{}
+}
+
+func (fph *fakePeerHandler) notifySuccess() {
+	fph.notifeePublisher.PublishEvents([]notifications.Event{messagequeue.Event{Name: messagequeue.Queued}, messagequeue.Event{Name: messagequeue.Sent}})
+}
+
+func (fph *fakePeerHandler) notifyError() {
+	fph.notifeePublisher.PublishEvents([]notifications.Event{messagequeue.Event{Name: messagequeue.Queued}, messagequeue.Event{Name: messagequeue.Error, Err: errors.New("something went wrong")}})
 }

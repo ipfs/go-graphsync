@@ -3,15 +3,14 @@ package requestmanager
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testbridge"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/stretchr/testify/require"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -29,60 +28,39 @@ func TestBufferingResponseProgress(t *testing.T) {
 	outgoingResponses, outgoingErrors := rc.collectResponses(
 		requestCtx, incomingResponses, incomingErrors, cancelRequest)
 
-	blocks := testutil.GenerateBlocksOfSize(10, 100)
+	blockStore := make(map[ipld.Link][]byte)
+	loader, storer := testutil.NewTestStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 10)
+	blocks := blockChain.AllBlocks()
 
-	for _, block := range blocks {
-		select {
-		case <-ctx.Done():
-			t.Fatal("should have written to channel but couldn't")
-		case incomingResponses <- graphsync.ResponseProgress{
-			Node: testbridge.NewMockBlockNode(block.RawData()),
+	for i, block := range blocks {
+		testutil.AssertSends(ctx, t, incomingResponses, graphsync.ResponseProgress{
+			Node: blockChain.NodeTipIndex(i),
 			LastBlock: struct {
 				Path ipld.Path
 				Link ipld.Link
 			}{ipld.Path{}, cidlink.Link{Cid: block.Cid()}},
-		}:
-		}
+		}, "did not write block to channel")
 	}
 
 	interimError := fmt.Errorf("A block was missing")
 	terminalError := fmt.Errorf("Something terrible happened")
-	select {
-	case <-ctx.Done():
-		t.Fatal("should have written error to channel but didn't")
-	case incomingErrors <- interimError:
-	}
-	select {
-	case <-ctx.Done():
-		t.Fatal("should have written error to channel but didn't")
-	case incomingErrors <- terminalError:
-	}
+	testutil.AssertSends(ctx, t, incomingErrors, interimError, "did not write error to channel")
+	testutil.AssertSends(ctx, t, incomingErrors, terminalError, "did not write error to channel")
 
 	for _, block := range blocks {
-		select {
-		case <-ctx.Done():
-			t.Fatal("should have read from channel but couldn't")
-		case testResponse := <-outgoingResponses:
-			if testResponse.LastBlock.Link.(cidlink.Link).Cid != block.Cid() {
-				t.Fatal("stored blocks incorrectly")
-			}
-		}
+		var testResponse graphsync.ResponseProgress
+		testutil.AssertReceive(ctx, t, outgoingResponses, &testResponse, "should read from outgoing responses")
+		require.Equal(t, block.Cid(), testResponse.LastBlock.Link.(cidlink.Link).Cid, "did not store block correctly")
 	}
 
 	for i := 0; i < 2; i++ {
-		select {
-		case <-ctx.Done():
-			t.Fatal("should have read from channel but couldn't")
-		case testErr := <-outgoingErrors:
-			if i == 0 {
-				if !reflect.DeepEqual(testErr, interimError) {
-					t.Fatal("incorrect error message sent")
-				}
-			} else {
-				if !reflect.DeepEqual(testErr, terminalError) {
-					t.Fatal("incorrect error message sent")
-				}
-			}
+		var testErr error
+		testutil.AssertReceive(ctx, t, outgoingErrors, &testErr, "should have read from channel but couldn't")
+		if i == 0 {
+			require.Equal(t, interimError, testErr, "incorrect error message sent")
+		} else {
+			require.Equal(t, terminalError, testErr, "incorrect error message sent")
 		}
 	}
 }

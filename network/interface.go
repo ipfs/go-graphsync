@@ -3,10 +3,10 @@ package network
 import (
 	"context"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
-
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
+
+	gsmsg "github.com/ipfs/go-graphsync/message"
 )
 
 var (
