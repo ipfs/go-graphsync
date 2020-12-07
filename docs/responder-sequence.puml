@@ -8,7 +8,7 @@ participant PeerResponseManager
 participant PeerResponseSender
 participant LinkTracker
 participant ResponseBuilder
-participant IPLDBridge
+participant IPLD
 participant "Intercepted Loader" as ILoader
 participant Loader
 participant "Message Sending\nLayer" as Message
@@ -44,23 +44,23 @@ QW -> PeerTaskQueue : Pop Request
 PeerTaskQueue -> PeerTracker : Pop Request
 PeerTracker -> PeerTaskQueue : Next Request\nTo Process
 PeerTaskQueue -> QW : Next Request\nTo Process
-QW -> IPLDBridge : DecodeNode
-IPLDBridge -> QW : Selector Spec Node
-QW -> IPLDBridge : ParseSelector
-IPLDBridge -> QW : Root Node, IPLD Selector
+QW -> IPLD : DecodeNode
+IPLD -> QW : Selector Spec Node
+QW -> IPLD : ParseSelector
+IPLD -> QW : Root Node, IPLD Selector
 QW -> PeerResponseManager : SenderForPeer
 PeerResponseManager -> PeerResponseSender ** : Create for peer\nas neccesary
 PeerResponseSender -> LinkTracker ** : Create
 PeerResponseSender -> QW : PeerResponseSender
 activate PeerResponseSender
 QW -> ILoader ** : Create w/ RequestID, PeerResponseSender, Loader
-QW -> IPLDBridge : Start Traversal Of Selector
+QW -> IPLD : Start Traversal Of Selector
 loop until traversal complete or request context cancelled
 note over PeerResponseSender: Selector Traversal Loop
-IPLDBridge -> ILoader : Request to load blocks\nto perform traversal
+IPLD -> ILoader : Request to load blocks\nto perform traversal
 ILoader -> Loader : Load blocks\nfrom local storage
 Loader -> ILoader : Blocks From\nlocal storage or error
-ILoader -> IPLDBridge : Blocks to continue\n traversal or error
+ILoader -> IPLD : Blocks to continue\n traversal or error
 ILoader -> PeerResponseSender : Block or error to Send Back
 activate PeerResponseSender
 PeerResponseSender -> LinkTracker : Notify block or\n error, ask whether\n block is duplicate
@@ -70,7 +70,7 @@ PeerResponseSender -> ResponseBuilder : Aggregate Response Metadata & Block
 PeerResponseSender -> PeerResponseSender : Signal Work To Do
 deactivate PeerResponseSender
 end
-IPLDBridge -> QW : Traversal Complete
+IPLD -> QW : Traversal Complete
 QW -> PeerResponseSender : Request Finished
 activate PeerResponseSender
 PeerResponseSender -> LinkTracker : Query If Errors\n Were Present

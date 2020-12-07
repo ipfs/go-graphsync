@@ -4,18 +4,20 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testutil"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
 
+	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
-
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 type fakeMessageNetwork struct {
@@ -68,27 +70,18 @@ func TestStartupAndShutdown(t *testing.T) {
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
 	waitGroup.Add(1)
 	messageQueue.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("message was not sent")
-	case <-messagesSent:
-	}
+	testutil.AssertDoesReceive(ctx, t, messagesSent, "message was not sent")
 
 	messageQueue.Shutdown()
 
-	select {
-	case <-resetChan:
-		t.Fatal("message sender should have been closed but was reset")
-	case <-fullClosedChan:
-	case <-ctx.Done():
-		t.Fatal("message sender should have been closed but wasn't")
-	}
+	testutil.AssertDoesReceiveFirst(t, fullClosedChan, "message sender should be closed", resetChan, ctx.Done())
 }
 
 func TestShutdownDuringMessageSend(t *testing.T) {
@@ -112,7 +105,8 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
 	// setup a message and advance as far as beginning to send it
@@ -125,20 +119,10 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 
 	// let the message send attempt complete and fail (as it would if
 	// the connection were closed)
-	select {
-	case <-ctx.Done():
-		t.Fatal("message send not attempted")
-	case <-messagesSent:
-	}
+	testutil.AssertDoesReceive(ctx, t, messagesSent, "message send not attempted")
 
 	// verify the connection is reset after a failed send attempt
-	select {
-	case <-resetChan:
-	case <-fullClosedChan:
-		t.Fatal("message sender should have been reset but was closed")
-	case <-ctx.Done():
-		t.Fatal("message sender should have been closed but wasn't")
-	}
+	testutil.AssertDoesReceiveFirst(t, resetChan, "message sender was not reset", fullClosedChan, ctx.Done())
 
 	// now verify after it's reset, no further retries, connection
 	// resets, or attempts to close the connection, cause the queue
@@ -146,15 +130,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	// FIXME: this relies on time passing -- 100 ms to be exact
 	// and we should instead mock out time as a dependency
 	waitGroup.Add(1)
-	select {
-	case <-messagesSent:
-		t.Fatal("should not have attempted to send second message")
-	case <-resetChan:
-		t.Fatal("message sender should not have been reset again")
-	case <-fullClosedChan:
-		t.Fatal("message sender should not have been closed closed")
-	case <-ctx.Done():
-	}
+	testutil.AssertDoesReceiveFirst(t, ctx.Done(), "further message operations should not occur", messagesSent, resetChan, fullClosedChan)
 }
 
 func TestProcessingNotification(t *testing.T) {
@@ -171,6 +147,7 @@ func TestProcessingNotification(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 
 	messageQueue := New(ctx, peer, messageNetwork)
+	messageQueue.Startup()
 	waitGroup.Add(1)
 	blks := testutil.GenerateBlocksOfSize(3, 128)
 
@@ -183,41 +160,31 @@ func TestProcessingNotification(t *testing.T) {
 	}
 	status := graphsync.RequestCompletedFull
 	newMessage.AddResponse(gsmsg.NewResponse(responseID, status, extension))
-	processing := messageQueue.AddResponses(newMessage.Responses(), blks)
-	select {
-	case <-processing:
-		t.Fatal("Message should not be processing but already received notification")
-	default:
-	}
+	expectedTopic := "testTopic"
+	notifee, verifier := testutil.NewTestNotifee(expectedTopic, 5)
+	messageQueue.AddResponses(newMessage.Responses(), blks, notifee)
 
 	// wait for send attempt
-	messageQueue.Startup()
 	waitGroup.Wait()
-	select {
-	case <-processing:
-	case <-ctx.Done():
-		t.Fatal("Message should have been processed but were not")
-	}
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("no messages were sent")
-	case message := <-messagesSent:
-		receivedBlocks := message.Blocks()
-		for _, block := range receivedBlocks {
-			if !testutil.ContainsBlock(blks, block) {
-				t.Fatal("sent incorrect block")
-			}
-		}
-		firstResponse := message.Responses()[0]
-		extensionData, found := firstResponse.Extension(extensionName)
-		if responseID != firstResponse.RequestID() ||
-			status != firstResponse.Status() ||
-			!found ||
-			!reflect.DeepEqual(extension.Data, extensionData) {
-			t.Fatal("Send incorrect response")
-		}
+	var message gsmsg.GraphSyncMessage
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
+	receivedBlocks := message.Blocks()
+	for _, block := range receivedBlocks {
+		testutil.AssertContainsBlock(t, blks, block)
 	}
+	firstResponse := message.Responses()[0]
+	extensionData, found := firstResponse.Extension(extensionName)
+	require.Equal(t, responseID, firstResponse.RequestID())
+	require.Equal(t, status, firstResponse.Status())
+	require.True(t, found)
+	require.Equal(t, extension.Data, extensionData)
+
+	verifier.ExpectEvents(ctx, t, []notifications.Event{
+		Event{Name: Queued},
+		Event{Name: Sent},
+	})
+	verifier.ExpectClose(ctx, t)
 }
 
 func TestDedupingMessages(t *testing.T) {
@@ -238,7 +205,8 @@ func TestDedupingMessages(t *testing.T) {
 	waitGroup.Add(1)
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
 	messageQueue.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
@@ -246,56 +214,42 @@ func TestDedupingMessages(t *testing.T) {
 	waitGroup.Wait()
 	id2 := graphsync.RequestID(rand.Int31())
 	priority2 := graphsync.Priority(rand.Int31())
-	selector2 := testutil.RandomBytes(100)
+	selector2 := ssb.ExploreAll(ssb.Matcher()).Node()
 	root2 := testutil.GenerateCids(1)[0]
 	id3 := graphsync.RequestID(rand.Int31())
 	priority3 := graphsync.Priority(rand.Int31())
-	selector3 := testutil.RandomBytes(100)
+	selector3 := ssb.ExploreIndex(0, ssb.Matcher()).Node()
 	root3 := testutil.GenerateCids(1)[0]
 
 	messageQueue.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))
 	messageQueue.AddRequest(gsmsg.NewRequest(id3, root3, selector3, priority3))
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("no messages were sent")
-	case message := <-messagesSent:
-		requests := message.Requests()
-		if len(requests) != 1 {
-			t.Fatal("Incorrect number of requests in first message")
-		}
-		request := requests[0]
-		if request.ID() != id ||
-			request.IsCancel() != false ||
-			request.Priority() != priority ||
-			!reflect.DeepEqual(request.Selector(), selector) {
-			t.Fatal("Did not properly add request to message")
-		}
-	}
-	select {
-	case <-ctx.Done():
-		t.Fatal("no messages were sent")
-	case message := <-messagesSent:
-		requests := message.Requests()
-		if len(requests) != 2 {
-			t.Fatal("Incorrect number of requests in second message")
-		}
-		for _, request := range requests {
-			if request.ID() == id2 {
-				if request.IsCancel() != false ||
-					request.Priority() != priority2 ||
-					!reflect.DeepEqual(request.Selector(), selector2) {
-					t.Fatal("Did not properly add request to message")
-				}
-			} else if request.ID() == id3 {
-				if request.IsCancel() != false ||
-					request.Priority() != priority3 ||
-					!reflect.DeepEqual(request.Selector(), selector3) {
-					t.Fatal("Did not properly add request to message")
-				}
-			} else {
-				t.Fatal("incorrect request added to message")
-			}
+	var message gsmsg.GraphSyncMessage
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
+
+	requests := message.Requests()
+	require.Len(t, requests, 1, "number of requests in first message was not 1")
+	request := requests[0]
+	require.Equal(t, id, request.ID())
+	require.False(t, request.IsCancel())
+	require.Equal(t, priority, request.Priority())
+	require.Equal(t, selector, request.Selector())
+
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not senf")
+
+	requests = message.Requests()
+	require.Len(t, requests, 2, "number of requests in second message was not 2")
+	for _, request := range requests {
+		if request.ID() == id2 {
+			require.False(t, request.IsCancel())
+			require.Equal(t, priority2, request.Priority())
+			require.Equal(t, selector2, request.Selector())
+		} else if request.ID() == id3 {
+			require.False(t, request.IsCancel())
+			require.Equal(t, priority3, request.Priority())
+			require.Equal(t, selector3, request.Selector())
+		} else {
+			t.Fatal("incorrect request added to message")
 		}
 	}
 }

@@ -3,15 +3,18 @@ package network
 import (
 	"context"
 	"math/rand"
-	"reflect"
 	"testing"
 	"time"
+
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	"github.com/libp2p/go-libp2p-core/peer"
+	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
-	"github.com/libp2p/go-libp2p-core/peer"
-	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 )
 
 // Receiver is an interface for receiving messages from the GraphSyncNetwork.
@@ -52,17 +55,11 @@ func TestMessageSendAndReceive(t *testing.T) {
 	mn := mocknet.New(ctx)
 
 	host1, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
+	require.NoError(t, err)
 	host2, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal("error generating host")
-	}
+	require.NoError(t, err)
 	err = mn.LinkAll()
-	if err != nil {
-		t.Fatal("error linking hosts")
-	}
+	require.NoError(t, err)
 	gsnet1 := NewFromLibp2pHost(host1)
 	gsnet2 := NewFromLibp2pHost(host2)
 	r := &receiver{
@@ -73,7 +70,8 @@ func TestMessageSendAndReceive(t *testing.T) {
 	gsnet2.SetDelegate(r)
 
 	root := testutil.GenerateCids(1)[0]
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+	selector := ssb.Matcher().Node()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
@@ -88,66 +86,43 @@ func TestMessageSendAndReceive(t *testing.T) {
 	sent.AddResponse(gsmsg.NewResponse(id, status, extension))
 
 	err = gsnet1.ConnectTo(ctx, host2.ID())
-	if err != nil {
-		t.Fatal("Unable to connect peers")
-	}
+	require.NoError(t, err, "did not connect peers")
 
-	gsnet1.SendMessage(ctx, host2.ID(), sent)
+	err = gsnet1.SendMessage(ctx, host2.ID(), sent)
+	require.NoError(t, err)
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not receive message sent")
-	case <-r.messageReceived:
-	}
+	testutil.AssertDoesReceive(ctx, t, r.messageReceived, "message did not send")
 
-	sender := r.lastSender
-	if sender != host1.ID() {
-		t.Fatal("received message from wrong node")
-	}
+	require.Equal(t, host1.ID(), r.lastSender, "incorrect host sent message")
 
 	received := r.lastMessage
 
 	sentRequests := sent.Requests()
-	if len(sentRequests) != 1 {
-		t.Fatal("Did not add request to sent message")
-	}
+	require.Len(t, sentRequests, 1, "did not add request to sent message")
 	sentRequest := sentRequests[0]
 	receivedRequests := received.Requests()
-	if len(receivedRequests) != 1 {
-		t.Fatal("Did not add request to received message")
-	}
+	require.Len(t, receivedRequests, 1, "did not add request to received message")
 	receivedRequest := receivedRequests[0]
-	if receivedRequest.ID() != sentRequest.ID() ||
-		receivedRequest.IsCancel() != sentRequest.IsCancel() ||
-		receivedRequest.Priority() != sentRequest.Priority() ||
-		receivedRequest.Root().String() != sentRequest.Root().String() ||
-		!reflect.DeepEqual(receivedRequest.Selector(), sentRequest.Selector()) {
-		t.Fatal("Sent message requests did not match received message requests")
-	}
+	require.Equal(t, sentRequest.ID(), receivedRequest.ID())
+	require.Equal(t, sentRequest.IsCancel(), receivedRequest.IsCancel())
+	require.Equal(t, sentRequest.Priority(), receivedRequest.Priority())
+	require.Equal(t, sentRequest.Root().String(), receivedRequest.Root().String())
+	require.Equal(t, sentRequest.Selector(), receivedRequest.Selector())
+
 	sentResponses := sent.Responses()
-	if len(sentResponses) != 1 {
-		t.Fatal("Did not add response to sent message")
-	}
+	require.Len(t, sentResponses, 1, "did not add response to sent message")
 	sentResponse := sentResponses[0]
 	receivedResponses := received.Responses()
-	if len(receivedResponses) != 1 {
-		t.Fatal("Did not add response to received message")
-	}
+	require.Len(t, receivedResponses, 1, "did not add response to received message")
 	receivedResponse := receivedResponses[0]
 	extensionData, found := receivedResponse.Extension(extensionName)
-	if receivedResponse.RequestID() != sentResponse.RequestID() ||
-		receivedResponse.Status() != sentResponse.Status() ||
-		!found ||
-		!reflect.DeepEqual(extension.Data, extensionData) {
-		t.Fatal("Sent message responses did not match received message responses")
-	}
+	require.Equal(t, sentResponse.RequestID(), receivedResponse.RequestID())
+	require.Equal(t, sentResponse.Status(), receivedResponse.Status())
+	require.True(t, found)
+	require.Equal(t, extension.Data, extensionData)
 
 	for i := 0; i < 2; i++ {
-		select {
-		case <-ctx.Done():
-			t.Fatal("did notify of all peer connections")
-		case <-r.connectedPeers:
-		}
+		testutil.AssertDoesReceive(ctx, t, r.connectedPeers, "peers were not notified")
 	}
 
 }

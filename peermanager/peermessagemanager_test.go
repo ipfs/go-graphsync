@@ -3,16 +3,19 @@ package peermanager
 import (
 	"context"
 	"math/rand"
-	"reflect"
 	"testing"
 	"time"
 
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-graphsync"
-
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/testutil"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync"
+	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 type messageSent struct {
@@ -28,14 +31,13 @@ type fakePeer struct {
 func (fp *fakePeer) Startup()  {}
 func (fp *fakePeer) Shutdown() {}
 
-func (fp *fakePeer) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest) {
+func (fp *fakePeer) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest, notifees ...notifications.Notifee) {
 	message := gsmsg.New()
 	message.AddRequest(graphSyncRequest)
 	fp.messagesSent <- messageSent{fp.p, message}
 }
 
-func (fp *fakePeer) AddResponses([]gsmsg.GraphSyncResponse, []blocks.Block) <-chan struct{} {
-	return nil
+func (fp *fakePeer) AddResponses([]gsmsg.GraphSyncResponse, []blocks.Block, ...notifications.Notifee) {
 }
 
 func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {
@@ -59,7 +61,8 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
 	root := testutil.GenerateCids(1)[0]
-	selector := testutil.RandomBytes(100)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+	selector := ssb.Matcher().Node()
 
 	peerManager := NewMessageManager(ctx, peerQueueFactory)
 
@@ -69,53 +72,35 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	cancelRequest := gsmsg.CancelRequest(id)
 	peerManager.SendRequest(tp[0], cancelRequest)
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not send first message")
-	case firstMessage := <-messagesSent:
-		if firstMessage.p != tp[0] {
-			t.Fatal("First message sent to wrong peer")
-		}
-		request := firstMessage.message.Requests()[0]
-		if request.ID() != id ||
-			request.IsCancel() != false ||
-			request.Priority() != priority ||
-			!reflect.DeepEqual(request.Selector(), selector) {
-			t.Fatal("did not send correct first message")
-		}
-	}
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not send second message")
-	case secondMessage := <-messagesSent:
-		if secondMessage.p != tp[1] {
-			t.Fatal("Second message sent to wrong peer")
-		}
-		request := secondMessage.message.Requests()[0]
-		if request.ID() != id ||
-			request.IsCancel() != false ||
-			request.Priority() != priority ||
-			!reflect.DeepEqual(request.Selector(), selector) {
-			t.Fatal("did not send correct second message")
-		}
-	}
-	select {
-	case <-ctx.Done():
-		t.Fatal("did not send third message")
-	case thirdMessage := <-messagesSent:
-		if thirdMessage.p != tp[0] {
-			t.Fatal("Third message sent to wrong peer")
-		}
-		request := thirdMessage.message.Requests()[0]
-		if request.ID() != id ||
-			request.IsCancel() != true {
-			t.Fatal("third message was not a cancel")
-		}
-	}
+	var firstMessage messageSent
+	testutil.AssertReceive(ctx, t, messagesSent, &firstMessage, "first message did not send")
+	require.Equal(t, tp[0], firstMessage.p, "first message sent to incorrect peer")
+	request = firstMessage.message.Requests()[0]
+	require.Equal(t, id, request.ID())
+	require.False(t, request.IsCancel())
+	require.Equal(t, priority, request.Priority())
+	require.Equal(t, selector, request.Selector())
+
+	var secondMessage messageSent
+	testutil.AssertReceive(ctx, t, messagesSent, &secondMessage, "second message did not send")
+	require.Equal(t, tp[1], secondMessage.p, "second message sent to incorrect peer")
+	request = secondMessage.message.Requests()[0]
+	require.Equal(t, id, request.ID())
+	require.False(t, request.IsCancel())
+	require.Equal(t, priority, request.Priority())
+	require.Equal(t, selector, request.Selector())
+
+	var thirdMessage messageSent
+	testutil.AssertReceive(ctx, t, messagesSent, &thirdMessage, "third message did not send")
+
+	require.Equal(t, tp[0], thirdMessage.p, "third message sent to incorrect peer")
+	request = thirdMessage.message.Requests()[0]
+	require.Equal(t, id, request.ID())
+	require.True(t, request.IsCancel())
+
 	connectedPeers := peerManager.ConnectedPeers()
-	if len(connectedPeers) != 2 ||
-		!testutil.ContainsPeer(connectedPeers, tp[0]) ||
-		!testutil.ContainsPeer(connectedPeers, tp[1]) {
-		t.Fatal("did not connect all peers that were sent messages")
-	}
+	require.Len(t, connectedPeers, 2)
+
+	testutil.AssertContainsPeer(t, connectedPeers, tp[0])
+	testutil.AssertContainsPeer(t, connectedPeers, tp[1])
 }

@@ -23,7 +23,7 @@ func LoaderForBlockstore(bs bstore.Blockstore) ipld.Loader {
 		if err != nil {
 			return nil, err
 		}
-		return bytes.NewReader(block.RawData()), nil
+		return bytes.NewBuffer(block.RawData()), nil
 	}
 }
 
@@ -31,7 +31,7 @@ func LoaderForBlockstore(bs bstore.Blockstore) ipld.Loader {
 // from an IPFS blockstore
 func StorerForBlockstore(bs bstore.Blockstore) ipld.Storer {
 	return func(lnkCtx ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
-		var buffer bytes.Buffer
+		var buffer settableBuffer
 		committer := func(lnk ipld.Link) error {
 			asCidLink, ok := lnk.(cidlink.Link)
 			if !ok {
@@ -45,4 +45,23 @@ func StorerForBlockstore(bs bstore.Blockstore) ipld.Storer {
 		}
 		return &buffer, committer, nil
 	}
+}
+
+type settableBuffer struct {
+	bytes.Buffer
+	didSetData bool
+	data       []byte
+}
+
+func (sb *settableBuffer) SetBytes(data []byte) error {
+	sb.didSetData = true
+	sb.data = data
+	return nil
+}
+
+func (sb *settableBuffer) Bytes() []byte {
+	if sb.didSetData {
+		return sb.data
+	}
+	return sb.Buffer.Bytes()
 }

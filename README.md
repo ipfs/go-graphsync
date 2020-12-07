@@ -45,8 +45,7 @@ var loader ipld.Loader
 var storer ipld.Storer
 
 network := gsnet.NewFromLibp2pHost(host)
-ipldBridge := gsbridge.NewIPLDBridge()
-exchange := graphsync.New(ctx, network, ipldBridge, loader, storer)
+exchange := graphsync.New(ctx, network, loader, storer)
 ```
 
 Parameter Notes:
@@ -54,9 +53,8 @@ Parameter Notes:
 1. `context` is just the parent context for all of GraphSync
 2. `network` is a network abstraction provided to Graphsync on top
 of libp2p. This allows graphsync to be tested without the actual network
-3. `ipldBridge` is an IPLD abstraction provided to Graphsync on top of  go-ipld-prime. This makes the graphsync library testable in isolation
-4. `loader` is used to load blocks from content ids from the local block store. It's used when RESPONDING to requests from other clients. It should conform to the IPLD loader interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
-5. `storer` is used to store incoming blocks to the local block store. It's used when REQUESTING a graphsync query, to store blocks locally once they are validated as part of the correct response. It should conform to the IPLD storer interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
+3. `loader` is used to load blocks from content ids from the local block store. It's used when RESPONDING to requests from other clients. It should conform to the IPLD loader interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
+4. `storer` is used to store incoming blocks to the local block store. It's used when REQUESTING a graphsync query, to store blocks locally once they are validated as part of the correct response. It should conform to the IPLD storer interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
 
 ### Using GraphSync With An IPFS BlockStore
 
@@ -76,14 +74,12 @@ import (
 var ctx context.Context
 var host libp2p.Host
 var bs blockstore.Blockstore
-var storer ipld.Storer
 
 network := gsnet.NewFromLibp2pHost(host)
-ipldBridge := gsbridge.NewIPLDBridge()
 loader := storeutil.LoaderForBlockstore(bs)
 storer := storeutil.StorerForBlockstore(bs)
 
-exchange := graphsync.New(ctx, network, ipldBridge, loader, storer)
+exchange := graphsync.New(ctx, network, loader, storer)
 ```
 
 ### Write A Loader An IPFS BlockStore
@@ -222,8 +218,6 @@ The above provides both immediate and relevant metadata for matching nodes in a 
 PRs are welcome!
 
 Before doing anything heavy, checkout the [Graphsync Architecture](docs/architecture.md)
-
-Small note: If editing the Readme, please conform to the [standard-readme](https://github.com/RichardLitt/standard-readme) specification.
 
 ## License
 

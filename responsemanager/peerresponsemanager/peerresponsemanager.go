@@ -3,8 +3,9 @@ package peerresponsemanager
 import (
 	"context"
 
-	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/ipfs/go-graphsync/peermanager"
 )
 
 // PeerSenderFactory provides a function that will create a PeerResponseSender.
