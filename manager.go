@@ -119,6 +119,9 @@ type Manager interface {
 	// get status of a transfer
 	TransferChannelStatus(ctx context.Context, x ChannelID) Status
 
+	// get channel state
+	ChannelState(ctx context.Context, chid ChannelID) (ChannelState, error)
+
 	// get notified when certain types of events happen
 	SubscribeToEvents(subscriber Subscriber) Unsubscribe
 

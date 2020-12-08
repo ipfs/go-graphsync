@@ -318,6 +318,11 @@ func (m *manager) ResumeDataTransferChannel(ctx context.Context, chid datatransf
 	return m.resume(chid)
 }
 
+// get channel state
+func (m *manager) ChannelState(ctx context.Context, chid datatransfer.ChannelID) (datatransfer.ChannelState, error) {
+	return m.channels.GetByID(ctx, chid)
+}
+
 // get status of a transfer
 func (m *manager) TransferChannelStatus(ctx context.Context, chid datatransfer.ChannelID) datatransfer.Status {
 	chst, err := m.channels.GetByID(ctx, chid)
