@@ -1,5 +1,21 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.2.3
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Better retry config (#124) ([filecoin-project/go-data-transfer#124](https://github.com/filecoin-project/go-data-transfer/pull/124))
+  - feat: expose channel state on Manager interface (#125) ([filecoin-project/go-data-transfer#125](https://github.com/filecoin-project/go-data-transfer/pull/125))
+  - Fix typo, wrap correct FSM error (#123) ([filecoin-project/go-data-transfer#123](https://github.com/filecoin-project/go-data-transfer/pull/123))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 3 | +167/-7 | 6 |
+| Ingar Shu | 1 | +1/-1 | 1 |
+
 # go-data-transfer 1.2.2
 
 ### Changelog
