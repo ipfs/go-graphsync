@@ -23,9 +23,17 @@ var log = logging.Logger("data_transfer_network")
 
 var sendMessageTimeout = time.Minute * 10
 
+// The max number of attempts to open a stream
 const defaultMaxStreamOpenAttempts = 5
+
+// The min backoff time between retries
 const defaultMinAttemptDuration = 1 * time.Second
+
+// The max backoff time between retries
 const defaultMaxAttemptDuration = 5 * time.Minute
+
+// The multiplier in the backoff time for each retry
+const defaultBackoffFactor = 5
 
 var defaultDataTransferProtocols = []protocol.ID{datatransfer.ProtocolDataTransfer1_1, datatransfer.ProtocolDataTransfer1_0}
 
@@ -41,11 +49,12 @@ func DataTransferProtocols(protocols []protocol.ID) Option {
 }
 
 // RetryParameters changes the default parameters around connection reopening
-func RetryParameters(minDuration time.Duration, maxDuration time.Duration, attempts float64) Option {
+func RetryParameters(minDuration time.Duration, maxDuration time.Duration, attempts float64, backoffFactor float64) Option {
 	return func(impl *libp2pDataTransferNetwork) {
 		impl.maxStreamOpenAttempts = attempts
 		impl.minAttemptDuration = minDuration
 		impl.maxAttemptDuration = maxDuration
+		impl.backoffFactor = backoffFactor
 	}
 }
 
@@ -57,6 +66,7 @@ func NewFromLibp2pHost(host host.Host, options ...Option) DataTransferNetwork {
 		maxStreamOpenAttempts: defaultMaxStreamOpenAttempts,
 		minAttemptDuration:    defaultMinAttemptDuration,
 		maxAttemptDuration:    defaultMaxAttemptDuration,
+		backoffFactor:         defaultBackoffFactor,
 		dtProtocols:           defaultDataTransferProtocols,
 	}
 
@@ -78,13 +88,14 @@ type libp2pDataTransferNetwork struct {
 	minAttemptDuration    time.Duration
 	maxAttemptDuration    time.Duration
 	dtProtocols           []protocol.ID
+	backoffFactor         float64
 }
 
 func (impl *libp2pDataTransferNetwork) openStream(ctx context.Context, id peer.ID, protocols ...protocol.ID) (network.Stream, error) {
 	b := &backoff.Backoff{
 		Min:    impl.minAttemptDuration,
 		Max:    impl.maxAttemptDuration,
-		Factor: impl.maxStreamOpenAttempts,
+		Factor: impl.backoffFactor,
 		Jitter: true,
 	}
 
@@ -95,12 +106,16 @@ func (impl *libp2pDataTransferNetwork) openStream(ctx context.Context, id peer.I
 			return s, err
 		}
 
-		nAttempts := b.Attempt()
-		if nAttempts == impl.maxStreamOpenAttempts {
-			return nil, xerrors.Errorf("exhausted %d attempts but failed to open stream, err: %w", impl.maxStreamOpenAttempts, err)
+		// b.Attempt() starts from zero
+		nAttempts := b.Attempt() + 1
+		if nAttempts >= impl.maxStreamOpenAttempts {
+			return nil, xerrors.Errorf("exhausted %g attempts but failed to open stream to %s, err: %w", impl.maxStreamOpenAttempts, id, err)
 		}
 
 		d := b.Duration()
+		log.Warnf("failed to open stream to %s on attempt %g of %g, waiting %s to try again, err: %w",
+			id, nAttempts, impl.maxStreamOpenAttempts, d, err)
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()

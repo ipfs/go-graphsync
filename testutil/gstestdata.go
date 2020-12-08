@@ -143,8 +143,8 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T, host1Protocols [
 	gsData.GsNet1 = gsnet.NewFromLibp2pHost(gsData.Host1)
 	gsData.GsNet2 = gsnet.NewFromLibp2pHost(gsData.Host2)
 
-	opts1 := []network.Option{network.RetryParameters(0, 0, 0)}
-	opts2 := []network.Option{network.RetryParameters(0, 0, 0)}
+	opts1 := []network.Option{network.RetryParameters(0, 0, 0, 0)}
+	opts2 := []network.Option{network.RetryParameters(0, 0, 0, 0)}
 
 	if len(host1Protocols) != 0 {
 		opts1 = append(opts1, network.DataTransferProtocols(host1Protocols))
