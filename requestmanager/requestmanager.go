@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ipfs/go-graphsync/responsemanager"
 	"sync/atomic"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -74,6 +75,7 @@ type RequestManager struct {
 	requestHooks              RequestHooks
 	responseHooks             ResponseHooks
 	blockHooks                BlockHooks
+	networkErrorListeners     responsemanager.NetworkErrorListeners
 }
 
 type requestManagerMessage interface {
@@ -100,7 +102,9 @@ func New(ctx context.Context,
 	asyncLoader AsyncLoader,
 	requestHooks RequestHooks,
 	responseHooks ResponseHooks,
-	blockHooks BlockHooks) *RequestManager {
+	blockHooks BlockHooks,
+	networkErrorListeners responsemanager.NetworkErrorListeners,
+) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
 		ctx:                       ctx,
@@ -112,6 +116,7 @@ func New(ctx context.Context,
 		requestHooks:              requestHooks,
 		responseHooks:             responseHooks,
 		blockHooks:                blockHooks,
+		networkErrorListeners:     networkErrorListeners,
 	}
 }
 
@@ -332,11 +337,12 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 	lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
 	rm.inProgressRequestStatuses[request.ID()] = requestStatus
 	incoming, incomingError := executor.ExecutionEnv{
-		Ctx:              rm.ctx,
-		SendRequest:      rm.peerHandler.SendRequest,
-		TerminateRequest: rm.terminateRequest,
-		RunBlockHooks:    rm.processBlockHooks,
-		Loader:           rm.asyncLoader.AsyncLoad,
+		Ctx:                   rm.ctx,
+		SendRequest:           rm.peerHandler.SendRequest,
+		TerminateRequest:      rm.terminateRequest,
+		RunBlockHooks:         rm.processBlockHooks,
+		Loader:                rm.asyncLoader.AsyncLoad,
+		NetworkErrorListeners: rm.networkErrorListeners,
 	}.Start(
 		executor.RequestExecution{
 			Ctx:                  ctx,

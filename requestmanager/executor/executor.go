@@ -3,6 +3,8 @@ package executor
 import (
 	"bytes"
 	"context"
+	"github.com/ipfs/go-graphsync/messagequeue"
+	"github.com/ipfs/go-graphsync/responsemanager"
 	"strings"
 	"sync/atomic"
 
@@ -27,12 +29,13 @@ type AsyncLoadFn func(graphsync.RequestID, ipld.Link) <-chan types.AsyncLoadResu
 
 // ExecutionEnv are request parameters that last between requests
 type ExecutionEnv struct {
-	Ctx              context.Context
-	SendRequest      func(peer.ID, gsmsg.GraphSyncRequest, ...notifications.Notifee)
-	RunBlockHooks    func(p peer.ID, response graphsync.ResponseData, blk graphsync.BlockData) error
-	TerminateRequest func(graphsync.RequestID)
-	WaitForMessages  func(ctx context.Context, resumeMessages chan graphsync.ExtensionData) ([]graphsync.ExtensionData, error)
-	Loader           AsyncLoadFn
+	Ctx                   context.Context
+	SendRequest           func(peer.ID, gsmsg.GraphSyncRequest, ...notifications.Notifee)
+	RunBlockHooks         func(p peer.ID, response graphsync.ResponseData, blk graphsync.BlockData) error
+	TerminateRequest      func(graphsync.RequestID)
+	WaitForMessages       func(ctx context.Context, resumeMessages chan graphsync.ExtensionData) ([]graphsync.ExtensionData, error)
+	Loader                AsyncLoadFn
+	NetworkErrorListeners responsemanager.NetworkErrorListeners
 }
 
 // RequestExecution are parameters for a single request execution
@@ -166,8 +169,28 @@ func (re *requestExecutor) run() {
 	close(re.inProgressErr)
 }
 
+type reqSubscriber struct {
+	re *requestExecutor
+}
+
+func (r *reqSubscriber) OnNext(topic notifications.Topic, event notifications.Event) {
+	mqEvt, isMQEvt := event.(messagequeue.Event)
+	if !isMQEvt || mqEvt.Name != messagequeue.Error {
+		return
+	}
+
+	r.re.env.NetworkErrorListeners.NotifyNetworkErrorListeners(r.re.p, r.re.request, mqEvt.Err)
+	//r.re.networkError <- mqEvt.Err
+	//r.re.terminateRequest()
+}
+
+func (r reqSubscriber) OnClose(topic notifications.Topic) {
+}
+
 func (re *requestExecutor) sendRequest(request gsmsg.GraphSyncRequest) {
-	re.env.SendRequest(re.p, request)
+	sub := notifications.NewMappableSubscriber(&reqSubscriber{re}, notifications.IdentityTransform)
+	failNotifee := notifications.Notifee{Topic: messagequeue.Error, Subscriber: sub}
+	re.env.SendRequest(re.p, request, failNotifee)
 }
 
 func (re *requestExecutor) terminateRequest() {

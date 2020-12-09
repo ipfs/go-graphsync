@@ -611,6 +611,41 @@ func TestNetworkDisconnect(t *testing.T) {
 	require.EqualError(t, err, graphsync.RequestContextCancelledErr{}.Error())
 }
 
+func TestConnectFail(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+
+	requestCtx, requestCancel := context.WithTimeout(ctx, 1*time.Second)
+	defer requestCancel()
+
+	// unlink peers so they cannot communicate
+	td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID())
+	td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID())
+
+	reqNetworkError := make(chan error, 1)
+	requestor.RegisterNetworkErrorListener(func(p peer.ID, request graphsync.RequestData, err error) {
+		select {
+		case reqNetworkError <- err:
+		default:
+		}
+	})
+	_, errChan := requestor.Request(requestCtx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	var err error
+	testutil.AssertReceive(ctx, t, reqNetworkError, &err, "should receive network error")
+	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
+	require.EqualError(t, err, graphsync.RequestContextCancelledErr{}.Error())
+}
+
 func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	// create network
 	ctx := context.Background()

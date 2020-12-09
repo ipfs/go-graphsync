@@ -113,7 +113,8 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	incomingResponseHooks := requestorhooks.NewResponseHooks()
 	outgoingRequestHooks := requestorhooks.NewRequestHooks()
 	incomingBlockHooks := requestorhooks.NewBlockHooks()
-	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks)
+	networkErrorListeners := responderhooks.NewNetworkErrorListeners()
+	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners)
 	peerTaskQueue := peertaskqueue.New()
 
 	persistenceOptions := persistenceoptions.New()
@@ -123,7 +124,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	completedResponseListeners := responderhooks.NewCompletedResponseListeners()
 	requestorCancelledListeners := responderhooks.NewRequestorCancelledListeners()
 	blockSentListeners := responderhooks.NewBlockSentListeners()
-	networkErrorListeners := responderhooks.NewNetworkErrorListeners()
 	unregisterDefaultValidator := incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
 		network:                     network,

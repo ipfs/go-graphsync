@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ipfs/go-graphsync/responsemanager"
+	responderhooks "github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"testing"
 	"time"
 
@@ -858,23 +860,24 @@ func TestPauseResumeExternal(t *testing.T) {
 }
 
 type testData struct {
-	requestRecordChan chan requestRecord
-	fph               *fakePeerHandler
-	fal               *testloader.FakeAsyncLoader
-	requestHooks      *hooks.OutgoingRequestHooks
-	responseHooks     *hooks.IncomingResponseHooks
-	blockHooks        *hooks.IncomingBlockHooks
-	requestManager    *RequestManager
-	blockStore        map[ipld.Link][]byte
-	loader            ipld.Loader
-	storer            ipld.Storer
-	blockChain        *testutil.TestBlockChain
-	extensionName1    graphsync.ExtensionName
-	extensionData1    []byte
-	extension1        graphsync.ExtensionData
-	extensionName2    graphsync.ExtensionName
-	extensionData2    []byte
-	extension2        graphsync.ExtensionData
+	requestRecordChan     chan requestRecord
+	fph                   *fakePeerHandler
+	fal                   *testloader.FakeAsyncLoader
+	requestHooks          *hooks.OutgoingRequestHooks
+	responseHooks         *hooks.IncomingResponseHooks
+	blockHooks            *hooks.IncomingBlockHooks
+	requestManager        *RequestManager
+	blockStore            map[ipld.Link][]byte
+	loader                ipld.Loader
+	storer                ipld.Storer
+	blockChain            *testutil.TestBlockChain
+	extensionName1        graphsync.ExtensionName
+	extensionData1        []byte
+	extension1            graphsync.ExtensionData
+	extensionName2        graphsync.ExtensionName
+	extensionData2        []byte
+	extension2            graphsync.ExtensionData
+	networkErrorListeners responsemanager.NetworkErrorListeners
 }
 
 func newTestData(ctx context.Context, t *testing.T) *testData {
@@ -885,7 +888,8 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.requestHooks = hooks.NewRequestHooks()
 	td.responseHooks = hooks.NewResponseHooks()
 	td.blockHooks = hooks.NewBlockHooks()
-	td.requestManager = New(ctx, td.fal, td.requestHooks, td.responseHooks, td.blockHooks)
+	td.networkErrorListeners = responderhooks.NewNetworkErrorListeners()
+	td.requestManager = New(ctx, td.fal, td.requestHooks, td.responseHooks, td.blockHooks, td.networkErrorListeners)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()
 	td.blockStore = make(map[ipld.Link][]byte)
