@@ -112,7 +112,7 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 
 func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	p peer.ID,
-	request gsmsg.GraphSyncRequest, signals signals, sub notifications.TopicDataSubscriber) (ipld.Loader, ipldutil.Traverser, bool, error) {
+	request gsmsg.GraphSyncRequest, signals signals, sub *notifications.TopicDataSubscriber) (ipld.Loader, ipldutil.Traverser, bool, error) {
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
 	peerResponseSender := qe.peerManager.SenderForPeer(p)
 	var transactionError error
@@ -199,7 +199,7 @@ func (qe *queryExecutor) executeQuery(
 	loader ipld.Loader,
 	traverser ipldutil.Traverser,
 	signals signals,
-	sub notifications.TopicDataSubscriber) (graphsync.ResponseStatusCode, error) {
+	sub *notifications.TopicDataSubscriber) (graphsync.ResponseStatusCode, error) {
 	updateChan := make(chan []gsmsg.GraphSyncRequest)
 	peerResponseSender := qe.peerManager.SenderForPeer(p)
 	err := runtraversal.RunTraversal(loader, traverser, func(link ipld.Link, data []byte) error {

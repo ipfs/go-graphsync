@@ -113,9 +113,9 @@ func (mp *MockPublisher) PublishMatchingEvents(shouldPublish func(notifications.
 	for _, notifee := range mp.notifees {
 		if shouldPublish(notifee.Data) {
 			for _, ev := range events {
-				notifee.Subscriber.OnNext(notifee.Data, ev)
+				notifee.Subscriber.Subscriber.OnNext(notifee.Data, ev)
 			}
-			notifee.Subscriber.OnClose(notifee.Data)
+			notifee.Subscriber.Subscriber.OnClose(notifee.Data)
 		} else {
 			newNotifees = append(newNotifees, notifee)
 		}
@@ -128,10 +128,10 @@ func (mp *MockPublisher) PublishEvents(events []notifications.Event) {
 	mp.PublishMatchingEvents(func(notifications.TopicData) bool { return true }, events)
 }
 
-func (mp *MockPublisher) PublishEventsOnTopics(topics []notifications.Topic, events []notifications.Event) {
+func (mp *MockPublisher) PublishEventsOnTopicData(data []notifications.TopicData, events []notifications.Event) {
 	shouldPublish := func(topic notifications.TopicData) bool {
-		for _, testTopic := range topics {
-			if topic == testTopic {
+		for _, testTopicData := range data {
+			if topic == testTopicData {
 				return true
 			}
 		}

@@ -15,13 +15,6 @@ type Subscriber interface {
 	OnClose(Topic)
 }
 
-// TopicDataSubscriber is a subscriber that remaps events received to other topics
-// and events
-type TopicDataSubscriber interface {
-	Subscriber
-	AddTopicData(topic Topic, data TopicData)
-}
-
 // Subscribable is a stream that can be subscribed to
 type Subscribable interface {
 	Subscribe(topic Topic, sub Subscriber) bool
@@ -44,7 +37,7 @@ type EventTransform func(Event) Event
 // (used to call SubscribeWithData to inject data when events for a given topic emit)
 type Notifee struct {
 	Data      TopicData
-	Subscriber TopicDataSubscriber
+	Subscriber *TopicDataSubscriber
 }
 
 // SubscribeWithData subscribes to the given subscriber on the given topic, and adds the notifies

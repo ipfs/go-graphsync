@@ -2,43 +2,50 @@ package notifications
 
 import "sync"
 
-type topicDataSubscriber struct {
+type TopicDataSubscriber struct {
 	idMapLk        sync.RWMutex
-	data           map[Topic]TopicData
+	data           map[Topic][]TopicData
 	Subscriber
 }
 
 // NewTopicDataSubscriber produces a subscriber that will transform
 // events and topics before passing them on to the given subscriber
-func NewTopicDataSubscriber(sub Subscriber) TopicDataSubscriber {
-	return &topicDataSubscriber{
+func NewTopicDataSubscriber(sub Subscriber) *TopicDataSubscriber {
+	return &TopicDataSubscriber{
 		Subscriber:     sub,
-		data:           make(map[Topic]TopicData),
+		data:           make(map[Topic][]TopicData),
 	}
 }
 
-func (m *topicDataSubscriber) AddTopicData(id Topic, data TopicData) {
+func (m *TopicDataSubscriber) AddTopicData(id Topic, data TopicData) {
 	m.idMapLk.Lock()
-	m.data[id] = data
+	m.data[id] = append(m.data[id], data)
 	m.idMapLk.Unlock()
 }
 
-func (m *topicDataSubscriber) transform(id Topic) Topic {
+func (m *TopicDataSubscriber) getData(id Topic) []TopicData {
 	m.idMapLk.RLock()
 	defer m.idMapLk.RUnlock()
-	destID, ok := m.data[id]
+
+	data, ok := m.data[id]
 	if !ok {
-		return id
+		return []TopicData{}
 	}
-	return destID
+	newData := make([]TopicData, len(data))
+	for i, d := range data {
+		newData[i] = d
+	}
+	return newData
 }
 
-func (m *topicDataSubscriber) OnNext(topic Topic, ev Event) {
-	newTopic := m.transform(topic)
-	m.Subscriber.OnNext(newTopic, ev)
+func (m *TopicDataSubscriber) OnNext(topic Topic, ev Event) {
+	for _, data := range m.getData(topic) {
+		m.Subscriber.OnNext(data, ev)
+	}
 }
 
-func (m *topicDataSubscriber) OnClose(topic Topic) {
-	newTopic := m.transform(topic)
-	m.Subscriber.OnClose(newTopic)
+func (m *TopicDataSubscriber) OnClose(topic Topic) {
+	for _, data := range m.getData(topic) {
+		m.Subscriber.OnClose(data)
+	}
 }

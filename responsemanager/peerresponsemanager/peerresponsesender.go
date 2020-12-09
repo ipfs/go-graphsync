@@ -75,8 +75,8 @@ type peerResponseSender struct {
 	responseBuilders    []*responsebuilder.ResponseBuilder
 	nextBuilderTopic    responsebuilder.Topic
 	queuedMessages      chan responsebuilder.Topic
-	subscriber          notifications.TopicDataSubscriber
-	allocatorSubscriber notifications.TopicDataSubscriber
+	subscriber          *notifications.TopicDataSubscriber
+	allocatorSubscriber *notifications.TopicDataSubscriber
 	publisher           notifications.Publisher
 }
 

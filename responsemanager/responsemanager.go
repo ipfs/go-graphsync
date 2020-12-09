@@ -34,7 +34,7 @@ type inProgressResponseStatus struct {
 	signals    signals
 	updates    []gsmsg.GraphSyncRequest
 	isPaused   bool
-	subscriber notifications.TopicDataSubscriber
+	subscriber *notifications.TopicDataSubscriber
 }
 
 type responseKey struct {
@@ -50,7 +50,7 @@ type signals struct {
 
 type responseTaskData struct {
 	empty      bool
-	subscriber notifications.TopicDataSubscriber
+	subscriber *notifications.TopicDataSubscriber
 	ctx        context.Context
 	request    gsmsg.GraphSyncRequest
 	loader     ipld.Loader
