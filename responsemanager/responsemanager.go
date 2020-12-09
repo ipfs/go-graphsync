@@ -34,7 +34,7 @@ type inProgressResponseStatus struct {
 	signals    signals
 	updates    []gsmsg.GraphSyncRequest
 	isPaused   bool
-	subscriber notifications.MappableSubscriber
+	subscriber notifications.TopicDataSubscriber
 }
 
 type responseKey struct {
@@ -50,7 +50,7 @@ type signals struct {
 
 type responseTaskData struct {
 	empty      bool
-	subscriber notifications.MappableSubscriber
+	subscriber notifications.TopicDataSubscriber
 	ctx        context.Context
 	request    gsmsg.GraphSyncRequest
 	loader     ipld.Loader
@@ -332,7 +332,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		}
 		if result.Err != nil {
 			transaction.FinishWithError(graphsync.RequestFailedUnknown)
-			transaction.AddNotifee(notifications.Notifee{Topic: graphsync.RequestFailedUnknown, Subscriber: response.subscriber})
+			transaction.AddNotifee(notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: response.subscriber})
 		}
 		return nil
 	})
@@ -395,7 +395,7 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 			rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
 			peerResponseSender.FinishWithCancel(requestID)
 		} else if err != errNetworkError {
-			peerResponseSender.FinishWithError(requestID, graphsync.RequestCancelled, notifications.Notifee{Topic: graphsync.RequestCancelled, Subscriber: response.subscriber})
+			peerResponseSender.FinishWithError(requestID, graphsync.RequestCancelled, notifications.Notifee{Data: graphsync.RequestCancelled, Subscriber: response.subscriber})
 		}
 		delete(rm.inProgressResponses, key)
 		response.cancelFn()
@@ -420,7 +420,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			continue
 		}
 		ctx, cancelFn := context.WithCancel(rm.ctx)
-		sub := notifications.NewMappableSubscriber(&subscriber{
+		sub := notifications.NewTopicDataSubscriber(&subscriber{
 			p:                     key.p,
 			request:               request,
 			ctx:                   rm.ctx,
@@ -428,7 +428,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			blockSentListeners:    rm.blockSentListeners,
 			completedListeners:    rm.completedListeners,
 			networkErrorListeners: rm.networkErrorListeners,
-		}, notifications.IdentityTransform)
+		})
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
 				ctx:        ctx,

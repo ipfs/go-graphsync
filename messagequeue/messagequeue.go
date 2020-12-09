@@ -141,7 +141,7 @@ func (mq *MessageQueue) mutateNextMessage(mutator func(gsmsg.GraphSyncMessage), 
 	}
 	mutator(mq.nextMessage)
 	for _, notifee := range notifees {
-		notifications.SubscribeOn(mq.eventPublisher, mq.nextMessageTopic, notifee)
+		notifications.SubscribeWithData(mq.eventPublisher, mq.nextMessageTopic, notifee)
 	}
 	return !mq.nextMessage.Empty()
 }

@@ -1103,29 +1103,29 @@ func (td *testData) assertIgnoredCids(set *cid.Set) {
 }
 
 func (td *testData) notifyStatusMessagesSent() {
-	td.notifeePublisher.PublishMatchingEvents(func(topic notifications.Topic) bool {
-		_, isSn := topic.(graphsync.ResponseStatusCode)
+	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
+		_, isSn := data.(graphsync.ResponseStatusCode)
 		return isSn
 	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Sent}})
 }
 
 func (td *testData) notifyBlockSendsSent() {
-	td.notifeePublisher.PublishMatchingEvents(func(topic notifications.Topic) bool {
-		_, isBsn := topic.(graphsync.BlockData)
+	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
+		_, isBsn := data.(graphsync.BlockData)
 		return isBsn
 	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Sent}})
 }
 
 func (td *testData) notifyStatusMessagesNetworkError(err error) {
-	td.notifeePublisher.PublishMatchingEvents(func(topic notifications.Topic) bool {
-		_, isSn := topic.(graphsync.ResponseStatusCode)
+	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
+		_, isSn := data.(graphsync.ResponseStatusCode)
 		return isSn
 	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Error, Err: err}})
 }
 
 func (td *testData) notifyBlockSendsNetworkError(err error) {
-	td.notifeePublisher.PublishMatchingEvents(func(topic notifications.Topic) bool {
-		_, isBsn := topic.(graphsync.BlockData)
+	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
+		_, isBsn := data.(graphsync.BlockData)
 		return isBsn
 	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Error, Err: err}})
 }

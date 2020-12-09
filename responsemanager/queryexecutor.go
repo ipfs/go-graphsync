@@ -112,12 +112,12 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 
 func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	p peer.ID,
-	request gsmsg.GraphSyncRequest, signals signals, sub notifications.MappableSubscriber) (ipld.Loader, ipldutil.Traverser, bool, error) {
+	request gsmsg.GraphSyncRequest, signals signals, sub notifications.TopicDataSubscriber) (ipld.Loader, ipldutil.Traverser, bool, error) {
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
 	peerResponseSender := qe.peerManager.SenderForPeer(p)
 	var transactionError error
 	var isPaused bool
-	failNotifee := notifications.Notifee{Topic: graphsync.RequestFailedUnknown, Subscriber: sub}
+	failNotifee := notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: sub}
 	err := peerResponseSender.Transaction(request.ID(), func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
 		for _, extension := range result.Extensions {
 			transaction.SendExtensionData(extension)
@@ -199,7 +199,7 @@ func (qe *queryExecutor) executeQuery(
 	loader ipld.Loader,
 	traverser ipldutil.Traverser,
 	signals signals,
-	sub notifications.MappableSubscriber) (graphsync.ResponseStatusCode, error) {
+	sub notifications.TopicDataSubscriber) (graphsync.ResponseStatusCode, error) {
 	updateChan := make(chan []gsmsg.GraphSyncRequest)
 	peerResponseSender := qe.peerManager.SenderForPeer(p)
 	err := runtraversal.RunTraversal(loader, traverser, func(link ipld.Link, data []byte) error {
@@ -210,7 +210,7 @@ func (qe *queryExecutor) executeQuery(
 				return nil
 			}
 			blockData := transaction.SendResponse(link, data)
-			transaction.AddNotifee(notifications.Notifee{Topic: blockData, Subscriber: sub})
+			transaction.AddNotifee(notifications.Notifee{Data: blockData, Subscriber: sub})
 			if blockData.BlockSize() > 0 {
 				result := qe.blockHooks.ProcessBlockHooks(p, request, blockData)
 				for _, extension := range result.Extensions {
@@ -253,7 +253,7 @@ func (qe *queryExecutor) executeQuery(
 		} else {
 			code = peerResponseSender.FinishRequest()
 		}
-		peerResponseSender.AddNotifee(notifications.Notifee{Topic: code, Subscriber: sub})
+		peerResponseSender.AddNotifee(notifications.Notifee{Data: code, Subscriber: sub})
 		return nil
 	})
 	return code, err

@@ -75,8 +75,8 @@ type peerResponseSender struct {
 	responseBuilders    []*responsebuilder.ResponseBuilder
 	nextBuilderTopic    responsebuilder.Topic
 	queuedMessages      chan responsebuilder.Topic
-	subscriber          notifications.MappableSubscriber
-	allocatorSubscriber notifications.MappableSubscriber
+	subscriber          notifications.TopicDataSubscriber
+	allocatorSubscriber notifications.TopicDataSubscriber
 	publisher           notifications.Publisher
 }
 
@@ -133,8 +133,8 @@ func NewResponseSender(ctx context.Context, p peer.ID, peerHandler PeerMessageHa
 		publisher:      notifications.NewPublisher(),
 		allocator:      allocator,
 	}
-	prs.subscriber = notifications.NewMappableSubscriber(&subscriber{prs}, notifications.IdentityTransform)
-	prs.allocatorSubscriber = notifications.NewMappableSubscriber(&allocatorSubscriber{prs}, notifications.IdentityTransform)
+	prs.subscriber = notifications.NewTopicDataSubscriber(&subscriber{prs})
+	prs.allocatorSubscriber = notifications.NewTopicDataSubscriber(&allocatorSubscriber{prs})
 	return prs
 }
 
@@ -418,7 +418,7 @@ func (prs *peerResponseSender) buildResponse(blkSize uint64, buildResponseFn fun
 	responseBuilder := prs.responseBuilders[len(prs.responseBuilders)-1]
 	buildResponseFn(responseBuilder)
 	for _, notifee := range notifees {
-		notifications.SubscribeOn(prs.publisher, responseBuilder.Topic(), notifee)
+		notifications.SubscribeWithData(prs.publisher, responseBuilder.Topic(), notifee)
 	}
 	return !responseBuilder.Empty()
 }
@@ -466,8 +466,8 @@ func (prs *peerResponseSender) sendResponseMessages() {
 		if builder.Empty() {
 			continue
 		}
-		notifications.SubscribeOn(prs.publisher, builder.Topic(), notifications.Notifee{
-			Topic:      builder.BlockSize(),
+		notifications.SubscribeWithData(prs.publisher, builder.Topic(), notifications.Notifee{
+			Data:      builder.BlockSize(),
 			Subscriber: prs.allocatorSubscriber,
 		})
 		responses, blks, err := builder.Build()
@@ -476,7 +476,7 @@ func (prs *peerResponseSender) sendResponseMessages() {
 		}
 
 		prs.peerHandler.SendResponse(prs.p, responses, blks, notifications.Notifee{
-			Topic:      builder.Topic(),
+			Data:      builder.Topic(),
 			Subscriber: prs.subscriber,
 		})
 
