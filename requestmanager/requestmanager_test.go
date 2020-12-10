@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ipfs/go-graphsync/responsemanager"
-	responderhooks "github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"testing"
 	"time"
+
+	"github.com/ipfs/go-graphsync/listeners"
+	"github.com/ipfs/go-graphsync/responsemanager"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipld/go-ipld-prime"
@@ -888,7 +889,7 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.requestHooks = hooks.NewRequestHooks()
 	td.responseHooks = hooks.NewResponseHooks()
 	td.blockHooks = hooks.NewBlockHooks()
-	td.networkErrorListeners = responderhooks.NewNetworkErrorListeners()
+	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
 	td.requestManager = New(ctx, td.fal, td.requestHooks, td.responseHooks, td.blockHooks, td.networkErrorListeners)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()

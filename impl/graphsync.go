@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
@@ -46,10 +47,10 @@ type GraphSync struct {
 	incomingRequestHooks        *responderhooks.IncomingRequestHooks
 	outgoingBlockHooks          *responderhooks.OutgoingBlockHooks
 	requestUpdatedHooks         *responderhooks.RequestUpdatedHooks
-	completedResponseListeners  *responderhooks.CompletedResponseListeners
-	requestorCancelledListeners *responderhooks.RequestorCancelledListeners
-	blockSentListeners          *responderhooks.BlockSentListeners
-	networkErrorListeners       *responderhooks.NetworkErrorListeners
+	completedResponseListeners  *listeners.CompletedResponseListeners
+	requestorCancelledListeners *listeners.RequestorCancelledListeners
+	blockSentListeners          *listeners.BlockSentListeners
+	networkErrorListeners       *listeners.NetworkErrorListeners
 	incomingResponseHooks       *requestorhooks.IncomingResponseHooks
 	outgoingRequestHooks        *requestorhooks.OutgoingRequestHooks
 	incomingBlockHooks          *requestorhooks.IncomingBlockHooks
@@ -113,7 +114,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	incomingResponseHooks := requestorhooks.NewResponseHooks()
 	outgoingRequestHooks := requestorhooks.NewRequestHooks()
 	incomingBlockHooks := requestorhooks.NewBlockHooks()
-	networkErrorListeners := responderhooks.NewNetworkErrorListeners()
+	networkErrorListeners := listeners.NewNetworkErrorListeners()
 	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners)
 	peerTaskQueue := peertaskqueue.New()
 
@@ -121,9 +122,9 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	incomingRequestHooks := responderhooks.NewRequestHooks(persistenceOptions)
 	outgoingBlockHooks := responderhooks.NewBlockHooks()
 	requestUpdatedHooks := responderhooks.NewUpdateHooks()
-	completedResponseListeners := responderhooks.NewCompletedResponseListeners()
-	requestorCancelledListeners := responderhooks.NewRequestorCancelledListeners()
-	blockSentListeners := responderhooks.NewBlockSentListeners()
+	completedResponseListeners := listeners.NewCompletedResponseListeners()
+	requestorCancelledListeners := listeners.NewRequestorCancelledListeners()
+	blockSentListeners := listeners.NewBlockSentListeners()
 	unregisterDefaultValidator := incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	graphSync := &GraphSync{
 		network:                     network,
