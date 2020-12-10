@@ -85,13 +85,13 @@ func (nv *NotifeeVerifier) ExpectClose(ctx context.Context, t *testing.T) {
 	nv.subscriber.ExpectCloses(ctx, t, []notifications.Topic{nv.expectedTopic})
 }
 
-func NewTestNotifee(topic notifications.Topic, bufferSize int) (notifications.Notifee, *NotifeeVerifier) {
+func NewTestNotifee(data notifications.TopicData, bufferSize int) (notifications.Notifee, *NotifeeVerifier) {
 	subscriber := NewTestSubscriber(bufferSize)
 	return notifications.Notifee{
-			Topic:      topic,
-			Subscriber: notifications.NewMappableSubscriber(subscriber, notifications.IdentityTransform),
+			Data:      data,
+			Subscriber: notifications.NewTopicDataSubscriber(subscriber),
 		}, &NotifeeVerifier{
-			expectedTopic: topic,
+			expectedTopic: data,
 			subscriber:    subscriber,
 		}
 }
@@ -107,15 +107,15 @@ func (mp *MockPublisher) AddNotifees(notifees []notifications.Notifee) {
 	mp.notifeesLk.Unlock()
 }
 
-func (mp *MockPublisher) PublishMatchingEvents(shouldPublish func(notifications.Topic) bool, events []notifications.Event) {
+func (mp *MockPublisher) PublishMatchingEvents(shouldPublish func(notifications.TopicData) bool, events []notifications.Event) {
 	mp.notifeesLk.Lock()
 	var newNotifees []notifications.Notifee
 	for _, notifee := range mp.notifees {
-		if shouldPublish(notifee.Topic) {
+		if shouldPublish(notifee.Data) {
 			for _, ev := range events {
-				notifee.Subscriber.OnNext(notifee.Topic, ev)
+				notifee.Subscriber.Subscriber.OnNext(notifee.Data, ev)
 			}
-			notifee.Subscriber.OnClose(notifee.Topic)
+			notifee.Subscriber.Subscriber.OnClose(notifee.Data)
 		} else {
 			newNotifees = append(newNotifees, notifee)
 		}
@@ -125,13 +125,13 @@ func (mp *MockPublisher) PublishMatchingEvents(shouldPublish func(notifications.
 }
 
 func (mp *MockPublisher) PublishEvents(events []notifications.Event) {
-	mp.PublishMatchingEvents(func(notifications.Topic) bool { return true }, events)
+	mp.PublishMatchingEvents(func(notifications.TopicData) bool { return true }, events)
 }
 
-func (mp *MockPublisher) PublishEventsOnTopics(topics []notifications.Topic, events []notifications.Event) {
-	shouldPublish := func(topic notifications.Topic) bool {
-		for _, testTopic := range topics {
-			if topic == testTopic {
+func (mp *MockPublisher) PublishEventsOnTopicData(data []notifications.TopicData, events []notifications.Event) {
+	shouldPublish := func(topic notifications.TopicData) bool {
+		for _, testTopicData := range data {
+			if topic == testTopicData {
 				return true
 			}
 		}

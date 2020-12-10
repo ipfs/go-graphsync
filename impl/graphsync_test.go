@@ -928,6 +928,87 @@ func TestUnixFSFetch(t *testing.T) {
 	require.Equal(t, origBytes, finalBytes, "should have gotten same bytes written as read but didn't")
 }
 
+func TestGraphsyncBlockListeners(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	// register hooks to count blocks in various stages
+	blocksSent := 0
+	blocksOutgoing := 0
+	blocksIncoming := 0
+	responder.RegisterBlockSentListener(func(p peer.ID, request graphsync.RequestData, block graphsync.BlockData) {
+		blocksSent++
+	})
+	requestor.RegisterIncomingBlockHook(func(p peer.ID, r graphsync.ResponseData, b graphsync.BlockData, h graphsync.IncomingBlockHookActions) {
+		blocksIncoming++
+	})
+	responder.RegisterOutgoingBlockHook(func(p peer.ID, r graphsync.RequestData, b graphsync.BlockData, h graphsync.OutgoingBlockHookActions) {
+		blocksOutgoing++
+	})
+
+	var receivedResponseData []byte
+	var receivedRequestData []byte
+
+	requestor.RegisterIncomingResponseHook(
+		func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+			data, has := responseData.Extension(td.extensionName)
+			if has {
+				receivedResponseData = data
+			}
+		})
+
+	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		var has bool
+		receivedRequestData, has = requestData.Extension(td.extensionName)
+		if !has {
+			hookActions.TerminateWithError(errors.New("Missing extension"))
+		} else {
+			hookActions.SendExtensionData(td.extensionResponse)
+		}
+	})
+
+	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
+	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+		select {
+		case finalResponseStatusChan <- status:
+		default:
+		}
+	})
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	blockChain.VerifyWholeChain(ctx, progressChan)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
+
+	// verify extension round trip
+	require.Equal(t, td.extensionData, receivedRequestData, "did not receive correct extension request data")
+	require.Equal(t, td.extensionResponseData, receivedResponseData, "did not receive correct extension response data")
+
+	// verify listener
+	var finalResponseStatus graphsync.ResponseStatusCode
+	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
+	require.Equal(t, graphsync.RequestCompletedFull, finalResponseStatus)
+
+	// assert we get notified for all the blocks
+	require.Equal(t, blockChainLength, blocksOutgoing)
+	require.Equal(t, blockChainLength, blocksIncoming)
+	require.Equal(t, blockChainLength, blocksSent)
+}
+
+
 type gsTestData struct {
 	mn                       mocknet.Mocknet
 	ctx                      context.Context

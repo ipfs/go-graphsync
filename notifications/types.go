@@ -6,17 +6,13 @@ type Topic interface{}
 // Event is a publishable event
 type Event interface{}
 
+// TopicData is data added to every message broadcast on a topic
+type TopicData interface{}
+
 // Subscriber is a subscriber that can receive events
 type Subscriber interface {
 	OnNext(Topic, Event)
 	OnClose(Topic)
-}
-
-// MappableSubscriber is a subscriber that remaps events received to other topics
-// and events
-type MappableSubscriber interface {
-	Subscriber
-	Map(sourceID Topic, destinationID Topic)
 }
 
 // Subscribable is a stream that can be subscribed to
@@ -37,20 +33,16 @@ type Publisher interface {
 // EventTransform if a fucntion transforms one kind of event to another
 type EventTransform func(Event) Event
 
-// Notifee is a mappable suscriber where you want events to appear
-// on this specified topic (used to call SubscribeOn to setup a remapping)
+// Notifee is a topic data subscriber plus a set of data you want to add to any topics subscribed to
+// (used to call SubscribeWithData to inject data when events for a given topic emit)
 type Notifee struct {
-	Topic      Topic
-	Subscriber MappableSubscriber
+	Data      TopicData
+	Subscriber *TopicDataSubscriber
 }
 
-// SubscribeOn subscribes to the given subscribe on the given topic, but
-// maps to a differnt topic specified in a notifee which has a mappable
-// subscriber
-func SubscribeOn(p Subscribable, topic Topic, notifee Notifee) {
-	notifee.Subscriber.Map(topic, notifee.Topic)
+// SubscribeWithData subscribes to the given subscriber on the given topic, and adds the notifies
+// custom data into the list of data injected into callbacks when events occur on that topic
+func SubscribeWithData(p Subscribable, topic Topic, notifee Notifee) {
+	notifee.Subscriber.AddTopicData(topic, notifee.Data)
 	p.Subscribe(topic, notifee.Subscriber)
 }
-
-// IdentityTransform sets up an event transform that makes no changes
-func IdentityTransform(ev Event) Event { return ev }
