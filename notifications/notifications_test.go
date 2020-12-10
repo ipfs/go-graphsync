@@ -9,7 +9,7 @@ import (
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
-func TestSubscribeOn(t *testing.T) {
+func TestSubscribeWithData(t *testing.T) {
 	ctx := context.Background()
 	testCases := map[string]func(ctx context.Context, t *testing.T, ps notifications.Publisher){
 		"SubscribeWithData": func(ctx context.Context, t *testing.T, ps notifications.Publisher) {
