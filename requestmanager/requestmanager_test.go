@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync/listeners"
-	"github.com/ipfs/go-graphsync/responsemanager"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipld/go-ipld-prime"
@@ -878,7 +877,7 @@ type testData struct {
 	extensionName2        graphsync.ExtensionName
 	extensionData2        []byte
 	extension2            graphsync.ExtensionData
-	networkErrorListeners responsemanager.NetworkErrorListeners
+	networkErrorListeners *listeners.NetworkErrorListeners
 }
 
 func newTestData(ctx context.Context, t *testing.T) *testData {
