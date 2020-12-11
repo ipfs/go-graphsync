@@ -3,8 +3,8 @@ package notifications
 import "sync"
 
 type TopicDataSubscriber struct {
-	idMapLk        sync.RWMutex
-	data           map[Topic][]TopicData
+	idMapLk sync.RWMutex
+	data    map[Topic][]TopicData
 	Subscriber
 }
 
@@ -12,8 +12,8 @@ type TopicDataSubscriber struct {
 // events and topics before passing them on to the given subscriber
 func NewTopicDataSubscriber(sub Subscriber) *TopicDataSubscriber {
 	return &TopicDataSubscriber{
-		Subscriber:     sub,
-		data:           make(map[Topic][]TopicData),
+		Subscriber: sub,
+		data:       make(map[Topic][]TopicData),
 	}
 }
 

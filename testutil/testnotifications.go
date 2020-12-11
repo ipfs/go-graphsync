@@ -88,7 +88,7 @@ func (nv *NotifeeVerifier) ExpectClose(ctx context.Context, t *testing.T) {
 func NewTestNotifee(data notifications.TopicData, bufferSize int) (notifications.Notifee, *NotifeeVerifier) {
 	subscriber := NewTestSubscriber(bufferSize)
 	return notifications.Notifee{
-			Data:      data,
+			Data:       data,
 			Subscriber: notifications.NewTopicDataSubscriber(subscriber),
 		}, &NotifeeVerifier{
 			expectedTopic: data,

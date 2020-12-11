@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-graphsync/listeners"
-
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -18,6 +16,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/dedupkey"
+	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/notifications"
