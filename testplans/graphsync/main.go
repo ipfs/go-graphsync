@@ -5,10 +5,13 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	goruntime "runtime"
 	"strings"
 	"time"
 
+	badgerds "github.com/ipfs/go-ds-badger"
 	"github.com/dustin/go-humanize"
 	allselector "github.com/hannahhoward/all-selector"
 	"github.com/ipfs/go-blockservice"
@@ -82,7 +85,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 
 	var (
 		// make datastore, blockstore, dag service, graphsync
-		bs     = blockstore.NewBlockstore(dss.MutexWrap(ds.NewMapDatastore()))
+		bs     = blockstore.NewBlockstore(dss.MutexWrap(createDatastore(runenv.BooleanParam("disk_store"))))
 		dagsrv = merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
 		gsync  = gsi.New(ctx,
 			gsnet.NewFromLibp2pHost(host),
@@ -385,4 +388,31 @@ func makeHost(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitCont
 	}
 
 	return host, peers, bwcounter
+}
+
+func createDatastore(diskStore bool) ds.Datastore {
+	if !diskStore {
+		return ds.NewMapDatastore()
+	}
+
+	// create temporary directory for badger datastore
+	path := filepath.Join(os.TempDir(), "datastore")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(path, 0755); err != nil {
+			panic(err)
+		}
+	} else if err != nil {
+		panic(err)
+	}
+
+	// create disk based badger datastore
+	defopts := badgerds.DefaultOptions
+	defopts.SyncWrites = false
+	defopts.Truncate = true
+	datastore, err :=  badgerds.NewDatastore(path, &defopts)
+	if err != nil {
+		panic(err)
+	}
+
+	return datastore
 }

@@ -16,6 +16,7 @@ concurrency = "10"
 chunk_size = "20"
 links_per_level = "1024"
 raw_leaves = "true"
+disk_store = "true"
 
 [[groups]]
 id = "providers"

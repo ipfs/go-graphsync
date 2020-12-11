@@ -25,3 +25,4 @@ concurrency = { type = "int", desc = "concurrency level", default = "1" }
 chunk_size = { type = "int", desc = "unixfs chunk size (power of 2)", default = "20" }
 links_per_level = { type = "int", desc = "unixfs links per level", default = "1024" }
 raw_leaves = { type = "bool", desc = "should unixfs leaves be left unwrapped", default = "true"}
+disk_store = { type = "bool", desc = "should data be stored on disk (true) or memory (false)", default = "false"}
