@@ -1043,7 +1043,6 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 	require.Equal(t, blockChainLength, blocksSent)
 }
 
-
 type gsTestData struct {
 	mn                       mocknet.Mocknet
 	ctx                      context.Context

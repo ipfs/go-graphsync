@@ -467,7 +467,7 @@ func (prs *peerResponseSender) sendResponseMessages() {
 			continue
 		}
 		notifications.SubscribeWithData(prs.publisher, builder.Topic(), notifications.Notifee{
-			Data:      builder.BlockSize(),
+			Data:       builder.BlockSize(),
 			Subscriber: prs.allocatorSubscriber,
 		})
 		responses, blks, err := builder.Build()
@@ -476,7 +476,7 @@ func (prs *peerResponseSender) sendResponseMessages() {
 		}
 
 		prs.peerHandler.SendResponse(prs.p, responses, blks, notifications.Notifee{
-			Data:      builder.Topic(),
+			Data:       builder.Topic(),
 			Subscriber: prs.subscriber,
 		})
 

@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/ipfs/go-graphsync/listeners"
-	"github.com/ipfs/go-graphsync/messagequeue"
-
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
@@ -20,7 +17,9 @@ import (
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/dedupkey"
 	ipldutil "github.com/ipfs/go-graphsync/ipldutil"
+	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"

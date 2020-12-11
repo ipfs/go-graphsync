@@ -36,7 +36,7 @@ type EventTransform func(Event) Event
 // Notifee is a topic data subscriber plus a set of data you want to add to any topics subscribed to
 // (used to call SubscribeWithData to inject data when events for a given topic emit)
 type Notifee struct {
-	Data      TopicData
+	Data       TopicData
 	Subscriber *TopicDataSubscriber
 }
 
