@@ -20,6 +20,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/dedupkey"
+	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
@@ -886,10 +887,10 @@ type testData struct {
 	requestHooks              *hooks.IncomingRequestHooks
 	blockHooks                *hooks.OutgoingBlockHooks
 	updateHooks               *hooks.RequestUpdatedHooks
-	completedListeners        *hooks.CompletedResponseListeners
-	cancelledListeners        *hooks.RequestorCancelledListeners
-	blockSentListeners        *hooks.BlockSentListeners
-	networkErrorListeners     *hooks.NetworkErrorListeners
+	completedListeners        *listeners.CompletedResponseListeners
+	cancelledListeners        *listeners.RequestorCancelledListeners
+	blockSentListeners        *listeners.BlockSentListeners
+	networkErrorListeners     *listeners.NetworkErrorListeners
 	notifeePublisher          *testutil.MockPublisher
 	blockSends                chan graphsync.BlockData
 	completedResponseStatuses chan graphsync.ResponseStatusCode
@@ -960,10 +961,10 @@ func newTestData(t *testing.T) testData {
 	td.requestHooks = hooks.NewRequestHooks(td.peristenceOptions)
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()
-	td.completedListeners = hooks.NewCompletedResponseListeners()
-	td.cancelledListeners = hooks.NewRequestorCancelledListeners()
-	td.blockSentListeners = hooks.NewBlockSentListeners()
-	td.networkErrorListeners = hooks.NewNetworkErrorListeners()
+	td.completedListeners = listeners.NewCompletedResponseListeners()
+	td.cancelledListeners = listeners.NewRequestorCancelledListeners()
+	td.blockSentListeners = listeners.NewBlockSentListeners()
+	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
 	td.completedListeners.Register(func(p peer.ID, requestID graphsync.RequestData, status graphsync.ResponseStatusCode) {
 		select {
 		case td.completedResponseStatuses <- status:

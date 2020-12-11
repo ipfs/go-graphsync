@@ -1,4 +1,4 @@
-package hooks
+package listeners
 
 import (
 	"github.com/hannahhoward/go-pubsub"

@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/ipfs/go-graphsync/listeners"
+	"github.com/ipfs/go-graphsync/messagequeue"
+
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
@@ -74,6 +77,7 @@ type RequestManager struct {
 	requestHooks              RequestHooks
 	responseHooks             ResponseHooks
 	blockHooks                BlockHooks
+	networkErrorListeners     *listeners.NetworkErrorListeners
 }
 
 type requestManagerMessage interface {
@@ -100,7 +104,9 @@ func New(ctx context.Context,
 	asyncLoader AsyncLoader,
 	requestHooks RequestHooks,
 	responseHooks ResponseHooks,
-	blockHooks BlockHooks) *RequestManager {
+	blockHooks BlockHooks,
+	networkErrorListeners *listeners.NetworkErrorListeners,
+) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
 		ctx:                       ctx,
@@ -112,6 +118,7 @@ func New(ctx context.Context,
 		requestHooks:              requestHooks,
 		responseHooks:             responseHooks,
 		blockHooks:                blockHooks,
+		networkErrorListeners:     networkErrorListeners,
 	}
 }
 
@@ -333,7 +340,7 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 	rm.inProgressRequestStatuses[request.ID()] = requestStatus
 	incoming, incomingError := executor.ExecutionEnv{
 		Ctx:              rm.ctx,
-		SendRequest:      rm.peerHandler.SendRequest,
+		SendRequest:      rm.sendRequest,
 		TerminateRequest: rm.terminateRequest,
 		RunBlockHooks:    rm.processBlockHooks,
 		Loader:           rm.asyncLoader.AsyncLoad,
@@ -375,7 +382,7 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 		return
 	}
 
-	rm.peerHandler.SendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(crm.requestID))
+	rm.sendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(crm.requestID))
 	if crm.isPause {
 		inProgressRequestStatus.paused = true
 	} else {
@@ -425,7 +432,7 @@ func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg
 	result := rm.responseHooks.ProcessResponseHooks(p, response)
 	if len(result.Extensions) > 0 {
 		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
-		rm.peerHandler.SendRequest(p, updateRequest)
+		rm.sendRequest(p, updateRequest)
 	}
 	if result.Err != nil {
 		requestStatus, ok := rm.inProgressRequestStatuses[response.RequestID()]
@@ -437,7 +444,7 @@ func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg
 		case requestStatus.networkError <- responseError:
 		case <-requestStatus.ctx.Done():
 		}
-		rm.peerHandler.SendRequest(p, gsmsg.CancelRequest(response.RequestID()))
+		rm.sendRequest(p, gsmsg.CancelRequest(response.RequestID()))
 		requestStatus.cancelFn()
 		return false
 	}
@@ -482,7 +489,7 @@ func (rm *RequestManager) processBlockHooks(p peer.ID, response graphsync.Respon
 	result := rm.blockHooks.ProcessBlockHooks(p, response, block)
 	if len(result.Extensions) > 0 {
 		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
-		rm.peerHandler.SendRequest(p, updateRequest)
+		rm.sendRequest(p, updateRequest)
 	}
 	if result.Err != nil {
 		_, isPause := result.Err.(hooks.ErrPaused)
@@ -535,6 +542,34 @@ func (rm *RequestManager) validateRequest(requestID graphsync.RequestID, p peer.
 	return request, hooksResult, nil
 }
 
+type reqSubscriber struct {
+	p                     peer.ID
+	request               gsmsg.GraphSyncRequest
+	networkErrorListeners *listeners.NetworkErrorListeners
+}
+
+func (r *reqSubscriber) OnNext(topic notifications.Topic, event notifications.Event) {
+	mqEvt, isMQEvt := event.(messagequeue.Event)
+	if !isMQEvt || mqEvt.Name != messagequeue.Error {
+		return
+	}
+
+	r.networkErrorListeners.NotifyNetworkErrorListeners(r.p, r.request, mqEvt.Err)
+	//r.re.networkError <- mqEvt.Err
+	//r.re.terminateRequest()
+}
+
+func (r reqSubscriber) OnClose(topic notifications.Topic) {
+}
+
+const requestNetworkError = "request_network_error"
+
+func (rm *RequestManager) sendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
+	sub := notifications.NewTopicDataSubscriber(&reqSubscriber{p, request, rm.networkErrorListeners})
+	failNotifee := notifications.Notifee{Data: requestNetworkError, Subscriber: sub}
+	rm.peerHandler.SendRequest(p, request, failNotifee)
+}
+
 func (urm *unpauseRequestMessage) unpause(rm *RequestManager) error {
 	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[urm.id]
 	if !ok {
@@ -546,7 +581,7 @@ func (urm *unpauseRequestMessage) unpause(rm *RequestManager) error {
 	inProgressRequestStatus.paused = false
 	select {
 	case <-inProgressRequestStatus.pauseMessages:
-		rm.peerHandler.SendRequest(inProgressRequestStatus.p, gsmsg.UpdateRequest(urm.id, urm.extensions...))
+		rm.sendRequest(inProgressRequestStatus.p, gsmsg.UpdateRequest(urm.id, urm.extensions...))
 		return nil
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
