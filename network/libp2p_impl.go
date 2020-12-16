@@ -113,7 +113,7 @@ func (impl *libp2pDataTransferNetwork) openStream(ctx context.Context, id peer.I
 		}
 
 		d := b.Duration()
-		log.Warnf("failed to open stream to %s on attempt %g of %g, waiting %s to try again, err: %w",
+		log.Warnf("failed to open stream to %s on attempt %g of %g, waiting %s to try again, err: %s",
 			id, nAttempts, impl.maxStreamOpenAttempts, d, err)
 
 		select {
@@ -183,14 +183,14 @@ func (dtnet *libp2pDataTransferNetwork) handleNewStream(s network.Stream) {
 			if err != io.EOF {
 				s.Reset() // nolint: errcheck,gosec
 				go dtnet.receiver.ReceiveError(err)
-				log.Debugf("graphsync net handleNewStream from %s error: %s", s.Conn().RemotePeer(), err)
+				log.Debugf("net handleNewStream from %s error: %s", s.Conn().RemotePeer(), err)
 			}
 			return
 		}
 
 		p := s.Conn().RemotePeer()
 		ctx := context.Background()
-		log.Debugf("graphsync net handleNewStream from %s", s.Conn().RemotePeer())
+		log.Debugf("net handleNewStream from %s", s.Conn().RemotePeer())
 
 		if received.IsRequest() {
 			receivedRequest, ok := received.(datatransfer.Request)
