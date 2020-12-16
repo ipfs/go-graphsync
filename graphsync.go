@@ -289,6 +289,9 @@ type OnBlockSentListener func(p peer.ID, request RequestData, block BlockData)
 // OnNetworkErrorListener runs when queued data is not able to be sent
 type OnNetworkErrorListener func(p peer.ID, request RequestData, err error)
 
+// OnNetworkErrorListener runs when queued data is not able to be received
+type OnReceiverNetworkErrorListener func(p peer.ID, err error)
+
 // OnResponseCompletedListener provides a way to listen for when responder has finished serving a response
 type OnResponseCompletedListener func(p peer.ID, request RequestData, status ResponseStatusCode)
 

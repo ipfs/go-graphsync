@@ -116,6 +116,11 @@ type internalNetworkErrorEvent struct {
 	err     error
 }
 
+type receiverNetworkErrorEvent struct {
+	p   peer.ID
+	err error
+}
+
 func networkErrorDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
 	ie := event.(internalNetworkErrorEvent)
 	listener := subscriberFn.(graphsync.OnNetworkErrorListener)
@@ -123,9 +128,21 @@ func networkErrorDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn
 	return nil
 }
 
+func receiverNetworkErrorDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
+	ie := event.(receiverNetworkErrorEvent)
+	listener := subscriberFn.(graphsync.OnReceiverNetworkErrorListener)
+	listener(ie.p, ie.err)
+	return nil
+}
+
 // NewNetworkErrorListeners returns a new list of listeners for when requestors cancel
 func NewNetworkErrorListeners() *NetworkErrorListeners {
 	return &NetworkErrorListeners{pubSub: pubsub.New(networkErrorDispatcher)}
+}
+
+// NewReceiverNetworkErrorListeners returns a new list of listeners for receiving errors
+func NewReceiverNetworkErrorListeners() *NetworkErrorListeners {
+	return &NetworkErrorListeners{pubSub: pubsub.New(receiverNetworkErrorDispatcher)}
 }
 
 // Register registers an listener for completed responses
@@ -136,4 +153,9 @@ func (nel *NetworkErrorListeners) Register(listener graphsync.OnNetworkErrorList
 // NotifyNetworkErrorListeners notifies all listeners that a requestor cancelled a response
 func (nel *NetworkErrorListeners) NotifyNetworkErrorListeners(p peer.ID, request graphsync.RequestData, err error) {
 	_ = nel.pubSub.Publish(internalNetworkErrorEvent{p, request, err})
+}
+
+// NotifyReceiverNetworkErrorListeners notifies all listeners that a receive connection failed
+func (nel *NetworkErrorListeners) NotifyReceiverNetworkErrorListeners(p peer.ID, err error) {
+	_ = nel.pubSub.Publish(receiverNetworkErrorEvent{p, err})
 }

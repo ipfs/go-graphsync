@@ -89,7 +89,7 @@ func (lam *lambdaImpl) ReceiveMessage(ctx context.Context,
 	lam.f(ctx, p, incoming)
 }
 
-func (lam *lambdaImpl) ReceiveError(err error) {
+func (lam *lambdaImpl) ReceiveError(_ peer.ID, _ error) {
 	// TODO log error
 }
 

@@ -1131,7 +1131,7 @@ func (r *receiver) ReceiveMessage(
 	}
 }
 
-func (r *receiver) ReceiveError(err error) {
+func (r *receiver) ReceiveError(_ peer.ID, err error) {
 }
 
 func (r *receiver) Connected(p peer.ID) {
