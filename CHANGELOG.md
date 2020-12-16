@@ -1,5 +1,24 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.2.4
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Automatically restart push channel (#127) ([filecoin-project/go-data-transfer#127](https://github.com/filecoin-project/go-data-transfer/pull/127))
+- github.com/ipfs/go-graphsync (v0.5.0 -> v0.5.2):
+  - RegisterNetworkErrorListener should fire when there's an error connecting to the peer (#127) ([ipfs/go-graphsync#127](https://github.com/ipfs/go-graphsync/pull/127))
+  - Permit multiple data subscriptions per original topic (#128) ([ipfs/go-graphsync#128](https://github.com/ipfs/go-graphsync/pull/128))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 4 | +1072/-74 | 17 |
+| Alex Cruikshank | 1 | +188/-110 | 12 |
+| hannahhoward | 1 | +30/-14 | 8 |
+| Hannah Howard | 1 | +23/-6 | 3 |
+
 # go-data-transfer 1.2.3
 
 ### Changelog
