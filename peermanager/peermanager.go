@@ -83,8 +83,18 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 // GetProcess returns the process for the given peer
 func (pm *PeerManager) GetProcess(
 	p peer.ID) PeerProcess {
+	// Usually this this is just a read
+	pm.peerProcessesLk.RLock()
+	pqi, ok := pm.peerProcesses[p]
+	if ok {
+		pm.peerProcessesLk.RUnlock()
+		return pqi.process
+	}
+	pm.peerProcessesLk.RUnlock()
+	// but sometimes it involves a create (we still need to do get or create cause it's possible
+	// another writer grabbed the Lock first and made the process)
 	pm.peerProcessesLk.Lock()
-	pqi := pm.getOrCreate(p)
+	pqi = pm.getOrCreate(p)
 	pm.peerProcessesLk.Unlock()
 	return pqi.process
 }

@@ -118,6 +118,14 @@ func (mq *MessageQueue) runQueue() {
 		case <-mq.outgoingWork:
 			mq.sendMessage()
 		case <-mq.done:
+			select {
+			case <-mq.outgoingWork:
+				message, topic := mq.extractOutgoingMessage()
+				if message != nil || !message.Empty() {
+					mq.eventPublisher.Publish(topic, Event{Name: Error, Err: fmt.Errorf("message queue shutdown")})
+				}
+			default:
+			}
 			if mq.sender != nil {
 				mq.sender.Close()
 			}
