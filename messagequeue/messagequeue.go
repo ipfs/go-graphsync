@@ -135,6 +135,9 @@ func (mq *MessageQueue) runQueue() {
 		case <-mq.outgoingWork:
 			mq.sendMessage()
 		case <-mq.done:
+			// our queue is shutting down, so we should check for any pending messages, and propogate a network error
+			// a shutting down queue implies a network disconnect -- so it's important that anyone who is expecting these
+			// messages to go through is notified of the disconnect
 			select {
 			case <-mq.outgoingWork:
 				for {
