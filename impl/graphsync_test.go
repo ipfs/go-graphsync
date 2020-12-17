@@ -593,7 +593,7 @@ func TestNetworkDisconnect(t *testing.T) {
 	receiverError := make(chan error, 1)
 	requestor.RegisterReceiverNetworkErrorListener(func(p peer.ID, err error) {
 		select {
-		case networkError <- err:
+		case receiverError <- err:
 		default:
 		}
 	})
@@ -615,8 +615,8 @@ func TestNetworkDisconnect(t *testing.T) {
 
 	testutil.AssertReceive(ctx, t, networkError, &err, "should receive network error")
 	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
-	testutil.AssertReceive(ctx, t, receiverError, &err, "should receive an error on receiver side")
 	require.EqualError(t, err, graphsync.RequestContextCancelledErr{}.Error())
+	testutil.AssertReceive(ctx, t, receiverError, &err, "should receive an error on receiver side")
 }
 
 func TestConnectFail(t *testing.T) {
