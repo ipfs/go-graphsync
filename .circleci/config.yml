@@ -46,7 +46,7 @@ jobs:
           command: mkdir -p $HOME/testground/plans && mv testplans/graphsync $HOME/testground/plans/
       - run:
           name: "trigger graphsync testplan on taas"
-          command: ~/testground-cli run composition -f $HOME/testground/plans/graphsync/_compositions/stress.toml --metadata-commit=$CIRCLE_SHA1 --metadata-repo=ipfs/go-graphsync --metadata-branch=$CIRCLE_BRANCH
+          command: ~/testground-cli run composition -f $HOME/testground/plans/graphsync/stress.toml --metadata-commit=$CIRCLE_SHA1 --metadata-repo=ipfs/go-graphsync --metadata-branch=$CIRCLE_BRANCH
 
 workflows:
   version: 2
