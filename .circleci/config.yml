@@ -1,12 +1,23 @@
 version: 2.1
 orbs:
-  ci-go: ipfs/ci-go@0.2.9
+  go: gotest/tools@0.0.13
+
+executors:
+  golang:
+    docker:
+      - image: circleci/golang:1.15.5
+    resource_class: 2xlarge
+  ubuntu:
+    docker:
+      - image: ubuntu:19.10
 
 jobs:
   trigger-testplans:
     description: |
       Trigger `graphsync` test cases on TaaS
-#    executor: << parameters.executor >>
+    parameters:
+      <<: *test-params
+    executor: << parameters.executor >>
     steps:
       - install-deps
       - prepare
