@@ -58,7 +58,11 @@ workflows:
       - ci-go/test:
           race: true
           name: "ci-go/test/race"
-      - trigger-testplans
+      - trigger-testplans:
+          filters:
+            branches:
+              only:
+                - master
       #- ci-go/benchmark:
       #    tolerance: 50
       #    requires:
