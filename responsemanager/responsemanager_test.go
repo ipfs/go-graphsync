@@ -22,6 +22,7 @@ import (
 	"github.com/ipfs/go-graphsync/dedupkey"
 	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
@@ -704,10 +705,10 @@ func (fqq *fakeQueryQueue) ThawRound() {
 
 type fakePeerManager struct {
 	lastPeer           peer.ID
-	peerResponseSender peerresponsemanager.PeerResponseSender
+	peerResponseSender peerresponsemanager.PeerResponseBuilder
 }
 
-func (fpm *fakePeerManager) SenderForPeer(p peer.ID) peerresponsemanager.PeerResponseSender {
+func (fpm *fakePeerManager) SenderForPeer(p peer.ID) peerresponsemanager.PeerResponseBuilder {
 	fpm.lastPeer = p
 	return fpm.peerResponseSender
 }
@@ -822,7 +823,7 @@ func (fprs *fakePeerResponseSender) Transaction(requestID graphsync.RequestID, t
 
 type fakePeerResponseTransactionSender struct {
 	requestID        graphsync.RequestID
-	prs              peerresponsemanager.PeerResponseSender
+	prs              peerresponsemanager.PeerResponseBuilder
 	notifeePublisher *testutil.MockPublisher
 }
 
@@ -1107,28 +1108,28 @@ func (td *testData) notifyStatusMessagesSent() {
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isSn := data.(graphsync.ResponseStatusCode)
 		return isSn
-	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Sent}})
+	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Sent}})
 }
 
 func (td *testData) notifyBlockSendsSent() {
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isBsn := data.(graphsync.BlockData)
 		return isBsn
-	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Sent}})
+	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Sent}})
 }
 
 func (td *testData) notifyStatusMessagesNetworkError(err error) {
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isSn := data.(graphsync.ResponseStatusCode)
 		return isSn
-	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Error, Err: err}})
+	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Error, Err: err}})
 }
 
 func (td *testData) notifyBlockSendsNetworkError(err error) {
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isBsn := data.(graphsync.BlockData)
 		return isBsn
-	}, []notifications.Event{peerresponsemanager.Event{Name: peerresponsemanager.Error, Err: err}})
+	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Error, Err: err}})
 }
 
 func (td *testData) assertNoCompletedResponseStatuses() {

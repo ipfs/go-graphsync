@@ -105,7 +105,7 @@ type NetworkErrorListeners interface {
 
 // PeerManager is an interface that returns sender interfaces for peer responses.
 type PeerManager interface {
-	SenderForPeer(p peer.ID) peerresponsemanager.PeerResponseSender
+	SenderForPeer(p peer.ID) peerresponsemanager.PeerResponseBuilder
 }
 
 type responseManagerMessage interface {
@@ -326,7 +326,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 	}
 	result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, update)
 	peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-	err := peerResponseSender.Transaction(key.requestID, func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+	err := peerResponseSender.Transaction(key.requestID, func(transaction peerresponsemanager.PeerResponseTransactionBuilder) error {
 		for _, extension := range result.Extensions {
 			transaction.SendExtensionData(extension)
 		}
@@ -365,7 +365,7 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	inProgressResponse.isPaused = false
 	if len(extensions) > 0 {
 		peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-		_ = peerResponseSender.Transaction(requestID, func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+		_ = peerResponseSender.Transaction(requestID, func(transaction peerresponsemanager.PeerResponseTransactionBuilder) error {
 			for _, extension := range extensions {
 				transaction.SendExtensionData(extension)
 			}

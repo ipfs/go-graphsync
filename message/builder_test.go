@@ -1,4 +1,4 @@
-package responsebuilder
+package message
 
 import (
 	"fmt"
@@ -10,13 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestMessageBuilding(t *testing.T) {
-	rb := New(Topic(0))
+	rb := NewBuilder(Topic(0))
 	blocks := testutil.GenerateBlocksOfSize(3, 100)
 	links := make([]ipld.Link, 0, len(blocks))
 	for _, block := range blocks {
@@ -65,10 +64,11 @@ func TestMessageBuilding(t *testing.T) {
 	rb.AddExtensionData(requestID1, extension1)
 	rb.AddExtensionData(requestID3, extension2)
 
-	responses, sentBlocks, err := rb.Build()
+	message, err := rb.Build()
 
 	require.NoError(t, err, "build responses errored")
-
+	responses := message.Responses()
+	sentBlocks := message.Blocks()
 	require.Len(t, responses, 4, "did not assemble correct number of responses")
 
 	response1, err := findResponseForRequestID(responses, requestID1)
@@ -131,11 +131,11 @@ func TestMessageBuilding(t *testing.T) {
 	}
 }
 
-func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID graphsync.RequestID) (gsmsg.GraphSyncResponse, error) {
+func findResponseForRequestID(responses []GraphSyncResponse, requestID graphsync.RequestID) (GraphSyncResponse, error) {
 	for _, response := range responses {
 		if response.RequestID() == requestID {
 			return response, nil
 		}
 	}
-	return gsmsg.GraphSyncResponse{}, fmt.Errorf("Response Not Found")
+	return GraphSyncResponse{}, fmt.Errorf("Response Not Found")
 }
