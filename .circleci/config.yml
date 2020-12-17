@@ -15,9 +15,11 @@ jobs:
   trigger-testplans:
     description: |
       Trigger `graphsync` test cases on TaaS
-    executor:
-      type: executor
-      default: golang
+    parameters: &test-params
+      executor:
+        type: executor
+        default: golang
+    executor: << parameters.executor >>
     steps:
       - install-deps
       - prepare
