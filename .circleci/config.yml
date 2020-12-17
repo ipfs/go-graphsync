@@ -20,8 +20,6 @@ workflows:
 trigger-testplans:
   description: |
     Trigger `graphsync` test cases on TaaS
-  parameters:
-    <<: *test-params
   executor: << parameters.executor >>
   steps:
     - install-deps
