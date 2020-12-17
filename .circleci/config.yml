@@ -2,21 +2,6 @@ version: 2.1
 orbs:
   ci-go: ipfs/ci-go@0.2.9
 
-workflows:
-  version: 2
-  test:
-    jobs:
-      - ci-go/build
-      - ci-go/lint
-      - ci-go/test
-      - ci-go/test:
-          race: true
-          name: "ci-go/test/race"
-      - trigger-testplans
-      #- ci-go/benchmark:
-      #    tolerance: 50
-      #    requires:
-      #      - ci-go/test
 trigger-testplans:
   description: |
     Trigger `graphsync` test cases on TaaS
@@ -36,3 +21,19 @@ trigger-testplans:
     - run:
         name: "trigger graphsync testplan on taas"
         command: ~/testground-cli run composition -f $HOME/testground/plans/graphsync/_compositions/stress.toml --metadata-commit=$CIRCLE_SHA1 --metadata-repo=ipfs/go-graphsync --metadata-branch=$CIRCLE_BRANCH
+
+workflows:
+  version: 2
+  test:
+    jobs:
+      - ci-go/build
+      - ci-go/lint
+      - ci-go/test
+      - ci-go/test:
+          race: true
+          name: "ci-go/test/race"
+      - trigger-testplans
+      #- ci-go/benchmark:
+      #    tolerance: 50
+      #    requires:
+      #      - ci-go/test
