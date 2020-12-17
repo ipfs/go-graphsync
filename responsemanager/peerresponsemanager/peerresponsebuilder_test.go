@@ -236,7 +236,7 @@ func TestPeerResponseSenderSendsResponsesInTransaction(t *testing.T) {
 	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
 	peerResponseSender.Startup()
 	notifee, notifeeVerifier := testutil.NewTestNotifee("transaction", 10)
-	err := peerResponseSender.Transaction(requestID1, func(peerResponseSender PeerResponseTransactionSender) error {
+	err := peerResponseSender.Transaction(requestID1, func(peerResponseSender PeerResponseTransactionBuilder) error {
 		bd := peerResponseSender.SendResponse(links[0], blks[0].RawData())
 		assertSentOnWire(t, bd, blks[0])
 
@@ -414,7 +414,7 @@ func TestPeerResponseSenderSendsResponsesMemoryPressure(t *testing.T) {
 
 	finishes := make(chan string, 2)
 	go func() {
-		_ = peerResponseSender.Transaction(requestID1, func(peerResponseSender PeerResponseTransactionSender) error {
+		_ = peerResponseSender.Transaction(requestID1, func(peerResponseSender PeerResponseTransactionBuilder) error {
 			bd = peerResponseSender.SendResponse(links[1], blks[1].RawData())
 			assertSentOnWire(t, bd, blks[1])
 			bd = peerResponseSender.SendResponse(links[2], blks[2].RawData())
