@@ -20,8 +20,8 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/allocator"
 	responderhooks "github.com/ipfs/go-graphsync/responsemanager/hooks"
-	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
+	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 )
 
@@ -41,7 +41,7 @@ type GraphSync struct {
 	requestManager              *requestmanager.RequestManager
 	responseManager             *responsemanager.ResponseManager
 	asyncLoader                 *asyncloader.AsyncLoader
-	peerResponseManager         *peerresponsemanager.PeerResponseManager
+	peerResponseManager         *responseassembler.ResponseAssembler
 	peerTaskQueue               *peertaskqueue.PeerTaskQueue
 	peerManager                 *peermanager.PeerMessageManager
 	incomingRequestHooks        *responderhooks.IncomingRequestHooks
@@ -141,10 +141,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
 	asyncLoader := asyncloader.New(ctx, loader, storer)
 	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners)
-	createdResponseQueue := func(ctx context.Context, p peer.ID) peerresponsemanager.PeerResponseBuilder {
-		return peerresponsemanager.NewResponseSender(ctx, p, peerManager, allocator)
-	}
-	peerResponseManager := peerresponsemanager.New(ctx, createdResponseQueue)
+	peerResponseManager := responseassembler.New(ctx, allocator, peerManager)
 	peerTaskQueue := peertaskqueue.New()
 	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressRequests)
 	graphSync := &GraphSync{
