@@ -78,6 +78,7 @@ type peerResponseSender struct {
 	subscriber          *notifications.TopicDataSubscriber
 	allocatorSubscriber *notifications.TopicDataSubscriber
 	publisher           notifications.Publisher
+	messagesSending     sync.WaitGroup
 }
 
 // PeerResponseSender handles batching, deduping, and sending responses for
@@ -442,6 +443,7 @@ func (prs *peerResponseSender) signalWork() {
 
 func (prs *peerResponseSender) run() {
 	defer func() {
+		prs.messagesSending.Wait()
 		prs.publisher.Shutdown()
 		prs.allocator.ReleasePeerMemory(prs.p)
 	}()
@@ -449,6 +451,17 @@ func (prs *peerResponseSender) run() {
 	for {
 		select {
 		case <-prs.ctx.Done():
+			select {
+			case <-prs.outgoingWork:
+				prs.responseBuildersLk.Lock()
+				builders := prs.responseBuilders
+				prs.responseBuilders = nil
+				prs.responseBuildersLk.Unlock()
+				for _, builder := range builders {
+					prs.publisher.Publish(builder.Topic(), Event{Name: Error, Err: fmt.Errorf("queue shutdown")})
+				}
+			default:
+			}
 			return
 		case <-prs.outgoingWork:
 			prs.sendResponseMessages()
@@ -475,6 +488,7 @@ func (prs *peerResponseSender) sendResponseMessages() {
 			log.Errorf("Unable to assemble GraphSync response: %s", err.Error())
 		}
 
+		prs.messagesSending.Add(1)
 		prs.peerHandler.SendResponse(prs.p, responses, blks, notifications.Notifee{
 			Data:       builder.Topic(),
 			Subscriber: prs.subscriber,
@@ -514,8 +528,10 @@ func (s *subscriber) OnNext(topic notifications.Topic, event notifications.Event
 	switch msgEvent.Name {
 	case messagequeue.Sent:
 		s.prs.publisher.Publish(builderTopic, Event{Name: Sent})
+		s.prs.messagesSending.Done()
 	case messagequeue.Error:
 		s.prs.publisher.Publish(builderTopic, Event{Name: Error, Err: fmt.Errorf("error sending message: %w", msgEvent.Err)})
+		s.prs.messagesSending.Done()
 	case messagequeue.Queued:
 		select {
 		case s.prs.queuedMessages <- builderTopic:

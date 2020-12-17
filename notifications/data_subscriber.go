@@ -1,6 +1,8 @@
 package notifications
 
-import "sync"
+import (
+	"sync"
+)
 
 type TopicDataSubscriber struct {
 	idMapLk sync.RWMutex
@@ -48,4 +50,7 @@ func (m *TopicDataSubscriber) OnClose(topic Topic) {
 	for _, data := range m.getData(topic) {
 		m.Subscriber.OnClose(data)
 	}
+	m.idMapLk.Lock()
+	delete(m.data, topic)
+	m.idMapLk.Unlock()
 }
