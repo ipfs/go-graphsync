@@ -13,6 +13,11 @@ import (
 
 var log = logging.Logger("graphsync")
 
+type responseOperation interface {
+	build(responseBuilder *gsmsg.Builder)
+	size() uint64
+}
+
 type transactionBuilder struct {
 	requestID   graphsync.RequestID
 	operations  []responseOperation
@@ -52,6 +57,44 @@ func (prts *transactionBuilder) AddNotifee(notifee notifications.Notifee) {
 	prts.notifees = append(prts.notifees, notifee)
 }
 
+func (prts *transactionBuilder) setupBlockOperation(
+	link ipld.Link, data []byte) blockOperation {
+	hasBlock := data != nil
+	isUnique := prts.linkTracker.RecordLinkTraversal(prts.requestID, link, hasBlock)
+	return blockOperation{
+		data, hasBlock && isUnique, link, prts.requestID,
+	}
+}
+
+func (prts *transactionBuilder) setupFinishOperation() statusOperation {
+	isComplete := prts.linkTracker.FinishTracking(prts.requestID)
+	var status graphsync.ResponseStatusCode
+	if isComplete {
+		status = graphsync.RequestCompletedFull
+	} else {
+		status = graphsync.RequestCompletedPartial
+	}
+	return statusOperation{prts.requestID, status}
+}
+
+func (prts *transactionBuilder) setupFinishWithErrOperation(status graphsync.ResponseStatusCode) statusOperation {
+	prts.linkTracker.FinishTracking(prts.requestID)
+	return statusOperation{prts.requestID, status}
+}
+
+type statusOperation struct {
+	requestID graphsync.RequestID
+	status    graphsync.ResponseStatusCode
+}
+
+func (fo statusOperation) build(responseBuilder *gsmsg.Builder) {
+	responseBuilder.AddResponseCode(fo.requestID, fo.status)
+}
+
+func (fo statusOperation) size() uint64 {
+	return 0
+}
+
 type extensionOperation struct {
 	requestID graphsync.RequestID
 	extension graphsync.ExtensionData
@@ -63,11 +106,6 @@ func (eo extensionOperation) build(responseBuilder *gsmsg.Builder) {
 
 func (eo extensionOperation) size() uint64 {
 	return uint64(len(eo.extension.Data))
-}
-
-type responseOperation interface {
-	build(responseBuilder *gsmsg.Builder)
-	size() uint64
 }
 
 type blockOperation struct {
@@ -106,42 +144,4 @@ func (bo blockOperation) BlockSizeOnWire() uint64 {
 
 func (bo blockOperation) size() uint64 {
 	return bo.BlockSizeOnWire()
-}
-
-func (prts *transactionBuilder) setupBlockOperation(
-	link ipld.Link, data []byte) blockOperation {
-	hasBlock := data != nil
-	isUnique := prts.linkTracker.RecordLinkTraversal(prts.requestID, link, hasBlock)
-	return blockOperation{
-		data, hasBlock && isUnique, link, prts.requestID,
-	}
-}
-
-type statusOperation struct {
-	requestID graphsync.RequestID
-	status    graphsync.ResponseStatusCode
-}
-
-func (fo statusOperation) build(responseBuilder *gsmsg.Builder) {
-	responseBuilder.AddResponseCode(fo.requestID, fo.status)
-}
-
-func (fo statusOperation) size() uint64 {
-	return 0
-}
-
-func (prts *transactionBuilder) setupFinishOperation() statusOperation {
-	isComplete := prts.linkTracker.FinishTracking(prts.requestID)
-	var status graphsync.ResponseStatusCode
-	if isComplete {
-		status = graphsync.RequestCompletedFull
-	} else {
-		status = graphsync.RequestCompletedPartial
-	}
-	return statusOperation{prts.requestID, status}
-}
-
-func (prts *transactionBuilder) setupFinishWithErrOperation(status graphsync.ResponseStatusCode) statusOperation {
-	prts.linkTracker.FinishTracking(prts.requestID)
-	return statusOperation{prts.requestID, status}
 }

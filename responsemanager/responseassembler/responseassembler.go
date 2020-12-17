@@ -1,3 +1,10 @@
+/*
+Package responseassembler assembles responses that are queued for sending in outgoing messages
+
+The response assembler's Transaction method allows a caller to specify response actions that will go into a single
+libp2p2 message. The response assembler will also deduplicate blocks that have already been sent over the network in
+a previous message
+*/
 package responseassembler
 
 import (
@@ -15,7 +22,8 @@ import (
 // Transaction is a series of operations that should be send together in a single response
 type Transaction func(PeerResponseTransactionBuilder) error
 
-// PeerResponseTransactionBuilder is a limited interface for sending responses inside a transaction
+// PeerResponseTransactionBuilder is interface for assembling responses inside a transaction, so that they are included
+// in the same message on the protocol
 type PeerResponseTransactionBuilder interface {
 	SendResponse(
 		link ipld.Link,
@@ -29,8 +37,7 @@ type PeerResponseTransactionBuilder interface {
 	AddNotifee(notifications.Notifee)
 }
 
-// PeerMessageHandler is an interface that can send a response for a given peer across
-// the network.
+// PeerMessageHandler is an interface that can queues a response for a given peer to go out over the network
 type PeerMessageHandler interface {
 	BuildMessage(p peer.ID, blkSize uint64, buildResponseFn func(*gsmsg.Builder), notifees []notifications.Notifee)
 }
@@ -40,7 +47,8 @@ type Allocator interface {
 	AllocateBlockMemory(p peer.ID, amount uint64) <-chan error
 }
 
-// ResponseAssembler manages message queues for peers
+// ResponseAssembler manages assembling responses to go out over the network
+// in libp2p messages
 type ResponseAssembler struct {
 	*peermanager.PeerManager
 	allocator   Allocator
@@ -48,7 +56,7 @@ type ResponseAssembler struct {
 	ctx         context.Context
 }
 
-// New generates a new peer manager for sending responses
+// New generates a new ResponseAssembler for sending responses
 func New(ctx context.Context, allocator Allocator, peerHandler PeerMessageHandler) *ResponseAssembler {
 	return &ResponseAssembler{
 		PeerManager: peermanager.New(ctx, func(ctx context.Context, p peer.ID) peermanager.PeerHandler {
@@ -60,40 +68,43 @@ func New(ctx context.Context, allocator Allocator, peerHandler PeerMessageHandle
 	}
 }
 
-func (prm *ResponseAssembler) DedupKey(p peer.ID, requestID graphsync.RequestID, key string) {
-	prm.GetProcess(p).(*peerLinkTracker).DedupKey(requestID, key)
+// DedupKey indicates that outgoing blocks should be deduplicated in a seperate bucket (only with requests that share
+// supplied key string)
+func (ra *ResponseAssembler) DedupKey(p peer.ID, requestID graphsync.RequestID, key string) {
+	ra.GetProcess(p).(*peerLinkTracker).DedupKey(requestID, key)
 }
 
-func (prm *ResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link) {
-	prm.GetProcess(p).(*peerLinkTracker).IgnoreBlocks(requestID, links)
+// IgnoreBlocks indicates that a list of keys that should be ignored when sending blocks
+func (ra *ResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link) {
+	ra.GetProcess(p).(*peerLinkTracker).IgnoreBlocks(requestID, links)
 }
 
-// Transaction Build A Response
-func (prm *ResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction Transaction) error {
+// Transaction build a response, and queues it for sending in the next outgoing message
+func (ra *ResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction Transaction) error {
 	prts := &transactionBuilder{
 		requestID:   requestID,
-		linkTracker: prm.GetProcess(p).(*peerLinkTracker),
+		linkTracker: ra.GetProcess(p).(*peerLinkTracker),
 	}
 	err := transaction(prts)
 	if err == nil {
-		prm.execute(p, prts.operations, prts.notifees)
+		ra.execute(p, prts.operations, prts.notifees)
 	}
 	return err
 }
 
-func (prs *ResponseAssembler) execute(p peer.ID, operations []responseOperation, notifees []notifications.Notifee) {
+func (ra *ResponseAssembler) execute(p peer.ID, operations []responseOperation, notifees []notifications.Notifee) {
 	size := uint64(0)
 	for _, op := range operations {
 		size += op.size()
 	}
 	if size > 0 {
 		select {
-		case <-prs.allocator.AllocateBlockMemory(p, size):
-		case <-prs.ctx.Done():
+		case <-ra.allocator.AllocateBlockMemory(p, size):
+		case <-ra.ctx.Done():
 			return
 		}
 	}
-	prs.peerHandler.BuildMessage(p, size, func(responseBuilder *gsmsg.Builder) {
+	ra.peerHandler.BuildMessage(p, size, func(responseBuilder *gsmsg.Builder) {
 		for _, op := range operations {
 			op.build(responseBuilder)
 		}
