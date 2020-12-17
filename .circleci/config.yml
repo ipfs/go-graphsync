@@ -1,6 +1,6 @@
 version: 2.1
 orbs:
-  go: gotest/tools@0.0.13
+  ci-go: ipfs/ci-go@0.2.9
 
 executors:
   golang:
