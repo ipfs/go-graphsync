@@ -21,8 +21,6 @@ jobs:
         default: golang
     executor: << parameters.executor >>
     steps:
-      - install-deps
-      - prepare
       - run:
           name: "download testground"
           command: wget https://gist.github.com/nonsense/5fbf3167cac79945f658771aed32fc44/raw/2e17eb0debf7ec6bdf027c1bdafc2c92dd97273b/testground-d3e9603 -O ~/testground-cli && chmod +x ~/testground-cli
