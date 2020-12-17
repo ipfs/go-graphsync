@@ -25,8 +25,8 @@ import (
 	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
-	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
+	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -705,10 +705,10 @@ func (fqq *fakeQueryQueue) ThawRound() {
 
 type fakePeerManager struct {
 	lastPeer           peer.ID
-	peerResponseSender peerresponsemanager.PeerResponseBuilder
+	peerResponseSender responseassembler.PeerResponseBuilder
 }
 
-func (fpm *fakePeerManager) SenderForPeer(p peer.ID) peerresponsemanager.PeerResponseBuilder {
+func (fpm *fakePeerManager) SenderForPeer(p peer.ID) responseassembler.PeerResponseBuilder {
 	fpm.lastPeer = p
 	return fpm.peerResponseSender
 }
@@ -816,14 +816,14 @@ func (fprs *fakePeerResponseSender) FinishWithCancel(requestID graphsync.Request
 	fprs.cancelledRequests <- cancelledRequest{requestID}
 }
 
-func (fprs *fakePeerResponseSender) Transaction(requestID graphsync.RequestID, transaction peerresponsemanager.Transaction) error {
+func (fprs *fakePeerResponseSender) Transaction(requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
 	fprts := &fakePeerResponseTransactionSender{requestID, fprs, fprs.notifeePublisher}
 	return transaction(fprts)
 }
 
 type fakePeerResponseTransactionSender struct {
 	requestID        graphsync.RequestID
-	prs              peerresponsemanager.PeerResponseBuilder
+	prs              responseassembler.PeerResponseBuilder
 	notifeePublisher *testutil.MockPublisher
 }
 

@@ -1,4 +1,4 @@
-package peerresponsemanager
+package responseassembler
 
 import (
 	"context"

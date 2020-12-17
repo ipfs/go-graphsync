@@ -16,7 +16,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
-	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
+	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 )
 
 var log = logging.Logger("graphsync")
@@ -103,9 +103,11 @@ type NetworkErrorListeners interface {
 	NotifyNetworkErrorListeners(p peer.ID, request graphsync.RequestData, err error)
 }
 
-// PeerManager is an interface that returns sender interfaces for peer responses.
-type PeerManager interface {
-	SenderForPeer(p peer.ID) peerresponsemanager.PeerResponseBuilder
+// ResponseAssembler is an interface that returns sender interfaces for peer responses.
+type ResponseAssembler interface {
+	DedupKey(p peer.ID, requestID graphsync.RequestID, key string)
+	IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link)
+	Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error
 }
 
 type responseManagerMessage interface {
@@ -117,7 +119,7 @@ type responseManagerMessage interface {
 type ResponseManager struct {
 	ctx                   context.Context
 	cancelFn              context.CancelFunc
-	peerManager           PeerManager
+	peerManager           ResponseAssembler
 	queryQueue            QueryQueue
 	updateHooks           UpdateHooks
 	cancelledListeners    CancelledListeners
@@ -135,7 +137,7 @@ type ResponseManager struct {
 // bridge to IPLD interface, peerManager, and queryQueue.
 func New(ctx context.Context,
 	loader ipld.Loader,
-	peerManager PeerManager,
+	peerManager ResponseAssembler,
 	queryQueue QueryQueue,
 	requestHooks RequestHooks,
 	blockHooks BlockHooks,
@@ -325,8 +327,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		return
 	}
 	result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, update)
-	peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-	err := peerResponseSender.Transaction(key.requestID, func(transaction peerresponsemanager.PeerResponseTransactionBuilder) error {
+	err := rm.peerManager.Transaction(key.p, key.requestID, func(transaction responseassembler.PeerResponseTransactionBuilder) error {
 		for _, extension := range result.Extensions {
 			transaction.SendExtensionData(extension)
 		}
@@ -364,8 +365,7 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	}
 	inProgressResponse.isPaused = false
 	if len(extensions) > 0 {
-		peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-		_ = peerResponseSender.Transaction(requestID, func(transaction peerresponsemanager.PeerResponseTransactionBuilder) error {
+		_ = rm.peerManager.Transaction(p, requestID, func(transaction responseassembler.PeerResponseTransactionBuilder) error {
 			for _, extension := range extensions {
 				transaction.SendExtensionData(extension)
 			}
@@ -389,14 +389,17 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 	}
 
 	if response.isPaused {
-		peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-		if isContextErr(err) {
+		_ = rm.peerManager.Transaction(p, requestID, func(prtb responseassembler.PeerResponseTransactionBuilder) error {
+			if isContextErr(err) {
 
-			rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
-			peerResponseSender.FinishWithCancel(requestID)
-		} else if err != errNetworkError {
-			peerResponseSender.FinishWithError(requestID, graphsync.RequestCancelled, notifications.Notifee{Data: graphsync.RequestCancelled, Subscriber: response.subscriber})
-		}
+				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
+				prtb.FinishWithCancel()
+			} else if err != errNetworkError {
+				prtb.FinishWithError(graphsync.RequestCancelled)
+				prtb.AddNotifee(notifications.Notifee{Data: graphsync.RequestCancelled, Subscriber: response.subscriber})
+			}
+			return nil
+		})
 		delete(rm.inProgressResponses, key)
 		response.cancelFn()
 		return nil
