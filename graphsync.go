@@ -343,6 +343,9 @@ type GraphExchange interface {
 	// RegisterNetworkErrorListener adds a listener for when errors occur sending data over the wire
 	RegisterNetworkErrorListener(listener OnNetworkErrorListener) UnregisterHookFunc
 
+	// RegisterNetworkErrorListener adds a listener for when errors occur sending data over the wire
+	RegisterReceiverNetworkErrorListener(listener OnReceiverNetworkErrorListener) UnregisterHookFunc
+
 	// UnpauseRequest unpauses a request that was paused in a block hook based request ID
 	// Can also send extensions with unpause
 	UnpauseRequest(RequestID, ...ExtensionData) error

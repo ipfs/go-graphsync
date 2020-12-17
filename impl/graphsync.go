@@ -51,7 +51,7 @@ type GraphSync struct {
 	requestorCancelledListeners *listeners.RequestorCancelledListeners
 	blockSentListeners          *listeners.BlockSentListeners
 	networkErrorListeners       *listeners.NetworkErrorListeners
-	receiverErrorListeners      *listeners.NetworkErrorListeners
+	receiverErrorListeners      *listeners.NetworkReceiverErrorListeners
 	incomingResponseHooks       *requestorhooks.IncomingResponseHooks
 	outgoingRequestHooks        *requestorhooks.OutgoingRequestHooks
 	incomingBlockHooks          *requestorhooks.IncomingBlockHooks
@@ -255,7 +255,7 @@ func (gs *GraphSync) RegisterNetworkErrorListener(listener graphsync.OnNetworkEr
 }
 
 // RegisterReceiverNetworkErrorListener adds a listener for when errors occur receiving data over the wire
-func (gs *GraphSync) RegisterReceiverNetworkErrorListener(listener graphsync.OnNetworkErrorListener) graphsync.UnregisterHookFunc {
+func (gs *GraphSync) RegisterReceiverNetworkErrorListener(listener graphsync.OnReceiverNetworkErrorListener) graphsync.UnregisterHookFunc {
 	return gs.receiverErrorListeners.Register(listener)
 }
 
@@ -305,7 +305,7 @@ func (gsr *graphSyncReceiver) ReceiveMessage(
 // errors from the network.
 func (gsr *graphSyncReceiver) ReceiveError(p peer.ID, err error) {
 	log.Infof("Graphsync ReceiveError from %s: %s", p, err)
-	gsr.receiverErrorListeners.NotifyReceiverNetworkErrorListeners(p, err)
+	gsr.receiverErrorListeners.NotifyNetworkErrorListeners(p, err)
 }
 
 // Connected is part of the networks 's Receiver interface and handles peers connecting
