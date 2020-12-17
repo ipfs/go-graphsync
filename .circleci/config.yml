@@ -6,7 +6,7 @@ jobs:
   trigger-testplans:
     description: |
       Trigger `graphsync` test cases on TaaS
-    executor: << parameters.executor >>
+#    executor: << parameters.executor >>
     steps:
       - install-deps
       - prepare
