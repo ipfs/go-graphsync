@@ -17,7 +17,7 @@ func (fp *fakePeerProcess) Shutdown() {}
 
 func TestAddingAndRemovingPeers(t *testing.T) {
 	ctx := context.Background()
-	peerProcessFatory := func(ctx context.Context, p peer.ID) PeerProcess {
+	peerProcessFatory := func(ctx context.Context, p peer.ID) PeerHandler {
 		return &fakePeerProcess{}
 	}
 
