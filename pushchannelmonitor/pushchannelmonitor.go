@@ -33,10 +33,11 @@ type Monitor struct {
 }
 
 type Config struct {
-	Interval          time.Duration
-	MinBytesSent      uint64
-	ChecksPerInterval uint32
-	RestartBackoff    time.Duration
+	Interval               time.Duration
+	MinBytesSent           uint64
+	ChecksPerInterval      uint32
+	RestartBackoff         time.Duration
+	MaxConsecutiveRestarts uint32
 }
 
 func NewMonitor(mgr monitorAPI, cfg *Config) *Monitor {
@@ -65,6 +66,9 @@ func checkConfig(cfg *Config) {
 	}
 	if cfg.MinBytesSent == 0 {
 		panic(fmt.Sprintf(prefix+"MinBytesSent is %d but must be > 0", cfg.MinBytesSent))
+	}
+	if cfg.MaxConsecutiveRestarts == 0 {
+		panic(fmt.Sprintf(prefix+"MaxConsecutiveRestarts is %d but must be > 0", cfg.MaxConsecutiveRestarts))
 	}
 }
 
@@ -158,10 +162,11 @@ type monitoredChannel struct {
 	unsub      datatransfer.Unsubscribe
 	onShutdown func(*monitoredChannel)
 
-	statsLk        sync.RWMutex
-	queued         uint64
-	sent           uint64
-	dataRatePoints chan *dataRatePoint
+	statsLk             sync.RWMutex
+	queued              uint64
+	sent                uint64
+	dataRatePoints      chan *dataRatePoint
+	consecutiveRestarts int
 
 	restartLk  sync.RWMutex
 	restarting bool
@@ -220,6 +225,8 @@ func (mc *monitoredChannel) start() {
 		case datatransfer.DataSent:
 			// Keep track of the amount of data sent
 			mc.sent = channelState.Sent()
+			// Some data was sent so reset the consecutive restart counter
+			mc.consecutiveRestarts = 0
 		}
 	})
 }
@@ -277,11 +284,27 @@ func (mc *monitoredChannel) restartChannel() {
 		return
 	}
 
+	mc.statsLk.Lock()
+	mc.consecutiveRestarts++
+	restartCount := mc.consecutiveRestarts
+	mc.statsLk.Unlock()
+
+	if uint32(restartCount) > mc.cfg.MaxConsecutiveRestarts {
+		// If no data has been transferred since the last transfer, and we've
+		// reached the consecutive restart limit, close the channel and
+		// shutdown the monitor
+		log.Errorf("Closing channel after %d consecutive restarts for push data-channel %s", restartCount, mc.chid)
+		mc.closeChannelAndShutdown()
+		return
+	}
+
 	defer func() {
-		// Backoff a little time after a restart before attempting another
-		select {
-		case <-time.After(mc.cfg.RestartBackoff):
-		case <-mc.ctx.Done():
+		if mc.cfg.RestartBackoff > 0 {
+			// Backoff a little time after a restart before attempting another
+			select {
+			case <-time.After(mc.cfg.RestartBackoff):
+			case <-mc.ctx.Done():
+			}
 		}
 
 		mc.restartLk.Lock()
@@ -289,19 +312,24 @@ func (mc *monitoredChannel) restartChannel() {
 		mc.restartLk.Unlock()
 	}()
 
-	// Send a restart message for the channel
+	// Send a restart message for the channel.
+	// Note that at the networking layer there is logic to retry if a network
+	// connection cannot be established, so this may take some time.
 	log.Infof("Sending restart message for push data-channel %s", mc.chid)
 	err := mc.mgr.RestartDataTransferChannel(mc.ctx, mc.chid)
 	if err != nil {
-		log.Warnf("closing channel after failing to send restart message for push data-channel %s: %s", mc.chid, err)
-
 		// If it wasn't possible to restart the channel, close the channel
 		// and shut down the monitor
-		defer mc.Shutdown()
-
-		err := mc.mgr.CloseDataTransferChannel(mc.ctx, mc.chid)
-		if err != nil {
-			log.Errorf("error closing data transfer channel %s: %w", mc.chid, err)
-		}
+		log.Errorf("Closing channel after failing to send restart message for push data-channel %s: %s", mc.chid, err)
+		mc.closeChannelAndShutdown()
 	}
+}
+
+func (mc *monitoredChannel) closeChannelAndShutdown() {
+	err := mc.mgr.CloseDataTransferChannel(mc.ctx, mc.chid)
+	if err != nil {
+		log.Errorf("Error closing data transfer channel %s: %w", mc.chid, err)
+	}
+
+	mc.Shutdown()
 }
