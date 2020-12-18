@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	blocks "github.com/ipfs/go-block-format"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -23,22 +22,32 @@ type messageSent struct {
 	message gsmsg.GraphSyncMessage
 }
 
+var _ PeerQueue = (*fakePeer)(nil)
+
 type fakePeer struct {
 	p            peer.ID
 	messagesSent chan messageSent
 }
 
-func (fp *fakePeer) Startup()  {}
-func (fp *fakePeer) Shutdown() {}
+func (fp *fakePeer) BuildMessage(blkSize uint64, buildMessage func(b *gsmsg.Builder), notifees []notifications.Notifee) {
+	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	buildMessage(builder)
+	message, err := builder.Build()
+	if err != nil {
+		panic(err)
+	}
 
-func (fp *fakePeer) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest, notifees ...notifications.Notifee) {
-	message := gsmsg.New()
-	message.AddRequest(graphSyncRequest)
 	fp.messagesSent <- messageSent{fp.p, message}
 }
 
-func (fp *fakePeer) AddResponses([]gsmsg.GraphSyncResponse, []blocks.Block, ...notifications.Notifee) {
-}
+func (fp *fakePeer) Startup()  {}
+func (fp *fakePeer) Shutdown() {}
+
+//func (fp *fakePeer) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest, notifees ...notifications.Notifee) {
+//	message := gsmsg.New()
+//	message.AddRequest(graphSyncRequest)
+//	fp.messagesSent <- messageSent{fp.p, message}
+//}
 
 func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {
 	return func(ctx context.Context, p peer.ID) PeerQueue {
@@ -67,10 +76,16 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	peerManager := NewMessageManager(ctx, peerQueueFactory)
 
 	request := gsmsg.NewRequest(id, root, selector, priority)
-	peerManager.SendRequest(tp[0], request)
-	peerManager.SendRequest(tp[1], request)
+	peerManager.BuildMessage(tp[0], 0, func(b *gsmsg.Builder) {
+		b.AddRequest(request)
+	}, []notifications.Notifee{})
+	peerManager.BuildMessage(tp[1], 0, func(b *gsmsg.Builder) {
+		b.AddRequest(request)
+	}, []notifications.Notifee{})
 	cancelRequest := gsmsg.CancelRequest(id)
-	peerManager.SendRequest(tp[0], cancelRequest)
+	peerManager.BuildMessage(tp[0], 0, func(b *gsmsg.Builder) {
+		b.AddRequest(cancelRequest)
+	}, []notifications.Notifee{})
 
 	var firstMessage messageSent
 	testutil.AssertReceive(ctx, t, messagesSent, &firstMessage, "first message did not send")
