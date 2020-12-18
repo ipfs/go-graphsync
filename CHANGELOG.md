@@ -5,6 +5,19 @@
 ### Changelog
 
 - github.com/filecoin-project/go-data-transfer:
+  - feat: limit consecutive restarts with no data transfer (#129) ([filecoin-project/go-data-transfer#129](https://github.com/filecoin-project/go-data-transfer/pull/129))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 2 | +194/-78 | 5 |
+
+# go-data-transfer 1.2.4
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
   - Automatically restart push channel (#127) ([filecoin-project/go-data-transfer#127](https://github.com/filecoin-project/go-data-transfer/pull/127))
 - github.com/ipfs/go-graphsync (v0.5.0 -> v0.5.2):
   - RegisterNetworkErrorListener should fire when there's an error connecting to the peer (#127) ([ipfs/go-graphsync#127](https://github.com/ipfs/go-graphsync/pull/127))
