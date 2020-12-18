@@ -10,7 +10,7 @@ import (
 	"github.com/ipfs/go-graphsync/metadata"
 )
 
-// Builder captures componenst of a message across multiple
+// Builder captures components of a message across multiple
 // requests for a given peer and then generates the corresponding
 // GraphSync message when ready to send
 type Builder struct {
