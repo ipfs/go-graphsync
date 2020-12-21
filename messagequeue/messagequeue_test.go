@@ -3,7 +3,6 @@ package messagequeue
 import (
 	"context"
 	"fmt"
-	allocator2 "github.com/ipfs/go-graphsync/responsemanager/allocator"
 	"math/rand"
 	"sync"
 	"testing"
@@ -18,6 +17,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
+	allocator2 "github.com/ipfs/go-graphsync/responsemanager/allocator"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 

@@ -2,7 +2,6 @@ package testnet_test
 
 import (
 	"context"
-	"github.com/stretchr/testify/require"
 	"sync"
 	"testing"
 
@@ -10,6 +9,7 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/libp2p/go-libp2p-core/peer"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync/benchmarks/testnet"
 	gsmsg "github.com/ipfs/go-graphsync/message"
