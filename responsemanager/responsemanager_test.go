@@ -704,13 +704,50 @@ func (fqq *fakeQueryQueue) ThawRound() {
 }
 
 type fakePeerManager struct {
-	lastPeer           peer.ID
-	peerResponseSender responseassembler.PeerResponseBuilder
+	peerSenders          map[peer.ID]*fakePeerResponseSender
+	sentResponses        chan sentResponse
+	sentExtensions       chan sentExtension
+	lastCompletedRequest chan completedRequest
+	pausedRequests       chan pausedRequest
+	cancelledRequests    chan cancelledRequest
+	ignoredLinks         chan []ipld.Link
+	notifeePublisher     *testutil.MockPublisher
+	dedupKeys            chan string
 }
 
-func (fpm *fakePeerManager) SenderForPeer(p peer.ID) responseassembler.PeerResponseBuilder {
-	fpm.lastPeer = p
-	return fpm.peerResponseSender
+func (fpm *fakePeerManager) Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
+	sender := fpm.senderForPeer(p)
+	fprts := &fakePeerResponseTransactionSender{requestID, sender, sender.notifeePublisher}
+	return transaction(fprts)
+}
+
+func (fpm *fakePeerManager) IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link) {
+	fpm.senderForPeer(p).IgnoreBlocks(requestID, links)
+}
+
+func (fpm *fakePeerManager) DedupKey(p peer.ID, requestID graphsync.RequestID, key string) {
+	fpm.senderForPeer(p).DedupKey(requestID, key)
+}
+
+func (fpm *fakePeerManager) senderForPeer(p peer.ID) *fakePeerResponseSender {
+	if fpm.peerSenders == nil {
+		fpm.peerSenders = make(map[peer.ID]*fakePeerResponseSender)
+	}
+	sender, ok := fpm.peerSenders[p]
+	if !ok {
+		fpm.peerSenders[p] = &fakePeerResponseSender{
+			lastCompletedRequest: fpm.lastCompletedRequest,
+			sentResponses:        fpm.sentResponses,
+			sentExtensions:       fpm.sentExtensions,
+			pausedRequests:       fpm.pausedRequests,
+			cancelledRequests:    fpm.cancelledRequests,
+			ignoredLinks:         fpm.ignoredLinks,
+			dedupKeys:            fpm.dedupKeys,
+			notifeePublisher:     fpm.notifeePublisher,
+		}
+		sender = fpm.peerSenders[p]
+	}
+	return sender
 }
 
 type sentResponse struct {
@@ -823,7 +860,7 @@ func (fprs *fakePeerResponseSender) Transaction(requestID graphsync.RequestID, t
 
 type fakePeerResponseTransactionSender struct {
 	requestID        graphsync.RequestID
-	prs              responseassembler.PeerResponseBuilder
+	prs              *fakePeerResponseSender
 	notifeePublisher *testutil.MockPublisher
 }
 
@@ -921,7 +958,7 @@ func newTestData(t *testing.T) testData {
 	td.completedResponseStatuses = make(chan graphsync.ResponseStatusCode, 1)
 	td.networkErrorChan = make(chan error, td.blockChainLength*2)
 	td.notifeePublisher = testutil.NewMockPublisher()
-	fprs := &fakePeerResponseSender{
+	td.peerManager = &fakePeerManager{
 		lastCompletedRequest: td.completedRequestChan,
 		sentResponses:        td.sentResponses,
 		sentExtensions:       td.sentExtensions,
@@ -931,7 +968,6 @@ func newTestData(t *testing.T) testData {
 		dedupKeys:            td.dedupKeys,
 		notifeePublisher:     td.notifeePublisher,
 	}
-	td.peerManager = &fakePeerManager{peerResponseSender: fprs}
 	td.queryQueue = &fakeQueryQueue{}
 
 	td.extensionData = testutil.RandomBytes(100)
