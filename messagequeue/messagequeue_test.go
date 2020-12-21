@@ -3,6 +3,7 @@ package messagequeue
 import (
 	"context"
 	"fmt"
+	allocator2 "github.com/ipfs/go-graphsync/responsemanager/allocator"
 	"math/rand"
 	"sync"
 	"testing"
@@ -65,8 +66,9 @@ func TestStartupAndShutdown(t *testing.T) {
 	messageSender := &fakeMessageSender{nil, fullClosedChan, resetChan, messagesSent}
 	var waitGroup sync.WaitGroup
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
+	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork)
+	messageQueue := New(ctx, peer, messageNetwork, allocator)
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
@@ -75,7 +77,9 @@ func TestStartupAndShutdown(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
 
 	waitGroup.Add(1)
-	messageQueue.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+	messageQueue.BuildMessage(0, func(b *gsmsg.Builder) {
+		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+	}, []notifications.Notifee{})
 
 	testutil.AssertDoesReceive(ctx, t, messagesSent, "message was not sent")
 
@@ -100,8 +104,9 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 		messagesSent}
 	var waitGroup sync.WaitGroup
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
+	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork)
+	messageQueue := New(ctx, peer, messageNetwork, allocator)
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
@@ -111,7 +116,9 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 
 	// setup a message and advance as far as beginning to send it
 	waitGroup.Add(1)
-	messageQueue.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+	messageQueue.BuildMessage(0, func(b *gsmsg.Builder) {
+		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+	}, []notifications.Notifee{})
 	waitGroup.Wait()
 
 	// now shut down
@@ -145,13 +152,13 @@ func TestProcessingNotification(t *testing.T) {
 	messageSender := &fakeMessageSender{nil, fullClosedChan, resetChan, messagesSent}
 	var waitGroup sync.WaitGroup
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
+	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork)
+	messageQueue := New(ctx, peer, messageNetwork, allocator)
 	messageQueue.Startup()
 	waitGroup.Add(1)
 	blks := testutil.GenerateBlocksOfSize(3, 128)
 
-	newMessage := gsmsg.New()
 	responseID := graphsync.RequestID(rand.Int31())
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
@@ -159,10 +166,12 @@ func TestProcessingNotification(t *testing.T) {
 		Data: testutil.RandomBytes(100),
 	}
 	status := graphsync.RequestCompletedFull
-	newMessage.AddResponse(gsmsg.NewResponse(responseID, status, extension))
 	expectedTopic := "testTopic"
 	notifee, verifier := testutil.NewTestNotifee(expectedTopic, 5)
-	messageQueue.AddResponses(newMessage.Responses(), blks, notifee)
+	messageQueue.BuildMessage(0, func(b *gsmsg.Builder) {
+		b.AddResponseCode(responseID, status)
+		b.AddExtensionData(responseID, extension)
+	}, []notifications.Notifee{notifee})
 
 	// wait for send attempt
 	waitGroup.Wait()
@@ -199,8 +208,9 @@ func TestDedupingMessages(t *testing.T) {
 	messageSender := &fakeMessageSender{nil, fullClosedChan, resetChan, messagesSent}
 	var waitGroup sync.WaitGroup
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
+	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork)
+	messageQueue := New(ctx, peer, messageNetwork, allocator)
 	messageQueue.Startup()
 	waitGroup.Add(1)
 	id := graphsync.RequestID(rand.Int31())
@@ -209,7 +219,9 @@ func TestDedupingMessages(t *testing.T) {
 	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
-	messageQueue.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+	messageQueue.BuildMessage(0, func(b *gsmsg.Builder) {
+		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+	}, []notifications.Notifee{})
 	// wait for send attempt
 	waitGroup.Wait()
 	id2 := graphsync.RequestID(rand.Int31())
@@ -221,8 +233,10 @@ func TestDedupingMessages(t *testing.T) {
 	selector3 := ssb.ExploreIndex(0, ssb.Matcher()).Node()
 	root3 := testutil.GenerateCids(1)[0]
 
-	messageQueue.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))
-	messageQueue.AddRequest(gsmsg.NewRequest(id3, root3, selector3, priority3))
+	messageQueue.BuildMessage(0, func(b *gsmsg.Builder) {
+		b.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))
+		b.AddRequest(gsmsg.NewRequest(id3, root3, selector3, priority3))
+	}, []notifications.Notifee{})
 
 	var message gsmsg.GraphSyncMessage
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
