@@ -2,7 +2,6 @@ package responseassembler
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/allocator"
 	"github.com/ipfs/go-graphsync/testutil"
@@ -30,11 +28,9 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	requestID1 := graphsync.RequestID(rand.Int31())
 	requestID2 := graphsync.RequestID(rand.Int31())
 	requestID3 := graphsync.RequestID(rand.Int31())
-	sendResponseNotifee1, sendResponseVerifier1 := testutil.NewTestNotifee(requestID1, 10)
-	sendResponseNotifee2, sendResponseVerifier2 := testutil.NewTestNotifee(requestID2, 10)
-	sendResponseNotifee3, sendResponseVerifier3 := testutil.NewTestNotifee(requestID3, 10)
-	finishNotifee1, finishVerifier1 := testutil.NewTestNotifee(requestID1, 10)
-	finishNotifee2, finishVerifier2 := testutil.NewTestNotifee(requestID2, 10)
+	sendResponseNotifee1, _ := testutil.NewTestNotifee(requestID1, 10)
+	sendResponseNotifee2, _ := testutil.NewTestNotifee(requestID2, 10)
+	sendResponseNotifee3, _ := testutil.NewTestNotifee(requestID3, 10)
 
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
@@ -43,78 +39,81 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	}
 	fph := newFakePeerHandler(ctx, t)
 	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
-	peerResponseSender.Startup()
+	responseAssembler := New(ctx, allocator, fph)
 
-	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData(), sendResponseNotifee1)
-	assertSentOnWire(t, bd, blks[0])
-	fph.AssertHasMessage("did not send first message")
+	var bd1, bd2 graphsync.BlockData
 
+	// send block 0 for request 1
+	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		b.AddNotifee(sendResponseNotifee1)
+		bd1 = b.SendResponse(links[0], blks[0].RawData())
+		return nil
+	}))
+	assertSentOnWire(t, bd1, blks[0])
 	fph.AssertBlocks(blks[0])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
+	fph.AssertNotifees(sendResponseNotifee1)
 
-	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData(), sendResponseNotifee2)
-	assertSentNotOnWire(t, bd, blks[0])
-	bd = peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData(), sendResponseNotifee1)
-	assertSentOnWire(t, bd, blks[1])
-	bd = peerResponseSender.SendResponse(requestID1, links[2], nil, sendResponseNotifee1)
-	assertNotSent(t, bd, blks[2])
-	peerResponseSender.FinishRequest(requestID1, finishNotifee1)
+	// send block 0 for request 2 (duplicate block should not be sent)
+	require.NoError(t, responseAssembler.Transaction(p, requestID2, func(b PeerResponseTransactionBuilder) error {
+		b.AddNotifee(sendResponseNotifee2)
+		bd1 = b.SendResponse(links[0], blks[0].RawData())
+		return nil
+	}))
+	assertSentNotOnWire(t, bd1, blks[0])
+	fph.AssertResponses(expectedResponses{requestID2: graphsync.PartialResponse})
+	fph.AssertNotifees(sendResponseNotifee2)
 
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
-
-	fph.AssertHasMessage("did not send second message")
+	// send more to request 1 and finish request
+	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		// send block 1
+		bd1 = b.SendResponse(links[1], blks[1].RawData())
+		// block 2 is not found. Assert not sent
+		bd2 = b.SendResponse(links[2], nil)
+		b.FinishRequest()
+		return nil
+	}))
+	assertSentOnWire(t, bd1, blks[1])
+	assertNotSent(t, bd2, blks[2])
 	fph.AssertBlocks(blks[1])
 	fph.AssertResponses(expectedResponses{
 		requestID1: graphsync.RequestCompletedPartial,
-		requestID2: graphsync.PartialResponse,
 	})
 
-	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData(), sendResponseNotifee2)
-	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData(), sendResponseNotifee3)
-	peerResponseSender.FinishRequest(requestID2, finishNotifee2)
-
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
-
-	fph.AssertHasMessage("did not send third message")
-	fph.AssertBlocks(blks[3], blks[4])
+	// send more to request 2
+	require.NoError(t, responseAssembler.Transaction(p, requestID2, func(b PeerResponseTransactionBuilder) error {
+		bd1 = b.SendResponse(links[3], blks[3].RawData())
+		b.FinishRequest()
+		return nil
+	}))
+	fph.AssertBlocks(blks[3])
 	fph.AssertResponses(expectedResponses{
 		requestID2: graphsync.RequestCompletedFull,
+	})
+
+	// send to request 3
+	require.NoError(t, responseAssembler.Transaction(p, requestID3, func(b PeerResponseTransactionBuilder) error {
+		bd1 = b.SendResponse(links[4], blks[4].RawData())
+		return nil
+	}))
+	fph.AssertBlocks(blks[4])
+	fph.AssertResponses(expectedResponses{
 		requestID3: graphsync.PartialResponse,
 	})
 
-	peerResponseSender.SendResponse(requestID3, links[0], blks[0].RawData(), sendResponseNotifee3)
-	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData(), sendResponseNotifee3)
+	// send 2 more to request 3
+	require.NoError(t, responseAssembler.Transaction(p, requestID3, func(b PeerResponseTransactionBuilder) error {
+		b.AddNotifee(sendResponseNotifee3)
+		bd1 = b.SendResponse(links[0], blks[0].RawData())
+		bd1 = b.SendResponse(links[4], blks[4].RawData())
+		return nil
+	}))
 
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
-
-	fph.AssertHasMessage("did not send fourth message")
 	fph.AssertBlocks(blks[0])
 	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
-
-	fph.notifyError()
-
-	sendResponseVerifier1.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}, Event{Name: Sent}})
-	sendResponseVerifier1.ExpectClose(ctx, t)
-	sendResponseVerifier2.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}, Event{Name: Sent}})
-	sendResponseVerifier2.ExpectClose(ctx, t)
-	sendResponseVerifier3.ExpectEvents(ctx, t, []notifications.Event{
-		Event{Name: Sent},
-		Event{Name: Error, Err: fmt.Errorf("error sending message: %w", errors.New("something went wrong"))},
-	})
-	sendResponseVerifier3.ExpectClose(ctx, t)
-
-	finishVerifier1.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}})
-	finishVerifier1.ExpectClose(ctx, t)
-	finishVerifier2.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}})
-	finishVerifier2.ExpectClose(ctx, t)
 }
 
 func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
-
 	p := testutil.GeneratePeers(1)[0]
 	requestID1 := graphsync.RequestID(rand.Int31())
 	// generate large blocks before proceeding
@@ -128,49 +127,34 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 	}
 	fph := newFakePeerHandler(ctx, t)
 	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
-	peerResponseSender.Startup()
+	responseAssembler := New(ctx, allocator, fph)
 
-	peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
+	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		b.SendResponse(links[0], blks[0].RawData())
+		return nil
+	}))
 
-	fph.AssertHasMessage("did not send first message")
 	fph.AssertBlocks(blks[0])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
 	// Send 3 very large blocks
-	peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData())
-	peerResponseSender.SendResponse(requestID1, links[2], blks[2].RawData())
-	peerResponseSender.SendResponse(requestID1, links[3], blks[3].RawData())
+	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		b.SendResponse(links[1], blks[1].RawData())
+		b.SendResponse(links[2], blks[2].RawData())
+		b.SendResponse(links[3], blks[3].RawData())
+		return nil
+	}))
 
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
-
-	fph.AssertHasMessage("did not send second message")
-	fph.AssertBlocks(blks[1])
+	fph.AssertBlocks(blks[1], blks[2], blks[3])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	// Send one more block while waiting
-	peerResponseSender.SendResponse(requestID1, links[4], blks[4].RawData())
-	peerResponseSender.FinishRequest(requestID1)
+	// Send one more block and finish the request
+	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		b.SendResponse(links[4], blks[4].RawData())
+		b.FinishRequest()
+		return nil
+	}))
 
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
-
-	fph.AssertHasMessage("did not send third message")
-	fph.AssertBlocks(blks[2])
-	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
-
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
-
-	fph.AssertHasMessage("did not send fourth message")
-	fph.AssertBlocks(blks[3])
-	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
-
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
-
-	fph.AssertHasMessage("did not send fifth message")
 	fph.AssertBlocks(blks[4])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.RequestCompletedFull})
 
@@ -189,12 +173,13 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 	}
 	fph := newFakePeerHandler(ctx, t)
 	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
-	peerResponseSender.Startup()
+	responseAssembler := New(ctx, allocator, fph)
 
-	peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
+	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		b.SendResponse(links[0], blks[0].RawData())
+		return nil
+	}))
 
-	fph.AssertHasMessage("did not send first message")
 	fph.AssertBlocks(blks[0])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
@@ -210,14 +195,15 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 		Name: extensionName2,
 		Data: extensionData2,
 	}
-	peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData())
-	peerResponseSender.SendExtensionData(requestID1, extension1)
-	peerResponseSender.SendExtensionData(requestID1, extension2)
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
-	fph.AssertHasMessage("did not send second message")
-	fph.AssertExtensions([][]graphsync.ExtensionData{{extension1, extension2}})
+	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		b.SendResponse(links[1], blks[1].RawData())
+		b.SendExtensionData(extension1)
+		b.SendExtensionData(extension2)
+		return nil
+	}))
 
+	// let peer reponse manager know last message was sent so message sending can continue
+	fph.AssertExtensions([][]graphsync.ExtensionData{{extension1, extension2}})
 }
 
 func TestPeerResponseSenderSendsResponsesInTransaction(t *testing.T) {
@@ -233,33 +219,29 @@ func TestPeerResponseSenderSendsResponsesInTransaction(t *testing.T) {
 	}
 	fph := newFakePeerHandler(ctx, t)
 	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
-	peerResponseSender.Startup()
-	notifee, notifeeVerifier := testutil.NewTestNotifee("transaction", 10)
-	err := peerResponseSender.Transaction(requestID1, func(peerResponseSender PeerResponseTransactionBuilder) error {
-		bd := peerResponseSender.SendResponse(links[0], blks[0].RawData())
+	responseAssembler := New(ctx, allocator, fph)
+	notifee, _ := testutil.NewTestNotifee("transaction", 10)
+	err := responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		bd := b.SendResponse(links[0], blks[0].RawData())
 		assertSentOnWire(t, bd, blks[0])
 
 		fph.RefuteHasMessage()
 		fph.RefuteBlocks()
 		fph.RefuteResponses()
 
-		bd = peerResponseSender.SendResponse(links[1], blks[1].RawData())
+		bd = b.SendResponse(links[1], blks[1].RawData())
 		assertSentOnWire(t, bd, blks[1])
-		bd = peerResponseSender.SendResponse(links[2], nil)
+		bd = b.SendResponse(links[2], nil)
 		assertNotSent(t, bd, blks[2])
-		peerResponseSender.FinishRequest()
+		b.FinishRequest()
 
-		peerResponseSender.AddNotifee(notifee)
+		b.AddNotifee(notifee)
 		fph.RefuteHasMessage()
 		return nil
 	})
 	require.NoError(t, err)
-	fph.AssertHasMessage("should sent first message")
 
-	fph.notifySuccess()
-	notifeeVerifier.ExpectEvents(ctx, t, []notifications.Event{Event{Name: Sent}})
-	notifeeVerifier.ExpectClose(ctx, t)
+	fph.AssertNotifees(notifee)
 }
 
 func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
@@ -276,43 +258,54 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 	}
 	fph := newFakePeerHandler(ctx, t)
 	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
-	peerResponseSender.Startup()
+	responseAssembler := New(ctx, allocator, fph)
 
-	peerResponseSender.IgnoreBlocks(requestID1, links)
+	responseAssembler.IgnoreBlocks(p, requestID1, links)
 
-	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
-	assertSentNotOnWire(t, bd, blks[0])
+	var bd1, bd2, bd3 graphsync.BlockData
+	err := responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		bd1 = b.SendResponse(links[0], blks[0].RawData())
+		return nil
+	})
+	require.NoError(t, err)
 
-	fph.AssertHasMessage("did not send first message")
+	assertSentNotOnWire(t, bd1, blks[0])
 	fph.RefuteBlocks()
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData())
-	assertSentNotOnWire(t, bd, blks[0])
-	bd = peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData())
-	assertSentNotOnWire(t, bd, blks[1])
-	bd = peerResponseSender.SendResponse(requestID1, links[2], blks[2].RawData())
-	assertSentNotOnWire(t, bd, blks[2])
-	peerResponseSender.FinishRequest(requestID1)
-
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
-
-	fph.AssertHasMessage("did not send second message")
-	fph.RefuteBlocks()
+	err = responseAssembler.Transaction(p, requestID2, func(b PeerResponseTransactionBuilder) error {
+		bd1 = b.SendResponse(links[0], blks[0].RawData())
+		return nil
+	})
+	require.NoError(t, err)
 	fph.AssertResponses(expectedResponses{
-		requestID1: graphsync.RequestCompletedFull,
 		requestID2: graphsync.PartialResponse,
 	})
 
-	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData())
-	peerResponseSender.FinishRequest(requestID2)
+	err = responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		bd2 = b.SendResponse(links[1], blks[1].RawData())
+		bd3 = b.SendResponse(links[2], blks[2].RawData())
+		b.FinishRequest()
+		return nil
+	})
+	require.NoError(t, err)
 
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
+	assertSentNotOnWire(t, bd1, blks[0])
+	assertSentNotOnWire(t, bd2, blks[1])
+	assertSentNotOnWire(t, bd3, blks[2])
 
-	fph.AssertHasMessage("did not send third message")
+	fph.RefuteBlocks()
+	fph.AssertResponses(expectedResponses{
+		requestID1: graphsync.RequestCompletedFull,
+	})
+
+	err = responseAssembler.Transaction(p, requestID2, func(b PeerResponseTransactionBuilder) error {
+		b.SendResponse(links[3], blks[3].RawData())
+		b.FinishRequest()
+		return nil
+	})
+	require.NoError(t, err)
+
 	fph.AssertBlocks(blks[3])
 	fph.AssertResponses(expectedResponses{requestID2: graphsync.RequestCompletedFull})
 
@@ -333,60 +326,67 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	}
 	fph := newFakePeerHandler(ctx, t)
 	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
-	peerResponseSender.Startup()
+	responseAssembler := New(ctx, allocator, fph)
 
-	peerResponseSender.DedupKey(requestID1, "applesauce")
-	peerResponseSender.DedupKey(requestID3, "applesauce")
+	responseAssembler.DedupKey(p, requestID1, "applesauce")
+	responseAssembler.DedupKey(p, requestID3, "applesauce")
 
-	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
-	assertSentOnWire(t, bd, blks[0])
+	var bd1, bd2 graphsync.BlockData
+	err := responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		bd1 = b.SendResponse(links[0], blks[0].RawData())
+		return nil
+	})
+	require.NoError(t, err)
+	assertSentOnWire(t, bd1, blks[0])
 
-	fph.AssertHasMessage("did not send first message")
 	fph.AssertBlocks(blks[0])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	bd = peerResponseSender.SendResponse(requestID2, links[0], blks[0].RawData())
-	assertSentOnWire(t, bd, blks[0])
-	bd = peerResponseSender.SendResponse(requestID1, links[1], blks[1].RawData())
-	assertSentOnWire(t, bd, blks[1])
-	bd = peerResponseSender.SendResponse(requestID1, links[2], nil)
-	assertNotSent(t, bd, blks[2])
-
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
-
-	fph.AssertHasMessage("did not send second message")
-	fph.AssertBlocks(blks[0], blks[1])
-	fph.AssertResponses(expectedResponses{
-		requestID1: graphsync.PartialResponse,
-		requestID2: graphsync.PartialResponse,
+	err = responseAssembler.Transaction(p, requestID2, func(b PeerResponseTransactionBuilder) error {
+		bd1 = b.SendResponse(links[0], blks[0].RawData())
+		return nil
 	})
+	require.NoError(t, err)
+	assertSentOnWire(t, bd1, blks[0])
 
-	peerResponseSender.SendResponse(requestID2, links[3], blks[3].RawData())
-	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
-	peerResponseSender.FinishRequest(requestID2)
-
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
-
-	fph.AssertHasMessage("did not send third message")
-	fph.AssertBlocks(blks[3], blks[4])
-	fph.AssertResponses(expectedResponses{
-		requestID2: graphsync.RequestCompletedFull,
-		requestID3: graphsync.PartialResponse,
+	err = responseAssembler.Transaction(p, requestID1, func(b PeerResponseTransactionBuilder) error {
+		bd1 = b.SendResponse(links[1], blks[1].RawData())
+		bd2 = b.SendResponse(links[2], nil)
+		return nil
 	})
+	require.NoError(t, err)
+	assertSentOnWire(t, bd1, blks[1])
+	assertNotSent(t, bd2, blks[2])
 
-	peerResponseSender.SendResponse(requestID3, links[0], blks[0].RawData())
-	peerResponseSender.SendResponse(requestID3, links[4], blks[4].RawData())
+	fph.AssertBlocks(blks[1])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	// let peer reponse manager know last message was sent so message sending can continue
-	fph.notifySuccess()
+	err = responseAssembler.Transaction(p, requestID2, func(b PeerResponseTransactionBuilder) error {
+		b.SendResponse(links[3], blks[3].RawData())
+		b.FinishRequest()
+		return nil
+	})
+	require.NoError(t, err)
+	fph.AssertBlocks(blks[3])
+	fph.AssertResponses(expectedResponses{requestID2: graphsync.RequestCompletedFull})
 
-	fph.AssertHasMessage("did not send fourth message")
-	fph.RefuteBlocks()
+	err = responseAssembler.Transaction(p, requestID3, func(b PeerResponseTransactionBuilder) error {
+		b.SendResponse(links[4], blks[4].RawData())
+		return nil
+	})
+	require.NoError(t, err)
+	fph.AssertBlocks(blks[4])
 	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
 
+	err = responseAssembler.Transaction(p, requestID3, func(b PeerResponseTransactionBuilder) error {
+		b.SendResponse(links[0], blks[0].RawData())
+		b.SendResponse(links[4], blks[4].RawData())
+		return nil
+	})
+	require.NoError(t, err)
+
+	fph.RefuteBlocks()
+	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
 }
 
 func TestPeerResponseSenderSendsResponsesMemoryPressure(t *testing.T) {
@@ -401,20 +401,14 @@ func TestPeerResponseSenderSendsResponsesMemoryPressure(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(300, 300)
-	peerResponseSender := NewResponseSender(ctx, p, fph, allocator)
-	peerResponseSender.Startup()
-
-	bd := peerResponseSender.SendResponse(requestID1, links[0], blks[0].RawData())
-	assertSentOnWire(t, bd, blks[0])
-	fph.AssertHasMessage("did not send first message")
-
-	fph.AssertBlocks(blks[0])
-	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
+	allocator := newFakeAllocator()
+	responseAssembler := New(ctx, allocator, fph)
 
 	finishes := make(chan string, 2)
 	go func() {
-		_ = peerResponseSender.Transaction(requestID1, func(peerResponseSender PeerResponseTransactionBuilder) error {
+		err := responseAssembler.Transaction(p, requestID1, func(peerResponseSender PeerResponseTransactionBuilder) error {
+			bd := peerResponseSender.SendResponse(links[0], blks[0].RawData())
+			assertSentOnWire(t, bd, blks[0])
 			bd = peerResponseSender.SendResponse(links[1], blks[1].RawData())
 			assertSentOnWire(t, bd, blks[1])
 			bd = peerResponseSender.SendResponse(links[2], blks[2].RawData())
@@ -424,24 +418,32 @@ func TestPeerResponseSenderSendsResponsesMemoryPressure(t *testing.T) {
 			peerResponseSender.FinishRequest()
 			return nil
 		})
+		require.NoError(t, err)
 		finishes <- "sent message"
 	}()
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		// let peer reponse manager know last message was sent so message sending can continue
-		finishes <- "freed memory"
-		fph.notifySuccess()
-	}()
 
-	var finishMessages []string
-	for i := 0; i < 2; i++ {
-		var finishMessage string
-		testutil.AssertReceive(ctx, t, finishes, &finishMessage, "should have completed")
-		finishMessages = append(finishMessages, finishMessage)
+	// assert transaction does not complete within 200ms because it is waiting on memory
+	ctx2, cancel2 := context.WithTimeout(ctx, 200*time.Millisecond)
+	select {
+	case <-finishes:
+		t.Fatal("transaction failed to wait on memory")
+		cancel2()
+	case <-ctx2.Done():
 	}
-	require.Equal(t, []string{"freed memory", "sent message"}, finishMessages)
-	fph.AssertHasMessage("did not send second message")
-	fph.AssertBlocks(blks[1], blks[2], blks[3])
+
+	// simulate the release of memory
+	allocator.response <- nil
+
+	// assert transaction now completes within 200ms
+	ctx2, cancel2 = context.WithTimeout(ctx, 200*time.Millisecond)
+	select {
+	case <-finishes:
+		cancel()
+	case <-ctx2.Done():
+		t.Fatal("timeout waiting for transaction to complete")
+	}
+
+	fph.AssertBlocks(blks[0], blks[1], blks[2], blks[3])
 	fph.AssertResponses(expectedResponses{
 		requestID1: graphsync.RequestCompletedFull,
 	})
@@ -475,25 +477,19 @@ func assertNotSent(t *testing.T, bd graphsync.BlockData, blk blocks.Block) {
 }
 
 type fakePeerHandler struct {
-	ctx              context.Context
-	t                *testing.T
-	lastBlocks       []blocks.Block
-	lastResponses    []gsmsg.GraphSyncResponse
-	sent             chan struct{}
-	notifeePublisher *testutil.MockPublisher
+	ctx           context.Context
+	t             *testing.T
+	lastBlocks    []blocks.Block
+	lastResponses []gsmsg.GraphSyncResponse
+	lastNotifiees []notifications.Notifee
+	sent          chan struct{}
 }
 
 func newFakePeerHandler(ctx context.Context, t *testing.T) *fakePeerHandler {
 	return &fakePeerHandler{
-		ctx:              ctx,
-		t:                t,
-		sent:             make(chan struct{}, 1),
-		notifeePublisher: testutil.NewMockPublisher(),
+		ctx: ctx,
+		t:   t,
 	}
-}
-
-func (fph *fakePeerHandler) AssertHasMessage(expectationCheck string) {
-	testutil.AssertDoesReceive(fph.ctx, fph.t, fph.sent, expectationCheck)
 }
 
 func (fph *fakePeerHandler) RefuteHasMessage() {
@@ -535,21 +531,43 @@ func (fph *fakePeerHandler) AssertExtensions(extensionSets [][]graphsync.Extensi
 	}
 }
 
+func (fph *fakePeerHandler) AssertNotifees(notifees ...notifications.Notifee) {
+	require.Len(fph.t, fph.lastNotifiees, len(notifees))
+	for i, notifee := range notifees {
+		require.Equal(fph.t, notifee, fph.lastNotifiees[i])
+	}
+}
+
 func (fph *fakePeerHandler) RefuteResponses() {
 	require.Empty(fph.t, fph.lastResponses)
 }
 
-func (fph *fakePeerHandler) SendResponse(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block, notifees ...notifications.Notifee) {
+func (fph *fakePeerHandler) BuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) {
+	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	buildMessageFn(builder)
+
+	msg, err := builder.Build()
+	require.NoError(fph.t, err)
+
+	fph.sendResponse(p, msg.Responses(), msg.Blocks(), notifees...)
+}
+
+func (fph *fakePeerHandler) sendResponse(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block, notifees ...notifications.Notifee) {
 	fph.lastResponses = responses
 	fph.lastBlocks = blks
-	fph.notifeePublisher.AddNotifees(notifees)
-	fph.sent <- struct{}{}
+	fph.lastNotifiees = notifees
 }
 
-func (fph *fakePeerHandler) notifySuccess() {
-	fph.notifeePublisher.PublishEvents([]notifications.Event{messagequeue.Event{Name: messagequeue.Queued}, messagequeue.Event{Name: messagequeue.Sent}})
+type fakeAllocator struct {
+	response chan error
 }
 
-func (fph *fakePeerHandler) notifyError() {
-	fph.notifeePublisher.PublishEvents([]notifications.Event{messagequeue.Event{Name: messagequeue.Queued}, messagequeue.Event{Name: messagequeue.Error, Err: errors.New("something went wrong")}})
+func newFakeAllocator() *fakeAllocator {
+	return &fakeAllocator{
+		response: make(chan error, 0),
+	}
+}
+
+func (fa *fakeAllocator) AllocateBlockMemory(p peer.ID, amount uint64) <-chan error {
+	return fa.response
 }
