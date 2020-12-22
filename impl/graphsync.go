@@ -41,7 +41,7 @@ type GraphSync struct {
 	requestManager              *requestmanager.RequestManager
 	responseManager             *responsemanager.ResponseManager
 	asyncLoader                 *asyncloader.AsyncLoader
-	peerResponseManager         *responseassembler.ResponseAssembler
+	responseAssembler           *responseassembler.ResponseAssembler
 	peerTaskQueue               *peertaskqueue.PeerTaskQueue
 	peerManager                 *peermanager.PeerMessageManager
 	incomingRequestHooks        *responderhooks.IncomingRequestHooks
@@ -141,9 +141,9 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
 	asyncLoader := asyncloader.New(ctx, loader, storer)
 	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners)
-	peerResponseManager := responseassembler.New(ctx, allocator, peerManager)
+	responseAssembler := responseassembler.New(ctx, allocator, peerManager)
 	peerTaskQueue := peertaskqueue.New()
-	responseManager := responsemanager.New(ctx, loader, peerResponseManager, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressRequests)
+	responseManager := responsemanager.New(ctx, loader, responseAssembler, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressRequests)
 	graphSync := &GraphSync{
 		network:                     network,
 		loader:                      loader,
@@ -151,7 +151,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestManager:              requestManager,
 		responseManager:             responseManager,
 		asyncLoader:                 asyncLoader,
-		peerResponseManager:         peerResponseManager,
+		responseAssembler:           responseAssembler,
 		peerTaskQueue:               peerTaskQueue,
 		peerManager:                 peerManager,
 		incomingRequestHooks:        incomingRequestHooks,

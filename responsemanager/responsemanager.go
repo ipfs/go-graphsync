@@ -119,7 +119,7 @@ type responseManagerMessage interface {
 type ResponseManager struct {
 	ctx                   context.Context
 	cancelFn              context.CancelFunc
-	peerManager           ResponseAssembler
+	responseAssembler     ResponseAssembler
 	queryQueue            QueryQueue
 	updateHooks           UpdateHooks
 	cancelledListeners    CancelledListeners
@@ -133,11 +133,10 @@ type ResponseManager struct {
 	maxInProcessRequests  uint64
 }
 
-// New creates a new response manager from the given context, loader,
-// bridge to IPLD interface, peerManager, and queryQueue.
+// New creates a new response manager for responding to requests
 func New(ctx context.Context,
 	loader ipld.Loader,
-	peerManager ResponseAssembler,
+	responseAssembler ResponseAssembler,
 	queryQueue QueryQueue,
 	requestHooks RequestHooks,
 	blockHooks BlockHooks,
@@ -156,7 +155,7 @@ func New(ctx context.Context,
 		blockHooks:         blockHooks,
 		updateHooks:        updateHooks,
 		cancelledListeners: cancelledListeners,
-		peerManager:        peerManager,
+		responseAssembler:  responseAssembler,
 		loader:             loader,
 		queryQueue:         queryQueue,
 		messages:           messages,
@@ -167,7 +166,7 @@ func New(ctx context.Context,
 	return &ResponseManager{
 		ctx:                   ctx,
 		cancelFn:              cancelFn,
-		peerManager:           peerManager,
+		responseAssembler:     responseAssembler,
 		queryQueue:            queryQueue,
 		updateHooks:           updateHooks,
 		cancelledListeners:    cancelledListeners,
@@ -327,7 +326,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		return
 	}
 	result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, update)
-	err := rm.peerManager.Transaction(key.p, key.requestID, func(transaction responseassembler.PeerResponseTransactionBuilder) error {
+	err := rm.responseAssembler.Transaction(key.p, key.requestID, func(transaction responseassembler.TransactionBuilder) error {
 		for _, extension := range result.Extensions {
 			transaction.SendExtensionData(extension)
 		}
@@ -365,7 +364,7 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	}
 	inProgressResponse.isPaused = false
 	if len(extensions) > 0 {
-		_ = rm.peerManager.Transaction(p, requestID, func(transaction responseassembler.PeerResponseTransactionBuilder) error {
+		_ = rm.responseAssembler.Transaction(p, requestID, func(transaction responseassembler.TransactionBuilder) error {
 			for _, extension := range extensions {
 				transaction.SendExtensionData(extension)
 			}
@@ -389,7 +388,7 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 	}
 
 	if response.isPaused {
-		_ = rm.peerManager.Transaction(p, requestID, func(prtb responseassembler.PeerResponseTransactionBuilder) error {
+		_ = rm.responseAssembler.Transaction(p, requestID, func(prtb responseassembler.TransactionBuilder) error {
 			if isContextErr(err) {
 
 				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)

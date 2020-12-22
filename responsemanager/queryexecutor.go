@@ -30,7 +30,7 @@ type queryExecutor struct {
 	blockHooks         BlockHooks
 	updateHooks        UpdateHooks
 	cancelledListeners CancelledListeners
-	peerManager        ResponseAssembler
+	responseAssembler  ResponseAssembler
 	loader             ipld.Loader
 	queryQueue         QueryQueue
 	messages           chan responseManagerMessage
@@ -117,7 +117,7 @@ func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	var transactionError error
 	var isPaused bool
 	failNotifee := notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: sub}
-	err := qe.peerManager.Transaction(p, request.ID(), func(transaction responseassembler.PeerResponseTransactionBuilder) error {
+	err := qe.responseAssembler.Transaction(p, request.ID(), func(transaction responseassembler.TransactionBuilder) error {
 		for _, extension := range result.Extensions {
 			transaction.SendExtensionData(extension)
 		}
@@ -163,14 +163,14 @@ func (qe *queryExecutor) processDedupByKey(request gsmsg.GraphSyncRequest, p pee
 	}
 	key, err := dedupkey.DecodeDedupKey(dedupData)
 	if err != nil {
-		_ = qe.peerManager.Transaction(p, request.ID(), func(prtb responseassembler.PeerResponseTransactionBuilder) error {
+		_ = qe.responseAssembler.Transaction(p, request.ID(), func(prtb responseassembler.TransactionBuilder) error {
 			prtb.FinishWithError(graphsync.RequestFailedUnknown)
 			prtb.AddNotifee(failNotifee)
 			return nil
 		})
 		return err
 	}
-	qe.peerManager.DedupKey(p, request.ID(), key)
+	qe.responseAssembler.DedupKey(p, request.ID(), key)
 	return nil
 }
 
@@ -181,7 +181,7 @@ func (qe *queryExecutor) processDoNoSendCids(request gsmsg.GraphSyncRequest, p p
 	}
 	cidSet, err := cidset.DecodeCidSet(doNotSendCidsData)
 	if err != nil {
-		_ = qe.peerManager.Transaction(p, request.ID(), func(prtb responseassembler.PeerResponseTransactionBuilder) error {
+		_ = qe.responseAssembler.Transaction(p, request.ID(), func(prtb responseassembler.TransactionBuilder) error {
 			prtb.FinishWithError(graphsync.RequestFailedUnknown)
 			prtb.AddNotifee(failNotifee)
 			return nil
@@ -196,7 +196,7 @@ func (qe *queryExecutor) processDoNoSendCids(request gsmsg.GraphSyncRequest, p p
 	if err != nil {
 		return err
 	}
-	qe.peerManager.IgnoreBlocks(p, request.ID(), links)
+	qe.responseAssembler.IgnoreBlocks(p, request.ID(), links)
 	return nil
 }
 
@@ -210,7 +210,7 @@ func (qe *queryExecutor) executeQuery(
 	updateChan := make(chan []gsmsg.GraphSyncRequest)
 	err := runtraversal.RunTraversal(loader, traverser, func(link ipld.Link, data []byte) error {
 		var err error
-		_ = qe.peerManager.Transaction(p, request.ID(), func(transaction responseassembler.PeerResponseTransactionBuilder) error {
+		_ = qe.responseAssembler.Transaction(p, request.ID(), func(transaction responseassembler.TransactionBuilder) error {
 			err = qe.checkForUpdates(p, request, signals, updateChan, transaction)
 			if _, ok := err.(hooks.ErrPaused); !ok && err != nil {
 				return nil
@@ -234,7 +234,7 @@ func (qe *queryExecutor) executeQuery(
 		return err
 	})
 	var code graphsync.ResponseStatusCode
-	_ = qe.peerManager.Transaction(p, request.ID(), func(peerResponseSender responseassembler.PeerResponseTransactionBuilder) error {
+	_ = qe.responseAssembler.Transaction(p, request.ID(), func(transactionBuilder responseassembler.TransactionBuilder) error {
 		if err != nil {
 			_, isPaused := err.(hooks.ErrPaused)
 			if isPaused {
@@ -242,7 +242,7 @@ func (qe *queryExecutor) executeQuery(
 				return nil
 			}
 			if isContextErr(err) {
-				peerResponseSender.FinishWithCancel()
+				transactionBuilder.FinishWithCancel()
 				code = graphsync.RequestCancelled
 				return nil
 			}
@@ -255,11 +255,11 @@ func (qe *queryExecutor) executeQuery(
 			} else {
 				code = graphsync.RequestFailedUnknown
 			}
-			peerResponseSender.FinishWithError(graphsync.RequestCancelled)
+			transactionBuilder.FinishWithError(graphsync.RequestCancelled)
 		} else {
-			code = peerResponseSender.FinishRequest()
+			code = transactionBuilder.FinishRequest()
 		}
-		peerResponseSender.AddNotifee(notifications.Notifee{Data: code, Subscriber: sub})
+		transactionBuilder.AddNotifee(notifications.Notifee{Data: code, Subscriber: sub})
 		return nil
 	})
 	return code, err
@@ -270,11 +270,11 @@ func (qe *queryExecutor) checkForUpdates(
 	request gsmsg.GraphSyncRequest,
 	signals signals,
 	updateChan chan []gsmsg.GraphSyncRequest,
-	peerResponseSender responseassembler.PeerResponseTransactionBuilder) error {
+	transactionBuilder responseassembler.TransactionBuilder) error {
 	for {
 		select {
 		case <-signals.pauseSignal:
-			peerResponseSender.PauseRequest()
+			transactionBuilder.PauseRequest()
 			return hooks.ErrPaused{}
 		case err := <-signals.errSignal:
 			return err
@@ -288,7 +288,7 @@ func (qe *queryExecutor) checkForUpdates(
 				for _, update := range updates {
 					result := qe.updateHooks.ProcessUpdateHooks(p, request, update)
 					for _, extension := range result.Extensions {
-						peerResponseSender.SendExtensionData(extension)
+						transactionBuilder.SendExtensionData(extension)
 					}
 					if result.Err != nil {
 						return result.Err

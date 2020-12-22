@@ -715,7 +715,7 @@ type fakeResponseAssembler struct {
 }
 
 func (fra *fakeResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
-	fprts := &fakePeerResponseTransactionSender{requestID, fra,
+	fprts := &fakeTransactionBuilder{requestID, fra,
 		fra.notifeePublisher}
 	return transaction(fprts)
 }
@@ -802,37 +802,37 @@ func (fra *fakeResponseAssembler) finishWithCancel(requestID graphsync.RequestID
 	fra.cancelledRequests <- cancelledRequest{requestID}
 }
 
-type fakePeerResponseTransactionSender struct {
+type fakeTransactionBuilder struct {
 	requestID        graphsync.RequestID
 	fra              *fakeResponseAssembler
 	notifeePublisher *testutil.MockPublisher
 }
 
-func (fprts *fakePeerResponseTransactionSender) SendResponse(link ipld.Link, data []byte) graphsync.BlockData {
+func (fprts *fakeTransactionBuilder) SendResponse(link ipld.Link, data []byte) graphsync.BlockData {
 	return fprts.fra.sendResponse(fprts.requestID, link, data)
 }
 
-func (fprts *fakePeerResponseTransactionSender) SendExtensionData(extension graphsync.ExtensionData) {
+func (fprts *fakeTransactionBuilder) SendExtensionData(extension graphsync.ExtensionData) {
 	fprts.fra.sendExtensionData(fprts.requestID, extension)
 }
 
-func (fprts *fakePeerResponseTransactionSender) FinishRequest() graphsync.ResponseStatusCode {
+func (fprts *fakeTransactionBuilder) FinishRequest() graphsync.ResponseStatusCode {
 	return fprts.fra.finishRequest(fprts.requestID)
 }
 
-func (fprts *fakePeerResponseTransactionSender) FinishWithError(status graphsync.ResponseStatusCode) {
+func (fprts *fakeTransactionBuilder) FinishWithError(status graphsync.ResponseStatusCode) {
 	fprts.fra.finishWithError(fprts.requestID, status)
 }
 
-func (fprts *fakePeerResponseTransactionSender) PauseRequest() {
+func (fprts *fakeTransactionBuilder) PauseRequest() {
 	fprts.fra.pauseRequest(fprts.requestID)
 }
 
-func (fprts *fakePeerResponseTransactionSender) FinishWithCancel() {
+func (fprts *fakeTransactionBuilder) FinishWithCancel() {
 	fprts.fra.finishWithCancel(fprts.requestID)
 }
 
-func (fprts *fakePeerResponseTransactionSender) AddNotifee(notifee notifications.Notifee) {
+func (fprts *fakeTransactionBuilder) AddNotifee(notifee notifications.Notifee) {
 	fprts.notifeePublisher.AddNotifees([]notifications.Notifee{notifee})
 }
 
@@ -852,7 +852,7 @@ type testData struct {
 	cancelledRequests         chan cancelledRequest
 	ignoredLinks              chan []ipld.Link
 	dedupKeys                 chan string
-	peerManager               *fakeResponseAssembler
+	responseAssembler         *fakeResponseAssembler
 	queryQueue                *fakeQueryQueue
 	extensionData             []byte
 	extensionName             graphsync.ExtensionName
@@ -902,7 +902,7 @@ func newTestData(t *testing.T) testData {
 	td.completedResponseStatuses = make(chan graphsync.ResponseStatusCode, 1)
 	td.networkErrorChan = make(chan error, td.blockChainLength*2)
 	td.notifeePublisher = testutil.NewMockPublisher()
-	td.peerManager = &fakeResponseAssembler{
+	td.responseAssembler = &fakeResponseAssembler{
 		lastCompletedRequest: td.completedRequestChan,
 		sentResponses:        td.sentResponses,
 		sentExtensions:       td.sentExtensions,
@@ -968,13 +968,13 @@ func newTestData(t *testing.T) testData {
 }
 
 func (td *testData) newResponseManager() *ResponseManager {
-	return New(td.ctx, td.loader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
+	return New(td.ctx, td.loader, td.responseAssembler, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
 }
 
 func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 	obs := make(map[ipld.Link][]byte)
 	oloader, _ := testutil.NewTestStore(obs)
-	return New(td.ctx, oloader, td.peerManager, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
+	return New(td.ctx, oloader, td.responseAssembler, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
 }
 
 func (td *testData) assertPausedRequest() {

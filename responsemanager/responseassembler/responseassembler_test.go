@@ -20,7 +20,7 @@ import (
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
-func TestPeerResponseSenderSendsResponses(t *testing.T) {
+func TestResponseAssemblerSendsResponses(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -113,7 +113,7 @@ func TestPeerResponseSenderSendsResponses(t *testing.T) {
 	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
 }
 
-func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
+func TestResponseAssemblerSendsVeryLargeBlocksResponses(t *testing.T) {
 	p := testutil.GeneratePeers(1)[0]
 	requestID1 := graphsync.RequestID(rand.Int31())
 	// generate large blocks before proceeding
@@ -160,7 +160,7 @@ func TestPeerResponseSenderSendsVeryLargeBlocksResponses(t *testing.T) {
 
 }
 
-func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
+func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -206,7 +206,7 @@ func TestPeerResponseSenderSendsExtensionData(t *testing.T) {
 	fph.AssertExtensions([][]graphsync.ExtensionData{{extension1, extension2}})
 }
 
-func TestPeerResponseSenderSendsResponsesInTransaction(t *testing.T) {
+func TestResponseAssemblerSendsResponsesInTransaction(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -244,7 +244,7 @@ func TestPeerResponseSenderSendsResponsesInTransaction(t *testing.T) {
 	fph.AssertNotifees(notifee)
 }
 
-func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
+func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -311,7 +311,7 @@ func TestPeerResponseSenderIgnoreBlocks(t *testing.T) {
 
 }
 
-func TestPeerResponseSenderDupKeys(t *testing.T) {
+func TestResponseAssemblerDupKeys(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -389,7 +389,7 @@ func TestPeerResponseSenderDupKeys(t *testing.T) {
 	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
 }
 
-func TestPeerResponseSenderSendsResponsesMemoryPressure(t *testing.T) {
+func TestResponseAssemblerSendsResponsesMemoryPressure(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -406,16 +406,16 @@ func TestPeerResponseSenderSendsResponsesMemoryPressure(t *testing.T) {
 
 	finishes := make(chan string, 2)
 	go func() {
-		err := responseAssembler.Transaction(p, requestID1, func(peerResponseSender TransactionBuilder) error {
-			bd := peerResponseSender.SendResponse(links[0], blks[0].RawData())
+		err := responseAssembler.Transaction(p, requestID1, func(transactionBuilder TransactionBuilder) error {
+			bd := transactionBuilder.SendResponse(links[0], blks[0].RawData())
 			assertSentOnWire(t, bd, blks[0])
-			bd = peerResponseSender.SendResponse(links[1], blks[1].RawData())
+			bd = transactionBuilder.SendResponse(links[1], blks[1].RawData())
 			assertSentOnWire(t, bd, blks[1])
-			bd = peerResponseSender.SendResponse(links[2], blks[2].RawData())
+			bd = transactionBuilder.SendResponse(links[2], blks[2].RawData())
 			assertSentOnWire(t, bd, blks[2])
-			bd = peerResponseSender.SendResponse(links[3], blks[3].RawData())
+			bd = transactionBuilder.SendResponse(links[3], blks[3].RawData())
 			assertSentOnWire(t, bd, blks[3])
-			peerResponseSender.FinishRequest()
+			transactionBuilder.FinishRequest()
 			return nil
 		})
 		require.NoError(t, err)
