@@ -2,6 +2,52 @@ version: 2.1
 orbs:
   ci-go: ipfs/ci-go@0.2.9
 
+executors:
+  golang:
+    docker:
+      - image: circleci/golang:1.15.5
+    resource_class: 2xlarge
+  ubuntu:
+    docker:
+      - image: ubuntu:19.10
+
+commands:
+  prepare:
+    steps:
+      - checkout
+      - git_fetch_all_tags
+      - checkout
+  git_fetch_all_tags:
+    steps:
+      - run:
+          name: fetch all tags
+          command: |
+            git fetch --all
+
+jobs:
+  trigger-testplans:
+    description: |
+      Trigger `graphsync` test cases on TaaS
+    parameters: &test-params
+      executor:
+        type: executor
+        default: golang
+    executor: << parameters.executor >>
+    steps:
+      - prepare
+      - run:
+          name: "download testground"
+          command: wget https://gist.github.com/nonsense/5fbf3167cac79945f658771aed32fc44/raw/2e17eb0debf7ec6bdf027c1bdafc2c92dd97273b/testground-d3e9603 -O ~/testground-cli && chmod +x ~/testground-cli
+      - run:
+          name: "prepare .env.toml"
+          command: pushd testplans/graphsync && mkdir -p $HOME/testground && cp env-ci.toml $HOME/testground/.env.toml && echo 'endpoint="https://ci.testground.ipfs.team"' >> $HOME/testground/.env.toml && echo 'user="circleci"' >> $HOME/testground/.env.toml
+      - run:
+          name: "prepare testground home dir"
+          command: mkdir -p $HOME/testground/plans && mv testplans/graphsync $HOME/testground/plans/
+      - run:
+          name: "trigger graphsync testplan on taas"
+          command: ~/testground-cli run composition -f $HOME/testground/plans/graphsync/stress-k8s.toml --metadata-commit=$CIRCLE_SHA1 --metadata-repo=ipfs/go-graphsync --metadata-branch=$CIRCLE_BRANCH
+
 workflows:
   version: 2
   test:
@@ -12,6 +58,11 @@ workflows:
       - ci-go/test:
           race: true
           name: "ci-go/test/race"
+      - trigger-testplans:
+          filters:
+            branches:
+              only:
+                - master
       #- ci-go/benchmark:
       #    tolerance: 50
       #    requires:
