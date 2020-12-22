@@ -13,10 +13,10 @@ import (
 )
 
 // Transaction is a series of operations that should be send together in a single response
-type Transaction func(PeerResponseTransactionBuilder) error
+type Transaction func(TransactionBuilder) error
 
-// PeerResponseTransactionBuilder is a limited interface for sending responses inside a transaction
-type PeerResponseTransactionBuilder interface {
+// TransactionBuilder is a limited interface for sending responses inside a transaction
+type TransactionBuilder interface {
 	SendResponse(
 		link ipld.Link,
 		data []byte,

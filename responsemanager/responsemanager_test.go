@@ -703,8 +703,7 @@ func (fqq *fakeQueryQueue) ThawRound() {
 
 }
 
-type fakePeerManager struct {
-	peerSenders          map[peer.ID]*fakePeerResponseSender
+type fakeResponseAssembler struct {
 	sentResponses        chan sentResponse
 	sentExtensions       chan sentExtension
 	lastCompletedRequest chan completedRequest
@@ -715,39 +714,18 @@ type fakePeerManager struct {
 	dedupKeys            chan string
 }
 
-func (fpm *fakePeerManager) Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
-	sender := fpm.senderForPeer(p)
-	fprts := &fakePeerResponseTransactionSender{requestID, sender, sender.notifeePublisher}
+func (fra *fakeResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
+	fprts := &fakePeerResponseTransactionSender{requestID, fra,
+		fra.notifeePublisher}
 	return transaction(fprts)
 }
 
-func (fpm *fakePeerManager) IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link) {
-	fpm.senderForPeer(p).IgnoreBlocks(requestID, links)
+func (fra *fakeResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link) {
+	fra.ignoredLinks <- links
 }
 
-func (fpm *fakePeerManager) DedupKey(p peer.ID, requestID graphsync.RequestID, key string) {
-	fpm.senderForPeer(p).DedupKey(requestID, key)
-}
-
-func (fpm *fakePeerManager) senderForPeer(p peer.ID) *fakePeerResponseSender {
-	if fpm.peerSenders == nil {
-		fpm.peerSenders = make(map[peer.ID]*fakePeerResponseSender)
-	}
-	sender, ok := fpm.peerSenders[p]
-	if !ok {
-		fpm.peerSenders[p] = &fakePeerResponseSender{
-			lastCompletedRequest: fpm.lastCompletedRequest,
-			sentResponses:        fpm.sentResponses,
-			sentExtensions:       fpm.sentExtensions,
-			pausedRequests:       fpm.pausedRequests,
-			cancelledRequests:    fpm.cancelledRequests,
-			ignoredLinks:         fpm.ignoredLinks,
-			dedupKeys:            fpm.dedupKeys,
-			notifeePublisher:     fpm.notifeePublisher,
-		}
-		sender = fpm.peerSenders[p]
-	}
-	return sender
+func (fra *fakeResponseAssembler) DedupKey(p peer.ID, requestID graphsync.RequestID, key string) {
+	fra.dedupKeys <- key
 }
 
 type sentResponse struct {
@@ -773,31 +751,9 @@ type cancelledRequest struct {
 	requestID graphsync.RequestID
 }
 
-type fakePeerResponseSender struct {
-	sentResponses        chan sentResponse
-	sentExtensions       chan sentExtension
-	lastCompletedRequest chan completedRequest
-	pausedRequests       chan pausedRequest
-	cancelledRequests    chan cancelledRequest
-	ignoredLinks         chan []ipld.Link
-	notifeePublisher     *testutil.MockPublisher
-	dedupKeys            chan string
-}
-
-func (fprs *fakePeerResponseSender) Startup()  {}
-func (fprs *fakePeerResponseSender) Shutdown() {}
-
 type fakeBlkData struct {
 	link ipld.Link
 	size uint64
-}
-
-func (fprs *fakePeerResponseSender) IgnoreBlocks(requestID graphsync.RequestID, links []ipld.Link) {
-	fprs.ignoredLinks <- links
-}
-
-func (fprs *fakePeerResponseSender) DedupKey(requestID graphsync.RequestID, key string) {
-	fprs.dedupKeys <- key
 }
 
 func (fbd fakeBlkData) Link() ipld.Link {
@@ -812,80 +768,68 @@ func (fbd fakeBlkData) BlockSizeOnWire() uint64 {
 	return fbd.size
 }
 
-func (fprs *fakePeerResponseSender) SendResponse(
+func (fra *fakeResponseAssembler) sendResponse(
 	requestID graphsync.RequestID,
 	link ipld.Link,
 	data []byte,
-	notifees ...notifications.Notifee,
 ) graphsync.BlockData {
-	fprs.notifeePublisher.AddNotifees(notifees)
-	fprs.sentResponses <- sentResponse{requestID, link, data}
+	fra.sentResponses <- sentResponse{requestID, link, data}
 
 	return fakeBlkData{link, uint64(len(data))}
 }
 
-func (fprs *fakePeerResponseSender) SendExtensionData(
+func (fra *fakeResponseAssembler) sendExtensionData(
 	requestID graphsync.RequestID,
 	extension graphsync.ExtensionData,
-	notifees ...notifications.Notifee,
 ) {
-	fprs.notifeePublisher.AddNotifees(notifees)
-	fprs.sentExtensions <- sentExtension{requestID, extension}
+	fra.sentExtensions <- sentExtension{requestID, extension}
 }
 
-func (fprs *fakePeerResponseSender) FinishRequest(requestID graphsync.RequestID, notifees ...notifications.Notifee) graphsync.ResponseStatusCode {
-	fprs.notifeePublisher.AddNotifees(notifees)
-	fprs.lastCompletedRequest <- completedRequest{requestID, graphsync.RequestCompletedFull}
+func (fra *fakeResponseAssembler) finishRequest(requestID graphsync.RequestID) graphsync.ResponseStatusCode {
+	fra.lastCompletedRequest <- completedRequest{requestID, graphsync.RequestCompletedFull}
 	return graphsync.RequestCompletedFull
 }
 
-func (fprs *fakePeerResponseSender) FinishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode, notifees ...notifications.Notifee) {
-	fprs.notifeePublisher.AddNotifees(notifees)
-	fprs.lastCompletedRequest <- completedRequest{requestID, status}
+func (fra *fakeResponseAssembler) finishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
+	fra.lastCompletedRequest <- completedRequest{requestID, status}
 }
 
-func (fprs *fakePeerResponseSender) PauseRequest(requestID graphsync.RequestID, notifees ...notifications.Notifee) {
-	fprs.notifeePublisher.AddNotifees(notifees)
-	fprs.pausedRequests <- pausedRequest{requestID}
+func (fra *fakeResponseAssembler) pauseRequest(requestID graphsync.RequestID) {
+	fra.pausedRequests <- pausedRequest{requestID}
 }
 
-func (fprs *fakePeerResponseSender) FinishWithCancel(requestID graphsync.RequestID) {
-	fprs.cancelledRequests <- cancelledRequest{requestID}
-}
-
-func (fprs *fakePeerResponseSender) Transaction(requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
-	fprts := &fakePeerResponseTransactionSender{requestID, fprs, fprs.notifeePublisher}
-	return transaction(fprts)
+func (fra *fakeResponseAssembler) finishWithCancel(requestID graphsync.RequestID) {
+	fra.cancelledRequests <- cancelledRequest{requestID}
 }
 
 type fakePeerResponseTransactionSender struct {
 	requestID        graphsync.RequestID
-	prs              *fakePeerResponseSender
+	fra              *fakeResponseAssembler
 	notifeePublisher *testutil.MockPublisher
 }
 
 func (fprts *fakePeerResponseTransactionSender) SendResponse(link ipld.Link, data []byte) graphsync.BlockData {
-	return fprts.prs.SendResponse(fprts.requestID, link, data)
+	return fprts.fra.sendResponse(fprts.requestID, link, data)
 }
 
 func (fprts *fakePeerResponseTransactionSender) SendExtensionData(extension graphsync.ExtensionData) {
-	fprts.prs.SendExtensionData(fprts.requestID, extension)
+	fprts.fra.sendExtensionData(fprts.requestID, extension)
 }
 
 func (fprts *fakePeerResponseTransactionSender) FinishRequest() graphsync.ResponseStatusCode {
-	return fprts.prs.FinishRequest(fprts.requestID)
+	return fprts.fra.finishRequest(fprts.requestID)
 }
 
 func (fprts *fakePeerResponseTransactionSender) FinishWithError(status graphsync.ResponseStatusCode) {
-	fprts.prs.FinishWithError(fprts.requestID, status)
+	fprts.fra.finishWithError(fprts.requestID, status)
 }
 
 func (fprts *fakePeerResponseTransactionSender) PauseRequest() {
-	fprts.prs.PauseRequest(fprts.requestID)
+	fprts.fra.pauseRequest(fprts.requestID)
 }
 
 func (fprts *fakePeerResponseTransactionSender) FinishWithCancel() {
-	fprts.prs.FinishWithCancel(fprts.requestID)
+	fprts.fra.finishWithCancel(fprts.requestID)
 }
 
 func (fprts *fakePeerResponseTransactionSender) AddNotifee(notifee notifications.Notifee) {
@@ -908,7 +852,7 @@ type testData struct {
 	cancelledRequests         chan cancelledRequest
 	ignoredLinks              chan []ipld.Link
 	dedupKeys                 chan string
-	peerManager               *fakePeerManager
+	peerManager               *fakeResponseAssembler
 	queryQueue                *fakeQueryQueue
 	extensionData             []byte
 	extensionName             graphsync.ExtensionName
@@ -958,7 +902,7 @@ func newTestData(t *testing.T) testData {
 	td.completedResponseStatuses = make(chan graphsync.ResponseStatusCode, 1)
 	td.networkErrorChan = make(chan error, td.blockChainLength*2)
 	td.notifeePublisher = testutil.NewMockPublisher()
-	td.peerManager = &fakePeerManager{
+	td.peerManager = &fakeResponseAssembler{
 		lastCompletedRequest: td.completedRequestChan,
 		sentResponses:        td.sentResponses,
 		sentExtensions:       td.sentExtensions,
