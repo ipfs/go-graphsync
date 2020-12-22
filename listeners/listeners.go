@@ -138,7 +138,7 @@ func (nel *NetworkErrorListeners) NotifyNetworkErrorListeners(p peer.ID, request
 	_ = nel.pubSub.Publish(internalNetworkErrorEvent{p, request, err})
 }
 
-// ReceiverNetworkErrorListeners is a set of listeners for network errors on the receiving side
+// NetworkReceiverErrorListeners is a set of listeners for network errors on the receiving side
 type NetworkReceiverErrorListeners struct {
 	pubSub *pubsub.PubSub
 }
