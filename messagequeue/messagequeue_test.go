@@ -267,3 +267,61 @@ func TestDedupingMessages(t *testing.T) {
 		}
 	}
 }
+
+func TestResponseAssemblerSendsVeryLargeBlocksResponses(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	peer := testutil.GeneratePeers(1)[0]
+	messagesSent := make(chan gsmsg.GraphSyncMessage)
+	resetChan := make(chan struct{}, 1)
+	fullClosedChan := make(chan struct{}, 1)
+	messageSender := &fakeMessageSender{nil, fullClosedChan, resetChan, messagesSent}
+	var waitGroup sync.WaitGroup
+	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
+	allocator := allocator2.NewAllocator(1<<30, 1<<30)
+
+	messageQueue := New(ctx, peer, messageNetwork, allocator)
+	messageQueue.Startup()
+	waitGroup.Add(1)
+
+	// generate large blocks before proceeding
+	blks := testutil.GenerateBlocksOfSize(5, 1000000)
+	messageQueue.BuildMessage(uint64(len(blks[0].RawData())), func(b *gsmsg.Builder) {
+		b.AddBlock(blks[0])
+	}, []notifications.Notifee{})
+	waitGroup.Wait()
+	var message gsmsg.GraphSyncMessage
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
+
+	msgBlks := message.Blocks()
+	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
+	require.True(t, blks[0].Cid().Equals(msgBlks[0].Cid()))
+
+	// Send 3 very large blocks
+	messageQueue.BuildMessage(uint64(len(blks[1].RawData())), func(b *gsmsg.Builder) {
+		b.AddBlock(blks[1])
+	}, []notifications.Notifee{})
+	messageQueue.BuildMessage(uint64(len(blks[2].RawData())), func(b *gsmsg.Builder) {
+		b.AddBlock(blks[2])
+	}, []notifications.Notifee{})
+	messageQueue.BuildMessage(uint64(len(blks[3].RawData())), func(b *gsmsg.Builder) {
+		b.AddBlock(blks[3])
+	}, []notifications.Notifee{})
+
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
+	msgBlks = message.Blocks()
+	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
+	require.True(t, blks[1].Cid().Equals(msgBlks[0].Cid()))
+
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
+	msgBlks = message.Blocks()
+	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
+	require.True(t, blks[2].Cid().Equals(msgBlks[0].Cid()))
+
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
+	msgBlks = message.Blocks()
+	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
+	require.True(t, blks[3].Cid().Equals(msgBlks[0].Cid()))
+}

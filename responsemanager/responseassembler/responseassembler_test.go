@@ -113,53 +113,6 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
 }
 
-func TestResponseAssemblerSendsVeryLargeBlocksResponses(t *testing.T) {
-	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
-	// generate large blocks before proceeding
-	blks := testutil.GenerateBlocksOfSize(5, 1000000)
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	links := make([]ipld.Link, 0, len(blks))
-	for _, block := range blks {
-		links = append(links, cidlink.Link{Cid: block.Cid()})
-	}
-	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	responseAssembler := New(ctx, allocator, fph)
-
-	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
-		b.SendResponse(links[0], blks[0].RawData())
-		return nil
-	}))
-
-	fph.AssertBlocks(blks[0])
-	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
-
-	// Send 3 very large blocks
-	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
-		b.SendResponse(links[1], blks[1].RawData())
-		b.SendResponse(links[2], blks[2].RawData())
-		b.SendResponse(links[3], blks[3].RawData())
-		return nil
-	}))
-
-	fph.AssertBlocks(blks[1], blks[2], blks[3])
-	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
-
-	// Send one more block and finish the request
-	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
-		b.SendResponse(links[4], blks[4].RawData())
-		b.FinishRequest()
-		return nil
-	}))
-
-	fph.AssertBlocks(blks[4])
-	fph.AssertResponses(expectedResponses{requestID1: graphsync.RequestCompletedFull})
-
-}
-
 func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

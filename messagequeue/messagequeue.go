@@ -135,9 +135,6 @@ func (mq *MessageQueue) runQueue() {
 		case <-mq.outgoingWork:
 			mq.sendMessage()
 		case <-mq.done:
-			// our queue is shutting down, so we should check for any pending messages, and propogate a network error
-			// a shutting down queue implies a network disconnect -- so it's important that anyone who is expecting these
-			// messages to go through is notified of the disconnect
 			select {
 			case <-mq.outgoingWork:
 				for {
@@ -181,6 +178,13 @@ func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, gsmsg.
 	}
 	builder := mq.builders[0]
 	mq.builders = mq.builders[1:]
+	// if there are more queued messages, signal we still have more work
+	if len(mq.builders) > 0 {
+		select {
+		case mq.outgoingWork <- struct{}{}:
+		default:
+		}
+	}
 	mq.buildersLk.Unlock()
 	if builder.Empty() {
 		return gsmsg.GraphSyncMessage{}, gsmsg.Topic(0), errEmptyMessage
