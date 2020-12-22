@@ -51,6 +51,7 @@ type GraphSync struct {
 	requestorCancelledListeners *listeners.RequestorCancelledListeners
 	blockSentListeners          *listeners.BlockSentListeners
 	networkErrorListeners       *listeners.NetworkErrorListeners
+	receiverErrorListeners      *listeners.NetworkReceiverErrorListeners
 	incomingResponseHooks       *requestorhooks.IncomingResponseHooks
 	outgoingRequestHooks        *requestorhooks.OutgoingRequestHooks
 	incomingBlockHooks          *requestorhooks.IncomingBlockHooks
@@ -115,6 +116,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	outgoingRequestHooks := requestorhooks.NewRequestHooks()
 	incomingBlockHooks := requestorhooks.NewBlockHooks()
 	networkErrorListeners := listeners.NewNetworkErrorListeners()
+	receiverErrorListeners := listeners.NewReceiverNetworkErrorListeners()
 	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners)
 	peerTaskQueue := peertaskqueue.New()
 
@@ -141,6 +143,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestorCancelledListeners: requestorCancelledListeners,
 		blockSentListeners:          blockSentListeners,
 		networkErrorListeners:       networkErrorListeners,
+		receiverErrorListeners:      receiverErrorListeners,
 		incomingResponseHooks:       incomingResponseHooks,
 		outgoingRequestHooks:        outgoingRequestHooks,
 		incomingBlockHooks:          incomingBlockHooks,
@@ -251,6 +254,11 @@ func (gs *GraphSync) RegisterNetworkErrorListener(listener graphsync.OnNetworkEr
 	return gs.networkErrorListeners.Register(listener)
 }
 
+// RegisterReceiverNetworkErrorListener adds a listener for when errors occur receiving data over the wire
+func (gs *GraphSync) RegisterReceiverNetworkErrorListener(listener graphsync.OnReceiverNetworkErrorListener) graphsync.UnregisterHookFunc {
+	return gs.receiverErrorListeners.Register(listener)
+}
+
 // UnpauseRequest unpauses a request that was paused in a block hook based request ID
 // Can also send extensions with unpause
 func (gs *GraphSync) UnpauseRequest(requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
@@ -295,10 +303,9 @@ func (gsr *graphSyncReceiver) ReceiveMessage(
 
 // ReceiveError is part of the network's Receiver interface and handles incoming
 // errors from the network.
-func (gsr *graphSyncReceiver) ReceiveError(err error) {
-	log.Infof("Graphsync ReceiveError: %s", err)
-	// TODO log the network error
-	// TODO bubble the network error up to the parent context/error logger
+func (gsr *graphSyncReceiver) ReceiveError(p peer.ID, err error) {
+	log.Infof("Graphsync ReceiveError from %s: %s", p, err)
+	gsr.receiverErrorListeners.NotifyNetworkErrorListeners(p, err)
 }
 
 // Connected is part of the networks 's Receiver interface and handles peers connecting

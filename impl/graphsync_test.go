@@ -590,6 +590,13 @@ func TestNetworkDisconnect(t *testing.T) {
 		default:
 		}
 	})
+	receiverError := make(chan error, 1)
+	requestor.RegisterReceiverNetworkErrorListener(func(p peer.ID, err error) {
+		select {
+		case receiverError <- err:
+		default:
+		}
+	})
 	requestCtx, requestCancel := context.WithTimeout(ctx, 1*time.Second)
 	defer requestCancel()
 	progressChan, errChan := requestor.Request(requestCtx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
@@ -609,6 +616,7 @@ func TestNetworkDisconnect(t *testing.T) {
 	testutil.AssertReceive(ctx, t, networkError, &err, "should receive network error")
 	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
 	require.EqualError(t, err, graphsync.RequestContextCancelledErr{}.Error())
+	testutil.AssertReceive(ctx, t, receiverError, &err, "should receive an error on receiver side")
 }
 
 func TestConnectFail(t *testing.T) {
@@ -1131,7 +1139,8 @@ func (r *receiver) ReceiveMessage(
 	}
 }
 
-func (r *receiver) ReceiveError(err error) {
+func (r *receiver) ReceiveError(_ peer.ID, err error) {
+	fmt.Println("got receive err")
 }
 
 func (r *receiver) Connected(p peer.ID) {

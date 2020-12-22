@@ -289,6 +289,9 @@ type OnBlockSentListener func(p peer.ID, request RequestData, block BlockData)
 // OnNetworkErrorListener runs when queued data is not able to be sent
 type OnNetworkErrorListener func(p peer.ID, request RequestData, err error)
 
+// OnReceiverNetworkErrorListener runs when errors occur receiving data over the wire
+type OnReceiverNetworkErrorListener func(p peer.ID, err error)
+
 // OnResponseCompletedListener provides a way to listen for when responder has finished serving a response
 type OnResponseCompletedListener func(p peer.ID, request RequestData, status ResponseStatusCode)
 
@@ -339,6 +342,9 @@ type GraphExchange interface {
 
 	// RegisterNetworkErrorListener adds a listener for when errors occur sending data over the wire
 	RegisterNetworkErrorListener(listener OnNetworkErrorListener) UnregisterHookFunc
+
+	// RegisterReceiverNetworkErrorListener adds a listener for when errors occur receiving data over the wire
+	RegisterReceiverNetworkErrorListener(listener OnReceiverNetworkErrorListener) UnregisterHookFunc
 
 	// UnpauseRequest unpauses a request that was paused in a block hook based request ID
 	// Can also send extensions with unpause
