@@ -38,33 +38,34 @@ func NewBuilder(topic Topic) *Builder {
 	}
 }
 
+// AddRequest registers a new request to be added to the message.
 func (b *Builder) AddRequest(request GraphSyncRequest) {
 	b.requests[request.ID()] = request
 }
 
-// AddBlock adds the given block to the response.
+// AddBlock adds the given block to the message.
 func (b *Builder) AddBlock(block blocks.Block) {
 	b.blkSize += uint64(len(block.RawData()))
 	b.outgoingBlocks[block.Cid()] = block
 }
 
-// AddExtensionData adds the given extension data to to the response
+// AddExtensionData adds the given extension data to to the message
 func (b *Builder) AddExtensionData(requestID graphsync.RequestID, extension graphsync.ExtensionData) {
 	b.extensions[requestID] = append(b.extensions[requestID], extension)
 }
 
-// BlockSize returns the total size of all blocks in this response
+// BlockSize returns the total size of all blocks in this message
 func (b *Builder) BlockSize() uint64 {
 	return b.blkSize
 }
 
 // AddLink adds the given link and whether its block is present
-// to the response for the given request ID.
+// to the message for the given request ID.
 func (b *Builder) AddLink(requestID graphsync.RequestID, link ipld.Link, blockPresent bool) {
 	b.outgoingResponses[requestID] = append(b.outgoingResponses[requestID], metadata.Item{Link: link.(cidlink.Link).Cid, BlockPresent: blockPresent})
 }
 
-// AddResponseCode marks the given request as completed in the response,
+// AddResponseCode marks the given request as completed in the message,
 // as well as whether the graphsync request responded with complete or partial
 // data.
 func (b *Builder) AddResponseCode(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
@@ -81,7 +82,7 @@ func (b *Builder) Empty() bool {
 	return len(b.requests) == 0 && len(b.outgoingBlocks) == 0 && len(b.outgoingResponses) == 0
 }
 
-// Build assembles and encodes response data from the added requests, links, and blocks.
+// Build assembles and encodes message data from the added requests, links, and blocks.
 func (b *Builder) Build() (GraphSyncMessage, error) {
 	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(b.outgoingResponses))
 	for requestID, linkMap := range b.outgoingResponses {
@@ -101,7 +102,7 @@ func (b *Builder) Build() (GraphSyncMessage, error) {
 	}, nil
 }
 
-// Topic returns the identifier for notifications sent about this response builder
+// Topic returns the identifier for notifications sent about this builder
 func (b *Builder) Topic() Topic {
 	return b.topic
 }

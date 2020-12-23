@@ -31,6 +31,8 @@ func (prs *peerLinkTracker) getLinkTracker(requestID graphsync.RequestID) *linkt
 	return prs.linkTracker
 }
 
+// DedupKey indicates that outgoing blocks should be deduplicated in a seperate bucket (only with requests that share
+// supplied key string)
 func (prs *peerLinkTracker) DedupKey(requestID graphsync.RequestID, key string) {
 	prs.linkTrackerLk.Lock()
 	defer prs.linkTrackerLk.Unlock()
@@ -41,6 +43,7 @@ func (prs *peerLinkTracker) DedupKey(requestID graphsync.RequestID, key string) 
 	}
 }
 
+// IgnoreBlocks indicates that a list of keys should be ignored when sending blocks
 func (prs *peerLinkTracker) IgnoreBlocks(requestID graphsync.RequestID, links []ipld.Link) {
 	prs.linkTrackerLk.Lock()
 	linkTracker := prs.getLinkTracker(requestID)
@@ -50,6 +53,7 @@ func (prs *peerLinkTracker) IgnoreBlocks(requestID graphsync.RequestID, links []
 	prs.linkTrackerLk.Unlock()
 }
 
+// FinishTracking clears link tracking data for the request.
 func (prs *peerLinkTracker) FinishTracking(requestID graphsync.RequestID) bool {
 	prs.linkTrackerLk.Lock()
 	defer prs.linkTrackerLk.Unlock()
@@ -72,6 +76,7 @@ func (prs *peerLinkTracker) FinishTracking(requestID graphsync.RequestID) bool {
 	return allBlocks
 }
 
+// RecordLinkTraversal records whether a link is found for a request.
 func (prs *peerLinkTracker) RecordLinkTraversal(requestID graphsync.RequestID,
 	link ipld.Link, hasBlock bool) (isUnique bool) {
 	prs.linkTrackerLk.Lock()
