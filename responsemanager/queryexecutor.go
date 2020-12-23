@@ -117,16 +117,16 @@ func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	var transactionError error
 	var isPaused bool
 	failNotifee := notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: sub}
-	err := qe.responseAssembler.Transaction(p, request.ID(), func(transaction responseassembler.TransactionBuilder) error {
+	err := qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
 		for _, extension := range result.Extensions {
-			transaction.SendExtensionData(extension)
+			rb.SendExtensionData(extension)
 		}
 		if result.Err != nil || !result.IsValidated {
-			transaction.FinishWithError(graphsync.RequestFailedUnknown)
-			transaction.AddNotifee(failNotifee)
+			rb.FinishWithError(graphsync.RequestFailedUnknown)
+			rb.AddNotifee(failNotifee)
 			transactionError = errors.New("request not valid")
 		} else if result.IsPaused {
-			transaction.PauseRequest()
+			rb.PauseRequest()
 			isPaused = true
 		}
 		return nil
@@ -163,9 +163,9 @@ func (qe *queryExecutor) processDedupByKey(request gsmsg.GraphSyncRequest, p pee
 	}
 	key, err := dedupkey.DecodeDedupKey(dedupData)
 	if err != nil {
-		_ = qe.responseAssembler.Transaction(p, request.ID(), func(prtb responseassembler.TransactionBuilder) error {
-			prtb.FinishWithError(graphsync.RequestFailedUnknown)
-			prtb.AddNotifee(failNotifee)
+		_ = qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
+			rb.FinishWithError(graphsync.RequestFailedUnknown)
+			rb.AddNotifee(failNotifee)
 			return nil
 		})
 		return err
@@ -181,9 +181,9 @@ func (qe *queryExecutor) processDoNoSendCids(request gsmsg.GraphSyncRequest, p p
 	}
 	cidSet, err := cidset.DecodeCidSet(doNotSendCidsData)
 	if err != nil {
-		_ = qe.responseAssembler.Transaction(p, request.ID(), func(prtb responseassembler.TransactionBuilder) error {
-			prtb.FinishWithError(graphsync.RequestFailedUnknown)
-			prtb.AddNotifee(failNotifee)
+		_ = qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
+			rb.FinishWithError(graphsync.RequestFailedUnknown)
+			rb.AddNotifee(failNotifee)
 			return nil
 		})
 		return err
@@ -210,20 +210,20 @@ func (qe *queryExecutor) executeQuery(
 	updateChan := make(chan []gsmsg.GraphSyncRequest)
 	err := runtraversal.RunTraversal(loader, traverser, func(link ipld.Link, data []byte) error {
 		var err error
-		_ = qe.responseAssembler.Transaction(p, request.ID(), func(transaction responseassembler.TransactionBuilder) error {
-			err = qe.checkForUpdates(p, request, signals, updateChan, transaction)
+		_ = qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
+			err = qe.checkForUpdates(p, request, signals, updateChan, rb)
 			if _, ok := err.(hooks.ErrPaused); !ok && err != nil {
 				return nil
 			}
-			blockData := transaction.SendResponse(link, data)
-			transaction.AddNotifee(notifications.Notifee{Data: blockData, Subscriber: sub})
+			blockData := rb.SendResponse(link, data)
+			rb.AddNotifee(notifications.Notifee{Data: blockData, Subscriber: sub})
 			if blockData.BlockSize() > 0 {
 				result := qe.blockHooks.ProcessBlockHooks(p, request, blockData)
 				for _, extension := range result.Extensions {
-					transaction.SendExtensionData(extension)
+					rb.SendExtensionData(extension)
 				}
 				if _, ok := result.Err.(hooks.ErrPaused); ok {
-					transaction.PauseRequest()
+					rb.PauseRequest()
 				}
 				if result.Err != nil {
 					err = result.Err
@@ -234,7 +234,7 @@ func (qe *queryExecutor) executeQuery(
 		return err
 	})
 	var code graphsync.ResponseStatusCode
-	_ = qe.responseAssembler.Transaction(p, request.ID(), func(transactionBuilder responseassembler.TransactionBuilder) error {
+	_ = qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
 		if err != nil {
 			_, isPaused := err.(hooks.ErrPaused)
 			if isPaused {
@@ -242,7 +242,7 @@ func (qe *queryExecutor) executeQuery(
 				return nil
 			}
 			if isContextErr(err) {
-				transactionBuilder.FinishWithCancel()
+				rb.FinishWithCancel()
 				code = graphsync.RequestCancelled
 				return nil
 			}
@@ -255,11 +255,11 @@ func (qe *queryExecutor) executeQuery(
 			} else {
 				code = graphsync.RequestFailedUnknown
 			}
-			transactionBuilder.FinishWithError(graphsync.RequestCancelled)
+			rb.FinishWithError(graphsync.RequestCancelled)
 		} else {
-			code = transactionBuilder.FinishRequest()
+			code = rb.FinishRequest()
 		}
-		transactionBuilder.AddNotifee(notifications.Notifee{Data: code, Subscriber: sub})
+		rb.AddNotifee(notifications.Notifee{Data: code, Subscriber: sub})
 		return nil
 	})
 	return code, err
@@ -270,11 +270,11 @@ func (qe *queryExecutor) checkForUpdates(
 	request gsmsg.GraphSyncRequest,
 	signals signals,
 	updateChan chan []gsmsg.GraphSyncRequest,
-	transactionBuilder responseassembler.TransactionBuilder) error {
+	rb responseassembler.ResponseBuilder) error {
 	for {
 		select {
 		case <-signals.pauseSignal:
-			transactionBuilder.PauseRequest()
+			rb.PauseRequest()
 			return hooks.ErrPaused{}
 		case err := <-signals.errSignal:
 			return err
@@ -288,7 +288,7 @@ func (qe *queryExecutor) checkForUpdates(
 				for _, update := range updates {
 					result := qe.updateHooks.ProcessUpdateHooks(p, request, update)
 					for _, extension := range result.Extensions {
-						transactionBuilder.SendExtensionData(extension)
+						rb.SendExtensionData(extension)
 					}
 					if result.Err != nil {
 						return result.Err

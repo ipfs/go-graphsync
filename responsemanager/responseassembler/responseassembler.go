@@ -20,11 +20,11 @@ import (
 )
 
 // Transaction is a series of operations that should be send together in a single response
-type Transaction func(TransactionBuilder) error
+type Transaction func(ResponseBuilder) error
 
-// TransactionBuilder is a limited interface for assembling responses inside a transaction, so that they are included
+// ResponseBuilder is a limited interface for assembling responses inside a transaction, so that they are included
 // in the same message on the protocol
-type TransactionBuilder interface {
+type ResponseBuilder interface {
 	// SendResponse adds a response to this transaction.
 	SendResponse(
 		link ipld.Link,
@@ -94,13 +94,13 @@ func (ra *ResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.Request
 
 // Transaction builds a response, and queues it for sending in the next outgoing message
 func (ra *ResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction Transaction) error {
-	prts := &transactionBuilder{
+	rb := &responseBuilder{
 		requestID:   requestID,
 		linkTracker: ra.GetProcess(p).(*peerLinkTracker),
 	}
-	err := transaction(prts)
+	err := transaction(rb)
 	if err == nil {
-		ra.execute(p, prts.operations, prts.notifees)
+		ra.execute(p, rb.operations, rb.notifees)
 	}
 	return err
 }
@@ -117,9 +117,9 @@ func (ra *ResponseAssembler) execute(p peer.ID, operations []responseOperation, 
 			return
 		}
 	}
-	ra.peerHandler.BuildMessage(p, size, func(responseBuilder *gsmsg.Builder) {
+	ra.peerHandler.BuildMessage(p, size, func(builder *gsmsg.Builder) {
 		for _, op := range operations {
-			op.build(responseBuilder)
+			op.build(builder)
 		}
 	}, notifees)
 }

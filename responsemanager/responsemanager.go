@@ -326,13 +326,13 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		return
 	}
 	result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, update)
-	err := rm.responseAssembler.Transaction(key.p, key.requestID, func(transaction responseassembler.TransactionBuilder) error {
+	err := rm.responseAssembler.Transaction(key.p, key.requestID, func(rb responseassembler.ResponseBuilder) error {
 		for _, extension := range result.Extensions {
-			transaction.SendExtensionData(extension)
+			rb.SendExtensionData(extension)
 		}
 		if result.Err != nil {
-			transaction.FinishWithError(graphsync.RequestFailedUnknown)
-			transaction.AddNotifee(notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: response.subscriber})
+			rb.FinishWithError(graphsync.RequestFailedUnknown)
+			rb.AddNotifee(notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: response.subscriber})
 		}
 		return nil
 	})
@@ -364,9 +364,9 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	}
 	inProgressResponse.isPaused = false
 	if len(extensions) > 0 {
-		_ = rm.responseAssembler.Transaction(p, requestID, func(transaction responseassembler.TransactionBuilder) error {
+		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
 			for _, extension := range extensions {
-				transaction.SendExtensionData(extension)
+				rb.SendExtensionData(extension)
 			}
 			return nil
 		})
@@ -388,14 +388,14 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 	}
 
 	if response.isPaused {
-		_ = rm.responseAssembler.Transaction(p, requestID, func(prtb responseassembler.TransactionBuilder) error {
+		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
 			if isContextErr(err) {
 
 				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
-				prtb.FinishWithCancel()
+				rb.FinishWithCancel()
 			} else if err != errNetworkError {
-				prtb.FinishWithError(graphsync.RequestCancelled)
-				prtb.AddNotifee(notifications.Notifee{Data: graphsync.RequestCancelled, Subscriber: response.subscriber})
+				rb.FinishWithError(graphsync.RequestCancelled)
+				rb.AddNotifee(notifications.Notifee{Data: graphsync.RequestCancelled, Subscriber: response.subscriber})
 			}
 			return nil
 		})

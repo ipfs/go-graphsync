@@ -89,8 +89,8 @@ func TestMakeRequestToNetwork(t *testing.T) {
 func TestSendResponseToIncomingRequest(t *testing.T) {
 	// create network
 	ctx := context.Background()
-	//ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
-	//defer cancel()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
 	td := newGsTestData(ctx, t)
 	r := &receiver{
 		messageReceived: make(chan receivedMessage),

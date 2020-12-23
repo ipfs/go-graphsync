@@ -715,9 +715,9 @@ type fakeResponseAssembler struct {
 }
 
 func (fra *fakeResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
-	fprts := &fakeTransactionBuilder{requestID, fra,
+	frb := &fakeResponseBuilder{requestID, fra,
 		fra.notifeePublisher}
-	return transaction(fprts)
+	return transaction(frb)
 }
 
 func (fra *fakeResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link) {
@@ -802,38 +802,38 @@ func (fra *fakeResponseAssembler) finishWithCancel(requestID graphsync.RequestID
 	fra.cancelledRequests <- cancelledRequest{requestID}
 }
 
-type fakeTransactionBuilder struct {
+type fakeResponseBuilder struct {
 	requestID        graphsync.RequestID
 	fra              *fakeResponseAssembler
 	notifeePublisher *testutil.MockPublisher
 }
 
-func (fprts *fakeTransactionBuilder) SendResponse(link ipld.Link, data []byte) graphsync.BlockData {
-	return fprts.fra.sendResponse(fprts.requestID, link, data)
+func (frb *fakeResponseBuilder) SendResponse(link ipld.Link, data []byte) graphsync.BlockData {
+	return frb.fra.sendResponse(frb.requestID, link, data)
 }
 
-func (fprts *fakeTransactionBuilder) SendExtensionData(extension graphsync.ExtensionData) {
-	fprts.fra.sendExtensionData(fprts.requestID, extension)
+func (frb *fakeResponseBuilder) SendExtensionData(extension graphsync.ExtensionData) {
+	frb.fra.sendExtensionData(frb.requestID, extension)
 }
 
-func (fprts *fakeTransactionBuilder) FinishRequest() graphsync.ResponseStatusCode {
-	return fprts.fra.finishRequest(fprts.requestID)
+func (frb *fakeResponseBuilder) FinishRequest() graphsync.ResponseStatusCode {
+	return frb.fra.finishRequest(frb.requestID)
 }
 
-func (fprts *fakeTransactionBuilder) FinishWithError(status graphsync.ResponseStatusCode) {
-	fprts.fra.finishWithError(fprts.requestID, status)
+func (frb *fakeResponseBuilder) FinishWithError(status graphsync.ResponseStatusCode) {
+	frb.fra.finishWithError(frb.requestID, status)
 }
 
-func (fprts *fakeTransactionBuilder) PauseRequest() {
-	fprts.fra.pauseRequest(fprts.requestID)
+func (frb *fakeResponseBuilder) PauseRequest() {
+	frb.fra.pauseRequest(frb.requestID)
 }
 
-func (fprts *fakeTransactionBuilder) FinishWithCancel() {
-	fprts.fra.finishWithCancel(fprts.requestID)
+func (frb *fakeResponseBuilder) FinishWithCancel() {
+	frb.fra.finishWithCancel(frb.requestID)
 }
 
-func (fprts *fakeTransactionBuilder) AddNotifee(notifee notifications.Notifee) {
-	fprts.notifeePublisher.AddNotifees([]notifications.Notifee{notifee})
+func (frb *fakeResponseBuilder) AddNotifee(notifee notifications.Notifee) {
+	frb.notifeePublisher.AddNotifees([]notifications.Notifee{notifee})
 }
 
 type testData struct {

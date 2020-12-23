@@ -44,7 +44,7 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	var bd1, bd2 graphsync.BlockData
 
 	// send block 0 for request 1
-	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
+	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
 		b.AddNotifee(sendResponseNotifee1)
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
@@ -55,7 +55,7 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	fph.AssertNotifees(sendResponseNotifee1)
 
 	// send block 0 for request 2 (duplicate block should not be sent)
-	require.NoError(t, responseAssembler.Transaction(p, requestID2, func(b TransactionBuilder) error {
+	require.NoError(t, responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
 		b.AddNotifee(sendResponseNotifee2)
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
@@ -65,7 +65,7 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	fph.AssertNotifees(sendResponseNotifee2)
 
 	// send more to request 1 and finish request
-	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
+	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
 		// send block 1
 		bd1 = b.SendResponse(links[1], blks[1].RawData())
 		// block 2 is not found. Assert not sent
@@ -81,7 +81,7 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	})
 
 	// send more to request 2
-	require.NoError(t, responseAssembler.Transaction(p, requestID2, func(b TransactionBuilder) error {
+	require.NoError(t, responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[3], blks[3].RawData())
 		b.FinishRequest()
 		return nil
@@ -92,7 +92,7 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	})
 
 	// send to request 3
-	require.NoError(t, responseAssembler.Transaction(p, requestID3, func(b TransactionBuilder) error {
+	require.NoError(t, responseAssembler.Transaction(p, requestID3, func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[4], blks[4].RawData())
 		return nil
 	}))
@@ -102,7 +102,7 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	})
 
 	// send 2 more to request 3
-	require.NoError(t, responseAssembler.Transaction(p, requestID3, func(b TransactionBuilder) error {
+	require.NoError(t, responseAssembler.Transaction(p, requestID3, func(b ResponseBuilder) error {
 		b.AddNotifee(sendResponseNotifee3)
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		bd1 = b.SendResponse(links[4], blks[4].RawData())
@@ -128,7 +128,7 @@ func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 	allocator := allocator.NewAllocator(1<<30, 1<<30)
 	responseAssembler := New(ctx, allocator, fph)
 
-	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
+	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
 		b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	}))
@@ -148,7 +148,7 @@ func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 		Name: extensionName2,
 		Data: extensionData2,
 	}
-	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
+	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
 		b.SendResponse(links[1], blks[1].RawData())
 		b.SendExtensionData(extension1)
 		b.SendExtensionData(extension2)
@@ -174,7 +174,7 @@ func TestResponseAssemblerSendsResponsesInTransaction(t *testing.T) {
 	allocator := allocator.NewAllocator(1<<30, 1<<30)
 	responseAssembler := New(ctx, allocator, fph)
 	notifee, _ := testutil.NewTestNotifee("transaction", 10)
-	err := responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
+	err := responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
 		bd := b.SendResponse(links[0], blks[0].RawData())
 		assertSentOnWire(t, bd, blks[0])
 
@@ -216,7 +216,7 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 	responseAssembler.IgnoreBlocks(p, requestID1, links)
 
 	var bd1, bd2, bd3 graphsync.BlockData
-	err := responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
+	err := responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	})
@@ -226,7 +226,7 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 	fph.RefuteBlocks()
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	err = responseAssembler.Transaction(p, requestID2, func(b TransactionBuilder) error {
+	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	})
@@ -235,7 +235,7 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 		requestID2: graphsync.PartialResponse,
 	})
 
-	err = responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
+	err = responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
 		bd2 = b.SendResponse(links[1], blks[1].RawData())
 		bd3 = b.SendResponse(links[2], blks[2].RawData())
 		b.FinishRequest()
@@ -252,7 +252,7 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 		requestID1: graphsync.RequestCompletedFull,
 	})
 
-	err = responseAssembler.Transaction(p, requestID2, func(b TransactionBuilder) error {
+	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
 		b.SendResponse(links[3], blks[3].RawData())
 		b.FinishRequest()
 		return nil
@@ -285,7 +285,7 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	responseAssembler.DedupKey(p, requestID3, "applesauce")
 
 	var bd1, bd2 graphsync.BlockData
-	err := responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
+	err := responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	})
@@ -295,14 +295,14 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	fph.AssertBlocks(blks[0])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	err = responseAssembler.Transaction(p, requestID2, func(b TransactionBuilder) error {
+	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	})
 	require.NoError(t, err)
 	assertSentOnWire(t, bd1, blks[0])
 
-	err = responseAssembler.Transaction(p, requestID1, func(b TransactionBuilder) error {
+	err = responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[1], blks[1].RawData())
 		bd2 = b.SendResponse(links[2], nil)
 		return nil
@@ -314,7 +314,7 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	fph.AssertBlocks(blks[1])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	err = responseAssembler.Transaction(p, requestID2, func(b TransactionBuilder) error {
+	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
 		b.SendResponse(links[3], blks[3].RawData())
 		b.FinishRequest()
 		return nil
@@ -323,7 +323,7 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	fph.AssertBlocks(blks[3])
 	fph.AssertResponses(expectedResponses{requestID2: graphsync.RequestCompletedFull})
 
-	err = responseAssembler.Transaction(p, requestID3, func(b TransactionBuilder) error {
+	err = responseAssembler.Transaction(p, requestID3, func(b ResponseBuilder) error {
 		b.SendResponse(links[4], blks[4].RawData())
 		return nil
 	})
@@ -331,7 +331,7 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	fph.AssertBlocks(blks[4])
 	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
 
-	err = responseAssembler.Transaction(p, requestID3, func(b TransactionBuilder) error {
+	err = responseAssembler.Transaction(p, requestID3, func(b ResponseBuilder) error {
 		b.SendResponse(links[0], blks[0].RawData())
 		b.SendResponse(links[4], blks[4].RawData())
 		return nil
@@ -359,16 +359,16 @@ func TestResponseAssemblerSendsResponsesMemoryPressure(t *testing.T) {
 
 	finishes := make(chan string, 2)
 	go func() {
-		err := responseAssembler.Transaction(p, requestID1, func(transactionBuilder TransactionBuilder) error {
-			bd := transactionBuilder.SendResponse(links[0], blks[0].RawData())
+		err := responseAssembler.Transaction(p, requestID1, func(responseBuilder ResponseBuilder) error {
+			bd := responseBuilder.SendResponse(links[0], blks[0].RawData())
 			assertSentOnWire(t, bd, blks[0])
-			bd = transactionBuilder.SendResponse(links[1], blks[1].RawData())
+			bd = responseBuilder.SendResponse(links[1], blks[1].RawData())
 			assertSentOnWire(t, bd, blks[1])
-			bd = transactionBuilder.SendResponse(links[2], blks[2].RawData())
+			bd = responseBuilder.SendResponse(links[2], blks[2].RawData())
 			assertSentOnWire(t, bd, blks[2])
-			bd = transactionBuilder.SendResponse(links[3], blks[3].RawData())
+			bd = responseBuilder.SendResponse(links[3], blks[3].RawData())
 			assertSentOnWire(t, bd, blks[3])
-			transactionBuilder.FinishRequest()
+			responseBuilder.FinishRequest()
 			return nil
 		})
 		require.NoError(t, err)
