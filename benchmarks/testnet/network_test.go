@@ -9,6 +9,7 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/libp2p/go-libp2p-core/peer"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync/benchmarks/testnet"
 	gsmsg "github.com/ipfs/go-graphsync/message"
@@ -32,9 +33,11 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 		fromWaiter peer.ID,
 		msgFromWaiter gsmsg.GraphSyncMessage) {
 
-		msgToWaiter := gsmsg.New()
-		msgToWaiter.AddBlock(blocks.NewBlock([]byte(expectedStr)))
-		err := waiter.SendMessage(ctx, fromWaiter, msgToWaiter)
+		builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+		builder.AddBlock(blocks.NewBlock([]byte(expectedStr)))
+		msgToWaiter, err := builder.Build()
+		require.NoError(t, err)
+		err = waiter.SendMessage(ctx, fromWaiter, msgToWaiter)
 		if err != nil {
 			t.Error(err)
 		}
@@ -59,8 +62,10 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 		}
 	}))
 
-	messageSentAsync := gsmsg.New()
-	messageSentAsync.AddBlock(blocks.NewBlock([]byte("data")))
+	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	builder.AddBlock(blocks.NewBlock([]byte("data")))
+	messageSentAsync, err := builder.Build()
+	require.NoError(t, err)
 	errSending := waiter.SendMessage(
 		context.Background(), responderPeer.ID(), messageSentAsync)
 	if errSending != nil {

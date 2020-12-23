@@ -114,10 +114,12 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 
 	requestID := graphsync.RequestID(rand.Int31())
 
-	message := gsmsg.New()
-	message.AddRequest(gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), td.extension))
+	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	builder.AddRequest(gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), td.extension))
+	message, err := builder.Build()
+	require.NoError(t, err)
 	// send request across network
-	err := td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
+	err = td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
 	require.NoError(t, err)
 	// read the values sent back to requestor
 	var received gsmsg.GraphSyncMessage

@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p-core/peer"
 
@@ -19,6 +18,9 @@ import (
 var log = logging.Logger("graphsync")
 
 const maxRetries = 10
+
+// max block size is the maximum size for batching blocks in a single payload
+const maxBlockSize uint64 = 512 * 1024
 
 type EventName uint64
 
@@ -33,13 +35,16 @@ type Event struct {
 	Err  error
 }
 
-type Topic uint64
-
 // MessageNetwork is any network that can connect peers and generate a message
 // sender.
 type MessageNetwork interface {
 	NewMessageSender(context.Context, peer.ID) (gsnet.MessageSender, error)
 	ConnectTo(context.Context, peer.ID) error
+}
+
+type Allocator interface {
+	ReleasePeerMemory(p peer.ID) error
+	ReleaseBlockMemory(p peer.ID, amount uint64) error
 }
 
 // MessageQueue implements queue of want messages to send to peers.
@@ -52,51 +57,60 @@ type MessageQueue struct {
 	done         chan struct{}
 
 	// internal do not touch outside go routines
-	nextMessage        gsmsg.GraphSyncMessage
-	nextMessageTopic   Topic
-	nextMessageLk      sync.RWMutex
-	nextAvailableTopic Topic
-	processedNotifiers []chan struct{}
-	sender             gsnet.MessageSender
-	eventPublisher     notifications.Publisher
+	sender              gsnet.MessageSender
+	eventPublisher      notifications.Publisher
+	buildersLk          sync.RWMutex
+	builders            []*gsmsg.Builder
+	nextBuilderTopic    gsmsg.Topic
+	allocatorSubscriber *notifications.TopicDataSubscriber
+	allocator           Allocator
 }
 
 // New creats a new MessageQueue.
-func New(ctx context.Context, p peer.ID, network MessageNetwork) *MessageQueue {
+func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Allocator) *MessageQueue {
 	return &MessageQueue{
-		ctx:            ctx,
-		network:        network,
-		p:              p,
-		outgoingWork:   make(chan struct{}, 1),
-		done:           make(chan struct{}),
-		eventPublisher: notifications.NewPublisher(),
+		ctx:                 ctx,
+		network:             network,
+		p:                   p,
+		outgoingWork:        make(chan struct{}, 1),
+		done:                make(chan struct{}),
+		eventPublisher:      notifications.NewPublisher(),
+		allocator:           allocator,
+		allocatorSubscriber: notifications.NewTopicDataSubscriber(&allocatorSubscriber{allocator, p}),
 	}
 }
 
-// AddRequest adds an outgoing request to the message queue.
-func (mq *MessageQueue) AddRequest(graphSyncRequest gsmsg.GraphSyncRequest, notifees ...notifications.Notifee) {
-
-	if mq.mutateNextMessage(func(nextMessage gsmsg.GraphSyncMessage) {
-		nextMessage.AddRequest(graphSyncRequest)
-	}, notifees) {
+// BuildMessage allows you to work modify the next message that is sent in the queue
+func (mq *MessageQueue) BuildMessage(size uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) {
+	if mq.buildMessage(size, buildMessageFn, notifees) {
 		mq.signalWork()
 	}
 }
 
-// AddResponses adds the given blocks and responses to the next message and
-// returns a channel that sends a notification when sending initiates. If ignored by the consumer
-// sending will not block.
-func (mq *MessageQueue) AddResponses(responses []gsmsg.GraphSyncResponse, blks []blocks.Block, notifees ...notifications.Notifee) {
-	if mq.mutateNextMessage(func(nextMessage gsmsg.GraphSyncMessage) {
-		for _, response := range responses {
-			nextMessage.AddResponse(response)
-		}
-		for _, block := range blks {
-			nextMessage.AddBlock(block)
-		}
-	}, notifees) {
-		mq.signalWork()
+func (mq *MessageQueue) buildMessage(size uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) bool {
+	mq.buildersLk.Lock()
+	defer mq.buildersLk.Unlock()
+	if shouldBeginNewResponse(mq.builders, size) {
+		topic := mq.nextBuilderTopic
+		mq.nextBuilderTopic++
+		mq.builders = append(mq.builders, gsmsg.NewBuilder(topic))
 	}
+	builder := mq.builders[len(mq.builders)-1]
+	buildMessageFn(builder)
+	for _, notifee := range notifees {
+		notifications.SubscribeWithData(mq.eventPublisher, builder.Topic(), notifee)
+	}
+	return !builder.Empty()
+}
+
+func shouldBeginNewResponse(builders []*gsmsg.Builder, blkSize uint64) bool {
+	if len(builders) == 0 {
+		return true
+	}
+	if blkSize == 0 {
+		return false
+	}
+	return builders[len(builders)-1].BlockSize()+blkSize > maxBlockSize
 }
 
 // Startup starts the processing of messages, and creates an initial message
@@ -111,7 +125,10 @@ func (mq *MessageQueue) Shutdown() {
 }
 
 func (mq *MessageQueue) runQueue() {
-	defer mq.eventPublisher.Shutdown()
+	defer func() {
+		mq.allocator.ReleasePeerMemory(mq.p)
+		mq.eventPublisher.Shutdown()
+	}()
 	mq.eventPublisher.Startup()
 	for {
 		select {
@@ -120,9 +137,13 @@ func (mq *MessageQueue) runQueue() {
 		case <-mq.done:
 			select {
 			case <-mq.outgoingWork:
-				message, topic := mq.extractOutgoingMessage()
-				if message != nil || !message.Empty() {
-					mq.eventPublisher.Publish(topic, Event{Name: Error, Err: fmt.Errorf("message queue shutdown")})
+				for {
+					_, topic, err := mq.extractOutgoingMessage()
+					if err == nil {
+						mq.eventPublisher.Publish(topic, Event{Name: Error, Err: fmt.Errorf("message queue shutdown")})
+					} else {
+						break
+					}
 				}
 			default:
 			}
@@ -139,21 +160,6 @@ func (mq *MessageQueue) runQueue() {
 	}
 }
 
-func (mq *MessageQueue) mutateNextMessage(mutator func(gsmsg.GraphSyncMessage), notifees []notifications.Notifee) bool {
-	mq.nextMessageLk.Lock()
-	defer mq.nextMessageLk.Unlock()
-	if mq.nextMessage == nil {
-		mq.nextMessage = gsmsg.New()
-		mq.nextMessageTopic = mq.nextAvailableTopic
-		mq.nextAvailableTopic++
-	}
-	mutator(mq.nextMessage)
-	for _, notifee := range notifees {
-		notifications.SubscribeWithData(mq.eventPublisher, mq.nextMessageTopic, notifee)
-	}
-	return !mq.nextMessage.Empty()
-}
-
 func (mq *MessageQueue) signalWork() {
 	select {
 	case mq.outgoingWork <- struct{}{}:
@@ -161,25 +167,48 @@ func (mq *MessageQueue) signalWork() {
 	}
 }
 
-func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, Topic) {
+var errEmptyMessage = errors.New("Empty Message")
+
+func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, gsmsg.Topic, error) {
 	// grab outgoing message
-	mq.nextMessageLk.Lock()
-	message := mq.nextMessage
-	topic := mq.nextMessageTopic
-	mq.nextMessage = nil
-	mq.nextMessageLk.Unlock()
-	return message, topic
+	mq.buildersLk.Lock()
+	if len(mq.builders) == 0 {
+		mq.buildersLk.Unlock()
+		return gsmsg.GraphSyncMessage{}, gsmsg.Topic(0), errEmptyMessage
+	}
+	builder := mq.builders[0]
+	mq.builders = mq.builders[1:]
+	// if there are more queued messages, signal we still have more work
+	if len(mq.builders) > 0 {
+		select {
+		case mq.outgoingWork <- struct{}{}:
+		default:
+		}
+	}
+	mq.buildersLk.Unlock()
+	if builder.Empty() {
+		return gsmsg.GraphSyncMessage{}, gsmsg.Topic(0), errEmptyMessage
+	}
+	notifications.SubscribeWithData(mq.eventPublisher, builder.Topic(), notifications.Notifee{
+		Data:       builder.BlockSize(),
+		Subscriber: mq.allocatorSubscriber,
+	})
+	message, err := builder.Build()
+	return message, builder.Topic(), err
 }
 
 func (mq *MessageQueue) sendMessage() {
-	message, topic := mq.extractOutgoingMessage()
-	if message == nil || message.Empty() {
+	message, topic, err := mq.extractOutgoingMessage()
+	if err != nil {
+		if err != errEmptyMessage {
+			log.Errorf("Unable to assemble GraphSync message: %s", err.Error())
+		}
 		return
 	}
 	mq.eventPublisher.Publish(topic, Event{Name: Queued, Err: nil})
 	defer mq.eventPublisher.Close(topic)
 
-	err := mq.initializeSender()
+	err = mq.initializeSender()
 	if err != nil {
 		log.Infof("cant open message sender to peer %s: %s", mq.p, err)
 		// TODO: cant connect, what now?
@@ -207,7 +236,7 @@ func (mq *MessageQueue) initializeSender() error {
 	return nil
 }
 
-func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, topic Topic) bool {
+func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, topic gsmsg.Topic) bool {
 	err := mq.sender.SendMsg(mq.ctx, message)
 	if err == nil {
 		mq.eventPublisher.Publish(topic, Event{Name: Sent})
@@ -261,4 +290,24 @@ func openSender(ctx context.Context, network MessageNetwork, p peer.ID) (gsnet.M
 	}
 
 	return nsender, nil
+}
+
+type allocatorSubscriber struct {
+	allocator Allocator
+	p         peer.ID
+}
+
+func (as *allocatorSubscriber) OnNext(topic notifications.Topic, event notifications.Event) {
+	blkSize, ok := topic.(uint64)
+	if !ok {
+		return
+	}
+	ev, ok := event.(Event)
+	if !ok || ev.Name == Queued {
+		return
+	}
+	_ = as.allocator.ReleaseBlockMemory(as.p, blkSize)
+}
+
+func (as *allocatorSubscriber) OnClose(topic notifications.Topic) {
 }
