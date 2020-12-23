@@ -32,7 +32,7 @@ func NewMessageManager(ctx context.Context, createPeerQueue PeerQueueFactory) *P
 	}
 }
 
-// BuildMessage allows you to work modify the next message that is sent for the given peer
+// BuildMessage allows you to modify the next message that is sent for the given peer
 func (pmm *PeerMessageManager) BuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) {
 	pq := pmm.GetProcess(p).(PeerQueue)
 	pq.BuildMessage(blkSize, buildMessageFn, notifees)

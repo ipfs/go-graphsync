@@ -25,19 +25,32 @@ type Transaction func(PeerResponseTransactionBuilder) error
 // PeerResponseTransactionBuilder is interface for assembling responses inside a transaction, so that they are included
 // in the same message on the protocol
 type PeerResponseTransactionBuilder interface {
+	// SendResponse adds a response to this transaction.
 	SendResponse(
 		link ipld.Link,
 		data []byte,
 	) graphsync.BlockData
+
+	// SendExtensionData adds extension data to the transaction.
 	SendExtensionData(graphsync.ExtensionData)
+
+	// FinishWithCancel cancels the request.
 	FinishWithCancel()
+
+	// FinishRequest completes the response to a request.
 	FinishRequest() graphsync.ResponseStatusCode
+
+	// FinishWithError end the response due to an error
 	FinishWithError(status graphsync.ResponseStatusCode)
+
+	// PauseRequest temporarily halts responding to the request
 	PauseRequest()
+
+	// AddNotifee adds a notifee to be notified about the response to request.
 	AddNotifee(notifications.Notifee)
 }
 
-// PeerMessageHandler is an interface that can queues a response for a given peer to go out over the network
+// PeerMessageHandler is an interface that can queue a response for a given peer to go out over the network
 type PeerMessageHandler interface {
 	BuildMessage(p peer.ID, blkSize uint64, buildResponseFn func(*gsmsg.Builder), notifees []notifications.Notifee)
 }
@@ -74,12 +87,12 @@ func (ra *ResponseAssembler) DedupKey(p peer.ID, requestID graphsync.RequestID, 
 	ra.GetProcess(p).(*peerLinkTracker).DedupKey(requestID, key)
 }
 
-// IgnoreBlocks indicates that a list of keys that should be ignored when sending blocks
+// IgnoreBlocks indicates that a list of keys should be ignored when sending blocks
 func (ra *ResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link) {
 	ra.GetProcess(p).(*peerLinkTracker).IgnoreBlocks(requestID, links)
 }
 
-// Transaction build a response, and queues it for sending in the next outgoing message
+// Transaction builds a response, and queues it for sending in the next outgoing message
 func (ra *ResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction Transaction) error {
 	prts := &transactionBuilder{
 		requestID:   requestID,
