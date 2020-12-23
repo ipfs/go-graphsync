@@ -47,7 +47,7 @@ type inProgressRequestStatus struct {
 
 // PeerHandler is an interface that can send requests to peers
 type PeerHandler interface {
-	BuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee)
+	AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee)
 }
 
 // AsyncLoader is an interface for loading links asynchronously, returning
@@ -566,7 +566,7 @@ const requestNetworkError = "request_network_error"
 func (rm *RequestManager) sendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
 	sub := notifications.NewTopicDataSubscriber(&reqSubscriber{p, request, rm.networkErrorListeners})
 	failNotifee := notifications.Notifee{Data: requestNetworkError, Subscriber: sub}
-	rm.peerHandler.BuildMessage(p, 0, func(builder *gsmsg.Builder) {
+	rm.peerHandler.AllocateAndBuildMessage(p, 0, func(builder *gsmsg.Builder) {
 		builder.AddRequest(request)
 	}, []notifications.Notifee{failNotifee})
 }

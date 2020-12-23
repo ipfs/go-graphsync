@@ -16,7 +16,6 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
-	"github.com/ipfs/go-graphsync/responsemanager/allocator"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -38,8 +37,7 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	responseAssembler := New(ctx, allocator, fph)
+	responseAssembler := New(ctx, fph)
 
 	var bd1, bd2 graphsync.BlockData
 
@@ -125,8 +123,7 @@ func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	responseAssembler := New(ctx, allocator, fph)
+	responseAssembler := New(ctx, fph)
 
 	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
 		b.SendResponse(links[0], blks[0].RawData())
@@ -171,8 +168,7 @@ func TestResponseAssemblerSendsResponsesInTransaction(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	responseAssembler := New(ctx, allocator, fph)
+	responseAssembler := New(ctx, fph)
 	notifee, _ := testutil.NewTestNotifee("transaction", 10)
 	err := responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
 		bd := b.SendResponse(links[0], blks[0].RawData())
@@ -210,8 +206,7 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	responseAssembler := New(ctx, allocator, fph)
+	responseAssembler := New(ctx, fph)
 
 	responseAssembler.IgnoreBlocks(p, requestID1, links)
 
@@ -278,8 +273,7 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	fph := newFakePeerHandler(ctx, t)
-	allocator := allocator.NewAllocator(1<<30, 1<<30)
-	responseAssembler := New(ctx, allocator, fph)
+	responseAssembler := New(ctx, fph)
 
 	responseAssembler.DedupKey(p, requestID1, "applesauce")
 	responseAssembler.DedupKey(p, requestID3, "applesauce")
@@ -340,67 +334,6 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 
 	fph.RefuteBlocks()
 	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
-}
-
-func TestResponseAssemblerSendsResponsesMemoryPressure(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
-	blks := testutil.GenerateBlocksOfSize(5, 100)
-	links := make([]ipld.Link, 0, len(blks))
-	for _, block := range blks {
-		links = append(links, cidlink.Link{Cid: block.Cid()})
-	}
-	fph := newFakePeerHandler(ctx, t)
-	allocator := newFakeAllocator()
-	responseAssembler := New(ctx, allocator, fph)
-
-	finishes := make(chan string, 2)
-	go func() {
-		err := responseAssembler.Transaction(p, requestID1, func(responseBuilder ResponseBuilder) error {
-			bd := responseBuilder.SendResponse(links[0], blks[0].RawData())
-			assertSentOnWire(t, bd, blks[0])
-			bd = responseBuilder.SendResponse(links[1], blks[1].RawData())
-			assertSentOnWire(t, bd, blks[1])
-			bd = responseBuilder.SendResponse(links[2], blks[2].RawData())
-			assertSentOnWire(t, bd, blks[2])
-			bd = responseBuilder.SendResponse(links[3], blks[3].RawData())
-			assertSentOnWire(t, bd, blks[3])
-			responseBuilder.FinishRequest()
-			return nil
-		})
-		require.NoError(t, err)
-		finishes <- "sent message"
-	}()
-
-	// assert transaction does not complete within 200ms because it is waiting on memory
-	ctx2, cancel2 := context.WithTimeout(ctx, 200*time.Millisecond)
-	select {
-	case <-finishes:
-		t.Fatal("transaction failed to wait on memory")
-		cancel2()
-	case <-ctx2.Done():
-	}
-
-	// simulate the release of memory
-	allocator.response <- nil
-
-	// assert transaction now completes within 200ms
-	ctx2, cancel2 = context.WithTimeout(ctx, 200*time.Millisecond)
-	defer cancel2()
-	select {
-	case <-finishes:
-		cancel()
-	case <-ctx2.Done():
-		t.Fatal("timeout waiting for transaction to complete")
-	}
-
-	fph.AssertBlocks(blks[0], blks[1], blks[2], blks[3])
-	fph.AssertResponses(expectedResponses{
-		requestID1: graphsync.RequestCompletedFull,
-	})
 }
 
 func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID graphsync.RequestID) (gsmsg.GraphSyncResponse, error) {
@@ -496,7 +429,7 @@ func (fph *fakePeerHandler) RefuteResponses() {
 	require.Empty(fph.t, fph.lastResponses)
 }
 
-func (fph *fakePeerHandler) BuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) {
+func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) {
 	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
 	buildMessageFn(builder)
 
