@@ -1,5 +1,18 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.2.5
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - add logging to push channel monitor (#131) ([filecoin-project/go-data-transfer#131](https://github.com/filecoin-project/go-data-transfer/pull/131))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 2 | +27/-2 | 2 |
+
 # go-data-transfer 1.2.4
 
 ### Changelog
