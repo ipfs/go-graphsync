@@ -131,6 +131,9 @@ func (m *Monitor) run() {
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 
+	log.Infof("Starting push channel monitor with %d checks per %s interval (check interval %s)",
+		m.cfg.ChecksPerInterval, m.cfg.Interval, tickInterval)
+
 	for {
 		select {
 		case <-m.ctx.Done():
@@ -200,6 +203,7 @@ func (mc *monitoredChannel) Shutdown() {
 }
 
 func (mc *monitoredChannel) start() {
+	log.Debugf("%s: starting push channel data-rate monitoring", mc.chid)
 	mc.unsub = mc.mgr.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 		if channelState.ChannelID() != mc.chid {
 			return
@@ -211,6 +215,7 @@ func (mc *monitoredChannel) start() {
 		// Once the channel completes, shut down the monitor
 		state := channelState.Status()
 		if channels.IsChannelCleaningUp(state) || channels.IsChannelTerminated(state) {
+			log.Debugf("%s: stopping push channel data-rate monitoring", mc.chid)
 			go mc.Shutdown()
 			return
 		}
@@ -218,6 +223,7 @@ func (mc *monitoredChannel) start() {
 		switch event.Code {
 		case datatransfer.Error:
 			// If there's an error, attempt to restart the channel
+			log.Debugf("%s: data transfer error, restarting", mc.chid)
 			go mc.restartChannel()
 		case datatransfer.DataQueued:
 			// Keep track of the amount of data queued
@@ -241,6 +247,8 @@ type dataRatePoint struct {
 func (mc *monitoredChannel) checkDataRate() {
 	mc.statsLk.Lock()
 	defer mc.statsLk.Unlock()
+
+	log.Debugf("%s: check data rate", mc.chid)
 
 	// Before returning, add the current data rate stats to the queue
 	defer func() {
@@ -266,12 +274,15 @@ func (mc *monitoredChannel) checkDataRate() {
 	// and the amount sent was lower than the minimum required, restart the
 	// channel
 	sentInInterval := mc.sent - atIntervalStart.sent
+	log.Debugf("%s: %d bytes sent since last check", mc.chid, sentInInterval)
 	if atIntervalStart.pending > sentInInterval && sentInInterval < mc.cfg.MinBytesSent {
 		go mc.restartChannel()
 	}
 }
 
 func (mc *monitoredChannel) restartChannel() {
+	log.Debugf("%s: restart channel", mc.chid)
+
 	// Check if the channel is already being restarted
 	mc.restartLk.Lock()
 	alreadyRestarting := mc.restarting
@@ -281,6 +292,7 @@ func (mc *monitoredChannel) restartChannel() {
 	mc.restartLk.Unlock()
 
 	if alreadyRestarting {
+		log.Debugf("%s: already restarting, bailing out", mc.chid)
 		return
 	}
 
@@ -315,12 +327,12 @@ func (mc *monitoredChannel) restartChannel() {
 	// Send a restart message for the channel.
 	// Note that at the networking layer there is logic to retry if a network
 	// connection cannot be established, so this may take some time.
-	log.Infof("Sending restart message for push data-channel %s", mc.chid)
+	log.Infof("%s: sending restart message (%d consecutive restarts)", mc.chid, restartCount)
 	err := mc.mgr.RestartDataTransferChannel(mc.ctx, mc.chid)
 	if err != nil {
 		// If it wasn't possible to restart the channel, close the channel
 		// and shut down the monitor
-		log.Errorf("Closing channel after failing to send restart message for push data-channel %s: %s", mc.chid, err)
+		log.Errorf("%s: closing push data transfer channel after failing to send restart message: %s", mc.chid, err)
 		mc.closeChannelAndShutdown()
 	}
 }
