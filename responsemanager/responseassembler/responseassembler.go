@@ -51,32 +51,26 @@ type ResponseBuilder interface {
 }
 
 // PeerMessageHandler is an interface that can queue a response for a given peer to go out over the network
+// If blkSize > 0, message building may block until enough memory has been freed from the queues to allocate the message.
 type PeerMessageHandler interface {
-	BuildMessage(p peer.ID, blkSize uint64, buildResponseFn func(*gsmsg.Builder), notifees []notifications.Notifee)
-}
-
-// Allocator is an interface that can manage memory allocated for blocks
-type Allocator interface {
-	AllocateBlockMemory(p peer.ID, amount uint64) <-chan error
+	AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildResponseFn func(*gsmsg.Builder), notifees []notifications.Notifee)
 }
 
 // ResponseAssembler manages assembling responses to go out over the network
 // in libp2p messages
 type ResponseAssembler struct {
 	*peermanager.PeerManager
-	allocator   Allocator
 	peerHandler PeerMessageHandler
 	ctx         context.Context
 }
 
 // New generates a new ResponseAssembler for sending responses
-func New(ctx context.Context, allocator Allocator, peerHandler PeerMessageHandler) *ResponseAssembler {
+func New(ctx context.Context, peerHandler PeerMessageHandler) *ResponseAssembler {
 	return &ResponseAssembler{
 		PeerManager: peermanager.New(ctx, func(ctx context.Context, p peer.ID) peermanager.PeerHandler {
 			return newTracker()
 		}),
 		ctx:         ctx,
-		allocator:   allocator,
 		peerHandler: peerHandler,
 	}
 }
@@ -110,14 +104,7 @@ func (ra *ResponseAssembler) execute(p peer.ID, operations []responseOperation, 
 	for _, op := range operations {
 		size += op.size()
 	}
-	if size > 0 {
-		select {
-		case <-ra.allocator.AllocateBlockMemory(p, size):
-		case <-ra.ctx.Done():
-			return
-		}
-	}
-	ra.peerHandler.BuildMessage(p, size, func(builder *gsmsg.Builder) {
+	ra.peerHandler.AllocateAndBuildMessage(p, size, func(builder *gsmsg.Builder) {
 		for _, op := range operations {
 			op.build(builder)
 		}

@@ -29,7 +29,7 @@ type fakePeer struct {
 	messagesSent chan messageSent
 }
 
-func (fp *fakePeer) BuildMessage(blkSize uint64, buildMessage func(b *gsmsg.Builder), notifees []notifications.Notifee) {
+func (fp *fakePeer) AllocateAndBuildMessage(blkSize uint64, buildMessage func(b *gsmsg.Builder), notifees []notifications.Notifee) {
 	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
 	buildMessage(builder)
 	message, err := builder.Build()
@@ -76,14 +76,14 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	peerManager := NewMessageManager(ctx, peerQueueFactory)
 
 	request := gsmsg.NewRequest(id, root, selector, priority)
-	peerManager.BuildMessage(tp[0], 0, func(b *gsmsg.Builder) {
+	peerManager.AllocateAndBuildMessage(tp[0], 0, func(b *gsmsg.Builder) {
 		b.AddRequest(request)
 	}, []notifications.Notifee{})
-	peerManager.BuildMessage(tp[1], 0, func(b *gsmsg.Builder) {
+	peerManager.AllocateAndBuildMessage(tp[1], 0, func(b *gsmsg.Builder) {
 		b.AddRequest(request)
 	}, []notifications.Notifee{})
 	cancelRequest := gsmsg.CancelRequest(id)
-	peerManager.BuildMessage(tp[0], 0, func(b *gsmsg.Builder) {
+	peerManager.AllocateAndBuildMessage(tp[0], 0, func(b *gsmsg.Builder) {
 		b.AddRequest(cancelRequest)
 	}, []notifications.Notifee{})
 

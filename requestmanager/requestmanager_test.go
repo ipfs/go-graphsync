@@ -35,7 +35,7 @@ type fakePeerHandler struct {
 	requestRecordChan chan requestRecord
 }
 
-func (fph *fakePeerHandler) BuildMessage(p peer.ID, blkSize uint64,
+func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64,
 	requestBuilder func(b *gsmsg.Builder), notifees []notifications.Notifee) {
 	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
 	requestBuilder(builder)

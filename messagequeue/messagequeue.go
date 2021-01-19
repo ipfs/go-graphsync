@@ -43,6 +43,7 @@ type MessageNetwork interface {
 }
 
 type Allocator interface {
+	AllocateBlockMemory(p peer.ID, amount uint64) <-chan error
 	ReleasePeerMemory(p peer.ID) error
 	ReleaseBlockMemory(p peer.ID, amount uint64) error
 }
@@ -80,8 +81,16 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Alloc
 	}
 }
 
-// BuildMessage allows you to work modify the next message that is sent in the queue
-func (mq *MessageQueue) BuildMessage(size uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) {
+// AllocateAndBuildMessage allows you to work modify the next message that is sent in the queue.
+// If blkSize > 0, message building may block until enough memory has been freed from the queues to allocate the message.
+func (mq *MessageQueue) AllocateAndBuildMessage(size uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) {
+	if size > 0 {
+		select {
+		case <-mq.allocator.AllocateBlockMemory(mq.p, size):
+		case <-mq.ctx.Done():
+			return
+		}
+	}
 	if mq.buildMessage(size, buildMessageFn, notifees) {
 		mq.signalWork()
 	}

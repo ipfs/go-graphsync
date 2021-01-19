@@ -77,7 +77,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
 
 	waitGroup.Add(1)
-	messageQueue.BuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
 		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 	}, []notifications.Notifee{})
 
@@ -116,7 +116,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 
 	// setup a message and advance as far as beginning to send it
 	waitGroup.Add(1)
-	messageQueue.BuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
 		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 	}, []notifications.Notifee{})
 	waitGroup.Wait()
@@ -168,7 +168,7 @@ func TestProcessingNotification(t *testing.T) {
 	status := graphsync.RequestCompletedFull
 	expectedTopic := "testTopic"
 	notifee, verifier := testutil.NewTestNotifee(expectedTopic, 5)
-	messageQueue.BuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
 		b.AddResponseCode(responseID, status)
 		b.AddExtensionData(responseID, extension)
 	}, []notifications.Notifee{notifee})
@@ -219,7 +219,7 @@ func TestDedupingMessages(t *testing.T) {
 	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
-	messageQueue.BuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
 		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 	}, []notifications.Notifee{})
 	// wait for send attempt
@@ -233,7 +233,7 @@ func TestDedupingMessages(t *testing.T) {
 	selector3 := ssb.ExploreIndex(0, ssb.Matcher()).Node()
 	root3 := testutil.GenerateCids(1)[0]
 
-	messageQueue.BuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
 		b.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))
 		b.AddRequest(gsmsg.NewRequest(id3, root3, selector3, priority3))
 	}, []notifications.Notifee{})
@@ -268,7 +268,7 @@ func TestDedupingMessages(t *testing.T) {
 	}
 }
 
-func TestResponseAssemblerSendsVeryLargeBlocksResponses(t *testing.T) {
+func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -288,7 +288,7 @@ func TestResponseAssemblerSendsVeryLargeBlocksResponses(t *testing.T) {
 
 	// generate large blocks before proceeding
 	blks := testutil.GenerateBlocksOfSize(5, 1000000)
-	messageQueue.BuildMessage(uint64(len(blks[0].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *gsmsg.Builder) {
 		b.AddBlock(blks[0])
 	}, []notifications.Notifee{})
 	waitGroup.Wait()
@@ -300,13 +300,13 @@ func TestResponseAssemblerSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.True(t, blks[0].Cid().Equals(msgBlks[0].Cid()))
 
 	// Send 3 very large blocks
-	messageQueue.BuildMessage(uint64(len(blks[1].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *gsmsg.Builder) {
 		b.AddBlock(blks[1])
 	}, []notifications.Notifee{})
-	messageQueue.BuildMessage(uint64(len(blks[2].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *gsmsg.Builder) {
 		b.AddBlock(blks[2])
 	}, []notifications.Notifee{})
-	messageQueue.BuildMessage(uint64(len(blks[3].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *gsmsg.Builder) {
 		b.AddBlock(blks[3])
 	}, []notifications.Notifee{})
 
@@ -324,4 +324,61 @@ func TestResponseAssemblerSendsVeryLargeBlocksResponses(t *testing.T) {
 	msgBlks = message.Blocks()
 	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
 	require.True(t, blks[3].Cid().Equals(msgBlks[0].Cid()))
+}
+
+func TestSendsResponsesMemoryPressure(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	p := testutil.GeneratePeers(1)[0]
+	messagesSent := make(chan gsmsg.GraphSyncMessage, 0)
+	resetChan := make(chan struct{}, 1)
+	fullClosedChan := make(chan struct{}, 1)
+	messageSender := &fakeMessageSender{nil, fullClosedChan, resetChan, messagesSent}
+	var waitGroup sync.WaitGroup
+	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
+
+	// use allocator with very small limit
+	allocator := allocator2.NewAllocator(1000, 1000)
+
+	messageQueue := New(ctx, p, messageNetwork, allocator)
+	messageQueue.Startup()
+	waitGroup.Add(1)
+
+	// start sending block that exceeds memory limit
+	blks := testutil.GenerateBlocksOfSize(2, 999)
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *gsmsg.Builder) {
+		b.AddBlock(blks[0])
+	}, []notifications.Notifee{})
+
+	finishes := make(chan string, 2)
+	go func() {
+		// attempt to send second block. Should block until memory is released
+		messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *gsmsg.Builder) {
+			b.AddBlock(blks[1])
+		}, []notifications.Notifee{})
+		finishes <- "sent message"
+	}()
+
+	// assert transaction does not complete within 200ms because it is waiting on memory
+	ctx2, cancel2 := context.WithTimeout(ctx, 200*time.Millisecond)
+	select {
+	case <-finishes:
+		t.Fatal("transaction failed to wait on memory")
+	case <-ctx2.Done():
+	}
+
+	// Allow first message to complete sending
+	<-messagesSent
+
+	// assert message is now queued within 200ms
+	ctx2, cancel2 = context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel2()
+	select {
+	case <-finishes:
+		cancel2()
+	case <-ctx2.Done():
+		t.Fatal("timeout waiting for transaction to complete")
+	}
 }
