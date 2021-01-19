@@ -2,6 +2,7 @@ package impl_test
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"os"
 	"testing"
@@ -15,10 +16,12 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-storedcounter"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
+	"github.com/filecoin-project/go-data-transfer/channels"
 	. "github.com/filecoin-project/go-data-transfer/impl"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/testutil"
@@ -749,7 +752,7 @@ func TestDataTransferRestartResponding(t *testing.T) {
 				p := testutil.GeneratePeers(1)[0]
 				chid := datatransfer.ChannelID{ID: h.pullRequest.TransferID(), Initiator: p, Responder: h.peers[0]}
 				_, err = h.transport.EventHandler.OnRequestReceived(chid, restartReq)
-				require.EqualError(t, err, "No channel for this channel ID")
+				require.True(t, xerrors.As(err, new(*channels.ErrNotFound)))
 			},
 		},
 		"restart request fails if voucher validation fails": {
@@ -780,7 +783,8 @@ func TestDataTransferRestartResponding(t *testing.T) {
 			},
 			verify: func(t *testing.T, h *receiverHarness) {
 				// receive an incoming pull
-				_, err := h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.pullRequest)
+				chid := channelID(h.id, h.peers)
+				_, err := h.transport.EventHandler.OnRequestReceived(chid, h.pullRequest)
 				require.NoError(t, err)
 				require.Len(t, h.sv.ValidationsReceived, 1)
 				require.Len(t, h.transport.OpenedChannels, 0)
@@ -790,8 +794,8 @@ func TestDataTransferRestartResponding(t *testing.T) {
 				randCid := testutil.GenerateCids(1)[0]
 				restartReq, err := message.NewRequest(h.id, true, true, h.voucher.Type(), h.voucher, randCid, h.stor)
 				require.NoError(t, err)
-				_, err = h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), restartReq)
-				require.EqualError(t, err, "base cid does not match")
+				_, err = h.transport.EventHandler.OnRequestReceived(chid, restartReq)
+				require.EqualError(t, err, fmt.Sprintf("restart request for channel %s failed validation: base cid does not match", chid))
 			},
 		},
 		"restart request fails if voucher type is not decodable": {
@@ -802,7 +806,8 @@ func TestDataTransferRestartResponding(t *testing.T) {
 			},
 			verify: func(t *testing.T, h *receiverHarness) {
 				// receive an incoming pull
-				_, err := h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.pullRequest)
+				chid := channelID(h.id, h.peers)
+				_, err := h.transport.EventHandler.OnRequestReceived(chid, h.pullRequest)
 				require.NoError(t, err)
 				require.Len(t, h.sv.ValidationsReceived, 1)
 				require.Len(t, h.transport.OpenedChannels, 0)
@@ -812,8 +817,8 @@ func TestDataTransferRestartResponding(t *testing.T) {
 
 				restartReq, err := message.NewRequest(h.id, true, true, "rand", h.voucher, h.baseCid, h.stor)
 				require.NoError(t, err)
-				_, err = h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), restartReq)
-				require.EqualError(t, err, "failed to decode request voucher: unknown voucher type: rand")
+				_, err = h.transport.EventHandler.OnRequestReceived(chid, restartReq)
+				require.EqualError(t, err, fmt.Sprintf("restart request for channel %s failed validation: failed to decode request voucher: unknown voucher type: rand", chid))
 			},
 		},
 		"restart request fails if voucher does not match": {
@@ -824,7 +829,8 @@ func TestDataTransferRestartResponding(t *testing.T) {
 			},
 			verify: func(t *testing.T, h *receiverHarness) {
 				// receive an incoming pull
-				_, err := h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.pullRequest)
+				chid := channelID(h.id, h.peers)
+				_, err := h.transport.EventHandler.OnRequestReceived(chid, h.pullRequest)
 				require.NoError(t, err)
 				require.Len(t, h.sv.ValidationsReceived, 1)
 				require.Len(t, h.transport.OpenedChannels, 0)
@@ -835,8 +841,8 @@ func TestDataTransferRestartResponding(t *testing.T) {
 				v.Data = "rand"
 				restartReq, err := message.NewRequest(h.id, true, true, h.voucher.Type(), v, h.baseCid, h.stor)
 				require.NoError(t, err)
-				_, err = h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), restartReq)
-				require.EqualError(t, err, "channel and request vouchers do not match")
+				_, err = h.transport.EventHandler.OnRequestReceived(chid, restartReq)
+				require.EqualError(t, err, fmt.Sprintf("restart request for channel %s failed validation: channel and request vouchers do not match", chid))
 			},
 		},
 		"ReceiveRestartExistingChannelRequest: Reopen Pull Channel": {

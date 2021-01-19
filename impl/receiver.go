@@ -23,7 +23,7 @@ func (r *receiver) ReceiveRequest(
 	incoming datatransfer.Request) {
 	err := r.receiveRequest(ctx, initiator, incoming)
 	if err != nil {
-		log.Warn(err)
+		log.Warnf("error processing request from %s: %s", initiator, err)
 	}
 }
 
@@ -97,6 +97,9 @@ func (r *receiver) receiveResponse(
 		return r.manager.transport.(datatransfer.PauseableTransport).PauseChannel(ctx, chid)
 	}
 	if err != nil {
+		log.Warnf("closing channel %s after getting error processing response from %s: %s",
+			chid, sender, err)
+
 		_ = r.manager.transport.CloseChannel(ctx, chid)
 		return err
 	}
@@ -113,9 +116,11 @@ func (r *receiver) ReceiveRestartExistingChannelRequest(ctx context.Context,
 
 	ch, err := incoming.RestartChannelId()
 	if err != nil {
-		log.Errorf("failed to fetch restart channel Id: %w", err)
+		log.Errorf("cannot restart channel: failed to fetch channel Id: %w", err)
 		return
 	}
+
+	log.Infof("channel %s: received restart existing channel request from %s", ch, sender)
 
 	// validate channel exists -> in non-terminal state and that the sender matches
 	channel, err := r.manager.channels.GetByID(ctx, ch)
@@ -126,30 +131,30 @@ func (r *receiver) ReceiveRestartExistingChannelRequest(ctx context.Context,
 
 	// initiator should be me
 	if channel.ChannelID().Initiator != r.manager.peerID {
-		log.Error("channel initiator is not the manager peer")
+		log.Error("cannot restart channel %s: channel initiator is not the manager peer", ch)
 		return
 	}
 
 	// other peer should be the counter party on the channel
 	if channel.OtherPeer() != sender {
-		log.Error("channel counterparty is not the sender peer")
+		log.Error("cannot restart channel %s: channel counterparty is not the sender peer", ch)
 		return
 	}
 
 	// channel should NOT be terminated
 	if channels.IsChannelTerminated(channel.Status()) {
-		log.Error("channel is already terminated")
+		log.Error("cannot restart channel %s: channel already terminated", ch)
 		return
 	}
 
 	switch r.manager.channelDataTransferType(channel) {
 	case ManagerPeerCreatePush:
 		if err := r.manager.openPushRestartChannel(ctx, channel); err != nil {
-			log.Errorf("failed to open push restart channel: %w", err)
+			log.Errorf("failed to open push restart channel %s: %s", ch, err)
 		}
 	case ManagerPeerCreatePull:
 		if err := r.manager.openPullRestartChannel(ctx, channel); err != nil {
-			log.Errorf("failed to open pull restart channel: %w", err)
+			log.Errorf("failed to open pull restart channel %s: %s", ch, err)
 		}
 	default:
 		log.Error("peer is not the creator of the channel")

@@ -98,6 +98,8 @@ func (m *manager) openPushRestartChannel(ctx context.Context, channel datatransf
 		transportConfigurer(chid, voucher, m.transport)
 	}
 	m.dataTransferNetwork.Protect(requestTo, chid.String())
+
+	log.Infof("sending push restart channel to %s for channel %s", requestTo, chid)
 	if err := m.dataTransferNetwork.SendMessage(ctx, requestTo, req); err != nil {
 		return xerrors.Errorf("Unable to send restart request: %w", err)
 	}
@@ -123,6 +125,8 @@ func (m *manager) openPullRestartChannel(ctx context.Context, channel datatransf
 		transportConfigurer(chid, voucher, m.transport)
 	}
 	m.dataTransferNetwork.Protect(requestTo, chid.String())
+
+	log.Infof("sending open channel to %s to restart channel %s", requestTo, chid)
 	if err := m.transport.OpenChannel(ctx, requestTo, chid, cidlink.Link{Cid: baseCid}, selector, channel.ReceivedCids(), req); err != nil {
 		return xerrors.Errorf("Unable to send open channel restart request: %w", err)
 	}

@@ -18,6 +18,8 @@ import (
 )
 
 func (m *manager) OnChannelOpened(chid datatransfer.ChannelID) error {
+	log.Infof("channel %s: opened", chid)
+
 	has, err := m.channels.HasChannel(chid)
 	if err != nil {
 		return err
@@ -121,6 +123,8 @@ func (m *manager) OnRequestReceived(chid datatransfer.ChannelID, request datatra
 		return m.receiveNewRequest(chid.Initiator, request)
 	}
 	if request.IsCancel() {
+		log.Infof("channel %s: received cancel request, cleaning up channel", chid)
+
 		m.transport.CleanupChannel(chid)
 		return nil, m.channels.Cancel(chid)
 	}
@@ -147,6 +151,7 @@ func (m *manager) OnRequestReceived(chid datatransfer.ChannelID, request datatra
 
 func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response datatransfer.Response) error {
 	if response.IsCancel() {
+		log.Infof("channel %s: received cancel response, cancelling channel", chid)
 		return m.channels.Cancel(chid)
 	}
 	if response.IsVoucherResult() {
@@ -161,9 +166,11 @@ func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response datat
 			}
 		}
 		if !response.Accepted() {
+			log.Infof("channel %s: received rejected response, erroring out channel", chid)
 			return m.channels.Error(chid, datatransfer.ErrRejected)
 		}
 		if response.IsNew() {
+			log.Infof("channel %s: received new response, accepting channel", chid)
 			err := m.channels.Accept(chid)
 			if err != nil {
 				return err
@@ -171,6 +178,7 @@ func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response datat
 		}
 
 		if response.IsRestart() {
+			log.Infof("channel %s: received restart response, restarting channel", chid)
 			err := m.channels.Restart(chid)
 			if err != nil {
 				return err
@@ -179,6 +187,7 @@ func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response datat
 	}
 	if response.IsComplete() && response.Accepted() {
 		if !response.IsPaused() {
+			log.Infof("channel %s: received complete response, completing channel", chid)
 			return m.channels.ResponderCompletes(chid)
 		}
 		err := m.channels.ResponderBeginsFinalization(chid)
@@ -285,8 +294,9 @@ func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, success bool) 
 				return nil
 			}
 			if msg != nil {
-				if err := m.dataTransferNetwork.SendMessage(context.TODO(), chid.Initiator, msg); err != nil {
-					log.Warnf("failed to send completion message, err : %v", err)
+				log.Infof("channel %s: sending completion message", chid)
+				if err := m.dataTransferNetwork.SendMessage(context.Background(), chid.Initiator, msg); err != nil {
+					log.Warnf("channel %s: failed to send completion message: %s", chid, err)
 					return m.OnRequestDisconnected(context.TODO(), chid)
 				}
 			}
@@ -312,6 +322,8 @@ func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, success bool) 
 }
 
 func (m *manager) receiveRestartRequest(chid datatransfer.ChannelID, incoming datatransfer.Request) (datatransfer.Response, error) {
+	log.Infof("channel %s: received restart request", chid)
+
 	result, err := m.restartRequest(chid, incoming)
 	msg, msgErr := m.response(true, false, err, incoming.TransferID(), result)
 	if msgErr != nil {
@@ -323,6 +335,8 @@ func (m *manager) receiveRestartRequest(chid datatransfer.ChannelID, incoming da
 func (m *manager) receiveNewRequest(
 	initiator peer.ID,
 	incoming datatransfer.Request) (datatransfer.Response, error) {
+	log.Infof("received new channel request from %s", initiator)
+
 	result, err := m.acceptRequest(initiator, incoming)
 	msg, msgErr := m.response(false, true, err, incoming.TransferID(), result)
 	if msgErr != nil {
@@ -340,7 +354,7 @@ func (m *manager) restartRequest(chid datatransfer.ChannelID,
 	}
 
 	if err := m.validateRestartRequest(context.Background(), initiator, chid, incoming); err != nil {
-		return nil, err
+		return nil, xerrors.Errorf("restart request for channel %s failed validation: %w", chid, err)
 	}
 
 	stor, err := incoming.Selector()
@@ -361,7 +375,7 @@ func (m *manager) restartRequest(chid datatransfer.ChannelID,
 		}
 	}
 	if err := m.channels.Restart(chid); err != nil {
-		return result, err
+		return result, xerrors.Errorf("failed to restart channel %s: %w", chid, err)
 	}
 	processor, has := m.transportConfigurers.Processor(voucher.Type())
 	if has {

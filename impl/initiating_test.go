@@ -14,6 +14,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-storedcounter"
 
@@ -156,7 +157,7 @@ func TestDataTransferInitiating(t *testing.T) {
 		"SendVoucher with no channel open": {
 			verify: func(t *testing.T, h *harness) {
 				err := h.dt.SendVoucher(h.ctx, datatransfer.ChannelID{Initiator: h.peers[1], Responder: h.peers[0], ID: 999999}, h.voucher)
-				require.EqualError(t, err, channels.ErrNotFound.Error())
+				require.True(t, xerrors.As(err, new(*channels.ErrNotFound)))
 			},
 		},
 		"SendVoucher with channel open, push succeeds": {

@@ -179,6 +179,8 @@ func (m *manager) notifier(evt datatransfer.Event, chst datatransfer.ChannelStat
 
 // Start initializes data transfer processing
 func (m *manager) Start(ctx context.Context) error {
+	log.Info("start data-transfer module")
+
 	go func() {
 		err := m.channels.Start(ctx)
 		if err != nil {
@@ -189,6 +191,7 @@ func (m *manager) Start(ctx context.Context) error {
 			log.Warnf("Publish data transfer ready event: %s", err.Error())
 		}
 	}()
+
 	dtReceiver := &receiver{m}
 	m.dataTransferNetwork.SetDelegate(dtReceiver)
 	return m.transport.SetEventHandler(m)
@@ -201,6 +204,7 @@ func (m *manager) OnReady(ready datatransfer.ReadyFunc) {
 
 // Stop terminates all data transfers and ends processing
 func (m *manager) Stop(ctx context.Context) error {
+	log.Info("stop data-transfer module")
 	m.pushChannelMonitor.Shutdown()
 	return m.transport.Shutdown(ctx)
 }
@@ -221,6 +225,8 @@ func (m *manager) RegisterVoucherType(voucherType datatransfer.Voucher, validato
 // OpenPushDataChannel opens a data transfer that will send data to the recipient peer and
 // transfer parts of the piece that match the selector
 func (m *manager) OpenPushDataChannel(ctx context.Context, requestTo peer.ID, voucher datatransfer.Voucher, baseCid cid.Cid, selector ipld.Node) (datatransfer.ChannelID, error) {
+	log.Infof("open push channel to %s with base cid %s", requestTo, baseCid)
+
 	req, err := m.newRequest(ctx, selector, false, voucher, baseCid, requestTo)
 	if err != nil {
 		return datatransfer.ChannelID{}, err
@@ -257,6 +263,8 @@ func (m *manager) OpenPushDataChannel(ctx context.Context, requestTo peer.ID, vo
 // OpenPullDataChannel opens a data transfer that will request data from the sending peer and
 // transfer parts of the piece that match the selector
 func (m *manager) OpenPullDataChannel(ctx context.Context, requestTo peer.ID, voucher datatransfer.Voucher, baseCid cid.Cid, selector ipld.Node) (datatransfer.ChannelID, error) {
+	log.Infof("open pull channel to %s with base cid %s", requestTo, baseCid)
+
 	req, err := m.newRequest(ctx, selector, true, voucher, baseCid, requestTo)
 	if err != nil {
 		return datatransfer.ChannelID{}, err
@@ -304,15 +312,18 @@ func (m *manager) SendVoucher(ctx context.Context, channelID datatransfer.Channe
 
 // close an open channel (effectively a cancel)
 func (m *manager) CloseDataTransferChannel(ctx context.Context, chid datatransfer.ChannelID) error {
+	log.Infof("close channel %s", chid)
+
 	chst, err := m.channels.GetByID(ctx, chid)
 	if err != nil {
 		return err
 	}
 	err = m.transport.CloseChannel(ctx, chid)
 	if err != nil {
-		log.Warnf("unable to close channel: %w", err)
+		log.Warnf("unable to close channel %s: %s", chid, err)
 	}
 
+	log.Infof("%s: sending close channel to %s for channel %s", m.peerID, chst.OtherPeer(), chid)
 	err = m.dataTransferNetwork.SendMessage(ctx, chst.OtherPeer(), m.cancelMessage(chid))
 	if err != nil {
 		err = fmt.Errorf("Unable to send cancel message: %w", err)
@@ -333,6 +344,7 @@ func (m *manager) CloseDataTransferChannel(ctx context.Context, chid datatransfe
 
 // pause a running data transfer channel
 func (m *manager) PauseDataTransferChannel(ctx context.Context, chid datatransfer.ChannelID) error {
+	log.Infof("pause channel %s", chid)
 
 	pausable, ok := m.transport.(datatransfer.PauseableTransport)
 	if !ok {
@@ -355,6 +367,8 @@ func (m *manager) PauseDataTransferChannel(ctx context.Context, chid datatransfe
 
 // resume a running data transfer channel
 func (m *manager) ResumeDataTransferChannel(ctx context.Context, chid datatransfer.ChannelID) error {
+	log.Infof("resume channel %s", chid)
+
 	pausable, ok := m.transport.(datatransfer.PauseableTransport)
 	if !ok {
 		return datatransfer.ErrUnsupported
@@ -427,6 +441,8 @@ func (m *manager) RegisterTransportConfigurer(voucherType datatransfer.Voucher, 
 
 // RestartDataTransferChannel restarts data transfer on the channel with the given channelId
 func (m *manager) RestartDataTransferChannel(ctx context.Context, chid datatransfer.ChannelID) error {
+	log.Infof("restart channel %s", chid)
+
 	channel, err := m.channels.GetByID(ctx, chid)
 	if err != nil {
 		return xerrors.Errorf("failed to fetch channel: %w", err)
