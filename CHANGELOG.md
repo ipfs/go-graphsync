@@ -1,6 +1,21 @@
 # go-data-transfer changelog
 
-# go-data-transfer 1.2.5
+# go-data-transfer 1.2.7
+
+- github.com/filecoin-project/go-data-transfer:
+  - feat: configurable send message timeouts (#136) ([filecoin-project/go-data-transfer#136](https://github.com/filecoin-project/go-data-transfer/pull/136))
+  - log request / response events (#137) ([filecoin-project/go-data-transfer#137](https://github.com/filecoin-project/go-data-transfer/pull/137))
+  - fix: dont complete transfer because graphsync request was cancelled (#134) ([filecoin-project/go-data-transfer#134](https://github.com/filecoin-project/go-data-transfer/pull/134))
+  - feat: better push channel monitor logging (#133) ([filecoin-project/go-data-transfer#133](https://github.com/filecoin-project/go-data-transfer/pull/133))
+  - release: v1.2.6 (#132) ([filecoin-project/go-data-transfer#132](https://github.com/filecoin-project/go-data-transfer/pull/132))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 5 | +172/-67 | 12 |
+
+# go-data-transfer 1.2.6
 
 ### Changelog
 
@@ -13,7 +28,7 @@ Contributors
 |-------------|---------|---------|---------------|
 | dirkmc | 2 | +27/-2 | 2 |
 
-# go-data-transfer 1.2.4
+# go-data-transfer 1.2.5
 
 ### Changelog
 
