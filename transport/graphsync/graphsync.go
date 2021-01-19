@@ -129,7 +129,7 @@ func (t *Transport) OpenChannel(ctx context.Context,
 	}
 	responseChan, errChan := t.gs.Request(internalCtx, dataSender, root, stor, exts...)
 
-	go t.executeGsRequest(ctx, channelID, responseChan, errChan)
+	go t.executeGsRequest(ctx, internalCtx, channelID, responseChan, errChan)
 	return nil
 }
 
@@ -143,7 +143,7 @@ func (t *Transport) consumeResponses(responseChan <-chan graphsync.ResponseProgr
 	return lastError
 }
 
-func (t *Transport) executeGsRequest(ctx context.Context, channelID datatransfer.ChannelID, responseChan <-chan graphsync.ResponseProgress, errChan <-chan error) {
+func (t *Transport) executeGsRequest(ctx context.Context, internalCtx context.Context, channelID datatransfer.ChannelID, responseChan <-chan graphsync.ResponseProgress, errChan <-chan error) {
 	lastError := t.consumeResponses(responseChan, errChan)
 
 	if _, ok := lastError.(graphsync.RequestContextCancelledErr); ok {
@@ -159,9 +159,19 @@ func (t *Transport) executeGsRequest(ctx context.Context, channelID datatransfer
 		return
 	}
 
+	// TODO: There seems to be a bug in graphsync. I believe it should return
+	// graphsync.RequestCancelledErr on the errChan if the request's context is
+	// cancelled, but it doesn't seem to be doing that
+	if internalCtx.Err() != nil {
+		log.Warnf("graphsync request cancelled for channel %s", channelID)
+		return
+	}
+
 	if lastError != nil {
 		log.Warnf("graphsync error: %s", lastError.Error())
 	}
+
+	log.Debugf("finished executing graphsync request for channel %s", channelID)
 	err := t.events.OnChannelCompleted(channelID, lastError == nil)
 	if err != nil {
 		log.Error(err)
