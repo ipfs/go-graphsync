@@ -11,14 +11,13 @@ import (
 	"strings"
 	"time"
 
-	badgerds "github.com/ipfs/go-ds-badger"
 	"github.com/dustin/go-humanize"
 	allselector "github.com/hannahhoward/all-selector"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
-	"github.com/ipfs/go-graphsync/storeutil"
+	badgerds "github.com/ipfs/go-ds-badger"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	chunk "github.com/ipfs/go-ipfs-chunker"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
@@ -28,24 +27,23 @@ import (
 	"github.com/ipfs/go-unixfs/importer/balanced"
 	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/metrics"
+	"github.com/libp2p/go-libp2p-core/peer"
+	noise "github.com/libp2p/go-libp2p-noise"
+	secio "github.com/libp2p/go-libp2p-secio"
+	tls "github.com/libp2p/go-libp2p-tls"
 	"github.com/testground/sdk-go/network"
+	"github.com/testground/sdk-go/run"
+	"github.com/testground/sdk-go/runtime"
+	"github.com/testground/sdk-go/sync"
 	"golang.org/x/sync/errgroup"
 
 	gs "github.com/ipfs/go-graphsync"
 	gsi "github.com/ipfs/go-graphsync/impl"
 	gsnet "github.com/ipfs/go-graphsync/network"
-
-	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/peer"
-	noise "github.com/libp2p/go-libp2p-noise"
-	secio "github.com/libp2p/go-libp2p-secio"
-	tls "github.com/libp2p/go-libp2p-tls"
-
-	"github.com/testground/sdk-go/run"
-	"github.com/testground/sdk-go/runtime"
-	"github.com/testground/sdk-go/sync"
+	"github.com/ipfs/go-graphsync/storeutil"
 )
 
 var testcases = map[string]interface{}{
@@ -409,7 +407,7 @@ func createDatastore(diskStore bool) ds.Datastore {
 	defopts := badgerds.DefaultOptions
 	defopts.SyncWrites = false
 	defopts.Truncate = true
-	datastore, err :=  badgerds.NewDatastore(path, &defopts)
+	datastore, err := badgerds.NewDatastore(path, &defopts)
 	if err != nil {
 		panic(err)
 	}

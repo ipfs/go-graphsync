@@ -3,9 +3,10 @@ package responseassembler
 import (
 	"sync"
 
+	"github.com/ipld/go-ipld-prime"
+
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/linktracker"
-	"github.com/ipld/go-ipld-prime"
 )
 
 type peerLinkTracker struct {
