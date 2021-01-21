@@ -53,7 +53,7 @@ func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	pnblnb, err := entnb.BeginList(len(parents))
+	pnblnb, err := entnb.BeginList(int64(len(parents)))
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func SetupBlockChain(
 // Selector returns the selector to recursive traverse the block chain parent links
 func (tbc *TestBlockChain) Selector() ipld.Node {
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
-	return ssb.ExploreRecursive(selector.RecursionLimitDepth(tbc.blockChainLength),
+	return ssb.ExploreRecursive(selector.RecursionLimitDepth(int64(tbc.blockChainLength)),
 		ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
 			efsb.Insert("Parents", ssb.ExploreAll(
 				ssb.ExploreRecursiveEdge()))
