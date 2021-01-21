@@ -16,201 +16,334 @@ func TestAllocator(t *testing.T) {
 	testCases := map[string]struct {
 		total      uint64
 		maxPerPeer uint64
-		allocs     []alloc
-		totals     []map[peer.ID]uint64
+		steps      []allocStep
 	}{
 		"single peer against total": {
 			total:      1000,
 			maxPerPeer: 1000,
-			allocs: []alloc{
-				{peers[0], 300, false},
-				{peers[0], 300, false},
-				{peers[0], 300, false},
-				{peers[0], 300, false},
-				{peers[0], 400, true},
-			},
-			totals: []map[peer.ID]uint64{
-				{peers[0]: 300},
-				{peers[0]: 600},
-				{peers[0]: 900},
-				{peers[0]: 500},
-				{peers[0]: 800},
+			steps: []allocStep{
+				{
+					op:              alloc{peers[0], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 300},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[0], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 600},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[0], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 900},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[0], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 900},
+					expectedPending: []pendingResult{{peers[0], 300}},
+				},
+				{
+					op:              alloc{peers[0], 400, true},
+					totals:          map[peer.ID]uint64{peers[0]: 800},
+					expectedPending: []pendingResult{},
+				},
 			},
 		},
 		"single peer against self limit": {
 			total:      2000,
 			maxPerPeer: 1000,
-			allocs: []alloc{
-				{peers[0], 300, false},
-				{peers[0], 300, false},
-				{peers[0], 300, false},
-				{peers[0], 300, false},
-				{peers[0], 400, true},
-			},
-			totals: []map[peer.ID]uint64{
-				{peers[0]: 300},
-				{peers[0]: 600},
-				{peers[0]: 900},
-				{peers[0]: 500},
-				{peers[0]: 800},
+			steps: []allocStep{
+				{
+					op:              alloc{peers[0], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 300},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[0], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 600},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[0], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 900},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[0], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 900},
+					expectedPending: []pendingResult{{peers[0], 300}},
+				},
+				{
+					op:              alloc{peers[0], 400, true},
+					totals:          map[peer.ID]uint64{peers[0]: 800},
+					expectedPending: []pendingResult{},
+				},
 			},
 		},
 		"multiple peers against total": {
 			total:      2000,
 			maxPerPeer: 2000,
-			allocs: []alloc{
-				{peers[0], 1000, false},
-				{peers[1], 900, false},
-				{peers[1], 400, false},
-				{peers[0], 300, false},
-				{peers[0], 500, true},
-				{peers[1], 500, true},
-			},
-			totals: []map[peer.ID]uint64{
-				{peers[0]: 1000},
-				{peers[0]: 1000, peers[1]: 900},
-				{peers[0]: 500, peers[1]: 900},
-				{peers[0]: 500, peers[1]: 1300},
-				{peers[0]: 500, peers[1]: 800},
-				{peers[0]: 800, peers[1]: 800},
+			steps: []allocStep{
+				{
+					op:              alloc{peers[0], 1000, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[1], 900, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 900},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[1], 400, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 900},
+					expectedPending: []pendingResult{{peers[1], 400}},
+				},
+				{
+					op:              alloc{peers[0], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 900},
+					expectedPending: []pendingResult{{peers[1], 400}, {peers[0], 300}},
+				},
+				{
+					op:              alloc{peers[0], 500, true},
+					totals:          map[peer.ID]uint64{peers[0]: 500, peers[1]: 1300},
+					expectedPending: []pendingResult{{peers[0], 300}},
+				},
+				{
+					op:              alloc{peers[1], 500, true},
+					totals:          map[peer.ID]uint64{peers[0]: 800, peers[1]: 800},
+					expectedPending: []pendingResult{},
+				},
 			},
 		},
 		"multiple peers against self limit": {
 			total:      5000,
 			maxPerPeer: 1000,
-			allocs: []alloc{
-				{peers[0], 1000, false},
-				{peers[1], 900, false},
-				{peers[1], 400, false},
-				{peers[0], 300, false},
-				{peers[0], 500, true},
-				{peers[1], 500, true},
-			},
-			totals: []map[peer.ID]uint64{
-				{peers[0]: 1000},
-				{peers[0]: 1000, peers[1]: 900},
-				{peers[0]: 500, peers[1]: 900},
-				{peers[0]: 800, peers[1]: 900},
-				{peers[0]: 800, peers[1]: 400},
-				{peers[0]: 800, peers[1]: 800},
+			steps: []allocStep{
+				{
+					op:              alloc{peers[0], 1000, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[1], 900, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 900},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[1], 400, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 900},
+					expectedPending: []pendingResult{{peers[1], 400}},
+				},
+				{
+					op:              alloc{peers[0], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 900},
+					expectedPending: []pendingResult{{peers[1], 400}, {peers[0], 300}},
+				},
+				{
+					op:              alloc{peers[0], 500, true},
+					totals:          map[peer.ID]uint64{peers[0]: 800, peers[1]: 900},
+					expectedPending: []pendingResult{{peers[1], 400}},
+				},
+				{
+					op:              alloc{peers[1], 500, true},
+					totals:          map[peer.ID]uint64{peers[0]: 800, peers[1]: 800},
+					expectedPending: []pendingResult{},
+				},
 			},
 		},
 		"multiple peers against mix of limits": {
 			total:      2700,
 			maxPerPeer: 1000,
-			allocs: []alloc{
-				{peers[0], 800, false},
-				{peers[1], 900, false},
-				{peers[1], 400, false},
-				{peers[0], 300, false},
-				{peers[2], 1000, false},
-				{peers[2], 300, false},
-				{peers[0], 200, true},
-				{peers[2], 200, true},
-				{peers[2], 100, false},
-				{peers[1], 200, true},
-				{peers[2], 100, true},
-				{peers[1], 100, true},
-				{peers[2], 200, true},
-				{peers[0], 200, true},
-			},
-			totals: []map[peer.ID]uint64{
-				{peers[0]: 800},
-				{peers[0]: 800, peers[1]: 900},
-				{peers[0]: 800, peers[1]: 900, peers[2]: 1000},
-				{peers[0]: 600, peers[1]: 900, peers[2]: 1000},
-				{peers[0]: 600, peers[1]: 900, peers[2]: 800},
-				{peers[0]: 900, peers[1]: 900, peers[2]: 800},
-				{peers[0]: 900, peers[1]: 700, peers[2]: 800},
-				{peers[0]: 900, peers[1]: 700, peers[2]: 700},
-				{peers[0]: 900, peers[1]: 700, peers[2]: 1000},
-				{peers[0]: 900, peers[1]: 600, peers[2]: 1000},
-				{peers[0]: 900, peers[1]: 600, peers[2]: 800},
-				{peers[0]: 900, peers[1]: 1000, peers[2]: 800},
-				{peers[0]: 700, peers[1]: 1000, peers[2]: 800},
-				{peers[0]: 700, peers[1]: 1000, peers[2]: 900},
+			steps: []allocStep{
+				{
+					op:              alloc{peers[0], 800, false},
+					totals:          map[peer.ID]uint64{peers[0]: 800},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[1], 900, false},
+					totals:          map[peer.ID]uint64{peers[0]: 800, peers[1]: 900},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[1], 400, false},
+					totals:          map[peer.ID]uint64{peers[0]: 800, peers[1]: 900},
+					expectedPending: []pendingResult{{peers[1], 400}},
+				},
+				{
+					op:              alloc{peers[0], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 800, peers[1]: 900},
+					expectedPending: []pendingResult{{peers[1], 400}, {peers[0], 300}},
+				},
+				{
+					op:              alloc{peers[2], 1000, false},
+					totals:          map[peer.ID]uint64{peers[0]: 800, peers[1]: 900, peers[2]: 1000},
+					expectedPending: []pendingResult{{peers[1], 400}, {peers[0], 300}},
+				},
+				{
+					op:              alloc{peers[2], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 800, peers[1]: 900, peers[2]: 1000},
+					expectedPending: []pendingResult{{peers[1], 400}, {peers[0], 300}, {peers[2], 300}},
+				},
+				{
+					op:              alloc{peers[0], 200, true},
+					totals:          map[peer.ID]uint64{peers[0]: 600, peers[1]: 900, peers[2]: 1000},
+					expectedPending: []pendingResult{{peers[1], 400}, {peers[0], 300}, {peers[2], 300}},
+				},
+				{
+					op:              alloc{peers[2], 200, true},
+					totals:          map[peer.ID]uint64{peers[0]: 900, peers[1]: 900, peers[2]: 800},
+					expectedPending: []pendingResult{{peers[1], 400}, {peers[2], 300}},
+				},
+				{
+					op:              alloc{peers[2], 100, false},
+					totals:          map[peer.ID]uint64{peers[0]: 900, peers[1]: 900, peers[2]: 800},
+					expectedPending: []pendingResult{{peers[1], 400}, {peers[2], 300}, {peers[2], 100}},
+				},
+				{
+					op:              alloc{peers[1], 200, true},
+					totals:          map[peer.ID]uint64{peers[0]: 900, peers[1]: 700, peers[2]: 800},
+					expectedPending: []pendingResult{{peers[1], 400}, {peers[2], 300}, {peers[2], 100}},
+				},
+				{
+					op:              alloc{peers[2], 100, true},
+					totals:          map[peer.ID]uint64{peers[0]: 900, peers[1]: 700, peers[2]: 1000},
+					expectedPending: []pendingResult{{peers[1], 400}, {peers[2], 100}},
+				},
+				{
+					op:              alloc{peers[1], 100, true},
+					totals:          map[peer.ID]uint64{peers[0]: 900, peers[1]: 600, peers[2]: 1000},
+					expectedPending: []pendingResult{{peers[1], 400}, {peers[2], 100}},
+				},
+				{
+					op:              alloc{peers[2], 200, true},
+					totals:          map[peer.ID]uint64{peers[0]: 900, peers[1]: 1000, peers[2]: 800},
+					expectedPending: []pendingResult{{peers[2], 100}},
+				},
+				{
+					op:              alloc{peers[0], 200, true},
+					totals:          map[peer.ID]uint64{peers[0]: 700, peers[1]: 1000, peers[2]: 900},
+					expectedPending: []pendingResult{},
+				},
 			},
 		},
 		"multiple peers, peer drops off": {
 			total:      2000,
 			maxPerPeer: 1000,
-			allocs: []alloc{
-				{peers[0], 1000, false},
-				{peers[1], 500, false},
-				{peers[2], 500, false},
-				{peers[1], 100, false},
-				{peers[2], 100, false},
-				{peers[2], 200, false},
-				{peers[1], 200, false},
-				{peers[2], 100, false},
-				{peers[1], 300, false},
-				// free peer 0 completely
-				{peers[0], 0, true},
+			steps: []allocStep{
+				{
+					op:              alloc{peers[0], 1000, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[1], 500, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 500},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[2], 500, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 500, peers[2]: 500},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[1], 100, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 500, peers[2]: 500},
+					expectedPending: []pendingResult{{peers[1], 100}},
+				},
+				{
+					op:              alloc{peers[2], 100, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 500, peers[2]: 500},
+					expectedPending: []pendingResult{{peers[1], 100}, {peers[2], 100}},
+				},
+				{
+					op:              alloc{peers[2], 200, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 500, peers[2]: 500},
+					expectedPending: []pendingResult{{peers[1], 100}, {peers[2], 100}, {peers[2], 200}},
+				},
+				{
+					op:              alloc{peers[1], 200, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 500, peers[2]: 500},
+					expectedPending: []pendingResult{{peers[1], 100}, {peers[2], 100}, {peers[2], 200}, {peers[1], 200}},
+				},
+				{
+					op:              alloc{peers[2], 100, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 500, peers[2]: 500},
+					expectedPending: []pendingResult{{peers[1], 100}, {peers[2], 100}, {peers[2], 200}, {peers[1], 200}, {peers[2], 100}},
+				},
+				{
+					op:              alloc{peers[1], 300, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 500, peers[2]: 500},
+					expectedPending: []pendingResult{{peers[1], 100}, {peers[2], 100}, {peers[2], 200}, {peers[1], 200}, {peers[2], 100}, {peers[1], 300}},
+				},
+				{
+					op:              alloc{peers[0], 0, true},
+					totals:          map[peer.ID]uint64{peers[0]: 0, peers[1]: 800, peers[2]: 900},
+					expectedPending: []pendingResult{{peers[1], 300}},
+				},
 			},
-			totals: []map[peer.ID]uint64{
-				{peers[0]: 1000},
-				{peers[0]: 1000, peers[1]: 500},
-				{peers[0]: 1000, peers[1]: 500, peers[2]: 500},
-				{peers[0]: 0, peers[1]: 500, peers[2]: 500},
-				{peers[0]: 0, peers[1]: 800, peers[2]: 900},
+		},
+		"release with nothing allocated": {
+			total:      2000,
+			maxPerPeer: 1000,
+			steps: []allocStep{
+				{
+					op:              alloc{peers[0], 1000, false},
+					totals:          map[peer.ID]uint64{peers[0]: 1000},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[0], 500, true},
+					totals:          map[peer.ID]uint64{peers[0]: 500},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[0], 1000, true},
+					totals:          map[peer.ID]uint64{peers[0]: 0},
+					expectedPending: []pendingResult{},
+				},
 			},
 		},
 	}
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
 			allocator := allocator.NewAllocator(data.total, data.maxPerPeer)
-			totals := map[peer.ID]uint64{}
-			currentTotal := 0
-			var pending []pendingResult
-			for _, alloc := range data.allocs {
-				var changedTotals bool
-				pending, changedTotals = readPending(t, pending, totals)
-				if changedTotals {
-					require.Less(t, currentTotal, len(data.totals))
-					require.Equal(t, data.totals[currentTotal], totals)
-					currentTotal++
-				}
+			var pending []pendingResultWithChan
+			for _, step := range data.steps {
+				alloc := step.op
 				if alloc.isDealloc {
 					if alloc.amount == 0 {
 						err := allocator.ReleasePeerMemory(alloc.p)
 						assert.NoError(t, err)
-						totals[alloc.p] = 0
 					} else {
 						err := allocator.ReleaseBlockMemory(alloc.p, alloc.amount)
 						assert.NoError(t, err)
-						totals[alloc.p] = totals[alloc.p] - alloc.amount
 					}
-					require.Less(t, currentTotal, len(data.totals))
-					require.Equal(t, data.totals[currentTotal], totals)
-					currentTotal++
+					pending = readPending(t, pending)
 				} else {
 					allocated := allocator.AllocateBlockMemory(alloc.p, alloc.amount)
 					select {
 					case <-allocated:
-						totals[alloc.p] = totals[alloc.p] + alloc.amount
-						require.Less(t, currentTotal, len(data.totals))
-						require.Equal(t, data.totals[currentTotal], totals)
-						currentTotal++
 					default:
-						pending = append(pending, pendingResult{alloc.p, alloc.amount, allocated})
+						pending = append(pending, pendingResultWithChan{pendingResult{alloc.p, alloc.amount}, allocated})
 					}
 				}
+				for p, expected := range step.totals {
+					require.Equal(t, expected, allocator.AllocatedForPeer(p))
+				}
+				pendingResults := []pendingResult{}
+				for _, next := range pending {
+					pendingResults = append(pendingResults, next.pendingResult)
+				}
+				require.Equal(t, step.expectedPending, pendingResults)
 			}
-			var changedTotals bool
-			_, changedTotals = readPending(t, pending, totals)
-			if changedTotals {
-				require.Less(t, currentTotal, len(data.totals))
-				require.Equal(t, data.totals[currentTotal], totals)
-				currentTotal++
-			}
-			require.Equal(t, len(data.totals), currentTotal)
 		})
 	}
 }
 
-func readPending(t *testing.T, pending []pendingResult, totals map[peer.ID]uint64) ([]pendingResult, bool) {
+func readPending(t *testing.T, pending []pendingResultWithChan) []pendingResultWithChan {
 	morePending := true
-	changedTotals := false
 	for morePending && len(pending) > 0 {
 		morePending = false
 	doneIter:
@@ -219,17 +352,15 @@ func readPending(t *testing.T, pending []pendingResult, totals map[peer.ID]uint6
 			case err := <-next.response:
 				require.NoError(t, err)
 				copy(pending[i:], pending[i+1:])
-				pending[len(pending)-1] = pendingResult{}
+				pending[len(pending)-1] = pendingResultWithChan{}
 				pending = pending[:len(pending)-1]
-				totals[next.p] = totals[next.p] + next.amount
-				changedTotals = true
 				morePending = true
 				break doneIter
 			default:
 			}
 		}
 	}
-	return pending, changedTotals
+	return pending
 }
 
 // amount 0 + isDealloc = true shuts down the whole peer
@@ -240,7 +371,17 @@ type alloc struct {
 }
 
 type pendingResult struct {
-	p        peer.ID
-	amount   uint64
+	p      peer.ID
+	amount uint64
+}
+
+type pendingResultWithChan struct {
+	pendingResult
 	response <-chan error
+}
+
+type allocStep struct {
+	op              alloc
+	totals          map[peer.ID]uint64
+	expectedPending []pendingResult
 }

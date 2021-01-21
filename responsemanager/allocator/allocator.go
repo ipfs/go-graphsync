@@ -12,7 +12,7 @@ type Allocator struct {
 	totalMemoryMax uint64
 	perPeerMax     uint64
 
-	allocLk         sync.Mutex
+	allocLk         sync.RWMutex
 	total           uint64
 	nextAllocIndex  uint64
 	peerStatuses    map[peer.ID]*peerStatus
@@ -27,6 +27,17 @@ func NewAllocator(totalMemoryMax uint64, perPeerMax uint64) *Allocator {
 		peerStatuses:    make(map[peer.ID]*peerStatus),
 		peerStatusQueue: pq.New(makePeerStatusCompare(perPeerMax)),
 	}
+}
+
+func (a *Allocator) AllocatedForPeer(p peer.ID) uint64 {
+	a.allocLk.RLock()
+	defer a.allocLk.RUnlock()
+
+	status, ok := a.peerStatuses[p]
+	if !ok {
+		return 0
+	}
+	return status.totalAllocated
 }
 
 func (a *Allocator) AllocateBlockMemory(p peer.ID, amount uint64) <-chan error {
@@ -65,8 +76,16 @@ func (a *Allocator) ReleaseBlockMemory(p peer.ID, amount uint64) error {
 	if !ok {
 		return errors.New("cannot deallocate from peer with no allocations")
 	}
-	status.totalAllocated -= amount
-	a.total -= amount
+	if status.totalAllocated > amount {
+		status.totalAllocated -= amount
+	} else {
+		status.totalAllocated = 0
+	}
+	if a.total > amount {
+		a.total -= amount
+	} else {
+		a.total = 0
+	}
 	a.peerStatusQueue.Update(status.Index())
 	a.processPendingAllocations()
 	return nil
