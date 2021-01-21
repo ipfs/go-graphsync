@@ -392,8 +392,10 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 			if isContextErr(err) {
 
 				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
-				rb.FinishWithCancel()
-			} else if err != errNetworkError {
+				rb.ClearRequest()
+			} else if err == errNetworkError {
+				rb.ClearRequest()
+			} else {
 				rb.FinishWithError(graphsync.RequestCancelled)
 				rb.AddNotifee(notifications.Notifee{Data: graphsync.RequestCancelled, Subscriber: response.subscriber})
 			}

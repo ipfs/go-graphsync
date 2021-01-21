@@ -58,26 +58,24 @@ type MessageQueue struct {
 	done         chan struct{}
 
 	// internal do not touch outside go routines
-	sender              gsnet.MessageSender
-	eventPublisher      notifications.Publisher
-	buildersLk          sync.RWMutex
-	builders            []*gsmsg.Builder
-	nextBuilderTopic    gsmsg.Topic
-	allocatorSubscriber *notifications.TopicDataSubscriber
-	allocator           Allocator
+	sender           gsnet.MessageSender
+	eventPublisher   notifications.Publisher
+	buildersLk       sync.RWMutex
+	builders         []*gsmsg.Builder
+	nextBuilderTopic gsmsg.Topic
+	allocator        Allocator
 }
 
 // New creats a new MessageQueue.
 func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Allocator) *MessageQueue {
 	return &MessageQueue{
-		ctx:                 ctx,
-		network:             network,
-		p:                   p,
-		outgoingWork:        make(chan struct{}, 1),
-		done:                make(chan struct{}),
-		eventPublisher:      notifications.NewPublisher(),
-		allocator:           allocator,
-		allocatorSubscriber: notifications.NewTopicDataSubscriber(&allocatorSubscriber{allocator, p}),
+		ctx:            ctx,
+		network:        network,
+		p:              p,
+		outgoingWork:   make(chan struct{}, 1),
+		done:           make(chan struct{}),
+		eventPublisher: notifications.NewPublisher(),
+		allocator:      allocator,
 	}
 }
 
@@ -147,9 +145,10 @@ func (mq *MessageQueue) runQueue() {
 			select {
 			case <-mq.outgoingWork:
 				for {
-					_, topic, err := mq.extractOutgoingMessage()
+					_, publisher, err := mq.extractOutgoingMessage()
 					if err == nil {
-						mq.eventPublisher.Publish(topic, Event{Name: Error, Err: fmt.Errorf("message queue shutdown")})
+						publisher.publishError(fmt.Errorf("message queue shutdown"))
+						publisher.close()
 					} else {
 						break
 					}
@@ -178,12 +177,12 @@ func (mq *MessageQueue) signalWork() {
 
 var errEmptyMessage = errors.New("Empty Message")
 
-func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, gsmsg.Topic, error) {
+func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, *messagePublisher, error) {
 	// grab outgoing message
 	mq.buildersLk.Lock()
 	if len(mq.builders) == 0 {
 		mq.buildersLk.Unlock()
-		return gsmsg.GraphSyncMessage{}, gsmsg.Topic(0), errEmptyMessage
+		return gsmsg.GraphSyncMessage{}, nil, errEmptyMessage
 	}
 	builder := mq.builders[0]
 	mq.builders = mq.builders[1:]
@@ -196,41 +195,37 @@ func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, gsmsg.
 	}
 	mq.buildersLk.Unlock()
 	if builder.Empty() {
-		return gsmsg.GraphSyncMessage{}, gsmsg.Topic(0), errEmptyMessage
+		return gsmsg.GraphSyncMessage{}, nil, errEmptyMessage
 	}
-	notifications.SubscribeWithData(mq.eventPublisher, builder.Topic(), notifications.Notifee{
-		Data:       builder.BlockSize(),
-		Subscriber: mq.allocatorSubscriber,
-	})
 	message, err := builder.Build()
-	return message, builder.Topic(), err
+	return message, &messagePublisher{mq, builder.Topic(), builder.BlockSize()}, err
 }
 
 func (mq *MessageQueue) sendMessage() {
-	message, topic, err := mq.extractOutgoingMessage()
+	message, publisher, err := mq.extractOutgoingMessage()
 	if err != nil {
 		if err != errEmptyMessage {
 			log.Errorf("Unable to assemble GraphSync message: %s", err.Error())
 		}
 		return
 	}
-	mq.eventPublisher.Publish(topic, Event{Name: Queued, Err: nil})
-	defer mq.eventPublisher.Close(topic)
+	publisher.publishQueued()
+	defer publisher.close()
 
 	err = mq.initializeSender()
 	if err != nil {
 		log.Infof("cant open message sender to peer %s: %s", mq.p, err)
 		// TODO: cant connect, what now?
-		mq.eventPublisher.Publish(topic, Event{Name: Error, Err: fmt.Errorf("cant open message sender to peer %s: %w", mq.p, err)})
+		publisher.publishError(fmt.Errorf("cant open message sender to peer %s: %w", mq.p, err))
 		return
 	}
 
 	for i := 0; i < maxRetries; i++ { // try to send this message until we fail.
-		if mq.attemptSendAndRecovery(message, topic) {
+		if mq.attemptSendAndRecovery(message, publisher) {
 			return
 		}
 	}
-	mq.eventPublisher.Publish(topic, Event{Name: Error, Err: fmt.Errorf("expended retries on SendMsg(%s)", mq.p)})
+	publisher.publishError(fmt.Errorf("expended retries on SendMsg(%s)", mq.p))
 }
 
 func (mq *MessageQueue) initializeSender() error {
@@ -245,10 +240,10 @@ func (mq *MessageQueue) initializeSender() error {
 	return nil
 }
 
-func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, topic gsmsg.Topic) bool {
+func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, publisher *messagePublisher) bool {
 	err := mq.sender.SendMsg(mq.ctx, message)
 	if err == nil {
-		mq.eventPublisher.Publish(topic, Event{Name: Sent})
+		publisher.publishSent()
 		return true
 	}
 
@@ -258,10 +253,10 @@ func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, t
 
 	select {
 	case <-mq.done:
-		mq.eventPublisher.Publish(topic, Event{Name: Error, Err: errors.New("queue shutdown")})
+		publisher.publishError(errors.New("queue shutdown"))
 		return true
 	case <-mq.ctx.Done():
-		mq.eventPublisher.Publish(topic, Event{Name: Error, Err: errors.New("context cancelled")})
+		publisher.publishError(errors.New("context cancelled"))
 		return true
 	case <-time.After(time.Millisecond * 100):
 		// wait 100ms in case disconnect notifications are still propogating
@@ -275,7 +270,7 @@ func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, t
 		// I think the *right* answer is to probably put the message we're
 		// trying to send back, and then return to waiting for new work or
 		// a disconnect.
-		mq.eventPublisher.Publish(topic, Event{Name: Error, Err: fmt.Errorf("couldnt open sender again after SendMsg(%s) failed: %w", mq.p, err)})
+		publisher.publishError(fmt.Errorf("couldnt open sender again after SendMsg(%s) failed: %w", mq.p, err))
 		return true
 	}
 
@@ -301,22 +296,26 @@ func openSender(ctx context.Context, network MessageNetwork, p peer.ID) (gsnet.M
 	return nsender, nil
 }
 
-type allocatorSubscriber struct {
-	allocator Allocator
-	p         peer.ID
+type messagePublisher struct {
+	mq      *MessageQueue
+	topic   gsmsg.Topic
+	msgSize uint64
 }
 
-func (as *allocatorSubscriber) OnNext(topic notifications.Topic, event notifications.Event) {
-	blkSize, ok := topic.(uint64)
-	if !ok {
-		return
-	}
-	ev, ok := event.(Event)
-	if !ok || ev.Name == Queued {
-		return
-	}
-	_ = as.allocator.ReleaseBlockMemory(as.p, blkSize)
+func (mp *messagePublisher) publishQueued() {
+	mp.mq.eventPublisher.Publish(mp.topic, Event{Name: Queued})
 }
 
-func (as *allocatorSubscriber) OnClose(topic notifications.Topic) {
+func (mp *messagePublisher) publishSent() {
+	mp.mq.eventPublisher.Publish(mp.topic, Event{Name: Sent})
+	mp.mq.allocator.ReleaseBlockMemory(mp.mq.p, mp.msgSize)
+}
+
+func (mp *messagePublisher) publishError(err error) {
+	mp.mq.eventPublisher.Publish(mp.topic, Event{Name: Error, Err: err})
+	mp.mq.allocator.ReleaseBlockMemory(mp.mq.p, mp.msgSize)
+}
+
+func (mp *messagePublisher) close() {
+	mp.mq.eventPublisher.Close(mp.topic)
 }
