@@ -49,7 +49,7 @@ func (rb *responseBuilder) PauseRequest() {
 	rb.operations = append(rb.operations, statusOperation{rb.requestID, graphsync.RequestPaused})
 }
 
-func (rb *responseBuilder) FinishWithCancel() {
+func (rb *responseBuilder) ClearRequest() {
 	_ = rb.linkTracker.FinishTracking(rb.requestID)
 }
 
