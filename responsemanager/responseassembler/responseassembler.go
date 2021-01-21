@@ -34,8 +34,8 @@ type ResponseBuilder interface {
 	// SendExtensionData adds extension data to the transaction.
 	SendExtensionData(graphsync.ExtensionData)
 
-	// FinishWithCancel cancels the request.
-	FinishWithCancel()
+	// ClearRequest removes all tracking for this request.
+	ClearRequest()
 
 	// FinishRequest completes the response to a request.
 	FinishRequest() graphsync.ResponseStatusCode

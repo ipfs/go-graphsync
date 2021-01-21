@@ -71,7 +71,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 
 	testutil.AssertDoesReceive(td.ctx, t, cancelledListenerCalled, "should call cancelled listener")
 
-	td.assertCancelledRequest()
+	td.assertRequestCleared()
 }
 
 func TestCancellationViaCommand(t *testing.T) {
@@ -626,6 +626,7 @@ func TestNetworkErrors(t *testing.T) {
 		td.notifyBlockSendsNetworkError(err)
 		td.assertHasNetworkErrors(err)
 		td.assertNoCompletedResponseStatuses()
+		td.assertRequestCleared()
 	})
 	t.Run("network error while paused", func(t *testing.T) {
 		td := newTestData(t)
@@ -650,6 +651,7 @@ func TestNetworkErrors(t *testing.T) {
 		err := errors.New("something went wrong")
 		td.notifyBlockSendsNetworkError(err)
 		td.assertNetworkErrors(err, blockCount)
+		td.assertRequestCleared()
 		err = responseManager.UnpauseResponse(td.p, td.requestID, td.extensionResponse)
 		require.Error(t, err)
 	})
@@ -708,7 +710,7 @@ type fakeResponseAssembler struct {
 	sentExtensions       chan sentExtension
 	lastCompletedRequest chan completedRequest
 	pausedRequests       chan pausedRequest
-	cancelledRequests    chan cancelledRequest
+	clearedRequests      chan clearedRequest
 	ignoredLinks         chan []ipld.Link
 	notifeePublisher     *testutil.MockPublisher
 	dedupKeys            chan string
@@ -747,7 +749,7 @@ type pausedRequest struct {
 	requestID graphsync.RequestID
 }
 
-type cancelledRequest struct {
+type clearedRequest struct {
 	requestID graphsync.RequestID
 }
 
@@ -798,8 +800,8 @@ func (fra *fakeResponseAssembler) pauseRequest(requestID graphsync.RequestID) {
 	fra.pausedRequests <- pausedRequest{requestID}
 }
 
-func (fra *fakeResponseAssembler) finishWithCancel(requestID graphsync.RequestID) {
-	fra.cancelledRequests <- cancelledRequest{requestID}
+func (fra *fakeResponseAssembler) clearRequest(requestID graphsync.RequestID) {
+	fra.clearedRequests <- clearedRequest{requestID}
 }
 
 type fakeResponseBuilder struct {
@@ -828,8 +830,8 @@ func (frb *fakeResponseBuilder) PauseRequest() {
 	frb.fra.pauseRequest(frb.requestID)
 }
 
-func (frb *fakeResponseBuilder) FinishWithCancel() {
-	frb.fra.finishWithCancel(frb.requestID)
+func (frb *fakeResponseBuilder) ClearRequest() {
+	frb.fra.clearRequest(frb.requestID)
 }
 
 func (frb *fakeResponseBuilder) AddNotifee(notifee notifications.Notifee) {
@@ -849,7 +851,7 @@ type testData struct {
 	sentResponses             chan sentResponse
 	sentExtensions            chan sentExtension
 	pausedRequests            chan pausedRequest
-	cancelledRequests         chan cancelledRequest
+	clearedRequests           chan clearedRequest
 	ignoredLinks              chan []ipld.Link
 	dedupKeys                 chan string
 	responseAssembler         *fakeResponseAssembler
@@ -895,7 +897,7 @@ func newTestData(t *testing.T) testData {
 	td.sentResponses = make(chan sentResponse, td.blockChainLength*2)
 	td.sentExtensions = make(chan sentExtension, td.blockChainLength*2)
 	td.pausedRequests = make(chan pausedRequest, 1)
-	td.cancelledRequests = make(chan cancelledRequest, 1)
+	td.clearedRequests = make(chan clearedRequest, 1)
 	td.ignoredLinks = make(chan []ipld.Link, 1)
 	td.dedupKeys = make(chan string, 1)
 	td.blockSends = make(chan graphsync.BlockData, td.blockChainLength*2)
@@ -907,7 +909,7 @@ func newTestData(t *testing.T) testData {
 		sentResponses:        td.sentResponses,
 		sentExtensions:       td.sentExtensions,
 		pausedRequests:       td.pausedRequests,
-		cancelledRequests:    td.cancelledRequests,
+		clearedRequests:      td.clearedRequests,
 		ignoredLinks:         td.ignoredLinks,
 		dedupKeys:            td.dedupKeys,
 		notifeePublisher:     td.notifeePublisher,
@@ -1032,8 +1034,8 @@ func (td *testData) assertOnlyCompleteProcessingWithSuccess() {
 	require.True(td.t, gsmsg.IsTerminalSuccessCode(lastRequest.result), "request should succeed")
 }
 
-func (td *testData) assertCancelledRequest() {
-	testutil.AssertDoesReceive(td.ctx, td.t, td.cancelledRequests, "should cancel request")
+func (td *testData) assertRequestCleared() {
+	testutil.AssertDoesReceive(td.ctx, td.t, td.clearedRequests, "should clear request")
 }
 
 func (td *testData) assertOnlyCompleteProcessingWithFailure() {

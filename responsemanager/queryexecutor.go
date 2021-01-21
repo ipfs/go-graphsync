@@ -242,11 +242,12 @@ func (qe *queryExecutor) executeQuery(
 				return nil
 			}
 			if isContextErr(err) {
-				rb.FinishWithCancel()
+				rb.ClearRequest()
 				code = graphsync.RequestCancelled
 				return nil
 			}
 			if err == errNetworkError {
+				rb.ClearRequest()
 				code = graphsync.RequestFailedUnknown
 				return nil
 			}
