@@ -54,7 +54,7 @@ func init() {
 // SelectorValidator returns an OnRequestReceivedHook that only validates
 // requests if their selector only has no recursions that are greater than
 // maxAcceptedDepth
-func SelectorValidator(maxAcceptedDepth int) graphsync.OnIncomingRequestHook {
+func SelectorValidator(maxAcceptedDepth int64) graphsync.OnIncomingRequestHook {
 	return func(p peer.ID, request graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		err := ValidateMaxRecursionDepth(request.Selector(), maxAcceptedDepth)
 		if err == nil {
@@ -65,10 +65,10 @@ func SelectorValidator(maxAcceptedDepth int) graphsync.OnIncomingRequestHook {
 
 // ValidateMaxRecursionDepth examines the given selector node and verifies
 // recursive selectors are limited to the given fixed depth
-func ValidateMaxRecursionDepth(node ipld.Node, maxAcceptedDepth int) error {
+func ValidateMaxRecursionDepth(node ipld.Node, maxAcceptedDepth int64) error {
 
 	return traversal.WalkMatching(node, maxDepthSelector, func(progress traversal.Progress, visited ipld.Node) error {
-		if visited.ReprKind() != ipld.ReprKind_Map || visited.Length() != 1 {
+		if visited.Kind() != ipld.Kind_Map || visited.Length() != 1 {
 			return ErrInvalidLimit
 		}
 		kn, v, _ := visited.MapIterator().Next()
