@@ -10,17 +10,19 @@ import (
 )
 
 type peerLinkTracker struct {
-	linkTrackerLk sync.RWMutex
-	linkTracker   *linktracker.LinkTracker
-	altTrackers   map[string]*linktracker.LinkTracker
-	dedupKeys     map[graphsync.RequestID]string
+	linkTrackerLk   sync.RWMutex
+	linkTracker     *linktracker.LinkTracker
+	altTrackers     map[string]*linktracker.LinkTracker
+	dedupKeys       map[graphsync.RequestID]string
+	noBlockRequests map[graphsync.RequestID]struct{}
 }
 
 func newTracker() *peerLinkTracker {
 	return &peerLinkTracker{
-		linkTracker: linktracker.New(),
-		dedupKeys:   make(map[graphsync.RequestID]string),
-		altTrackers: make(map[string]*linktracker.LinkTracker),
+		linkTracker:     linktracker.New(),
+		dedupKeys:       make(map[graphsync.RequestID]string),
+		altTrackers:     make(map[string]*linktracker.LinkTracker),
+		noBlockRequests: make(map[graphsync.RequestID]struct{}),
 	}
 }
 
@@ -42,6 +44,12 @@ func (prs *peerLinkTracker) DedupKey(requestID graphsync.RequestID, key string) 
 	if !ok {
 		prs.altTrackers[key] = linktracker.New()
 	}
+}
+
+func (prs *peerLinkTracker) IgnoreAllBlocks(requestID graphsync.RequestID) {
+	prs.linkTrackerLk.Lock()
+	defer prs.linkTrackerLk.Unlock()
+	prs.noBlockRequests[requestID] = struct{}{}
 }
 
 // IgnoreBlocks indicates that a list of keys should be ignored when sending blocks
@@ -74,6 +82,7 @@ func (prs *peerLinkTracker) FinishTracking(requestID graphsync.RequestID) bool {
 			delete(prs.altTrackers, key)
 		}
 	}
+	delete(prs.noBlockRequests, requestID)
 	return allBlocks
 }
 
@@ -81,9 +90,10 @@ func (prs *peerLinkTracker) FinishTracking(requestID graphsync.RequestID) bool {
 func (prs *peerLinkTracker) RecordLinkTraversal(requestID graphsync.RequestID,
 	link ipld.Link, hasBlock bool) (isUnique bool) {
 	prs.linkTrackerLk.Lock()
+	defer prs.linkTrackerLk.Unlock()
 	linkTracker := prs.getLinkTracker(requestID)
-	isUnique = linkTracker.BlockRefCount(link) == 0
+	_, noBlockRequest := prs.noBlockRequests[requestID]
+	isUnique = linkTracker.BlockRefCount(link) == 0 && !noBlockRequest
 	linkTracker.RecordLinkTraversal(requestID, link, hasBlock)
-	prs.linkTrackerLk.Unlock()
 	return
 }

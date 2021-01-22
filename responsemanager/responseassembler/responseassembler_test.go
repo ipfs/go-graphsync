@@ -259,6 +259,72 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 
 }
 
+func TestResponseAssemblerIgnoreAllBlocks(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	p := testutil.GeneratePeers(1)[0]
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
+	blks := testutil.GenerateBlocksOfSize(5, 100)
+	links := make([]ipld.Link, 0, len(blks))
+	for _, block := range blks {
+		links = append(links, cidlink.Link{Cid: block.Cid()})
+	}
+	fph := newFakePeerHandler(ctx, t)
+	responseAssembler := New(ctx, fph)
+
+	responseAssembler.IgnoreAllBlocks(p, requestID1)
+
+	var bd1, bd2, bd3 graphsync.BlockData
+	err := responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+		bd1 = b.SendResponse(links[0], blks[0].RawData())
+		return nil
+	})
+	require.NoError(t, err)
+
+	assertSentNotOnWire(t, bd1, blks[0])
+	fph.RefuteBlocks()
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
+
+	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
+		bd1 = b.SendResponse(links[0], blks[0].RawData())
+		return nil
+	})
+	require.NoError(t, err)
+	fph.AssertResponses(expectedResponses{
+		requestID2: graphsync.PartialResponse,
+	})
+
+	err = responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+		bd2 = b.SendResponse(links[1], blks[1].RawData())
+		bd3 = b.SendResponse(links[2], blks[2].RawData())
+		b.FinishRequest()
+		return nil
+	})
+	require.NoError(t, err)
+
+	assertSentNotOnWire(t, bd1, blks[0])
+	assertSentNotOnWire(t, bd2, blks[1])
+	assertSentNotOnWire(t, bd3, blks[2])
+
+	fph.RefuteBlocks()
+	fph.AssertResponses(expectedResponses{
+		requestID1: graphsync.RequestCompletedFull,
+	})
+
+	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
+		b.SendResponse(links[3], blks[3].RawData())
+		b.FinishRequest()
+		return nil
+	})
+	require.NoError(t, err)
+
+	fph.AssertBlocks(blks[3])
+	fph.AssertResponses(expectedResponses{requestID2: graphsync.RequestCompletedFull})
+
+}
+
 func TestResponseAssemblerDupKeys(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

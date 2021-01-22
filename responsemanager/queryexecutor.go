@@ -140,6 +140,9 @@ func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	if err := qe.processDedupByKey(request, p, failNotifee); err != nil {
 		return nil, nil, false, err
 	}
+	if err := qe.processNoBlocks(request, p, failNotifee); err != nil {
+		return nil, nil, false, err
+	}
 	if err := qe.processDoNoSendCids(request, p, failNotifee); err != nil {
 		return nil, nil, false, err
 	}
@@ -171,6 +174,15 @@ func (qe *queryExecutor) processDedupByKey(request gsmsg.GraphSyncRequest, p pee
 		return err
 	}
 	qe.responseAssembler.DedupKey(p, request.ID(), key)
+	return nil
+}
+
+func (qe *queryExecutor) processNoBlocks(request gsmsg.GraphSyncRequest, p peer.ID, failNotifee notifications.Notifee) error {
+	_, has := request.Extension(graphsync.ExtensionNoBlocks)
+	if !has {
+		return nil
+	}
+	qe.responseAssembler.IgnoreAllBlocks(p, request.ID())
 	return nil
 }
 
