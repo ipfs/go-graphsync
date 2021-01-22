@@ -1186,7 +1186,7 @@ func (fgsr *fakeGraphSyncReceiver) ReceiveMessage(ctx context.Context, sender pe
 	}
 }
 
-func (fgsr *fakeGraphSyncReceiver) ReceiveError(_ error) {
+func (fgsr *fakeGraphSyncReceiver) ReceiveError(_ peer.ID, _ error) {
 }
 func (fgsr *fakeGraphSyncReceiver) Connected(p peer.ID) {
 }
@@ -1262,8 +1262,10 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 			Name: extension.ExtensionDataTransfer1_1,
 			Data: extData,
 		})
-		gsmessage := gsmsg.New()
-		gsmessage.AddRequest(request)
+		builder := gsmsg.NewBuilder(0)
+		builder.AddRequest(request)
+		gsmessage, err := builder.Build()
+		require.NoError(t, err)
 		require.NoError(t, gsData.GsNet2.SendMessage(ctx, host1.ID(), gsmessage))
 
 		status := gsr.consumeResponses(ctx, t)
@@ -1282,8 +1284,10 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 			Name: extension.ExtensionDataTransfer1_1,
 			Data: extData,
 		})
-		gsmessage := gsmsg.New()
-		gsmessage.AddRequest(request)
+		builder := gsmsg.NewBuilder(0)
+		builder.AddRequest(request)
+		gsmessage, err := builder.Build()
+		require.NoError(t, err)
 		require.NoError(t, gsData.GsNet2.SendMessage(ctx, host1.ID(), gsmessage))
 
 		status := gsr.consumeResponses(ctx, t)
@@ -1337,8 +1341,10 @@ func TestResponseHookWhenExtensionNotFound(t *testing.T) {
 		}
 
 		request := gsmsg.NewRequest(graphsync.RequestID(rand.Int31()), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()))
-		gsmessage := gsmsg.New()
-		gsmessage.AddRequest(request)
+		builder := gsmsg.NewBuilder(0)
+		builder.AddRequest(request)
+		gsmessage, err := builder.Build()
+		require.NoError(t, err)
 		require.NoError(t, gsData.GsNet2.SendMessage(ctx, host1.ID(), gsmessage))
 
 		status := gsr.consumeResponses(ctx, t)
@@ -1376,8 +1382,10 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 				})
 
 				// initiator requests data over graphsync network
-				gsmessage := gsmsg.New()
-				gsmessage.AddRequest(gsRequest)
+				builder := gsmsg.NewBuilder(0)
+				builder.AddRequest(gsRequest)
+				gsmessage, err := builder.Build()
+				require.NoError(t, err)
 				require.NoError(t, gsData.GsNet1.SendMessage(ctx, gsData.Host2.ID(), gsmessage))
 				status := gsr.consumeResponses(ctx, t)
 				require.False(t, gsmsg.IsTerminalFailureCode(status))
@@ -1403,8 +1411,10 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 					Name: extension.ExtensionDataTransfer1_1,
 					Data: extData,
 				})
-				gsmessage := gsmsg.New()
-				gsmessage.AddRequest(request)
+				builder := gsmsg.NewBuilder(0)
+				builder.AddRequest(request)
+				gsmessage, err := builder.Build()
+				require.NoError(t, err)
 
 				// non-initiator requests data over graphsync network, but should not get it
 				// because there was no previous request

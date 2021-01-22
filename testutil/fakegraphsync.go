@@ -94,25 +94,26 @@ type PersistenceOption struct {
 
 // FakeGraphSync implements a GraphExchange but does nothing
 type FakeGraphSync struct {
-	requests                   chan ReceivedGraphSyncRequest // records calls to fakeGraphSync.Request
-	pauseRequests              chan PauseRequest
-	resumeRequests             chan ResumeRequest
-	pauseResponses             chan PauseResponse
-	resumeResponses            chan ResumeResponse
-	cancelResponses            chan CancelResponse
-	persistenceOptionsLk       sync.RWMutex
-	persistenceOptions         map[string]PersistenceOption
-	leaveRequestsOpen          bool
-	OutgoingRequestHook        graphsync.OnOutgoingRequestHook
-	IncomingBlockHook          graphsync.OnIncomingBlockHook
-	OutgoingBlockHook          graphsync.OnOutgoingBlockHook
-	IncomingRequestHook        graphsync.OnIncomingRequestHook
-	CompletedResponseListener  graphsync.OnResponseCompletedListener
-	RequestUpdatedHook         graphsync.OnRequestUpdatedHook
-	IncomingResponseHook       graphsync.OnIncomingResponseHook
-	RequestorCancelledListener graphsync.OnRequestorCancelledListener
-	BlockSentListener          graphsync.OnBlockSentListener
-	NetworkErrorListener       graphsync.OnNetworkErrorListener
+	requests                     chan ReceivedGraphSyncRequest // records calls to fakeGraphSync.Request
+	pauseRequests                chan PauseRequest
+	resumeRequests               chan ResumeRequest
+	pauseResponses               chan PauseResponse
+	resumeResponses              chan ResumeResponse
+	cancelResponses              chan CancelResponse
+	persistenceOptionsLk         sync.RWMutex
+	persistenceOptions           map[string]PersistenceOption
+	leaveRequestsOpen            bool
+	OutgoingRequestHook          graphsync.OnOutgoingRequestHook
+	IncomingBlockHook            graphsync.OnIncomingBlockHook
+	OutgoingBlockHook            graphsync.OnOutgoingBlockHook
+	IncomingRequestHook          graphsync.OnIncomingRequestHook
+	CompletedResponseListener    graphsync.OnResponseCompletedListener
+	RequestUpdatedHook           graphsync.OnRequestUpdatedHook
+	IncomingResponseHook         graphsync.OnIncomingResponseHook
+	RequestorCancelledListener   graphsync.OnRequestorCancelledListener
+	BlockSentListener            graphsync.OnBlockSentListener
+	NetworkErrorListener         graphsync.OnNetworkErrorListener
+	ReceiverNetworkErrorListener graphsync.OnReceiverNetworkErrorListener
 }
 
 // NewFakeGraphSync returns a new fake graphsync implementation
@@ -384,6 +385,14 @@ func (fgs *FakeGraphSync) RegisterNetworkErrorListener(listener graphsync.OnNetw
 	fgs.NetworkErrorListener = listener
 	return func() {
 		fgs.NetworkErrorListener = nil
+	}
+}
+
+// RegisterNetworkErrorListener adds a listener on the responder as blocks go out
+func (fgs *FakeGraphSync) RegisterReceiverNetworkErrorListener(listener graphsync.OnReceiverNetworkErrorListener) graphsync.UnregisterHookFunc {
+	fgs.ReceiverNetworkErrorListener = listener
+	return func() {
+		fgs.ReceiverNetworkErrorListener = nil
 	}
 }
 
