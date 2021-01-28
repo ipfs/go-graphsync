@@ -1,0 +1,28 @@
+[metadata]
+name = "memory-stress"
+
+[global]
+plan = "graphsync"
+case = "stress"
+total_instances = 2
+builder = "docker:go"
+runner = "local:docker"
+
+[global.run.test_params]
+size      = "512MB"
+latencies = '[]'
+bandwidths = '[]'
+concurrency = "1"
+chunk_size = "18"
+links_per_level = "1024"
+raw_leaves = "false"
+disk_store = "true"
+memory_snapshots = "detailed"
+
+[[groups]]
+id = "providers"
+instances = { count = 1 }
+
+[[groups]]
+id = "requestors"
+instances = { count = 1 }
