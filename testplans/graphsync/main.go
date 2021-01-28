@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -65,10 +66,10 @@ func (p networkParams) String() string {
 
 func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 	var (
-		size        = runenv.SizeParam("size")
-		concurrency = runenv.IntParam("concurrency")
-
-		networkParams = parseNetworkConfig(runenv)
+		size            = runenv.SizeParam("size")
+		concurrency     = runenv.IntParam("concurrency")
+		memorySnapshots = runenv.BooleanParam("memory_snapshots")
+		networkParams   = parseNetworkConfig(runenv)
 	)
 	runenv.RecordMessage("started test instance")
 	runenv.RecordMessage("network params: %v", networkParams)
@@ -107,7 +108,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			hookActions.ValidateRequest()
 		})
 
-		return runProvider(ctx, runenv, initCtx, dagsrv, size, networkParams, concurrency)
+		return runProvider(ctx, runenv, initCtx, dagsrv, size, networkParams, concurrency, memorySnapshots)
 
 	case "requestors":
 		runenv.RecordMessage("we are the requestor")
@@ -118,7 +119,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			return err
 		}
 		runenv.RecordMessage("done dialling provider")
-		return runRequestor(ctx, runenv, initCtx, gsync, p, dagsrv, networkParams, concurrency, size)
+		return runRequestor(ctx, runenv, initCtx, gsync, p, dagsrv, networkParams, concurrency, size, memorySnapshots)
 
 	default:
 		panic(fmt.Sprintf("unsupported group ID: %s\n", runenv.TestGroupID))
@@ -158,7 +159,7 @@ func parseNetworkConfig(runenv *runtime.RunEnv) []networkParams {
 	return ret
 }
 
-func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, gsync gs.GraphExchange, p peer.AddrInfo, dagsrv format.DAGService, networkParams []networkParams, concurrency int, size uint64) error {
+func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, gsync gs.GraphExchange, p peer.AddrInfo, dagsrv format.DAGService, networkParams []networkParams, concurrency int, size uint64, memorySnapshots bool) error {
 	var (
 		cids []cid.Cid
 		// create a selector for the whole UnixFS dag
@@ -167,9 +168,10 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 
 	for round, np := range networkParams {
 		var (
-			topicCid  = sync.NewTopic(fmt.Sprintf("cid-%d", round), []cid.Cid{})
-			stateNext = sync.State(fmt.Sprintf("next-%d", round))
-			stateNet  = sync.State(fmt.Sprintf("network-configured-%d", round))
+			topicCid    = sync.NewTopic(fmt.Sprintf("cid-%d", round), []cid.Cid{})
+			stateNext   = sync.State(fmt.Sprintf("next-%d", round))
+			stateNet    = sync.State(fmt.Sprintf("network-configured-%d", round))
+			stateFinish = sync.State(fmt.Sprintf("finish-%d", round))
 		)
 
 		// wait for all instances to be ready for the next state.
@@ -233,12 +235,19 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 		if err := errgrp.Wait(); err != nil {
 			return err
 		}
+
+		// wait for all instances to finish running
+		initCtx.SyncClient.MustSignalAndWait(ctx, stateFinish, runenv.TestInstanceCount)
+
+		if memorySnapshots {
+			recordSnapshots(runenv, size, np, concurrency)
+		}
 	}
 
 	return nil
 }
 
-func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, dagsrv format.DAGService, size uint64, networkParams []networkParams, concurrency int) error {
+func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, dagsrv format.DAGService, size uint64, networkParams []networkParams, concurrency int, memorySnapshots bool) error {
 	var (
 		cids       []cid.Cid
 		bufferedDS = format.NewBufferedDAG(ctx, dagsrv)
@@ -246,9 +255,10 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 
 	for round, np := range networkParams {
 		var (
-			topicCid  = sync.NewTopic(fmt.Sprintf("cid-%d", round), []cid.Cid{})
-			stateNext = sync.State(fmt.Sprintf("next-%d", round))
-			stateNet  = sync.State(fmt.Sprintf("network-configured-%d", round))
+			topicCid    = sync.NewTopic(fmt.Sprintf("cid-%d", round), []cid.Cid{})
+			stateNext   = sync.State(fmt.Sprintf("next-%d", round))
+			stateFinish = sync.State(fmt.Sprintf("finish-%d", round))
+			stateNet    = sync.State(fmt.Sprintf("network-configured-%d", round))
 		)
 
 		// wait for all instances to be ready for the next state.
@@ -314,6 +324,13 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 			CallbackTarget: 1,
 		})
 		runenv.RecordMessage("\tnetwork configured for round %d", round)
+
+		// wait for all instances to finish running
+		initCtx.SyncClient.MustSignalAndWait(ctx, stateFinish, runenv.TestInstanceCount)
+
+		if memorySnapshots {
+			recordSnapshots(runenv, size, np, concurrency)
+		}
 	}
 
 	return nil
@@ -413,4 +430,37 @@ func createDatastore(diskStore bool) ds.Datastore {
 	}
 
 	return datastore
+}
+
+func recordSnapshots(runenv *runtime.RunEnv, size uint64, np networkParams, concurrency int) error {
+	runenv.RecordMessage("Recording heap profile...")
+	err := writeHeap(runenv, size, np, concurrency, "pre-gc")
+	if err != nil {
+		return err
+	}
+	goruntime.GC()
+	goruntime.GC()
+	err = writeHeap(runenv, size, np, concurrency, "post-gc")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeHeap(runenv *runtime.RunEnv, size uint64, np networkParams, concurrency int, postfix string) error {
+	snapshotName := fmt.Sprintf("heap_lat-%s_bw-%s_concurrency-%d_size-%s_%s", np.latency, humanize.IBytes(np.bandwidth), concurrency, humanize.Bytes(size), postfix)
+	snapshotName = strings.Replace(snapshotName, " ", "", -1)
+	snapshotFile, err := runenv.CreateRawAsset(snapshotName)
+	if err != nil {
+		return err
+	}
+	err = pprof.WriteHeapProfile(snapshotFile)
+	if err != nil {
+		return err
+	}
+	err = snapshotFile.Close()
+	if err != nil {
+		return err
+	}
+	return nil
 }
