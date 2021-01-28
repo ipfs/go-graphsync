@@ -16,8 +16,8 @@ registry_type="aws"
 
 [global.run.test_params]
 size      = "512MB"
-latencies = '[]'
-bandwidths = '[]'
+latencies = '["50ms"]'
+bandwidths = '["32MiB"]'
 concurrency = "1"
 chunk_size = "18"
 links_per_level = "1024"
