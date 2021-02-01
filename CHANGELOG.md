@@ -1,5 +1,27 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.2.8
+
+- github.com/filecoin-project/go-data-transfer:
+  - test: check total blocks sent when theres a restart (#140) ([filecoin-project/go-data-transfer#140](https://github.com/filecoin-project/go-data-transfer/pull/140))
+  - feat(deps): update to go-graphsync v0.6.0 (#139) ([filecoin-project/go-data-transfer#139](https://github.com/filecoin-project/go-data-transfer/pull/139))
+- github.com/ipfs/go-graphsync (v0.5.2 -> v0.6.0):
+  - move block allocation into message queue (#140) ([ipfs/go-graphsync#140](https://github.com/ipfs/go-graphsync/pull/140))
+  - Response Assembler Refactor (#138) ([ipfs/go-graphsync#138](https://github.com/ipfs/go-graphsync/pull/138))
+  - Add error listener on receiver (#136) ([ipfs/go-graphsync#136](https://github.com/ipfs/go-graphsync/pull/136))
+  - Run testplan on in CI (#137) ([ipfs/go-graphsync#137](https://github.com/ipfs/go-graphsync/pull/137))
+  - fix(responsemanager): fix network error propogation (#133) ([ipfs/go-graphsync#133](https://github.com/ipfs/go-graphsync/pull/133))
+  - testground test for graphsync (#132) ([ipfs/go-graphsync#132](https://github.com/ipfs/go-graphsync/pull/132))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Alex Cruikshank | 4 | +3135/-1785 | 46 |
+| Hannah Howard | 4 | +671/-386 | 28 |
+| dirkmc | 2 | +369/-81 | 12 |
+| hannahhoward | 2 | +38/-15 | 4 |
+
 # go-data-transfer 1.2.7
 
 - github.com/filecoin-project/go-data-transfer:
