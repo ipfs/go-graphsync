@@ -21,6 +21,7 @@ import (
 )
 
 const totalIncrements = 204
+const expectedTransferSize = 217452
 
 // has 204 chunks/blocks
 const largeFile = "lorem_large.txt"
@@ -94,8 +95,9 @@ func TestRestartPush(t *testing.T) {
 			// SETUP DATA TRANSFER SUBSCRIBERS AND SUBSCRIBE
 			finished := make(chan peer.ID, 2)
 			errChan := make(chan *peerError, 2)
-			sent := make(chan uint64, totalIncrements)
-			received := make(chan uint64, totalIncrements)
+			queued := make(chan uint64, totalIncrements*2)
+			sent := make(chan uint64, totalIncrements*2)
+			received := make(chan uint64, totalIncrements*2)
 			receivedTillNow := atomic.NewInt32(0)
 
 			// counters we will check at the end for correctness
@@ -107,7 +109,13 @@ func TestRestartPush(t *testing.T) {
 			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 				if event.Code == datatransfer.DataQueued {
 					if channelState.Queued() > 0 {
-						sent <- channelState.Queued()
+						queued <- channelState.Queued()
+					}
+				}
+
+				if event.Code == datatransfer.DataSent {
+					if channelState.Sent() > 0 {
+						sent <- channelState.Sent()
 					}
 				}
 
@@ -165,7 +173,7 @@ func TestRestartPush(t *testing.T) {
 						completes++
 					case perr := <-errChan:
 						t.Fatalf("\n received error on peer %s, err: %v", perr.p.Pretty(), perr.err)
-					case s := <-sent:
+					case s := <-queued:
 						sentI = append(sentI, s)
 					case r := <-received:
 						receivedI = append(receivedI, r)
@@ -217,6 +225,14 @@ func TestRestartPush(t *testing.T) {
 			require.Contains(t, finishedPeers, rh.peer1)
 			require.Contains(t, finishedPeers, rh.peer2)
 			finishedPeersLk.Unlock()
+
+			sendChan, err := rh.dt1.ChannelState(context.Background(), chid)
+			require.NoError(t, err)
+			recvChan, err := rh.dt2.ChannelState(context.Background(), chid)
+			require.NoError(t, err)
+			require.Equal(t, expectedTransferSize, int(sendChan.Queued()))
+			require.Equal(t, expectedTransferSize, int(sendChan.Sent()))
+			require.Equal(t, expectedTransferSize, int(recvChan.Received()))
 		})
 	}
 }
@@ -411,6 +427,14 @@ func TestRestartPull(t *testing.T) {
 			require.Contains(t, finishedPeers, rh.peer1)
 			require.Contains(t, finishedPeers, rh.peer2)
 			finishedPeersLk.Unlock()
+
+			sendChan, err := rh.dt1.ChannelState(context.Background(), chid)
+			require.NoError(t, err)
+			recvChan, err := rh.dt2.ChannelState(context.Background(), chid)
+			require.NoError(t, err)
+			require.Equal(t, expectedTransferSize, int(sendChan.Queued()))
+			require.Equal(t, expectedTransferSize, int(sendChan.Sent()))
+			require.Equal(t, expectedTransferSize, int(recvChan.Received()))
 		})
 	}
 }

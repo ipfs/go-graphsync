@@ -146,6 +146,7 @@ func TestChannels(t *testing.T) {
 
 		err = channelList.DataReceived(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[0], 50)
 		require.NoError(t, err)
+		_ = checkEvent(ctx, t, received, datatransfer.DataReceivedProgress)
 		state = checkEvent(ctx, t, received, datatransfer.DataReceived)
 		require.Equal(t, uint64(50), state.Received())
 		require.Equal(t, uint64(0), state.Sent())
@@ -153,6 +154,7 @@ func TestChannels(t *testing.T) {
 
 		err = channelList.DataSent(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[1], 100)
 		require.NoError(t, err)
+		_ = checkEvent(ctx, t, received, datatransfer.DataSentProgress)
 		state = checkEvent(ctx, t, received, datatransfer.DataSent)
 		require.Equal(t, uint64(50), state.Received())
 		require.Equal(t, uint64(100), state.Sent())
@@ -167,6 +169,7 @@ func TestChannels(t *testing.T) {
 
 		err = channelList.DataReceived(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[1], 50)
 		require.NoError(t, err)
+		_ = checkEvent(ctx, t, received, datatransfer.DataReceivedProgress)
 		state = checkEvent(ctx, t, received, datatransfer.DataReceived)
 		require.Equal(t, uint64(100), state.Received())
 		require.Equal(t, uint64(100), state.Sent())
@@ -176,14 +179,14 @@ func TestChannels(t *testing.T) {
 		require.NoError(t, err)
 		state = checkEvent(ctx, t, received, datatransfer.DataSent)
 		require.Equal(t, uint64(100), state.Received())
-		require.Equal(t, uint64(125), state.Sent())
+		require.Equal(t, uint64(100), state.Sent())
 		require.Equal(t, []cid.Cid{cids[0], cids[1]}, state.ReceivedCids())
 
 		err = channelList.DataReceived(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[0], 50)
 		require.NoError(t, err)
 		state = checkEvent(ctx, t, received, datatransfer.DataReceived)
-		require.Equal(t, uint64(150), state.Received())
-		require.Equal(t, uint64(125), state.Sent())
+		require.Equal(t, uint64(100), state.Received())
+		require.Equal(t, uint64(100), state.Sent())
 		require.Equal(t, []cid.Cid{cids[0], cids[1], cids[0]}, state.ReceivedCids())
 	})
 

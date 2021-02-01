@@ -265,6 +265,7 @@ func TestDataTransferResponding(t *testing.T) {
 				datatransfer.Open,
 				datatransfer.NewVoucherResult,
 				datatransfer.Accept,
+				datatransfer.DataReceivedProgress,
 				datatransfer.DataReceived,
 				datatransfer.NewVoucherResult,
 				datatransfer.PauseResponder,
@@ -315,6 +316,7 @@ func TestDataTransferResponding(t *testing.T) {
 				datatransfer.Open,
 				datatransfer.NewVoucherResult,
 				datatransfer.Accept,
+				datatransfer.DataReceivedProgress,
 				datatransfer.DataReceived,
 				datatransfer.NewVoucherResult,
 			},
@@ -350,6 +352,7 @@ func TestDataTransferResponding(t *testing.T) {
 				datatransfer.Open,
 				datatransfer.NewVoucherResult,
 				datatransfer.Accept,
+				datatransfer.DataReceivedProgress,
 				datatransfer.DataReceived,
 				datatransfer.NewVoucherResult,
 				datatransfer.PauseResponder,
@@ -399,6 +402,7 @@ func TestDataTransferResponding(t *testing.T) {
 				datatransfer.Open,
 				datatransfer.NewVoucherResult,
 				datatransfer.Accept,
+				datatransfer.DataQueuedProgress,
 				datatransfer.DataQueued,
 				datatransfer.NewVoucherResult,
 				datatransfer.PauseResponder,
@@ -631,7 +635,8 @@ func TestDataTransferRestartResponding(t *testing.T) {
 		},
 		"receiving a push restart request validates and opens a channel for pull": {
 			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.NewVoucherResult, datatransfer.Accept,
-				datatransfer.DataReceived, datatransfer.DataReceived, datatransfer.NewVoucherResult, datatransfer.Restart},
+				datatransfer.DataReceivedProgress, datatransfer.DataReceived, datatransfer.DataReceivedProgress, datatransfer.DataReceived,
+				datatransfer.NewVoucherResult, datatransfer.Restart},
 			configureValidator: func(sv *testutil.StubbedValidator) {
 				sv.ExpectSuccessPush()
 				sv.StubResult(testutil.NewFakeDTType())
@@ -846,7 +851,7 @@ func TestDataTransferRestartResponding(t *testing.T) {
 			},
 		},
 		"ReceiveRestartExistingChannelRequest: Reopen Pull Channel": {
-			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.DataReceived, datatransfer.DataReceived},
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.DataReceivedProgress, datatransfer.DataReceived, datatransfer.DataReceivedProgress, datatransfer.DataReceived},
 			configureValidator: func(sv *testutil.StubbedValidator) {
 			},
 			verify: func(t *testing.T, h *receiverHarness) {

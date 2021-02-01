@@ -26,11 +26,6 @@ type graphsyncKey struct {
 	p         peer.ID
 }
 
-type responseProgress struct {
-	currentSent uint64
-	maximumSent uint64
-}
-
 var defaultSupportedExtensions = []graphsync.ExtensionName{extension.ExtensionDataTransfer1_1, extension.ExtensionDataTransfer1_0}
 
 // Option is an option for setting up the graphsync transport
@@ -56,7 +51,6 @@ type Transport struct {
 	pending               map[datatransfer.ChannelID]chan struct{}
 	requestorCancelledMap map[datatransfer.ChannelID]struct{}
 	pendingExtensions     map[datatransfer.ChannelID][]graphsync.ExtensionData
-	responseProgressMap   map[datatransfer.ChannelID]*responseProgress
 	stores                map[datatransfer.ChannelID]struct{}
 	supportedExtensions   []graphsync.ExtensionName
 	unregisterFuncs       []graphsync.UnregisterHookFunc
@@ -72,7 +66,6 @@ func NewTransport(peerID peer.ID, gs graphsync.GraphExchange, options ...Option)
 		requestorCancelledMap: make(map[datatransfer.ChannelID]struct{}),
 		pendingExtensions:     make(map[datatransfer.ChannelID][]graphsync.ExtensionData),
 		channelIDMap:          make(map[datatransfer.ChannelID]graphsyncKey),
-		responseProgressMap:   make(map[datatransfer.ChannelID]*responseProgress),
 		pending:               make(map[datatransfer.ChannelID]chan struct{}),
 		stores:                make(map[datatransfer.ChannelID]struct{}),
 		supportedExtensions:   defaultSupportedExtensions,
@@ -400,6 +393,15 @@ func (t *Transport) gsIncomingBlockHook(p peer.ID, response graphsync.ResponseDa
 }
 
 func (t *Transport) gsBlockSentHook(p peer.ID, request graphsync.RequestData, block graphsync.BlockData) {
+	// When a data transfer is restarted, the requester sends a list of CIDs
+	// that it already has. Graphsync calls the sent hook for all blocks even
+	// if they are in the list (meaning, they aren't actually sent over the
+	// wire). So here we check if the block was actually sent
+	// over the wire before firing the data sent event.
+	if block.BlockSizeOnWire() == 0 {
+		return
+	}
+
 	t.dataLock.RLock()
 	chid, ok := t.graphsyncRequestMap[graphsyncKey{request.ID(), p}]
 	t.dataLock.RUnlock()
@@ -413,19 +415,21 @@ func (t *Transport) gsBlockSentHook(p peer.ID, request graphsync.RequestData, bl
 }
 
 func (t *Transport) gsOutgoingBlockHook(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+	// When a data transfer is restarted, the requester sends a list of CIDs
+	// that it already has. Graphsync calls the outgoing block hook for all
+	// blocks even if they are in the list (meaning, they aren't actually going
+	// to be sent over the wire). So here we check if the block is actually
+	// going to be sent over the wire before firing the data queued event.
+	if block.BlockSizeOnWire() == 0 {
+		return
+	}
+
 	t.dataLock.RLock()
 	chid, ok := t.graphsyncRequestMap[graphsyncKey{request.ID(), p}]
-	if !ok {
-		t.dataLock.RUnlock()
-		return
-	}
-	rp := t.responseProgressMap[chid]
 	t.dataLock.RUnlock()
-	rp.currentSent += block.BlockSize()
-	if rp.currentSent <= rp.maximumSent {
+	if !ok {
 		return
 	}
-	rp.maximumSent = rp.currentSent
 
 	msg, err := t.events.OnDataQueued(chid, block.Link(), block.BlockSize())
 	if err != nil && err != datatransfer.ErrPause {
@@ -510,12 +514,6 @@ func (t *Transport) gsReqRecdHook(p peer.ID, request graphsync.RequestData, hook
 	}
 	t.graphsyncRequestMap[gsKey] = chid
 	t.channelIDMap[chid] = gsKey
-	existing := t.responseProgressMap[chid]
-	if existing != nil {
-		existing.currentSent = 0
-	} else {
-		t.responseProgressMap[chid] = &responseProgress{}
-	}
 	_, ok := t.stores[chid]
 	if ok {
 		hookActions.UsePersistenceOption("data-transfer-" + chid.String())
@@ -549,7 +547,6 @@ func (t *Transport) cleanupChannel(chid datatransfer.ChannelID, gsKey graphsyncK
 	delete(t.contextCancelMap, chid)
 	delete(t.pending, chid)
 	delete(t.graphsyncRequestMap, gsKey)
-	delete(t.responseProgressMap, chid)
 	delete(t.pendingExtensions, chid)
 	delete(t.requestorCancelledMap, chid)
 	_, ok := t.stores[chid]

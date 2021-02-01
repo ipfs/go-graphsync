@@ -123,7 +123,7 @@ func TestDataTransferInitiating(t *testing.T) {
 			},
 		},
 		"Disconnected request resumes": {
-			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.Disconnected, datatransfer.DataReceived},
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.Disconnected, datatransfer.DataReceivedProgress, datatransfer.DataReceived},
 			options:        []DataTransferOption{ChannelRemoveTimeout(10 * time.Millisecond)},
 			verify: func(t *testing.T, h *harness) {
 				channelID, err := h.dt.OpenPullDataChannel(h.ctx, h.peers[1], h.voucher, h.baseCid, h.stor)
@@ -137,7 +137,7 @@ func TestDataTransferInitiating(t *testing.T) {
 			},
 		},
 		"Disconnected request resumes, push": {
-			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.Accept, datatransfer.ResumeResponder, datatransfer.Disconnected, datatransfer.DataSent},
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.Accept, datatransfer.ResumeResponder, datatransfer.Disconnected, datatransfer.DataSentProgress, datatransfer.DataSent},
 			options:        []DataTransferOption{ChannelRemoveTimeout(10 * time.Millisecond)},
 			verify: func(t *testing.T, h *harness) {
 				channelID, err := h.dt.OpenPullDataChannel(h.ctx, h.peers[1], h.voucher, h.baseCid, h.stor)
@@ -429,7 +429,7 @@ func TestDataTransferRestartInitiating(t *testing.T) {
 		verify         func(t *testing.T, h *harness)
 	}{
 		"RestartDataTransferChannel: Manager Peer Create Pull Restart works": {
-			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.DataReceived, datatransfer.DataReceived},
+			expectedEvents: []datatransfer.EventCode{datatransfer.Open, datatransfer.DataReceivedProgress, datatransfer.DataReceived, datatransfer.DataReceivedProgress, datatransfer.DataReceived},
 			verify: func(t *testing.T, h *harness) {
 				// open a pull channel
 				channelID, err := h.dt.OpenPullDataChannel(h.ctx, h.peers[1], h.voucher, h.baseCid, h.stor)

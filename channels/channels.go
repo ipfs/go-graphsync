@@ -7,6 +7,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-datastore/namespace"
 	"github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	cbg "github.com/whyrusleeping/cbor-gen"
@@ -20,6 +21,7 @@ import (
 	"github.com/filecoin-project/go-data-transfer/channels/internal"
 	"github.com/filecoin-project/go-data-transfer/channels/internal/migrations"
 	"github.com/filecoin-project/go-data-transfer/cidlists"
+	"github.com/filecoin-project/go-data-transfer/cidsets"
 	"github.com/filecoin-project/go-data-transfer/encoding"
 )
 
@@ -53,6 +55,7 @@ type Channels struct {
 	stateMachines        fsm.Group
 	migrateStateMachines func(context.Context) error
 	cidLists             cidlists.CIDLists
+	seenCIDs             *cidsets.CIDSetManager
 }
 
 // ChannelEnvironment -- just a proxy for DTNetwork for now
@@ -71,8 +74,11 @@ func New(ds datastore.Batching,
 	voucherResultDecoder DecoderByTypeFunc,
 	env ChannelEnvironment,
 	selfPeer peer.ID) (*Channels, error) {
+
+	seenCIDsDS := namespace.Wrap(ds, datastore.NewKey("seencids"))
 	c := &Channels{
 		cidLists:             cidLists,
+		seenCIDs:             cidsets.NewCIDSetManager(seenCIDsDS),
 		notifier:             notifier,
 		voucherDecoder:       voucherDecoder,
 		voucherResultDecoder: voucherResultDecoder,
@@ -117,6 +123,19 @@ func (c *Channels) dispatch(eventName fsm.EventName, channel fsm.StateType) {
 	}
 
 	c.notifier(evt, fromInternalChannelState(realChannel, c.voucherDecoder, c.voucherResultDecoder, c.cidLists.ReadList))
+
+	// When the channel has been cleaned up, remove the caches of seen cids
+	if evt.Code == datatransfer.CleanupComplete {
+		chid := datatransfer.ChannelID{
+			Initiator: realChannel.Initiator,
+			Responder: realChannel.Responder,
+			ID:        realChannel.TransferID,
+		}
+		err := c.removeSeenCIDCaches(chid)
+		if err != nil {
+			log.Errorf("failed to clean up channel %s: %s", err)
+		}
+	}
 }
 
 // CreateNew creates a new channel id and channel state and saves to channels.
@@ -206,20 +225,21 @@ func (c *Channels) CompleteCleanupOnRestart(chid datatransfer.ChannelID) error {
 	return c.send(chid, datatransfer.CompleteCleanupOnRestart)
 }
 
-func (c *Channels) DataSent(chid datatransfer.ChannelID, cid cid.Cid, delta uint64) error {
-	return c.send(chid, datatransfer.DataSent, delta)
+func (c *Channels) DataSent(chid datatransfer.ChannelID, k cid.Cid, delta uint64) error {
+	return c.fireProgressEvent(chid, datatransfer.DataSent, datatransfer.DataSentProgress, k, delta)
 }
 
-func (c *Channels) DataQueued(chid datatransfer.ChannelID, cid cid.Cid, delta uint64) error {
-	return c.send(chid, datatransfer.DataQueued, delta)
+func (c *Channels) DataQueued(chid datatransfer.ChannelID, k cid.Cid, delta uint64) error {
+	return c.fireProgressEvent(chid, datatransfer.DataQueued, datatransfer.DataQueuedProgress, k, delta)
 }
 
-func (c *Channels) DataReceived(chid datatransfer.ChannelID, cid cid.Cid, delta uint64) error {
-	err := c.cidLists.AppendList(chid, cid)
+func (c *Channels) DataReceived(chid datatransfer.ChannelID, k cid.Cid, delta uint64) error {
+	err := c.cidLists.AppendList(chid, k)
 	if err != nil {
 		return err
 	}
-	return c.send(chid, datatransfer.DataReceived, delta)
+
+	return c.fireProgressEvent(chid, datatransfer.DataReceived, datatransfer.DataReceivedProgress, k, delta)
 }
 
 // PauseInitiator pauses the initator of this channel
@@ -304,7 +324,60 @@ func (c *Channels) HasChannel(chid datatransfer.ChannelID) (bool, error) {
 	return c.stateMachines.Has(chid)
 }
 
+// removeSeenCIDCaches cleans up the caches of "seen" blocks, ie
+// blocks that have already been queued / sent / received
+func (c *Channels) removeSeenCIDCaches(chid datatransfer.ChannelID) error {
+	progressStates := []datatransfer.EventCode{
+		datatransfer.DataQueuedProgress,
+		datatransfer.DataSentProgress,
+		datatransfer.DataReceivedProgress,
+	}
+	for _, evt := range progressStates {
+		sid := cidsets.SetID(chid.String() + "/" + datatransfer.Events[evt])
+		err := c.seenCIDs.DeleteSet(sid)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// onProgress fires an event indicating progress has been made in
+// queuing / sending / receiving blocks.
+// These events are fired only for new blocks (not for example if
+// a block is resent)
+func (c *Channels) fireProgressEvent(chid datatransfer.ChannelID, evt datatransfer.EventCode, progressEvt datatransfer.EventCode, k cid.Cid, delta uint64) error {
+	if err := c.checkChannelExists(chid, evt); err != nil {
+		return err
+	}
+
+	// Check if the block has already been seen
+	sid := cidsets.SetID(chid.String() + "/" + datatransfer.Events[evt])
+	seen, err := c.seenCIDs.InsertSetCID(sid, k)
+	if err != nil {
+		return err
+	}
+
+	// If the block has not been seen before, fire the progress event
+	if !seen {
+		if err := c.stateMachines.Send(chid, progressEvt, delta); err != nil {
+			return err
+		}
+	}
+
+	// Fire the regular event
+	return c.stateMachines.Send(chid, evt)
+}
+
 func (c *Channels) send(chid datatransfer.ChannelID, code datatransfer.EventCode, args ...interface{}) error {
+	err := c.checkChannelExists(chid, code)
+	if err != nil {
+		return err
+	}
+	return c.stateMachines.Send(chid, code, args...)
+}
+
+func (c *Channels) checkChannelExists(chid datatransfer.ChannelID, code datatransfer.EventCode) error {
 	has, err := c.stateMachines.Has(chid)
 	if err != nil {
 		return err
@@ -313,5 +386,5 @@ func (c *Channels) send(chid datatransfer.ChannelID, code datatransfer.EventCode
 		return xerrors.Errorf("cannot send FSM event %s to data-transfer channel %s: %w",
 			datatransfer.Events[code], chid, NewErrNotFound(chid))
 	}
-	return c.stateMachines.Send(chid, code, args...)
+	return nil
 }

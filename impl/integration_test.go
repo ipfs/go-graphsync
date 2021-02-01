@@ -872,7 +872,7 @@ func TestPauseAndResume(t *testing.T) {
 	}
 	for testCase, isPull := range testCases {
 		t.Run(testCase, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 
 			gsData := testutil.NewGraphsyncTestingData(ctx, t, nil, nil)
@@ -893,8 +893,8 @@ func TestPauseAndResume(t *testing.T) {
 			finished := make(chan struct{}, 2)
 			errChan := make(chan struct{}, 2)
 			opened := make(chan struct{}, 2)
-			sent := make(chan uint64, 21)
-			received := make(chan uint64, 21)
+			sent := make(chan uint64, 100)
+			received := make(chan uint64, 100)
 			pauseInitiator := make(chan struct{}, 2)
 			resumeInitiator := make(chan struct{}, 2)
 			pauseResponder := make(chan struct{}, 2)

@@ -12,6 +12,16 @@ import (
 
 var log = logging.Logger("data-transfer")
 
+var transferringStates = []fsm.StateKey{
+	datatransfer.Requested,
+	datatransfer.Ongoing,
+	datatransfer.InitiatorPaused,
+	datatransfer.ResponderPaused,
+	datatransfer.BothPaused,
+	datatransfer.ResponderCompleted,
+	datatransfer.ResponderFinalizing,
+}
+
 // ChannelEvents describe the events taht can
 var ChannelEvents = fsm.Events{
 	fsm.Event(datatransfer.Open).FromAny().To(datatransfer.Requested),
@@ -23,40 +33,25 @@ var ChannelEvents = fsm.Events{
 
 	fsm.Event(datatransfer.Cancel).FromAny().To(datatransfer.Cancelling),
 
-	fsm.Event(datatransfer.DataReceived).FromMany(
-		datatransfer.Requested,
-		datatransfer.Ongoing,
-		datatransfer.InitiatorPaused,
-		datatransfer.ResponderPaused,
-		datatransfer.BothPaused,
-		datatransfer.ResponderCompleted,
-		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64) error {
-		chst.Received += delta
-		return nil
-	}),
+	fsm.Event(datatransfer.DataReceived).FromMany(transferringStates...).ToNoChange(),
+	fsm.Event(datatransfer.DataReceivedProgress).FromMany(transferringStates...).ToNoChange().
+		Action(func(chst *internal.ChannelState, delta uint64) error {
+			chst.Received += delta
+			return nil
+		}),
 
-	fsm.Event(datatransfer.DataSent).FromMany(
-		datatransfer.Requested,
-		datatransfer.Ongoing,
-		datatransfer.InitiatorPaused,
-		datatransfer.ResponderPaused,
-		datatransfer.BothPaused,
-		datatransfer.ResponderCompleted,
-		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64) error {
-		chst.Sent += delta
-		return nil
-	}),
-	fsm.Event(datatransfer.DataQueued).FromMany(
-		datatransfer.Requested,
-		datatransfer.Ongoing,
-		datatransfer.InitiatorPaused,
-		datatransfer.ResponderPaused,
-		datatransfer.BothPaused,
-		datatransfer.ResponderCompleted,
-		datatransfer.ResponderFinalizing).ToNoChange().Action(func(chst *internal.ChannelState, delta uint64) error {
-		chst.Queued += delta
-		return nil
-	}),
+	fsm.Event(datatransfer.DataSent).FromMany(transferringStates...).ToNoChange(),
+	fsm.Event(datatransfer.DataSentProgress).FromMany(transferringStates...).ToNoChange().
+		Action(func(chst *internal.ChannelState, delta uint64) error {
+			chst.Sent += delta
+			return nil
+		}),
+	fsm.Event(datatransfer.DataQueued).FromMany(transferringStates...).ToNoChange(),
+	fsm.Event(datatransfer.DataQueuedProgress).FromMany(transferringStates...).ToNoChange().
+		Action(func(chst *internal.ChannelState, delta uint64) error {
+			chst.Queued += delta
+			return nil
+		}),
 	fsm.Event(datatransfer.Disconnected).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
 		chst.Message = datatransfer.ErrDisconnected.Error()
 		return nil
