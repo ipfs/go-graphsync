@@ -12,13 +12,14 @@ import (
 	"strings"
 	"time"
 
+	dgbadger "github.com/dgraph-io/badger/v2"
 	"github.com/dustin/go-humanize"
 	allselector "github.com/hannahhoward/all-selector"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
-	badgerds "github.com/ipfs/go-ds-badger"
+	badgerds "github.com/ipfs/go-ds-badger2"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	chunk "github.com/ipfs/go-ipfs-chunker"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
@@ -82,9 +83,14 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 	host, peers, _ := makeHost(ctx, runenv, initCtx)
 	defer host.Close()
 
+	datastore, err := createDatastore(runenv.BooleanParam("disk_store"))
+	if err != nil {
+		runenv.RecordMessage("datastore error: %s", err.Error())
+		return err
+	}
 	var (
 		// make datastore, blockstore, dag service, graphsync
-		bs     = blockstore.NewBlockstore(dss.MutexWrap(createDatastore(runenv.BooleanParam("disk_store"))))
+		bs     = blockstore.NewBlockstore(dss.MutexWrap(datastore))
 		dagsrv = merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
 		gsync  = gsi.New(ctx,
 			gsnet.NewFromLibp2pHost(host),
@@ -111,8 +117,11 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 		gsync.RegisterBlockSentListener(func(p peer.ID, request gs.RequestData, block gs.BlockData) {
 			recorder.recordBlock()
 		})
-		return runProvider(ctx, runenv, initCtx, dagsrv, size, networkParams, concurrency, memorySnapshots, recorder)
-
+		err := runProvider(ctx, runenv, initCtx, dagsrv, size, networkParams, concurrency, memorySnapshots, recorder)
+		if err != nil {
+			runenv.RecordMessage("Error running provider: %s", err.Error())
+		}
+		return err
 	case "requestors":
 		runenv.RecordMessage("we are the requestor")
 		defer runenv.RecordMessage("done requestor")
@@ -343,7 +352,9 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 		}
 
 		// run GC to get accurate-ish stats.
-		goruntime.GC()
+		if memorySnapshots == snapshotSimple || memorySnapshots == snapshotDetailed {
+			recordSnapshots(runenv, size, np, concurrency, "pre")
+		}
 		goruntime.GC()
 
 		runenv.RecordMessage("\tCIDs are: %v", cids)
@@ -443,31 +454,32 @@ func makeHost(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitCont
 	return host, peers, bwcounter
 }
 
-func createDatastore(diskStore bool) ds.Datastore {
+func createDatastore(diskStore bool) (ds.Datastore, error) {
 	if !diskStore {
-		return ds.NewMapDatastore()
+		return ds.NewMapDatastore(), nil
 	}
 
 	// create temporary directory for badger datastore
 	path := filepath.Join(os.TempDir(), "datastore")
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.MkdirAll(path, 0755); err != nil {
-			panic(err)
+			return nil, err
 		}
 	} else if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	// create disk based badger datastore
 	defopts := badgerds.DefaultOptions
-	defopts.SyncWrites = false
-	defopts.Truncate = true
+
+	defopts.Options = dgbadger.DefaultOptions("").WithTruncate(true).
+		WithValueThreshold(1 << 10)
 	datastore, err := badgerds.NewDatastore(path, &defopts)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return datastore
+	return datastore, nil
 }
 
 func recordSnapshots(runenv *runtime.RunEnv, size uint64, np networkParams, concurrency int, postfix string) error {
