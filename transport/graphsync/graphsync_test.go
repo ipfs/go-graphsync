@@ -1041,9 +1041,9 @@ func (fe *fakeEvents) OnResponseReceived(chid datatransfer.ChannelID, response d
 	return err
 }
 
-func (fe *fakeEvents) OnChannelCompleted(chid datatransfer.ChannelID, success bool) error {
+func (fe *fakeEvents) OnChannelCompleted(chid datatransfer.ChannelID, completeErr error) error {
 	fe.OnChannelCompletedCalled = true
-	fe.ChannelCompletedSuccess = success
+	fe.ChannelCompletedSuccess = completeErr == nil
 	return fe.OnChannelCompletedErr
 }
 

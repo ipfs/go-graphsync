@@ -471,7 +471,7 @@ func TestDataTransferResponding(t *testing.T) {
 			verify: func(t *testing.T, h *receiverHarness) {
 				_, err := h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.pullRequest)
 				require.NoError(t, err)
-				err = h.transport.EventHandler.OnChannelCompleted(channelID(h.id, h.peers), true)
+				err = h.transport.EventHandler.OnChannelCompleted(channelID(h.id, h.peers), nil)
 				require.NoError(t, err)
 				require.Len(t, h.network.SentMessages, 1)
 				response, ok := h.network.SentMessages[0].Message.(datatransfer.Response)
@@ -507,7 +507,7 @@ func TestDataTransferResponding(t *testing.T) {
 			verify: func(t *testing.T, h *receiverHarness) {
 				_, err := h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.pullRequest)
 				require.NoError(t, err)
-				err = h.transport.EventHandler.OnChannelCompleted(channelID(h.id, h.peers), false)
+				err = h.transport.EventHandler.OnChannelCompleted(channelID(h.id, h.peers), xerrors.Errorf("err"))
 				require.NoError(t, err)
 			},
 		},

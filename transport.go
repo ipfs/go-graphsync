@@ -49,9 +49,9 @@ type EventsHandler interface {
 	// - err == ErrPause - pause this request (only for new requests)
 	// - err == ErrResume - resume this request (only for update requests)
 	OnRequestReceived(chid ChannelID, msg Request) (Response, error)
-	// OnResponseCompleted is called when we finish sending data for the given channel ID
-	// Error returns are logged but otherwise have not effect
-	OnChannelCompleted(chid ChannelID, success bool) error
+	// OnChannelCompleted is called when we finish transferring data for the given channel ID
+	// Error returns are logged but otherwise have no effect
+	OnChannelCompleted(chid ChannelID, err error) error
 
 	// OnRequestTimedOut is called when a request we opened (with the given channel Id) to receive data times out.
 	// Error returns are logged but otherwise have no effect

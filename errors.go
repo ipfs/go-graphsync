@@ -25,9 +25,6 @@ const ErrPause = errorType("pause channel")
 // use to resume the channel
 const ErrResume = errorType("resume channel")
 
-// ErrIncomplete indicates a channel did not finish transferring data successfully
-const ErrIncomplete = errorType("incomplete response")
-
 // ErrRejected indicates a request was not accepted
 const ErrRejected = errorType("response rejected")
 

@@ -286,8 +286,8 @@ func (m *manager) OnRequestDisconnected(ctx context.Context, chid datatransfer.C
 	return nil
 }
 
-func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, success bool) error {
-	if success {
+func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, completeErr error) error {
+	if completeErr == nil {
 		if chid.Initiator != m.peerID {
 			msg, err := m.completeMessage(chid)
 			if err != nil {
@@ -316,7 +316,9 @@ func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, success bool) 
 	}
 	// send an error, but only if we haven't already errored for some reason
 	if chst.Status() != datatransfer.Failing && chst.Status() != datatransfer.Failed {
-		return m.channels.Error(chid, datatransfer.ErrIncomplete)
+		err := xerrors.Errorf("data transfer channel %s failed to transfer data: %w", chid, completeErr)
+		log.Warnf(err.Error())
+		return m.channels.Error(chid, err)
 	}
 	return nil
 }

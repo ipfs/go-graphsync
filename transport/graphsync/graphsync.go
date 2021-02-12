@@ -165,7 +165,12 @@ func (t *Transport) executeGsRequest(ctx context.Context, internalCtx context.Co
 	}
 
 	log.Debugf("finished executing graphsync request for channel %s", channelID)
-	err := t.events.OnChannelCompleted(channelID, lastError == nil)
+
+	var completeErr error
+	if lastError != nil {
+		completeErr = xerrors.Errorf("graphsync request failed to complete: %w", lastError)
+	}
+	err := t.events.OnChannelCompleted(channelID, completeErr)
 	if err != nil {
 		log.Error(err)
 	}
@@ -533,13 +538,45 @@ func (t *Transport) gsCompletedResponseListener(p peer.ID, request graphsync.Req
 		return
 	}
 
-	if status != graphsync.RequestCancelled {
-		success := status == graphsync.RequestCompletedFull
-		err := t.events.OnChannelCompleted(chid, success)
-		if err != nil {
-			log.Error(err)
-		}
+	if status == graphsync.RequestCancelled {
+		return
 	}
+
+	var completeErr error
+	if status != graphsync.RequestCompletedFull {
+		statusStr := gsResponseStatusCodeString(status)
+		completeErr = xerrors.Errorf("graphsync response to peer %s did not complete: response status code %s", p, statusStr)
+	}
+	err := t.events.OnChannelCompleted(chid, completeErr)
+	if err != nil {
+		log.Error(err)
+	}
+}
+
+// Remove this map once this PR lands: https://github.com/ipfs/go-graphsync/pull/148
+var gsResponseStatusCodes = map[graphsync.ResponseStatusCode]string{
+	graphsync.RequestAcknowledged:          "RequestAcknowledged",
+	graphsync.AdditionalPeers:              "AdditionalPeers",
+	graphsync.NotEnoughGas:                 "NotEnoughGas",
+	graphsync.OtherProtocol:                "OtherProtocol",
+	graphsync.PartialResponse:              "PartialResponse",
+	graphsync.RequestPaused:                "RequestPaused",
+	graphsync.RequestCompletedFull:         "RequestCompletedFull",
+	graphsync.RequestCompletedPartial:      "RequestCompletedPartial",
+	graphsync.RequestRejected:              "RequestRejected",
+	graphsync.RequestFailedBusy:            "RequestFailedBusy",
+	graphsync.RequestFailedUnknown:         "RequestFailedUnknown",
+	graphsync.RequestFailedLegal:           "RequestFailedLegal",
+	graphsync.RequestFailedContentNotFound: "RequestFailedContentNotFound",
+	graphsync.RequestCancelled:             "RequestCancelled",
+}
+
+func gsResponseStatusCodeString(code graphsync.ResponseStatusCode) string {
+	str, ok := gsResponseStatusCodes[code]
+	if ok {
+		return str
+	}
+	return gsResponseStatusCodes[graphsync.RequestFailedUnknown]
 }
 
 func (t *Transport) cleanupChannel(chid datatransfer.ChannelID, gsKey graphsyncKey) {
