@@ -26,3 +26,4 @@ chunk_size = { type = "int", desc = "unixfs chunk size (power of 2)", default = 
 links_per_level = { type = "int", desc = "unixfs links per level", default = "1024" }
 raw_leaves = { type = "bool", desc = "should unixfs leaves be left unwrapped", default = "true"}
 disk_store = { type = "bool", desc = "should data be stored on disk (true) or memory (false)", default = "false"}
+memory_snapshots = { type = "string", desc = "what kind of memory snapshots to take (none, simple, detailed)", default = "none" }

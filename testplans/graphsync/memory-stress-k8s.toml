@@ -1,5 +1,5 @@
 [metadata]
-name = "stress"
+name = "memory-stress"
 
 [global]
 plan = "graphsync"
@@ -15,15 +15,15 @@ go_proxy_url="http://localhost:8081"
 registry_type="aws"
 
 [global.run.test_params]
-size      = "10MB"
-latencies = '["50ms", "100ms", "200ms"]'
-bandwidths = '["32MiB", "16MiB", "8MiB", "4MiB", "1MiB"]'
-concurrency = "10"
-chunk_size = "20"
+size      = "512MB"
+latencies = '["50ms"]'
+bandwidths = '["32MiB"]'
+concurrency = "1"
+chunk_size = "18"
 links_per_level = "1024"
-raw_leaves = "true"
+raw_leaves = "false"
 disk_store = "true"
-memory_snapshots = "simple"
+memory_snapshots = "detailed"
 
 [[groups]]
 id = "providers"

@@ -47,6 +47,9 @@ jobs:
       - run:
           name: "trigger graphsync testplan on taas"
           command: ~/testground-cli run composition -f $HOME/testground/plans/graphsync/stress-k8s.toml --metadata-commit=$CIRCLE_SHA1 --metadata-repo=ipfs/go-graphsync --metadata-branch=$CIRCLE_BRANCH
+      - run:
+          name: "trigger graphsync memory stress on taas"
+          command: ~/testground-cli run composition -f $HOME/testground/plans/graphsync/memory-stress-k8s.toml --metadata-commit=$CIRCLE_SHA1 --metadata-repo=ipfs/go-graphsync --metadata-branch=$CIRCLE_BRANCH
 
 workflows:
   version: 2

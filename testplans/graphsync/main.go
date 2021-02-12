@@ -8,16 +8,18 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"runtime/pprof"
 	"strings"
 	"time"
 
+	dgbadger "github.com/dgraph-io/badger/v2"
 	"github.com/dustin/go-humanize"
 	allselector "github.com/hannahhoward/all-selector"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
-	badgerds "github.com/ipfs/go-ds-badger"
+	badgerds "github.com/ipfs/go-ds-badger2"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	chunk "github.com/ipfs/go-ipfs-chunker"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
@@ -65,10 +67,10 @@ func (p networkParams) String() string {
 
 func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 	var (
-		size        = runenv.SizeParam("size")
-		concurrency = runenv.IntParam("concurrency")
-
-		networkParams = parseNetworkConfig(runenv)
+		size            = runenv.SizeParam("size")
+		concurrency     = runenv.IntParam("concurrency")
+		networkParams   = parseNetworkConfig(runenv)
+		memorySnapshots = parseMemorySnapshotsParam(runenv)
 	)
 	runenv.RecordMessage("started test instance")
 	runenv.RecordMessage("network params: %v", networkParams)
@@ -81,15 +83,21 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 	host, peers, _ := makeHost(ctx, runenv, initCtx)
 	defer host.Close()
 
+	datastore, err := createDatastore(runenv.BooleanParam("disk_store"))
+	if err != nil {
+		runenv.RecordMessage("datastore error: %s", err.Error())
+		return err
+	}
 	var (
 		// make datastore, blockstore, dag service, graphsync
-		bs     = blockstore.NewBlockstore(dss.MutexWrap(createDatastore(runenv.BooleanParam("disk_store"))))
+		bs     = blockstore.NewBlockstore(dss.MutexWrap(datastore))
 		dagsrv = merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
 		gsync  = gsi.New(ctx,
 			gsnet.NewFromLibp2pHost(host),
 			storeutil.LoaderForBlockstore(bs),
 			storeutil.StorerForBlockstore(bs),
 		)
+		recorder = &runRecorder{memorySnapshots: memorySnapshots, runenv: runenv}
 	)
 
 	defer initCtx.SyncClient.MustSignalAndWait(ctx, "done", runenv.TestInstanceCount)
@@ -106,19 +114,27 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 		gsync.RegisterIncomingRequestHook(func(p peer.ID, request gs.RequestData, hookActions gs.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 		})
-
-		return runProvider(ctx, runenv, initCtx, dagsrv, size, networkParams, concurrency)
-
+		gsync.RegisterBlockSentListener(func(p peer.ID, request gs.RequestData, block gs.BlockData) {
+			recorder.recordBlock()
+		})
+		err := runProvider(ctx, runenv, initCtx, dagsrv, size, networkParams, concurrency, memorySnapshots, recorder)
+		if err != nil {
+			runenv.RecordMessage("Error running provider: %s", err.Error())
+		}
+		return err
 	case "requestors":
 		runenv.RecordMessage("we are the requestor")
 		defer runenv.RecordMessage("done requestor")
+		gsync.RegisterIncomingBlockHook(func(p peer.ID, request gs.ResponseData, block gs.BlockData, ha gs.IncomingBlockHookActions) {
+			recorder.recordBlock()
+		})
 
 		p := *peers[0]
 		if err := host.Connect(ctx, p); err != nil {
 			return err
 		}
 		runenv.RecordMessage("done dialling provider")
-		return runRequestor(ctx, runenv, initCtx, gsync, p, dagsrv, networkParams, concurrency, size)
+		return runRequestor(ctx, runenv, initCtx, gsync, p, dagsrv, networkParams, concurrency, size, memorySnapshots, recorder)
 
 	default:
 		panic(fmt.Sprintf("unsupported group ID: %s\n", runenv.TestGroupID))
@@ -158,7 +174,33 @@ func parseNetworkConfig(runenv *runtime.RunEnv) []networkParams {
 	return ret
 }
 
-func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, gsync gs.GraphExchange, p peer.AddrInfo, dagsrv format.DAGService, networkParams []networkParams, concurrency int, size uint64) error {
+type snapshotMode uint
+
+const (
+	snapshotNone snapshotMode = iota
+	snapshotSimple
+	snapshotDetailed
+)
+
+const (
+	detailedSnapshotFrequency = 10
+)
+
+func parseMemorySnapshotsParam(runenv *runtime.RunEnv) snapshotMode {
+	memorySnapshotsString := runenv.StringParam("memory_snapshots")
+	switch memorySnapshotsString {
+	case "none":
+		return snapshotNone
+	case "simple":
+		return snapshotSimple
+	case "detailed":
+		return snapshotDetailed
+	default:
+		panic("invalid memory_snapshot parameter")
+	}
+}
+
+func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, gsync gs.GraphExchange, p peer.AddrInfo, dagsrv format.DAGService, networkParams []networkParams, concurrency int, size uint64, memorySnapshots snapshotMode, recorder *runRecorder) error {
 	var (
 		cids []cid.Cid
 		// create a selector for the whole UnixFS dag
@@ -167,10 +209,13 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 
 	for round, np := range networkParams {
 		var (
-			topicCid  = sync.NewTopic(fmt.Sprintf("cid-%d", round), []cid.Cid{})
-			stateNext = sync.State(fmt.Sprintf("next-%d", round))
-			stateNet  = sync.State(fmt.Sprintf("network-configured-%d", round))
+			topicCid    = sync.NewTopic(fmt.Sprintf("cid-%d", round), []cid.Cid{})
+			stateNext   = sync.State(fmt.Sprintf("next-%d", round))
+			stateNet    = sync.State(fmt.Sprintf("network-configured-%d", round))
+			stateFinish = sync.State(fmt.Sprintf("finish-%d", round))
 		)
+
+		recorder.beginRun(np, size, concurrency)
 
 		// wait for all instances to be ready for the next state.
 		initCtx.SyncClient.MustSignalAndWait(ctx, stateNext, runenv.TestInstanceCount)
@@ -206,7 +251,9 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 				runenv.RecordMessage("\t>>> requesting CID %s", c)
 
 				start := time.Now()
-				_, errCh := gsync.Request(grpctx, p.ID, clink, sel)
+				respCh, errCh := gsync.Request(grpctx, p.ID, clink, sel)
+				for range respCh {
+				}
 				for err := range errCh {
 					return err
 				}
@@ -233,12 +280,19 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 		if err := errgrp.Wait(); err != nil {
 			return err
 		}
+
+		// wait for all instances to finish running
+		initCtx.SyncClient.MustSignalAndWait(ctx, stateFinish, runenv.TestInstanceCount)
+
+		if memorySnapshots == snapshotSimple || memorySnapshots == snapshotDetailed {
+			recordSnapshots(runenv, size, np, concurrency, "total")
+		}
 	}
 
 	return nil
 }
 
-func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, dagsrv format.DAGService, size uint64, networkParams []networkParams, concurrency int) error {
+func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, dagsrv format.DAGService, size uint64, networkParams []networkParams, concurrency int, memorySnapshots snapshotMode, recorder *runRecorder) error {
 	var (
 		cids       []cid.Cid
 		bufferedDS = format.NewBufferedDAG(ctx, dagsrv)
@@ -246,10 +300,12 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 
 	for round, np := range networkParams {
 		var (
-			topicCid  = sync.NewTopic(fmt.Sprintf("cid-%d", round), []cid.Cid{})
-			stateNext = sync.State(fmt.Sprintf("next-%d", round))
-			stateNet  = sync.State(fmt.Sprintf("network-configured-%d", round))
+			topicCid    = sync.NewTopic(fmt.Sprintf("cid-%d", round), []cid.Cid{})
+			stateNext   = sync.State(fmt.Sprintf("next-%d", round))
+			stateFinish = sync.State(fmt.Sprintf("finish-%d", round))
+			stateNet    = sync.State(fmt.Sprintf("network-configured-%d", round))
 		)
+		recorder.beginRun(np, size, concurrency)
 
 		// wait for all instances to be ready for the next state.
 		initCtx.SyncClient.MustSignalAndWait(ctx, stateNext, runenv.TestInstanceCount)
@@ -296,7 +352,9 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 		}
 
 		// run GC to get accurate-ish stats.
-		goruntime.GC()
+		if memorySnapshots == snapshotSimple || memorySnapshots == snapshotDetailed {
+			recordSnapshots(runenv, size, np, concurrency, "pre")
+		}
 		goruntime.GC()
 
 		runenv.RecordMessage("\tCIDs are: %v", cids)
@@ -314,6 +372,14 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 			CallbackTarget: 1,
 		})
 		runenv.RecordMessage("\tnetwork configured for round %d", round)
+
+		// wait for all instances to finish running
+		initCtx.SyncClient.MustSignalAndWait(ctx, stateFinish, runenv.TestInstanceCount)
+
+		if memorySnapshots == snapshotSimple || memorySnapshots == snapshotDetailed {
+			recordSnapshots(runenv, size, np, concurrency, "total")
+		}
+
 	}
 
 	return nil
@@ -388,29 +454,88 @@ func makeHost(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitCont
 	return host, peers, bwcounter
 }
 
-func createDatastore(diskStore bool) ds.Datastore {
+func createDatastore(diskStore bool) (ds.Datastore, error) {
 	if !diskStore {
-		return ds.NewMapDatastore()
+		return ds.NewMapDatastore(), nil
 	}
 
 	// create temporary directory for badger datastore
 	path := filepath.Join(os.TempDir(), "datastore")
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.MkdirAll(path, 0755); err != nil {
-			panic(err)
+			return nil, err
 		}
 	} else if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	// create disk based badger datastore
 	defopts := badgerds.DefaultOptions
-	defopts.SyncWrites = false
-	defopts.Truncate = true
+
+	defopts.Options = dgbadger.DefaultOptions("").WithTruncate(true).
+		WithValueThreshold(1 << 10)
 	datastore, err := badgerds.NewDatastore(path, &defopts)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return datastore
+	return datastore, nil
+}
+
+func recordSnapshots(runenv *runtime.RunEnv, size uint64, np networkParams, concurrency int, postfix string) error {
+	runenv.RecordMessage("Recording heap profile...")
+	err := writeHeap(runenv, size, np, concurrency, fmt.Sprintf("%s-pre-gc", postfix))
+	if err != nil {
+		return err
+	}
+	goruntime.GC()
+	goruntime.GC()
+	err = writeHeap(runenv, size, np, concurrency, fmt.Sprintf("%s-post-gc", postfix))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeHeap(runenv *runtime.RunEnv, size uint64, np networkParams, concurrency int, postfix string) error {
+	snapshotName := fmt.Sprintf("heap_lat-%s_bw-%s_concurrency-%d_size-%s_%s", np.latency, humanize.IBytes(np.bandwidth), concurrency, humanize.Bytes(size), postfix)
+	snapshotName = strings.Replace(snapshotName, " ", "", -1)
+	snapshotFile, err := runenv.CreateRawAsset(snapshotName)
+	if err != nil {
+		return err
+	}
+	err = pprof.WriteHeapProfile(snapshotFile)
+	if err != nil {
+		return err
+	}
+	err = snapshotFile.Close()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+type runRecorder struct {
+	memorySnapshots snapshotMode
+	index           int
+	np              networkParams
+	size            uint64
+	concurrency     int
+	runenv          *runtime.RunEnv
+}
+
+func (rr *runRecorder) recordBlock() {
+	if rr.memorySnapshots == snapshotDetailed {
+		if rr.index%detailedSnapshotFrequency == 0 {
+			recordSnapshots(rr.runenv, rr.size, rr.np, rr.concurrency, fmt.Sprintf("incremental-%d", rr.index))
+		}
+	}
+	rr.index++
+}
+
+func (rr *runRecorder) beginRun(np networkParams, size uint64, concurrency int) {
+	rr.concurrency = concurrency
+	rr.np = np
+	rr.size = size
+	rr.index = 0
 }
