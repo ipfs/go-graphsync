@@ -1,6 +1,7 @@
 version: 2.1
 orbs:
   go: gotest/tools@0.0.9
+  codecov: codecov/codecov@1.0.2
 
 executors:
   golang:
@@ -27,7 +28,6 @@ commands:
             - run: sudo apt-get update
             - run: sudo apt-get install ocl-icd-opencl-dev
   build-all:
-
 
 jobs:
   mod-tidy-check:
@@ -88,7 +88,7 @@ jobs:
         description: Coverage flag. Set to the empty string to disable.
       codecov-upload:
         type: boolean
-        default: false
+        default: true
         description: |
           Upload coverage report to https://codecov.io/. Requires the codecov API token to be
           set as an environment variable for private projects.
