@@ -159,9 +159,6 @@ func parseNetworkConfig(runenv *runtime.RunEnv) []networkParams {
 	// prepend bandwidth=0 and latency=0 zero values; the first iteration will
 	// be a control iteration. The sidecar interprets zero values as no
 	// limitation on that attribute.
-	bandwidths = append([]uint64{0}, bandwidths...)
-	latencies = append([]time.Duration{0}, latencies...)
-
 	var ret []networkParams
 	for _, bandwidth := range bandwidths {
 		for _, latency := range latencies {
