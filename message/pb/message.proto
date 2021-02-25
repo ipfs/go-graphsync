@@ -3,6 +3,7 @@ syntax = "proto3";
 package graphsync.message.pb;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+option go_package = ".;graphsync_message_pb";
 
 message Message {
 

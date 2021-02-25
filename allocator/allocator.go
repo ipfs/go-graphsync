@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	pq "github.com/ipfs/go-ipfs-pq"
-	peer "github.com/libp2p/go-libp2p-peer"
+	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 type Allocator struct {
