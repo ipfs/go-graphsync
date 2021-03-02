@@ -27,6 +27,7 @@ require (
 	github.com/libp2p/go-libp2p-secio v0.2.2
 	github.com/libp2p/go-libp2p-tls v0.1.3
 	github.com/libp2p/go-sockaddr v0.1.0 // indirect
+	github.com/multiformats/go-multiaddr v0.3.1
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/testground/sdk-go v0.2.7-0.20201112151952-8ee00c80c3ec
 	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
