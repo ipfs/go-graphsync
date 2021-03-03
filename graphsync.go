@@ -46,6 +46,10 @@ const (
 	// for requests that have the same key. The data for the extension is a string key
 	ExtensionDeDupByKey = ExtensionName("graphsync/dedup-by-key")
 
+	// ExtensionNoBlocks tells graphsync to send only metadata in a response,
+	// no blocks
+	ExtensionNoBlocks = ExtensionName("graphsync/no-blocks")
+
 	// GraphSync Response Status Codes
 
 	// Informational Response Codes (partial)

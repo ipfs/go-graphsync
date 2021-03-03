@@ -304,6 +304,25 @@ func TestValidationAndExtensions(t *testing.T) {
 		td.assertCompleteRequestWithSuccess()
 		td.assertDedupKey("applesauce")
 	})
+	t.Run("no-blocks extension", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := td.newResponseManager()
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+		})
+		requests := []gsmsg.GraphSyncRequest{
+			gsmsg.NewRequest(td.requestID, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0),
+				graphsync.ExtensionData{
+					Name: graphsync.ExtensionNoBlocks,
+					Data: nil,
+				}),
+		}
+		responseManager.ProcessRequests(td.ctx, td.p, requests)
+		td.assertCompleteRequestWithSuccess()
+		td.assertNoBlocks()
+	})
 	t.Run("test pause/resume", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -712,6 +731,7 @@ type fakeResponseAssembler struct {
 	pausedRequests       chan pausedRequest
 	clearedRequests      chan clearedRequest
 	ignoredLinks         chan []ipld.Link
+	noBlocks             chan struct{}
 	notifeePublisher     *testutil.MockPublisher
 	dedupKeys            chan string
 }
@@ -728,6 +748,10 @@ func (fra *fakeResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.Re
 
 func (fra *fakeResponseAssembler) DedupKey(p peer.ID, requestID graphsync.RequestID, key string) {
 	fra.dedupKeys <- key
+}
+
+func (fra *fakeResponseAssembler) IgnoreAllBlocks(p peer.ID, requestID graphsync.RequestID) {
+	fra.noBlocks <- struct{}{}
 }
 
 type sentResponse struct {
@@ -854,6 +878,7 @@ type testData struct {
 	clearedRequests           chan clearedRequest
 	ignoredLinks              chan []ipld.Link
 	dedupKeys                 chan string
+	noBlocks                  chan struct{}
 	responseAssembler         *fakeResponseAssembler
 	queryQueue                *fakeQueryQueue
 	extensionData             []byte
@@ -900,6 +925,7 @@ func newTestData(t *testing.T) testData {
 	td.clearedRequests = make(chan clearedRequest, 1)
 	td.ignoredLinks = make(chan []ipld.Link, 1)
 	td.dedupKeys = make(chan string, 1)
+	td.noBlocks = make(chan struct{}, 1)
 	td.blockSends = make(chan graphsync.BlockData, td.blockChainLength*2)
 	td.completedResponseStatuses = make(chan graphsync.ResponseStatusCode, 1)
 	td.networkErrorChan = make(chan error, td.blockChainLength*2)
@@ -913,6 +939,7 @@ func newTestData(t *testing.T) testData {
 		ignoredLinks:         td.ignoredLinks,
 		dedupKeys:            td.dedupKeys,
 		notifeePublisher:     td.notifeePublisher,
+		noBlocks:             td.noBlocks,
 	}
 	td.queryQueue = &fakeQueryQueue{}
 
@@ -1075,6 +1102,10 @@ func (td *testData) assertDedupKey(key string) {
 	var dedupKey string
 	testutil.AssertReceive(td.ctx, td.t, td.dedupKeys, &dedupKey, "should dedup by key")
 	require.Equal(td.t, key, dedupKey)
+}
+
+func (td *testData) assertNoBlocks() {
+	testutil.AssertDoesReceive(td.ctx, td.t, td.noBlocks, "should ignore sending all blocks")
 }
 
 func (td *testData) assertIgnoredCids(set *cid.Set) {

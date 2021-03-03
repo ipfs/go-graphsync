@@ -86,6 +86,11 @@ func (ra *ResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.Request
 	ra.GetProcess(p).(*peerLinkTracker).IgnoreBlocks(requestID, links)
 }
 
+// IgnoreAllBlocks indicates no blocks should be sent for a given request
+func (ra *ResponseAssembler) IgnoreAllBlocks(p peer.ID, requestID graphsync.RequestID) {
+	ra.GetProcess(p).(*peerLinkTracker).IgnoreAllBlocks(requestID)
+}
+
 // Transaction builds a response, and queues it for sending in the next outgoing message
 func (ra *ResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction Transaction) error {
 	rb := &responseBuilder{

@@ -106,6 +106,7 @@ type NetworkErrorListeners interface {
 // ResponseAssembler is an interface that returns sender interfaces for peer responses.
 type ResponseAssembler interface {
 	DedupKey(p peer.ID, requestID graphsync.RequestID, key string)
+	IgnoreAllBlocks(p peer.ID, requestID graphsync.RequestID)
 	IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link)
 	Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error
 }
