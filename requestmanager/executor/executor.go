@@ -7,16 +7,17 @@ import (
 	"sync/atomic"
 
 	"github.com/ipfs/go-cid"
+	ipld "github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal"
+	peer "github.com/libp2p/go-libp2p-core/peer"
+
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
-	ipld "github.com/ipld/go-ipld-prime"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipld/go-ipld-prime/traversal"
-	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 // AsyncLoadFn is a function which given a request id and an ipld.Link, returns
@@ -35,15 +36,15 @@ type ExecutionEnv struct {
 
 // RequestExecution are parameters for a single request execution
 type RequestExecution struct {
-	Ctx              context.Context
-	P                peer.ID
-	NetworkError     chan error
-	Request          gsmsg.GraphSyncRequest
-	LastResponse     *atomic.Value
-	DoNotSendCids    *cid.Set
-	NodeStyleChooser traversal.LinkTargetNodeStyleChooser
-	ResumeMessages   chan []graphsync.ExtensionData
-	PauseMessages    chan struct{}
+	Ctx                  context.Context
+	P                    peer.ID
+	NetworkError         chan error
+	Request              gsmsg.GraphSyncRequest
+	LastResponse         *atomic.Value
+	DoNotSendCids        *cid.Set
+	NodePrototypeChooser traversal.LinkTargetNodePrototypeChooser
+	ResumeMessages       chan []graphsync.ExtensionData
+	PauseMessages        chan struct{}
 }
 
 // Start begins execution of a request in a go routine
@@ -57,7 +58,7 @@ func (ee ExecutionEnv) Start(re RequestExecution) (chan graphsync.ResponseProgre
 		request:          re.Request,
 		lastResponse:     re.LastResponse,
 		doNotSendCids:    re.DoNotSendCids,
-		nodeStyleChooser: re.NodeStyleChooser,
+		nodeStyleChooser: re.NodePrototypeChooser,
 		resumeMessages:   re.ResumeMessages,
 		pauseMessages:    re.PauseMessages,
 		env:              ee,
@@ -75,7 +76,7 @@ type requestExecutor struct {
 	networkError      chan error
 	request           gsmsg.GraphSyncRequest
 	lastResponse      *atomic.Value
-	nodeStyleChooser  traversal.LinkTargetNodeStyleChooser
+	nodeStyleChooser  traversal.LinkTargetNodePrototypeChooser
 	resumeMessages    chan []graphsync.ExtensionData
 	pauseMessages     chan struct{}
 	doNotSendCids     *cid.Set
@@ -131,7 +132,7 @@ func (re *requestExecutor) traverse() error {
 			if err != nil {
 				return err
 			}
-			err = traverser.Advance(bytes.NewReader(result.Data))
+			err = traverser.Advance(bytes.NewBuffer(result.Data))
 			if err != nil {
 				return err
 			}
@@ -219,7 +220,7 @@ func (re *requestExecutor) processResult(traverser ipldutil.Traverser, link ipld
 	if err != nil {
 		return err
 	}
-	err = traverser.Advance(bytes.NewReader(result.Data))
+	err = traverser.Advance(bytes.NewBuffer(result.Data))
 	if err != nil {
 		return err
 	}

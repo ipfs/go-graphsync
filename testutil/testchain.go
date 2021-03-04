@@ -3,11 +3,9 @@ package testutil
 import (
 	"context"
 	"io/ioutil"
-	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
@@ -15,14 +13,25 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/testutil/chaintypes"
 )
+
+// TestingT covers the interface methods we need from either *testing.T or
+// *testing.B
+type TestingT interface {
+	Errorf(format string, args ...interface{})
+	FailNow()
+	Fatal(args ...interface{})
+}
 
 const blockChainTraversedNodesPerBlock = 2
 
 // TestBlockChain is a simulated data structure similar to a blockchain
 // which graphsync is uniquely suited for
 type TestBlockChain struct {
-	t                *testing.T
+	t                TestingT
 	blockChainLength int
 	loader           ipld.Loader
 	GenisisNode      ipld.Node
@@ -34,7 +43,7 @@ type TestBlockChain struct {
 }
 
 func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
-	blknb := basicnode.Style.Map.NewBuilder()
+	blknb := chaintypes.Type.Block.NewBuilder()
 	blknbmnb, err := blknb.BeginMap(2)
 	if err != nil {
 		return nil, err
@@ -44,7 +53,7 @@ func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	pnblnb, err := entnb.BeginList(len(parents))
+	pnblnb, err := entnb.BeginList(int64(len(parents)))
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +95,7 @@ func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
 // SetupBlockChain creates a new test block chain with the given height
 func SetupBlockChain(
 	ctx context.Context,
-	t *testing.T,
+	t TestingT,
 	loader ipld.Loader,
 	storer ipld.Storer,
 	size uint64,
@@ -117,8 +126,8 @@ func SetupBlockChain(
 
 // Selector returns the selector to recursive traverse the block chain parent links
 func (tbc *TestBlockChain) Selector() ipld.Node {
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
-	return ssb.ExploreRecursive(selector.RecursionLimitDepth(tbc.blockChainLength),
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+	return ssb.ExploreRecursive(selector.RecursionLimitDepth(int64(tbc.blockChainLength)),
 		ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
 			efsb.Insert("Parents", ssb.ExploreAll(
 				ssb.ExploreRecursiveEdge()))
@@ -161,20 +170,20 @@ func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress
 	for i, response := range responses {
 		require.Equal(tbc.t, expectedPath, response.Path.String(), "response has correct path")
 		if i%2 == 0 {
-			// if verifyTypes {
-			// 	_, ok := response.Node.(chaintypes.Block)
-			// 	require.True(tbc.t, ok, "nodes in response should have correct type")
-			// }
+			if verifyTypes {
+				_, ok := response.Node.(chaintypes.Block)
+				require.True(tbc.t, ok, "nodes in response should have correct type")
+			}
 			if expectedPath == "" {
 				expectedPath = "Parents"
 			} else {
 				expectedPath = expectedPath + "/Parents"
 			}
 		} else {
-			// if verifyTypes {
-			// 	_, ok := response.Node.(chaintypes.Parents)
-			// 	require.True(tbc.t, ok, "nodes in response should have correct type")
-			// }
+			if verifyTypes {
+				_, ok := response.Node.(chaintypes.Parents)
+				require.True(tbc.t, ok, "nodes in response should have correct type")
+			}
 			expectedPath = expectedPath + "/0"
 		}
 		if response.LastBlock.Path.String() != response.Path.String() {
@@ -262,7 +271,6 @@ func (tbc *TestBlockChain) RemainderBlocks(from int) []blocks.Block {
 }
 
 // Chooser is a NodeBuilderChooser function that always returns the block chain
-func (tbc *TestBlockChain) Chooser(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
-	return basicnode.Style.Any, nil
-	//return chaintypes.Block__NodeBuilder(), nil
+func (tbc *TestBlockChain) Chooser(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
+	return chaintypes.Type.Block, nil
 }

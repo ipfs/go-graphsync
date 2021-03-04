@@ -1,21 +1,21 @@
-package responsebuilder
+package message
 
 import (
 	"fmt"
 	"math/rand"
 	"testing"
 
-	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/metadata"
-	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestMessageBuilding(t *testing.T) {
-	rb := New()
+	rb := NewBuilder(Topic(0))
 	blocks := testutil.GenerateBlocksOfSize(3, 100)
 	links := make([]ipld.Link, 0, len(blocks))
 	for _, block := range blocks {
@@ -64,10 +64,11 @@ func TestMessageBuilding(t *testing.T) {
 	rb.AddExtensionData(requestID1, extension1)
 	rb.AddExtensionData(requestID3, extension2)
 
-	responses, sentBlocks, err := rb.Build()
+	message, err := rb.Build()
 
 	require.NoError(t, err, "build responses errored")
-
+	responses := message.Responses()
+	sentBlocks := message.Blocks()
 	require.Len(t, responses, 4, "did not assemble correct number of responses")
 
 	response1, err := findResponseForRequestID(responses, requestID1)
@@ -79,9 +80,9 @@ func TestMessageBuilding(t *testing.T) {
 	response1Metadata, err := metadata.DecodeMetadata(response1MetadataRaw)
 	require.NoError(t, err)
 	require.Equal(t, response1Metadata, metadata.Metadata{
-		metadata.Item{Link: links[0], BlockPresent: true},
-		metadata.Item{Link: links[1], BlockPresent: false},
-		metadata.Item{Link: links[2], BlockPresent: true},
+		metadata.Item{Link: links[0].(cidlink.Link).Cid, BlockPresent: true},
+		metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: false},
+		metadata.Item{Link: links[2].(cidlink.Link).Cid, BlockPresent: true},
 	}, "incorrect metadata included in response")
 
 	response1ReturnedExtensionData, found := response1.Extension(extensionName1)
@@ -97,9 +98,9 @@ func TestMessageBuilding(t *testing.T) {
 	response2Metadata, err := metadata.DecodeMetadata(response2MetadataRaw)
 	require.NoError(t, err)
 	require.Equal(t, response2Metadata, metadata.Metadata{
-		metadata.Item{Link: links[1], BlockPresent: true},
-		metadata.Item{Link: links[2], BlockPresent: true},
-		metadata.Item{Link: links[1], BlockPresent: true},
+		metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
+		metadata.Item{Link: links[2].(cidlink.Link).Cid, BlockPresent: true},
+		metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
 	}, "incorrect metadata included in response")
 
 	response3, err := findResponseForRequestID(responses, requestID3)
@@ -111,8 +112,8 @@ func TestMessageBuilding(t *testing.T) {
 	response3Metadata, err := metadata.DecodeMetadata(response3MetadataRaw)
 	require.NoError(t, err)
 	require.Equal(t, response3Metadata, metadata.Metadata{
-		metadata.Item{Link: links[0], BlockPresent: true},
-		metadata.Item{Link: links[1], BlockPresent: true},
+		metadata.Item{Link: links[0].(cidlink.Link).Cid, BlockPresent: true},
+		metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
 	}, "incorrect metadata included in response")
 
 	response3ReturnedExtensionData, found := response3.Extension(extensionName2)
@@ -130,11 +131,11 @@ func TestMessageBuilding(t *testing.T) {
 	}
 }
 
-func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID graphsync.RequestID) (gsmsg.GraphSyncResponse, error) {
+func findResponseForRequestID(responses []GraphSyncResponse, requestID graphsync.RequestID) (GraphSyncResponse, error) {
 	for _, response := range responses {
 		if response.RequestID() == requestID {
 			return response, nil
 		}
 	}
-	return gsmsg.GraphSyncResponse{}, fmt.Errorf("Response Not Found")
+	return GraphSyncResponse{}, fmt.Errorf("Response Not Found")
 }

@@ -3,20 +3,21 @@ package testutil
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"math/rand"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	util "github.com/ipfs/go-ipfs-util"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/stretchr/testify/require"
-
 	random "github.com/jbenet/go-random"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync"
 )
 
 var blockGenerator = blocksutil.NewBlockGenerator()
@@ -61,7 +62,7 @@ func GeneratePeers(n int) []peer.ID {
 	peerIds := make([]peer.ID, 0, n)
 	for i := 0; i < n; i++ {
 		peerSeq++
-		p := peer.ID(peerSeq)
+		p := peer.ID(fmt.Sprint(peerSeq))
 		peerIds = append(peerIds, p)
 	}
 	return peerIds
@@ -78,12 +79,12 @@ func ContainsPeer(peers []peer.ID, p peer.ID) bool {
 }
 
 // AssertContainsPeer will fail a test if the peer is not in the given peer list
-func AssertContainsPeer(t *testing.T, peers []peer.ID, p peer.ID) {
+func AssertContainsPeer(t TestingT, peers []peer.ID, p peer.ID) {
 	require.True(t, ContainsPeer(peers, p), "given peer should be in list")
 }
 
 // RefuteContainsPeer will fail a test if the peer is in the given peer list
-func RefuteContainsPeer(t *testing.T, peers []peer.ID, p peer.ID) {
+func RefuteContainsPeer(t TestingT, peers []peer.ID, p peer.ID) {
 	require.False(t, ContainsPeer(peers, p), "given peer should not be in list")
 }
 
@@ -103,18 +104,18 @@ func ContainsBlock(blks []blocks.Block, block blocks.Block) bool {
 }
 
 // AssertContainsBlock will fail a test if the block is not in the given block list
-func AssertContainsBlock(t *testing.T, blks []blocks.Block, block blocks.Block) {
+func AssertContainsBlock(t TestingT, blks []blocks.Block, block blocks.Block) {
 	require.True(t, ContainsBlock(blks, block), "given block should be in list")
 }
 
 // RefuteContainsBlock will fail a test if the block is in the given block list
-func RefuteContainsBlock(t *testing.T, blks []blocks.Block, block blocks.Block) {
+func RefuteContainsBlock(t TestingT, blks []blocks.Block, block blocks.Block) {
 	require.False(t, ContainsBlock(blks, block), "given block should not be in list")
 }
 
 // CollectResponses is just a utility to convert a graphsync response progress
 // channel into an array.
-func CollectResponses(ctx context.Context, t *testing.T, responseChan <-chan graphsync.ResponseProgress) []graphsync.ResponseProgress {
+func CollectResponses(ctx context.Context, t TestingT, responseChan <-chan graphsync.ResponseProgress) []graphsync.ResponseProgress {
 	var collectedBlocks []graphsync.ResponseProgress
 	for {
 		select {
@@ -147,7 +148,7 @@ func CollectErrors(ctx context.Context, t *testing.T, errChan <-chan error) []er
 
 // ReadNResponses does a partial read from a ResponseProgress channel -- up
 // to n values
-func ReadNResponses(ctx context.Context, t *testing.T, responseChan <-chan graphsync.ResponseProgress, count int) []graphsync.ResponseProgress {
+func ReadNResponses(ctx context.Context, t TestingT, responseChan <-chan graphsync.ResponseProgress, count int) []graphsync.ResponseProgress {
 	var returnedBlocks []graphsync.ResponseProgress
 	for i := 0; i < count; i++ {
 		select {
@@ -162,7 +163,7 @@ func ReadNResponses(ctx context.Context, t *testing.T, responseChan <-chan graph
 
 // VerifySingleTerminalError verifies that exactly one error was sent over a channel
 // and then the channel was closed.
-func VerifySingleTerminalError(ctx context.Context, t *testing.T, errChan <-chan error) {
+func VerifySingleTerminalError(ctx context.Context, t TestingT, errChan <-chan error) {
 	var err error
 	AssertReceive(ctx, t, errChan, &err, "should receive an error")
 	select {
@@ -174,7 +175,7 @@ func VerifySingleTerminalError(ctx context.Context, t *testing.T, errChan <-chan
 }
 
 // VerifyHasErrors verifies that at least one error was sent over a channel
-func VerifyHasErrors(ctx context.Context, t *testing.T, errChan <-chan error) {
+func VerifyHasErrors(ctx context.Context, t TestingT, errChan <-chan error) {
 	errCount := 0
 	for {
 		select {
@@ -192,7 +193,7 @@ func VerifyHasErrors(ctx context.Context, t *testing.T, errChan <-chan error) {
 
 // VerifyEmptyErrors verifies that no errors were sent over a channel before
 // it was closed
-func VerifyEmptyErrors(ctx context.Context, t *testing.T, errChan <-chan error) {
+func VerifyEmptyErrors(ctx context.Context, t TestingT, errChan <-chan error) {
 	for {
 		select {
 		case _, ok := <-errChan:
@@ -208,7 +209,7 @@ func VerifyEmptyErrors(ctx context.Context, t *testing.T, errChan <-chan error) 
 
 // VerifyEmptyResponse verifies that no response progress happened before the
 // channel was closed.
-func VerifyEmptyResponse(ctx context.Context, t *testing.T, responseChan <-chan graphsync.ResponseProgress) {
+func VerifyEmptyResponse(ctx context.Context, t TestingT, responseChan <-chan graphsync.ResponseProgress) {
 	for {
 		select {
 		case _, ok := <-responseChan:

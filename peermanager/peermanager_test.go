@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 type fakePeerProcess struct {
@@ -16,7 +17,7 @@ func (fp *fakePeerProcess) Shutdown() {}
 
 func TestAddingAndRemovingPeers(t *testing.T) {
 	ctx := context.Background()
-	peerProcessFatory := func(ctx context.Context, p peer.ID) PeerProcess {
+	peerProcessFatory := func(ctx context.Context, p peer.ID) PeerHandler {
 		return &fakePeerProcess{}
 	}
 

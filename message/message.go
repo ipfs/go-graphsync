@@ -1,18 +1,22 @@
 package message
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipld/go-ipld-prime"
-
-	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
+	pool "github.com/libp2p/go-buffer-pool"
+	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-msgio"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	pb "github.com/ipfs/go-graphsync/message/pb"
-	"github.com/libp2p/go-libp2p-core/network"
 )
 
 // IsTerminalSuccessCode returns true if the response code indicates the
@@ -36,28 +40,6 @@ func IsTerminalFailureCode(status graphsync.ResponseStatusCode) bool {
 // the end of the request
 func IsTerminalResponseCode(status graphsync.ResponseStatusCode) bool {
 	return IsTerminalSuccessCode(status) || IsTerminalFailureCode(status)
-}
-
-// GraphSyncMessage is interface that can be serialized and deserialized to send
-// over the GraphSync network
-type GraphSyncMessage interface {
-	Requests() []GraphSyncRequest
-
-	Responses() []GraphSyncResponse
-
-	Blocks() []blocks.Block
-
-	AddRequest(graphSyncRequest GraphSyncRequest)
-
-	AddResponse(graphSyncResponse GraphSyncResponse)
-
-	AddBlock(blocks.Block)
-
-	Empty() bool
-
-	Exportable
-
-	Loggable() map[string]interface{}
 }
 
 // Exportable is an interface that can serialize to a protobuf
@@ -86,23 +68,10 @@ type GraphSyncResponse struct {
 	extensions map[string][]byte
 }
 
-type graphSyncMessage struct {
+type GraphSyncMessage struct {
 	requests  map[graphsync.RequestID]GraphSyncRequest
 	responses map[graphsync.RequestID]GraphSyncResponse
 	blocks    map[cid.Cid]blocks.Block
-}
-
-// New initializes a new blank GraphSyncMessage
-func New() GraphSyncMessage {
-	return newMsg()
-}
-
-func newMsg() *graphSyncMessage {
-	return &graphSyncMessage{
-		requests:  make(map[graphsync.RequestID]GraphSyncRequest),
-		responses: make(map[graphsync.RequestID]GraphSyncResponse),
-		blocks:    make(map[cid.Cid]blocks.Block),
-	}
 }
 
 // NewRequest builds a new Graphsync request
@@ -168,15 +137,19 @@ func newResponse(requestID graphsync.RequestID,
 		extensions: extensions,
 	}
 }
-func newMessageFromProto(pbm pb.Message) (GraphSyncMessage, error) {
-	gsm := newMsg()
+
+func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
+	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(pbm.GetRequests()))
 	for _, req := range pbm.Requests {
+		if req == nil {
+			return GraphSyncMessage{}, errors.New("request is nil")
+		}
 		var root cid.Cid
 		var err error
 		if !req.Cancel && !req.Update {
 			root, err = cid.Cast(req.Root)
 			if err != nil {
-				return nil, err
+				return GraphSyncMessage{}, err
 			}
 		}
 
@@ -184,43 +157,62 @@ func newMessageFromProto(pbm pb.Message) (GraphSyncMessage, error) {
 		if !req.Cancel && !req.Update {
 			selector, err = ipldutil.DecodeNode(req.Selector)
 			if err != nil {
-				return nil, err
+				return GraphSyncMessage{}, err
 			}
 		}
-		gsm.AddRequest(newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, req.GetExtensions()))
+		exts := req.GetExtensions()
+		if exts == nil {
+			exts = make(map[string][]byte)
+		}
+		requests[graphsync.RequestID(req.Id)] = newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts)
 	}
 
+	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(pbm.GetResponses()))
 	for _, res := range pbm.Responses {
-		gsm.AddResponse(newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), res.GetExtensions()))
+		if res == nil {
+			return GraphSyncMessage{}, errors.New("response is nil")
+		}
+		exts := res.GetExtensions()
+		if exts == nil {
+			exts = make(map[string][]byte)
+		}
+		responses[graphsync.RequestID(res.Id)] = newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), exts)
 	}
 
+	blks := make(map[cid.Cid]blocks.Block, len(pbm.GetData()))
 	for _, b := range pbm.GetData() {
+		if b == nil {
+			return GraphSyncMessage{}, errors.New("block is nil")
+		}
+
 		pref, err := cid.PrefixFromBytes(b.GetPrefix())
 		if err != nil {
-			return nil, err
+			return GraphSyncMessage{}, err
 		}
 
 		c, err := pref.Sum(b.GetData())
 		if err != nil {
-			return nil, err
+			return GraphSyncMessage{}, err
 		}
 
 		blk, err := blocks.NewBlockWithCid(b.GetData(), c)
 		if err != nil {
-			return nil, err
+			return GraphSyncMessage{}, err
 		}
 
-		gsm.AddBlock(blk)
+		blks[blk.Cid()] = blk
 	}
 
-	return gsm, nil
+	return GraphSyncMessage{
+		requests, responses, blks,
+	}, nil
 }
 
-func (gsm *graphSyncMessage) Empty() bool {
+func (gsm GraphSyncMessage) Empty() bool {
 	return len(gsm.blocks) == 0 && len(gsm.requests) == 0 && len(gsm.responses) == 0
 }
 
-func (gsm *graphSyncMessage) Requests() []GraphSyncRequest {
+func (gsm GraphSyncMessage) Requests() []GraphSyncRequest {
 	requests := make([]GraphSyncRequest, 0, len(gsm.requests))
 	for _, request := range gsm.requests {
 		requests = append(requests, request)
@@ -228,7 +220,7 @@ func (gsm *graphSyncMessage) Requests() []GraphSyncRequest {
 	return requests
 }
 
-func (gsm *graphSyncMessage) Responses() []GraphSyncResponse {
+func (gsm GraphSyncMessage) Responses() []GraphSyncResponse {
 	responses := make([]GraphSyncResponse, 0, len(gsm.responses))
 	for _, response := range gsm.responses {
 		responses = append(responses, response)
@@ -236,7 +228,7 @@ func (gsm *graphSyncMessage) Responses() []GraphSyncResponse {
 	return responses
 }
 
-func (gsm *graphSyncMessage) Blocks() []blocks.Block {
+func (gsm GraphSyncMessage) Blocks() []blocks.Block {
 	bs := make([]blocks.Block, 0, len(gsm.blocks))
 	for _, block := range gsm.blocks {
 		bs = append(bs, block)
@@ -244,37 +236,32 @@ func (gsm *graphSyncMessage) Blocks() []blocks.Block {
 	return bs
 }
 
-func (gsm *graphSyncMessage) AddRequest(graphSyncRequest GraphSyncRequest) {
-	gsm.requests[graphSyncRequest.id] = graphSyncRequest
-}
-
-func (gsm *graphSyncMessage) AddResponse(graphSyncResponse GraphSyncResponse) {
-	gsm.responses[graphSyncResponse.requestID] = graphSyncResponse
-}
-
-func (gsm *graphSyncMessage) AddBlock(b blocks.Block) {
-	gsm.blocks[b.Cid()] = b
-}
-
 // FromNet can read a network stream to deserialized a GraphSyncMessage
 func FromNet(r io.Reader) (GraphSyncMessage, error) {
-	pbr := ggio.NewDelimitedReader(r, network.MessageSizeMax)
-	return FromPBReader(pbr)
+	reader := msgio.NewVarintReaderSize(r, network.MessageSizeMax)
+	return FromMsgReader(reader)
 }
 
-// FromPBReader can deserialize a protobuf message into a GraphySyncMessage.
-func FromPBReader(pbr ggio.Reader) (GraphSyncMessage, error) {
-	pb := new(pb.Message)
-	if err := pbr.ReadMsg(pb); err != nil {
-		return nil, err
+// FromMsgReader can deserialize a protobuf message into a GraphySyncMessage.
+func FromMsgReader(r msgio.Reader) (GraphSyncMessage, error) {
+	msg, err := r.ReadMsg()
+	if err != nil {
+		return GraphSyncMessage{}, err
 	}
 
-	return newMessageFromProto(*pb)
+	var pb pb.Message
+	err = proto.Unmarshal(msg, &pb)
+	r.ReleaseMsg(msg)
+	if err != nil {
+		return GraphSyncMessage{}, err
+	}
+
+	return newMessageFromProto(&pb)
 }
 
-func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
+func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
 	pbm := new(pb.Message)
-	pbm.Requests = make([]pb.Message_Request, 0, len(gsm.requests))
+	pbm.Requests = make([]*pb.Message_Request, 0, len(gsm.requests))
 	for _, request := range gsm.requests {
 		var selector []byte
 		var err error
@@ -284,7 +271,7 @@ func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 				return nil, err
 			}
 		}
-		pbm.Requests = append(pbm.Requests, pb.Message_Request{
+		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
 			Id:         int32(request.id),
 			Root:       request.root.Bytes(),
 			Selector:   selector,
@@ -295,9 +282,9 @@ func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 		})
 	}
 
-	pbm.Responses = make([]pb.Message_Response, 0, len(gsm.responses))
+	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.responses))
 	for _, response := range gsm.responses {
-		pbm.Responses = append(pbm.Responses, pb.Message_Response{
+		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
 			Id:         int32(response.requestID),
 			Status:     int32(response.status),
 			Extensions: response.extensions,
@@ -305,9 +292,9 @@ func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 	}
 
 	blocks := gsm.Blocks()
-	pbm.Data = make([]pb.Message_Block, 0, len(blocks))
+	pbm.Data = make([]*pb.Message_Block, 0, len(blocks))
 	for _, b := range blocks {
-		pbm.Data = append(pbm.Data, pb.Message_Block{
+		pbm.Data = append(pbm.Data, &pb.Message_Block{
 			Data:   b.RawData(),
 			Prefix: b.Cid().Prefix().Bytes(),
 		})
@@ -315,16 +302,23 @@ func (gsm *graphSyncMessage) ToProto() (*pb.Message, error) {
 	return pbm, nil
 }
 
-func (gsm *graphSyncMessage) ToNet(w io.Writer) error {
-	pbw := ggio.NewDelimitedWriter(w)
+func (gsm GraphSyncMessage) ToNet(w io.Writer) error {
 	msg, err := gsm.ToProto()
+	size := proto.Size(msg)
+	buf := pool.Get(size + binary.MaxVarintLen64)
+	defer pool.Put(buf)
+
+	n := binary.PutUvarint(buf, uint64(size))
+
+	out, err := proto.MarshalOptions{}.MarshalAppend(buf[:n], msg)
 	if err != nil {
 		return err
 	}
-	return pbw.WriteMsg(msg)
+	_, err = w.Write(out)
+	return err
 }
 
-func (gsm *graphSyncMessage) Loggable() map[string]interface{} {
+func (gsm GraphSyncMessage) Loggable() map[string]interface{} {
 	requests := make([]string, 0, len(gsm.requests))
 	for _, request := range gsm.requests {
 		requests = append(requests, fmt.Sprintf("%d", request.id))
@@ -337,6 +331,22 @@ func (gsm *graphSyncMessage) Loggable() map[string]interface{} {
 		"requests":  requests,
 		"responses": responses,
 	}
+}
+
+func (gsm GraphSyncMessage) Clone() GraphSyncMessage {
+	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(gsm.requests))
+	for id, request := range gsm.requests {
+		requests[id] = request
+	}
+	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(gsm.responses))
+	for id, response := range gsm.responses {
+		responses[id] = response
+	}
+	blocks := make(map[cid.Cid]blocks.Block, len(gsm.blocks))
+	for cid, block := range gsm.blocks {
+		blocks[cid] = block
+	}
+	return GraphSyncMessage{requests, responses, blocks}
 }
 
 // ID Returns the request ID for this Request

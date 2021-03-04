@@ -8,14 +8,14 @@ import (
 	"time"
 
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/metadata"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
+	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
-	ipld "github.com/ipld/go-ipld-prime"
 )
 
 func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
@@ -41,7 +41,7 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},
@@ -64,7 +64,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.(cidlink.Link).Cid,
 					BlockPresent: false,
 				},
 			},
@@ -106,7 +106,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},
@@ -133,7 +133,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.(cidlink.Link).Cid,
 					BlockPresent: false,
 				},
 			},
@@ -169,7 +169,7 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},
@@ -188,6 +188,36 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 	})
 }
 
+func TestRegisterUnregister(t *testing.T) {
+	st := newStore()
+	otherSt := newStore()
+	blocks := testutil.GenerateBlocksOfSize(3, 100)
+	link1 := otherSt.Store(t, blocks[0])
+	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
+
+		requestID1 := graphsync.RequestID(rand.Int31())
+		err := asyncLoader.StartRequest(requestID1, "other")
+		require.EqualError(t, err, "Unknown persistence option")
+
+		err = asyncLoader.RegisterPersistenceOption("other", otherSt.loader, otherSt.storer)
+		require.NoError(t, err)
+		requestID2 := graphsync.RequestID(rand.Int31())
+		err = asyncLoader.StartRequest(requestID2, "other")
+		require.NoError(t, err)
+		resultChan1 := asyncLoader.AsyncLoad(requestID2, link1)
+		assertSuccessResponse(ctx, t, resultChan1)
+		err = asyncLoader.UnregisterPersistenceOption("other")
+		require.EqualError(t, err, "cannot unregister while requests are in progress")
+		asyncLoader.CompleteResponsesFor(requestID2)
+		asyncLoader.CleanupRequest(requestID2)
+		err = asyncLoader.UnregisterPersistenceOption("other")
+		require.NoError(t, err)
+
+		requestID3 := graphsync.RequestID(rand.Int31())
+		err = asyncLoader.StartRequest(requestID3, "other")
+		require.EqualError(t, err, "Unknown persistence option")
+	})
+}
 func TestRequestSplittingLoadLocallyFromBlockstore(t *testing.T) {
 	st := newStore()
 	otherSt := newStore()
@@ -229,13 +259,13 @@ func TestRequestSplittingSameBlockTwoStores(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID1: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},
 			requestID2: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},
@@ -269,7 +299,7 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID2: metadata.Metadata{
 				metadata.Item{
-					Link:         link,
+					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},

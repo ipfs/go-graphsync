@@ -3,10 +3,10 @@ package network
 import (
 	"context"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
-
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
+
+	gsmsg "github.com/ipfs/go-graphsync/message"
 )
 
 var (
@@ -23,7 +23,7 @@ type GraphSyncNetwork interface {
 		peer.ID,
 		gsmsg.GraphSyncMessage) error
 
-	// SetDelegate registers the Reciver to handle messages received from the
+	// SetDelegate registers the Receiver to handle messages received from the
 	// network.
 	SetDelegate(Receiver)
 
@@ -47,7 +47,7 @@ type Receiver interface {
 		sender peer.ID,
 		incoming gsmsg.GraphSyncMessage)
 
-	ReceiveError(error)
+	ReceiveError(p peer.ID, err error)
 
 	Connected(p peer.ID)
 	Disconnected(p peer.ID)

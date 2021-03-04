@@ -66,6 +66,7 @@ Having outlined all the steps to execute a single roundtrip Graphsync request, t
 - minimize network traffic and not send duplicate data
 - not get blocked if any one request or response becomes blocked for whatever reason
 - have ways of protecting itself from getting overwhelmed by a malicious peer (i.e. be less vulnerable to Denial Of Service attacks)
+- manage memory effectively when executing large queries on either side
 
 To do this, GraphSync maintains several independent threads of execution (i.e. goroutines). Specifically:
 - On the requestor side:
@@ -75,8 +76,7 @@ To do this, GraphSync maintains several independent threads of execution (i.e. g
 4. Each outgoing request has an independent thread collecting and buffering final responses before they are returned to the caller. Graphsync returns responses to the caller through a channel. If the caller fails to immediately read the response channel, this should not block other requests from being processed.
 - On the responder side:
 1. We maintain an independent thread to receive incoming requests and track outgoing responses. As each incoming request is received, it's put into a prioritized queue.
-2. We maintain fixed number of threads that continuously pull the highest priority request from the queue and perform the selector query for that request
-3. Each peer we respond to has an independent thread marshaling and deduplicating outgoing responses and blocks before they are sent back. This minimizes data sent on the wire and allows queries to proceed without getting blocked by the network.
+2. We maintain fixed number of threads that continuously pull the highest priority request from the queue and perform the selector query for that request. We marshal and deduplicate outgoing responses and blocks before they are sent back. This minimizes data sent on the wire and allows queries to proceed without getting blocked by the network.
 - At the messaging layer:
 1. Each peer we send messages to has an independent thread collecting and buffering message data while waiting for the last message to finish sending. This allows higher level operations to execute without getting blocked by a slow network
 
@@ -143,7 +143,7 @@ In addition, an optimized responder implementation accounts for the following co
 
 * *Preserve Bandwith* - Be efficient with network usage, deduplicate data, and buffer response output so that each new network message contains all response data we have at the time the pipe becomes free.
 
-The responder implementation is managed by the Response Manager. The ResponseManager delegates to PeerTaskQueue to rate limit the number of in progress selector traversals and ensure no one peer is given more priority than others. As data is generated from selector traversals, the ResponseManager uses the PeerResponseManager to aggregate response data for each peer and send compact messages over the network.
+The responder implementation is managed by the Response Manager. The ResponseManager delegates to PeerTaskQueue to rate limit the number of in progress selector traversals and ensure no one peer is given more priority than others. As data is generated from selector traversals, the ResponseManager uses the ResponseAssembler to aggregate response data for each peer and send compact messages over the network.
 
 The following diagram outlines in greater detail go-graphsync's responder implementation, covering how it's initialized and how it responds to requests:
 ![Responding To A Request](responder-sequence.png)
@@ -160,12 +160,21 @@ Meanwhile, the ResponseManager starts a fixed number of workers (currently 6), e
 
 The net here is that no peer can have more than a fixed number of requests in progress at once, and even if a peer sends infinite requests, other peers will still jump ahead of it and get a chance to process their requests.
 
-### Peer Response Sender -- Deduping blocks and data
+### ResponseAssembler -- Deduping blocks and data
 
 Once a request is dequeued, we generate an intercepted loader and provide it to go-ipld-prime to execute a traversal. Each call to the loader will generate a block that we either have or don't. We need to transmit that information across the network. However, that information needs to be encoded in the GraphSync message format, and combined with any other responses we may be sent to the same peer at the same time, ideally without sending blocks more times than necessary.
 
-These tasks are generally managed by the PeerResponseManager which spins up one PeerResponseSender for each peer. The PeerResponseSender tracks links with the LinkTracker and aggregates responses with the ResponseBuilder. Every time the PeerResponseSender is called by the intercepted loader, it users the LinkTracker and ResponseBuilder to add block information and metadata to the response. Meanwhile, the PeerResponseSender runs a continuous loop that is synchronized with the message sending layer -- a new response is aggregated until the message sending layer notifies that the last message was sent, at which point the new response is encoded and sent.
+These tasks are managed by the ResponseAssembler. The ResponseAssembber creates a LinkTracker for each peer to track what blocks have been sent. Responses are sent by calling Transaction on the ResponseAssembler, which provides a ResponseBuilder interface that can be used to assemble responses. Transaction is named as such because all data added to a response by calling methods on the provided ResponseBuilder is gauranteed to go out in the name network message.
 
 ## Message Sending Layer
 
-The message sending layer is the simplest major component, consisting of a PeerManager which tracks peers, and a message queue for each peer. The PeerManager spins up new new message queues on demand. When a new request is received, it spins up a queue as needed and delegates sending to the message queue which collects message data until the network stream is ready for another message. It then encodes and sends the message to the network
+The message consists of a PeerManager which tracks peers, and a message queue for each peer. The PeerManager spins up new new message queues on demand. When a new request is received, it spins up a queue as needed and delegates sending to the message queue which collects message data until the network stream is ready for another message. It then encodes and sends the message to the network.
+
+The message queue system contains a mechanism for applying backpressure to a query execution to make sure that a slow network connection doesn't cause us to load all the blocks for the query into memory while we wait for messages to go over the network. Whenever you attempt to queue data into the message queue, you provide an estimated size for the data that will be held in memory till the message goes out. Internally, the message queue uses the Allocator to track memory usage, and the call to queue data will block if there is too much data buffered in memory. When messages are sent out, memory is released, which will unblock requests to queue data for the message queue.
+
+## Hooks And Listeners
+
+go-graphsync provides a variety of points in the request/response lifecycle where one can provide a hook to inspect the current state of the request/response and potentially take action. These hooks provide the core mechanisms for authenticating requests, processing graphsync extensions, pausing and resuming, and generally enabling a higher level consumer of the graphsync to precisely control the request/response lifecycle.
+
+Graphsync also provides listeners that enable a caller to be notified when various asynchronous events happen in the request response lifecycle. Currently graphsync contains an internal pubsub notification system (see [notifications](../notifications)) to escalate low level asynchonous events back to high level modules that pass them to external listeners. A future refactor might look for a way to remove this notification system as it adds additional complexity.
+

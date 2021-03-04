@@ -3,17 +3,16 @@ package peermanager
 import (
 	"context"
 
-	"github.com/ipfs/go-block-format"
+	"github.com/libp2p/go-libp2p-core/peer"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/ipfs/go-graphsync/notifications"
 )
 
 // PeerQueue is a process that sends messages to a peer
 type PeerQueue interface {
 	PeerProcess
-	AddRequest(graphSyncRequest gsmsg.GraphSyncRequest)
-	AddResponses(responses []gsmsg.GraphSyncResponse, blks []blocks.Block) <-chan struct{}
+	AllocateAndBuildMessage(blkSize uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee)
 }
 
 // PeerQueueFactory provides a function that will create a PeerQueue.
@@ -27,21 +26,15 @@ type PeerMessageManager struct {
 // NewMessageManager generates a new manger for sending messages
 func NewMessageManager(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerMessageManager {
 	return &PeerMessageManager{
-		PeerManager: New(ctx, func(ctx context.Context, p peer.ID) PeerProcess {
+		PeerManager: New(ctx, func(ctx context.Context, p peer.ID) PeerHandler {
 			return createPeerQueue(ctx, p)
 		}),
 	}
 }
 
-// SendRequest sends the given GraphSyncRequest to the given peer
-func (pmm *PeerMessageManager) SendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
+// BuildMessage allows you to modify the next message that is sent for the given peer
+// If blkSize > 0, message building may block until enough memory has been freed from the queues to allocate the message.
+func (pmm *PeerMessageManager) AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) {
 	pq := pmm.GetProcess(p).(PeerQueue)
-	pq.AddRequest(request)
-}
-
-// SendResponse sends the given GraphSyncResponses and blocks to the given peer.
-func (pmm *PeerMessageManager) SendResponse(p peer.ID,
-	responses []gsmsg.GraphSyncResponse, blks []blocks.Block) <-chan struct{} {
-	pq := pmm.GetProcess(p).(PeerQueue)
-	return pq.AddResponses(responses, blks)
+	pq.AllocateAndBuildMessage(blkSize, buildMessageFn, notifees)
 }

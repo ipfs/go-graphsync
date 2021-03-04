@@ -6,34 +6,35 @@ import (
 	"math"
 	"time"
 
-	"github.com/ipfs/go-graphsync/responsemanager/hooks"
-
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/responsemanager/peerresponsemanager"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/ipldutil"
+	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/responsemanager/hooks"
+	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 )
 
 var log = logging.Logger("graphsync")
 
 const (
-	maxInProcessRequests = 6
-	thawSpeed            = time.Millisecond * 100
+	thawSpeed = time.Millisecond * 100
 )
 
 type inProgressResponseStatus struct {
-	ctx       context.Context
-	cancelFn  func()
-	request   gsmsg.GraphSyncRequest
-	loader    ipld.Loader
-	traverser ipldutil.Traverser
-	signals   signals
-	updates   []gsmsg.GraphSyncRequest
-	isPaused  bool
+	ctx        context.Context
+	cancelFn   func()
+	request    gsmsg.GraphSyncRequest
+	loader     ipld.Loader
+	traverser  ipldutil.Traverser
+	signals    signals
+	updates    []gsmsg.GraphSyncRequest
+	isPaused   bool
+	subscriber *notifications.TopicDataSubscriber
 }
 
 type responseKey struct {
@@ -44,16 +45,17 @@ type responseKey struct {
 type signals struct {
 	pauseSignal  chan struct{}
 	updateSignal chan struct{}
-	stopSignal   chan bool
+	errSignal    chan error
 }
 
 type responseTaskData struct {
-	empty     bool
-	ctx       context.Context
-	request   gsmsg.GraphSyncRequest
-	loader    ipld.Loader
-	traverser ipldutil.Traverser
-	signals   signals
+	empty      bool
+	subscriber *notifications.TopicDataSubscriber
+	ctx        context.Context
+	request    gsmsg.GraphSyncRequest
+	loader     ipld.Loader
+	traverser  ipldutil.Traverser
+	signals    signals
 }
 
 // QueryQueue is an interface that can receive new selector query tasks
@@ -91,9 +93,21 @@ type CancelledListeners interface {
 	NotifyCancelledListeners(p peer.ID, request graphsync.RequestData)
 }
 
-// PeerManager is an interface that returns sender interfaces for peer responses.
-type PeerManager interface {
-	SenderForPeer(p peer.ID) peerresponsemanager.PeerResponseSender
+// BlockSentListeners is an interface for notifying listeners that of a block send occuring over the wire
+type BlockSentListeners interface {
+	NotifyBlockSentListeners(p peer.ID, request graphsync.RequestData, block graphsync.BlockData)
+}
+
+// NetworkErrorListeners is an interface for notifying listeners that an error occurred sending a data on the wire
+type NetworkErrorListeners interface {
+	NotifyNetworkErrorListeners(p peer.ID, request graphsync.RequestData, err error)
+}
+
+// ResponseAssembler is an interface that returns sender interfaces for peer responses.
+type ResponseAssembler interface {
+	DedupKey(p peer.ID, requestID graphsync.RequestID, key string)
+	IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link)
+	Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error
 }
 
 type responseManagerMessage interface {
@@ -103,30 +117,35 @@ type responseManagerMessage interface {
 // ResponseManager handles incoming requests from the network, initiates selector
 // traversals, and transmits responses
 type ResponseManager struct {
-	ctx                 context.Context
-	cancelFn            context.CancelFunc
-	peerManager         PeerManager
-	queryQueue          QueryQueue
-	updateHooks         UpdateHooks
-	cancelledListeners  CancelledListeners
-	completedListeners  CompletedListeners
-	messages            chan responseManagerMessage
-	workSignal          chan struct{}
-	qe                  *queryExecutor
-	inProgressResponses map[responseKey]*inProgressResponseStatus
+	ctx                   context.Context
+	cancelFn              context.CancelFunc
+	responseAssembler     ResponseAssembler
+	queryQueue            QueryQueue
+	updateHooks           UpdateHooks
+	cancelledListeners    CancelledListeners
+	completedListeners    CompletedListeners
+	blockSentListeners    BlockSentListeners
+	networkErrorListeners NetworkErrorListeners
+	messages              chan responseManagerMessage
+	workSignal            chan struct{}
+	qe                    *queryExecutor
+	inProgressResponses   map[responseKey]*inProgressResponseStatus
+	maxInProcessRequests  uint64
 }
 
-// New creates a new response manager from the given context, loader,
-// bridge to IPLD interface, peerManager, and queryQueue.
+// New creates a new response manager for responding to requests
 func New(ctx context.Context,
 	loader ipld.Loader,
-	peerManager PeerManager,
+	responseAssembler ResponseAssembler,
 	queryQueue QueryQueue,
 	requestHooks RequestHooks,
 	blockHooks BlockHooks,
 	updateHooks UpdateHooks,
 	completedListeners CompletedListeners,
 	cancelledListeners CancelledListeners,
+	blockSentListeners BlockSentListeners,
+	networkErrorListeners NetworkErrorListeners,
+	maxInProcessRequests uint64,
 ) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
 	messages := make(chan responseManagerMessage, 16)
@@ -135,9 +154,8 @@ func New(ctx context.Context,
 		requestHooks:       requestHooks,
 		blockHooks:         blockHooks,
 		updateHooks:        updateHooks,
-		completedListeners: completedListeners,
 		cancelledListeners: cancelledListeners,
-		peerManager:        peerManager,
+		responseAssembler:  responseAssembler,
 		loader:             loader,
 		queryQueue:         queryQueue,
 		messages:           messages,
@@ -146,17 +164,20 @@ func New(ctx context.Context,
 		ticker:             time.NewTicker(thawSpeed),
 	}
 	return &ResponseManager{
-		ctx:                 ctx,
-		cancelFn:            cancelFn,
-		peerManager:         peerManager,
-		queryQueue:          queryQueue,
-		updateHooks:         updateHooks,
-		completedListeners:  completedListeners,
-		cancelledListeners:  cancelledListeners,
-		messages:            messages,
-		workSignal:          workSignal,
-		qe:                  qe,
-		inProgressResponses: make(map[responseKey]*inProgressResponseStatus),
+		ctx:                   ctx,
+		cancelFn:              cancelFn,
+		responseAssembler:     responseAssembler,
+		queryQueue:            queryQueue,
+		updateHooks:           updateHooks,
+		cancelledListeners:    cancelledListeners,
+		completedListeners:    completedListeners,
+		blockSentListeners:    blockSentListeners,
+		networkErrorListeners: networkErrorListeners,
+		messages:              messages,
+		workSignal:            workSignal,
+		qe:                    qe,
+		inProgressResponses:   make(map[responseKey]*inProgressResponseStatus),
+		maxInProcessRequests:  maxInProcessRequests,
 	}
 }
 
@@ -199,16 +220,17 @@ func (rm *ResponseManager) PauseResponse(p peer.ID, requestID graphsync.RequestI
 	return rm.sendSyncMessage(&pauseRequestMessage{p, requestID, response}, response)
 }
 
-type cancelRequestMessage struct {
+type errorRequestMessage struct {
 	p         peer.ID
 	requestID graphsync.RequestID
+	err       error
 	response  chan error
 }
 
 // CancelResponse cancels an in progress response
 func (rm *ResponseManager) CancelResponse(p peer.ID, requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
-	return rm.sendSyncMessage(&cancelRequestMessage{p, requestID, response}, response)
+	return rm.sendSyncMessage(&errorRequestMessage{p, requestID, errCancelledByCommand, response}, response)
 }
 
 func (rm *ResponseManager) sendSyncMessage(message responseManagerMessage, response chan error) error {
@@ -275,7 +297,7 @@ func (rm *ResponseManager) cleanupInProcessResponses() {
 
 func (rm *ResponseManager) run() {
 	defer rm.cleanupInProcessResponses()
-	for i := 0; i < maxInProcessRequests; i++ {
+	for i := uint64(0); i < rm.maxInProcessRequests; i++ {
 		go rm.qe.processQueriesWorker()
 	}
 
@@ -304,13 +326,13 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		return
 	}
 	result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, update)
-	peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-	err := peerResponseSender.Transaction(key.requestID, func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+	err := rm.responseAssembler.Transaction(key.p, key.requestID, func(rb responseassembler.ResponseBuilder) error {
 		for _, extension := range result.Extensions {
-			transaction.SendExtensionData(extension)
+			rb.SendExtensionData(extension)
 		}
 		if result.Err != nil {
-			transaction.FinishWithError(graphsync.RequestFailedUnknown)
+			rb.FinishWithError(graphsync.RequestFailedUnknown)
+			rb.AddNotifee(notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: response.subscriber})
 		}
 		return nil
 	})
@@ -342,10 +364,9 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	}
 	inProgressResponse.isPaused = false
 	if len(extensions) > 0 {
-		peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-		_ = peerResponseSender.Transaction(requestID, func(transaction peerresponsemanager.PeerResponseTransactionSender) error {
+		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
 			for _, extension := range extensions {
-				transaction.SendExtensionData(extension)
+				rb.SendExtensionData(extension)
 			}
 			return nil
 		})
@@ -358,7 +379,7 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	return nil
 }
 
-func (rm *ResponseManager) cancelRequest(p peer.ID, requestID graphsync.RequestID, selfCancel bool) error {
+func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID, err error) error {
 	key := responseKey{p, requestID}
 	rm.queryQueue.Remove(key, key.p)
 	response, ok := rm.inProgressResponses[key]
@@ -367,20 +388,25 @@ func (rm *ResponseManager) cancelRequest(p peer.ID, requestID graphsync.RequestI
 	}
 
 	if response.isPaused {
-		peerResponseSender := rm.peerManager.SenderForPeer(key.p)
-		if selfCancel {
-			rm.completedListeners.NotifyCompletedListeners(p, response.request, graphsync.RequestCancelled)
-			peerResponseSender.FinishWithError(requestID, graphsync.RequestCancelled)
-		} else {
-			rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
-			peerResponseSender.FinishWithCancel(requestID)
-		}
+		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
+			if isContextErr(err) {
+
+				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
+				rb.ClearRequest()
+			} else if err == errNetworkError {
+				rb.ClearRequest()
+			} else {
+				rb.FinishWithError(graphsync.RequestCancelled)
+				rb.AddNotifee(notifications.Notifee{Data: graphsync.RequestCancelled, Subscriber: response.subscriber})
+			}
+			return nil
+		})
 		delete(rm.inProgressResponses, key)
 		response.cancelFn()
 		return nil
 	}
 	select {
-	case response.signals.stopSignal <- selfCancel:
+	case response.signals.errSignal <- err:
 	default:
 	}
 	return nil
@@ -390,7 +416,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 	for _, request := range prm.requests {
 		key := responseKey{p: prm.p, requestID: request.ID()}
 		if request.IsCancel() {
-			_ = rm.cancelRequest(prm.p, request.ID(), false)
+			_ = rm.abortRequest(prm.p, request.ID(), ipldutil.ContextCancelError{})
 			continue
 		}
 		if request.IsUpdate() {
@@ -398,15 +424,25 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			continue
 		}
 		ctx, cancelFn := context.WithCancel(rm.ctx)
+		sub := notifications.NewTopicDataSubscriber(&subscriber{
+			p:                     key.p,
+			request:               request,
+			ctx:                   rm.ctx,
+			messages:              rm.messages,
+			blockSentListeners:    rm.blockSentListeners,
+			completedListeners:    rm.completedListeners,
+			networkErrorListeners: rm.networkErrorListeners,
+		})
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
-				ctx:      ctx,
-				cancelFn: cancelFn,
-				request:  request,
+				ctx:        ctx,
+				cancelFn:   cancelFn,
+				subscriber: sub,
+				request:    request,
 				signals: signals{
 					pauseSignal:  make(chan struct{}, 1),
 					updateSignal: make(chan struct{}, 1),
-					stopSignal:   make(chan bool, 1),
+					errSignal:    make(chan error, 1),
 				},
 			}
 		// TODO: Use a better work estimation metric.
@@ -422,7 +458,7 @@ func (rdr *responseDataRequest) handle(rm *ResponseManager) {
 	response, ok := rm.inProgressResponses[rdr.key]
 	var taskData responseTaskData
 	if ok {
-		taskData = responseTaskData{false, response.ctx, response.request, response.loader, response.traverser, response.signals}
+		taskData = responseTaskData{false, response.subscriber, response.ctx, response.request, response.loader, response.traverser, response.signals}
 	} else {
 		taskData = responseTaskData{empty: true}
 	}
@@ -511,8 +547,8 @@ func (prm *pauseRequestMessage) handle(rm *ResponseManager) {
 	}
 }
 
-func (crm *cancelRequestMessage) handle(rm *ResponseManager) {
-	err := rm.cancelRequest(crm.p, crm.requestID, true)
+func (crm *errorRequestMessage) handle(rm *ResponseManager) {
+	err := rm.abortRequest(crm.p, crm.requestID, crm.err)
 	select {
 	case <-rm.ctx.Done():
 	case crm.response <- err:

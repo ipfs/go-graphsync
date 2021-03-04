@@ -42,6 +42,10 @@ const (
 	// https://github.com/ipld/specs/blob/master/block-layer/graphsync/known_extensions.md
 	ExtensionDoNotSendCIDs = ExtensionName("graphsync/do-not-send-cids")
 
+	// ExtensionDeDupByKey tells the responding peer to only deduplicate block sending
+	// for requests that have the same key. The data for the extension is a string key
+	ExtensionDeDupByKey = ExtensionName("graphsync/dedup-by-key")
+
 	// GraphSync Response Status Codes
 
 	// Informational Response Codes (partial)
@@ -89,6 +93,13 @@ const (
 	// RequestCancelled means the responder was processing the request but decided to top, for whatever reason
 	RequestCancelled = ResponseStatusCode(35)
 )
+
+// RequestContextCancelledErr is an error message received on the error channel when the request context given by the user is cancelled/times out
+type RequestContextCancelledErr struct{}
+
+func (e RequestContextCancelledErr) Error() string {
+	return "Request Context Cancelled"
+}
 
 // RequestFailedBusyErr is an error message received on the error channel when the peer is busy
 type RequestFailedBusyErr struct{}
@@ -192,7 +203,7 @@ type BlockData interface {
 type IncomingRequestHookActions interface {
 	SendExtensionData(ExtensionData)
 	UsePersistenceOption(name string)
-	UseLinkTargetNodeStyleChooser(traversal.LinkTargetNodeStyleChooser)
+	UseLinkTargetNodePrototypeChooser(traversal.LinkTargetNodePrototypeChooser)
 	TerminateWithError(error)
 	ValidateRequest()
 	PauseResponse()
@@ -210,7 +221,7 @@ type OutgoingBlockHookActions interface {
 // to change the execution of a request
 type OutgoingRequestHookActions interface {
 	UsePersistenceOption(name string)
-	UseLinkTargetNodeStyleChooser(traversal.LinkTargetNodeStyleChooser)
+	UseLinkTargetNodePrototypeChooser(traversal.LinkTargetNodePrototypeChooser)
 }
 
 // IncomingResponseHookActions are actions that incoming response hook can take
@@ -272,6 +283,15 @@ type OnOutgoingBlockHook func(p peer.ID, request RequestData, block BlockData, h
 // It receives an interface to taking further action on the response
 type OnRequestUpdatedHook func(p peer.ID, request RequestData, updateRequest RequestData, hookActions RequestUpdatedHookActions)
 
+// OnBlockSentListener runs when a block is sent over the wire
+type OnBlockSentListener func(p peer.ID, request RequestData, block BlockData)
+
+// OnNetworkErrorListener runs when queued data is not able to be sent
+type OnNetworkErrorListener func(p peer.ID, request RequestData, err error)
+
+// OnReceiverNetworkErrorListener runs when errors occur receiving data over the wire
+type OnReceiverNetworkErrorListener func(p peer.ID, err error)
+
 // OnResponseCompletedListener provides a way to listen for when responder has finished serving a response
 type OnResponseCompletedListener func(p peer.ID, request RequestData, status ResponseStatusCode)
 
@@ -288,6 +308,9 @@ type GraphExchange interface {
 
 	// RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
 	RegisterPersistenceOption(name string, loader ipld.Loader, storer ipld.Storer) error
+
+	// UnregisterPersistenceOption unregisters an alternate loader/storer combo
+	UnregisterPersistenceOption(name string) error
 
 	// RegisterIncomingRequestHook adds a hook that runs when a request is received
 	RegisterIncomingRequestHook(hook OnIncomingRequestHook) UnregisterHookFunc
@@ -313,6 +336,15 @@ type GraphExchange interface {
 	// RegisterRequestorCancelledListener adds a listener on the responder for
 	// responses cancelled by the requestor
 	RegisterRequestorCancelledListener(listener OnRequestorCancelledListener) UnregisterHookFunc
+
+	// RegisterBlockSentListener adds a listener for when blocks are actually sent over the wire
+	RegisterBlockSentListener(listener OnBlockSentListener) UnregisterHookFunc
+
+	// RegisterNetworkErrorListener adds a listener for when errors occur sending data over the wire
+	RegisterNetworkErrorListener(listener OnNetworkErrorListener) UnregisterHookFunc
+
+	// RegisterReceiverNetworkErrorListener adds a listener for when errors occur receiving data over the wire
+	RegisterReceiverNetworkErrorListener(listener OnReceiverNetworkErrorListener) UnregisterHookFunc
 
 	// UnpauseRequest unpauses a request that was paused in a block hook based request ID
 	// Can also send extensions with unpause

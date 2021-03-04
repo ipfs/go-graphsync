@@ -9,6 +9,12 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
+
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/ipldutil"
@@ -18,11 +24,6 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/testloader"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
-	"github.com/ipld/go-ipld-prime"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	peer "github.com/libp2p/go-libp2p-core/peer"
-	"github.com/stretchr/testify/require"
 )
 
 type configureLoaderFn func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, fal *testloader.FakeAsyncLoader, startStop [2]int)
@@ -383,9 +384,9 @@ func (ree *requestExecutionEnv) sendRequest(p peer.ID, request gsmsg.GraphSyncRe
 	}
 }
 
-func (ree *requestExecutionEnv) nodeStyleChooser(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
+func (ree *requestExecutionEnv) nodeStyleChooser(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
 	ree.nodeStyleChooserCalled = true
-	return basicnode.Style.Any, nil
+	return basicnode.Prototype.Any, nil
 }
 
 func (ree *requestExecutionEnv) checkPause(requestID graphsync.RequestID, link ipld.Link, result <-chan types.AsyncLoadResult) {
@@ -429,13 +430,13 @@ func (ree *requestExecutionEnv) requestExecution() (chan graphsync.ResponseProgr
 		TerminateRequest: ree.terminateRequest,
 		Loader:           ree.fal.AsyncLoad,
 	}.Start(executor.RequestExecution{
-		Ctx:              ree.ctx,
-		P:                ree.p,
-		LastResponse:     &lastResponse,
-		Request:          ree.request,
-		DoNotSendCids:    ree.doNotSendCids,
-		NodeStyleChooser: ree.nodeStyleChooser,
-		ResumeMessages:   ree.resumeMessages,
-		PauseMessages:    ree.pauseMessages,
+		Ctx:                  ree.ctx,
+		P:                    ree.p,
+		LastResponse:         &lastResponse,
+		Request:              ree.request,
+		DoNotSendCids:        ree.doNotSendCids,
+		NodePrototypeChooser: ree.nodeStyleChooser,
+		ResumeMessages:       ree.resumeMessages,
+		PauseMessages:        ree.pauseMessages,
 	})
 }

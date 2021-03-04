@@ -4,15 +4,16 @@ import (
 	"errors"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipld/go-ipld-prime/fluent"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+
+	"github.com/ipfs/go-graphsync/ipldutil"
 )
 
 // EncodeCidSet encodes a cid set into bytes for the do-no-send-cids extension
 func EncodeCidSet(cids *cid.Set) ([]byte, error) {
-	list := fluent.MustBuildList(basicnode.Style.List, cids.Len(), func(la fluent.ListAssembler) {
+	list := fluent.MustBuildList(basicnode.Prototype.List, int64(cids.Len()), func(la fluent.ListAssembler) {
 		_ = cids.ForEach(func(c cid.Cid) error {
 			la.AssembleValue().AssignLink(cidlink.Link{Cid: c})
 			return nil

@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
+	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/stretchr/testify/require"
+
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
-	ipld "github.com/ipld/go-ipld-prime"
-	"github.com/stretchr/testify/require"
 )
 
 func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {

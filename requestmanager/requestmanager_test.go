@@ -7,23 +7,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-graphsync/cidset"
-	"github.com/ipfs/go-graphsync/requestmanager/testloader"
-
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/requestmanager/hooks"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync/metadata"
-
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-
-	"github.com/ipld/go-ipld-prime"
-
-	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/dedupkey"
+	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/requestmanager/hooks"
+	"github.com/ipfs/go-graphsync/requestmanager/testloader"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -36,10 +35,16 @@ type fakePeerHandler struct {
 	requestRecordChan chan requestRecord
 }
 
-func (fph *fakePeerHandler) SendRequest(p peer.ID,
-	graphSyncRequest gsmsg.GraphSyncRequest) {
+func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64,
+	requestBuilder func(b *gsmsg.Builder), notifees []notifications.Notifee) {
+	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	requestBuilder(builder)
+	message, err := builder.Build()
+	if err != nil {
+		panic(err)
+	}
 	fph.requestRecordChan <- requestRecord{
-		gsr: graphSyncRequest,
+		gsr: message.Requests()[0],
 		p:   p,
 	}
 }
@@ -61,7 +66,7 @@ func metadataForBlocks(blks []blocks.Block, present bool) metadata.Metadata {
 	md := make(metadata.Metadata, 0, len(blks))
 	for _, block := range blks {
 		md = append(md, metadata.Item{
-			Link:         cidlink.Link{Cid: block.Cid()},
+			Link:         block.Cid(),
 			BlockPresent: present,
 		})
 	}
@@ -202,8 +207,13 @@ func TestCancelRequestInProgress(t *testing.T) {
 
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan1)
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
-	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
+
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan2)
+
+	errors := testutil.CollectErrors(requestCtx, t, returnedErrorChan1)
+	require.Len(t, errors, 1)
+	_, ok := errors[0].(graphsync.RequestContextCancelledErr)
+	require.True(t, ok)
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {
@@ -639,7 +649,7 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	hook := func(p peer.ID, r graphsync.RequestData, ha graphsync.OutgoingRequestHookActions) {
 		_, has := r.Extension(td.extensionName1)
 		if has {
-			ha.UseLinkTargetNodeStyleChooser(td.blockChain.Chooser)
+			ha.UseLinkTargetNodePrototypeChooser(td.blockChain.Chooser)
 			ha.UsePersistenceOption("chainstore")
 		}
 	}
@@ -649,6 +659,12 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	returnedResponseChan2, returnedErrorChan2 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
+
+	dedupData, has := requestRecords[0].gsr.Extension(graphsync.ExtensionDeDupByKey)
+	require.True(t, has)
+	key, err := dedupkey.DecodeDedupKey(dedupData)
+	require.NoError(t, err)
+	require.Equal(t, "chainstore", key)
 
 	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
 	mdEncoded, err := metadata.EncodeMetadata(md)
@@ -849,23 +865,24 @@ func TestPauseResumeExternal(t *testing.T) {
 }
 
 type testData struct {
-	requestRecordChan chan requestRecord
-	fph               *fakePeerHandler
-	fal               *testloader.FakeAsyncLoader
-	requestHooks      *hooks.OutgoingRequestHooks
-	responseHooks     *hooks.IncomingResponseHooks
-	blockHooks        *hooks.IncomingBlockHooks
-	requestManager    *RequestManager
-	blockStore        map[ipld.Link][]byte
-	loader            ipld.Loader
-	storer            ipld.Storer
-	blockChain        *testutil.TestBlockChain
-	extensionName1    graphsync.ExtensionName
-	extensionData1    []byte
-	extension1        graphsync.ExtensionData
-	extensionName2    graphsync.ExtensionName
-	extensionData2    []byte
-	extension2        graphsync.ExtensionData
+	requestRecordChan     chan requestRecord
+	fph                   *fakePeerHandler
+	fal                   *testloader.FakeAsyncLoader
+	requestHooks          *hooks.OutgoingRequestHooks
+	responseHooks         *hooks.IncomingResponseHooks
+	blockHooks            *hooks.IncomingBlockHooks
+	requestManager        *RequestManager
+	blockStore            map[ipld.Link][]byte
+	loader                ipld.Loader
+	storer                ipld.Storer
+	blockChain            *testutil.TestBlockChain
+	extensionName1        graphsync.ExtensionName
+	extensionData1        []byte
+	extension1            graphsync.ExtensionData
+	extensionName2        graphsync.ExtensionName
+	extensionData2        []byte
+	extension2            graphsync.ExtensionData
+	networkErrorListeners *listeners.NetworkErrorListeners
 }
 
 func newTestData(ctx context.Context, t *testing.T) *testData {
@@ -876,7 +893,8 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.requestHooks = hooks.NewRequestHooks()
 	td.responseHooks = hooks.NewResponseHooks()
 	td.blockHooks = hooks.NewBlockHooks()
-	td.requestManager = New(ctx, td.fal, td.requestHooks, td.responseHooks, td.blockHooks)
+	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
+	td.requestManager = New(ctx, td.fal, td.requestHooks, td.responseHooks, td.blockHooks, td.networkErrorListeners)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()
 	td.blockStore = make(map[ipld.Link][]byte)

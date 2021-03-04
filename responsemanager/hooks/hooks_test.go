@@ -6,15 +6,16 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/responsemanager/hooks"
-	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync"
+	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/responsemanager/hooks"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 type fakePersistenceOptions struct {
@@ -27,8 +28,8 @@ func (fpo *fakePersistenceOptions) GetLoader(name string) (ipld.Loader, bool) {
 }
 
 func TestRequestHookProcessing(t *testing.T) {
-	fakeChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
-		return basicnode.Style.Any, nil
+	fakeChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
+		return basicnode.Prototype.Any, nil
 	}
 	fakeLoader := func(link ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
 		return nil, nil
@@ -52,7 +53,7 @@ func TestRequestHookProcessing(t *testing.T) {
 
 	root := testutil.GenerateCids(1)[0]
 	requestID := graphsync.RequestID(rand.Int31())
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
 	p := testutil.GeneratePeers(1)[0]
 	testCases := map[string]struct {
@@ -186,7 +187,7 @@ func TestRequestHookProcessing(t *testing.T) {
 			configure: func(t *testing.T, requestHooks *hooks.IncomingRequestHooks) {
 				requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 					if _, found := requestData.Extension(extensionName); found {
-						hookActions.UseLinkTargetNodeStyleChooser(fakeChooser)
+						hookActions.UseLinkTargetNodePrototypeChooser(fakeChooser)
 						hookActions.SendExtensionData(extensionResponse)
 					}
 				})
@@ -230,7 +231,7 @@ func TestBlockHookProcessing(t *testing.T) {
 
 	root := testutil.GenerateCids(1)[0]
 	requestID := graphsync.RequestID(rand.Int31())
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
 	p := testutil.GeneratePeers(1)[0]
 	blockData := testutil.NewFakeBlockData()
@@ -313,7 +314,7 @@ func TestUpdateHookProcessing(t *testing.T) {
 
 	root := testutil.GenerateCids(1)[0]
 	requestID := graphsync.RequestID(rand.Int31())
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
 	update := gsmsg.UpdateRequest(requestID, extensionUpdate)
 	p := testutil.GeneratePeers(1)[0]

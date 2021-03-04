@@ -6,14 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/testutil"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync"
+	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 // Receiver is an interface for receiving messages from the GraphSyncNetwork.
@@ -36,7 +37,7 @@ func (r *receiver) ReceiveMessage(
 	}
 }
 
-func (r *receiver) ReceiveError(err error) {
+func (r *receiver) ReceiveError(_ peer.ID, _ error) {
 }
 
 func (r *receiver) Connected(p peer.ID) {
@@ -69,7 +70,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	gsnet2.SetDelegate(r)
 
 	root := testutil.GenerateCids(1)[0]
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
@@ -80,9 +81,12 @@ func TestMessageSendAndReceive(t *testing.T) {
 	priority := graphsync.Priority(rand.Int31())
 	status := graphsync.RequestAcknowledged
 
-	sent := gsmsg.New()
-	sent.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	sent.AddResponse(gsmsg.NewResponse(id, status, extension))
+	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	builder.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+	builder.AddResponseCode(id, status)
+	builder.AddExtensionData(id, extension)
+	sent, err := builder.Build()
+	require.NoError(t, err)
 
 	err = gsnet1.ConnectTo(ctx, host2.ID())
 	require.NoError(t, err, "did not connect peers")

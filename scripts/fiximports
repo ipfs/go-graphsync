@@ -1,0 +1,13 @@
+#!/bin/bash
+
+find . -type f -name \*.go -not -name \*_cbor_gen.go | xargs -I '{}' sed -i.bak -e '/import (/ {
+  :1
+  $!N
+  s/\n\n/\'$'\n''/
+  /)/!b1
+}' '{}'
+git clean -fd
+find . -type f -name \*.go  -not -name \*_cbor_gen.go | xargs -I '{}' goimports -w -local "github.com/ipfs/go-graphsync" '{}'
+
+
+

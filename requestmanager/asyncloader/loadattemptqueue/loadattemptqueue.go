@@ -3,9 +3,10 @@ package loadattemptqueue
 import (
 	"errors"
 
+	"github.com/ipld/go-ipld-prime"
+
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
-	"github.com/ipld/go-ipld-prime"
 )
 
 // LoadRequest is a request to load the given link for the given request id,

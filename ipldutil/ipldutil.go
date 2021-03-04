@@ -15,12 +15,12 @@ import (
 )
 
 var (
-	defaultChooser traversal.LinkTargetNodeStyleChooser = dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
-		return basicnode.Style.Any, nil
+	defaultChooser traversal.LinkTargetNodePrototypeChooser = dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
+		return basicnode.Prototype.Any, nil
 	})
 )
 
-func Traverse(ctx context.Context, loader ipld.Loader, chooser traversal.LinkTargetNodeStyleChooser, root ipld.Link, s selector.Selector, fn traversal.AdvVisitFn) error {
+func Traverse(ctx context.Context, loader ipld.Loader, chooser traversal.LinkTargetNodePrototypeChooser, root ipld.Link, s selector.Selector, fn traversal.AdvVisitFn) error {
 	if chooser == nil {
 		chooser = defaultChooser
 	}
@@ -36,9 +36,9 @@ func Traverse(ctx context.Context, loader ipld.Loader, chooser traversal.LinkTar
 	node := nb.Build()
 	return traversal.Progress{
 		Cfg: &traversal.Config{
-			Ctx:                        ctx,
-			LinkLoader:                 loader,
-			LinkTargetNodeStyleChooser: chooser,
+			Ctx:                            ctx,
+			LinkLoader:                     loader,
+			LinkTargetNodePrototypeChooser: chooser,
 		},
 	}.WalkAdv(node, s, fn)
 }
@@ -57,7 +57,7 @@ func EncodeNode(node ipld.Node) ([]byte, error) {
 }
 
 func DecodeNode(encoded []byte) (ipld.Node, error) {
-	nb := basicnode.Style.Any.NewBuilder()
+	nb := basicnode.Prototype.Any.NewBuilder()
 	if err := dagcbor.Decoder(nb, bytes.NewReader(encoded)); err != nil {
 		return nil, err
 	}

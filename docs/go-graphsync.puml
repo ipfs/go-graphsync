@@ -304,7 +304,7 @@ package "go-graphsync" {
       }
     }
     
-    package peerresponsemanager {
+    package responseassembler {
       class PeerResponseManager {
         SenderForPeer(p peer.ID) PeerResponseSender
       }
@@ -413,7 +413,7 @@ package "go-filecoin" {
   "go-filecoin" .. goGraphSyncNetworkPF
   "go-filecoin" *-- RawLoader
   "go-filecoin" *-- MulticodecDecodeTable
-  "go-filecoin" *-- LinkTargetNodeStyleChooser
+  "go-filecoin" *-- LinkTargetNodePrototypeChooser
 
 }
 

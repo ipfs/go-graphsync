@@ -7,12 +7,12 @@ import (
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-graphsync"
+	cid "github.com/ipfs/go-cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/stretchr/testify/require"
 
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -24,13 +24,15 @@ func TestAppendingRequests(t *testing.T) {
 		Data: testutil.RandomBytes(100),
 	}
 	root := testutil.GenerateCids(1)[0]
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
 
-	gsm := New()
-	gsm.AddRequest(NewRequest(id, root, selector, priority, extension))
+	builder := NewBuilder(Topic(0))
+	builder.AddRequest(NewRequest(id, root, selector, priority, extension))
+	gsm, err := builder.Build()
+	require.NoError(t, err)
 	requests := gsm.Requests()
 	require.Len(t, requests, 1, "did not add request to message")
 	request := requests[0]
@@ -57,7 +59,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.Equal(t, selectorEncoded, pbRequest.Selector)
 	require.Equal(t, map[string][]byte{"graphsync/awesome": extension.Data}, pbRequest.Extensions)
 
-	deserialized, err := newMessageFromProto(*pbMessage)
+	deserialized, err := newMessageFromProto(pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedRequests := deserialized.Requests()
 	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
@@ -83,8 +85,11 @@ func TestAppendingResponses(t *testing.T) {
 	requestID := graphsync.RequestID(rand.Int31())
 	status := graphsync.RequestAcknowledged
 
-	gsm := New()
-	gsm.AddResponse(NewResponse(requestID, status, extension))
+	builder := NewBuilder(Topic(0))
+	builder.AddResponseCode(requestID, status)
+	builder.AddExtensionData(requestID, extension)
+	gsm, err := builder.Build()
+	require.NoError(t, err)
 	responses := gsm.Responses()
 	require.Len(t, responses, 1, "did not add response to message")
 	response := responses[0]
@@ -99,9 +104,9 @@ func TestAppendingResponses(t *testing.T) {
 	pbResponse := pbMessage.Responses[0]
 	require.Equal(t, int32(requestID), pbResponse.Id)
 	require.Equal(t, int32(status), pbResponse.Status)
-	require.Equal(t, map[string][]byte{"graphsync/awesome": extension.Data}, pbResponse.Extensions)
+	require.Equal(t, extension.Data, pbResponse.Extensions["graphsync/awesome"])
 
-	deserialized, err := newMessageFromProto(*pbMessage)
+	deserialized, err := newMessageFromProto(pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedResponses := deserialized.Responses()
 	require.Len(t, deserializedResponses, 1, "did not add response to deserialized message")
@@ -119,11 +124,13 @@ func TestAppendBlock(t *testing.T) {
 	strs = append(strs, "Celeritas")
 	strs = append(strs, "Incendia")
 
-	m := New()
+	builder := NewBuilder(Topic(0))
 	for _, str := range strs {
 		block := blocks.NewBlock([]byte(str))
-		m.AddBlock(block)
+		builder.AddBlock(block)
 	}
+	m, err := builder.Build()
+	require.NoError(t, err)
 
 	pbMessage, err := m.ToProto()
 	require.NoError(t, err, "serializing to protobuf errored")
@@ -145,16 +152,17 @@ func contains(strs []string, x string) bool {
 }
 
 func TestRequestCancel(t *testing.T) {
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
 	root := testutil.GenerateCids(1)[0]
 
-	gsm := New()
-	gsm.AddRequest(NewRequest(id, root, selector, priority))
-
-	gsm.AddRequest(CancelRequest(id))
+	builder := NewBuilder(Topic(0))
+	builder.AddRequest(NewRequest(id, root, selector, priority))
+	builder.AddRequest(CancelRequest(id))
+	gsm, err := builder.Build()
+	require.NoError(t, err)
 
 	requests := gsm.Requests()
 	require.Len(t, requests, 1, "did not add cancel request")
@@ -163,7 +171,7 @@ func TestRequestCancel(t *testing.T) {
 	require.True(t, request.IsCancel())
 
 	buf := new(bytes.Buffer)
-	err := gsm.ToNet(buf)
+	err = gsm.ToNet(buf)
 	require.NoError(t, err, "did not serialize protobuf message")
 	deserialized, err := FromNet(buf)
 	require.NoError(t, err, "did not deserialize protobuf message")
@@ -183,8 +191,10 @@ func TestRequestUpdate(t *testing.T) {
 		Data: testutil.RandomBytes(100),
 	}
 
-	gsm := New()
-	gsm.AddRequest(UpdateRequest(id, extension))
+	builder := NewBuilder(Topic(0))
+	builder.AddRequest(UpdateRequest(id, extension))
+	gsm, err := builder.Build()
+	require.NoError(t, err)
 
 	requests := gsm.Requests()
 	require.Len(t, requests, 1, "did not add cancel request")
@@ -197,7 +207,7 @@ func TestRequestUpdate(t *testing.T) {
 	require.Equal(t, extension.Data, extensionData)
 
 	buf := new(bytes.Buffer)
-	err := gsm.ToNet(buf)
+	err = gsm.ToNet(buf)
 	require.NoError(t, err, "did not serialize protobuf message")
 	deserialized, err := FromNet(buf)
 	require.NoError(t, err, "did not deserialize protobuf message")
@@ -218,7 +228,7 @@ func TestRequestUpdate(t *testing.T) {
 
 func TestToNetFromNetEquivalency(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
@@ -229,17 +239,19 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	priority := graphsync.Priority(rand.Int31())
 	status := graphsync.RequestAcknowledged
 
-	gsm := New()
-	gsm.AddRequest(NewRequest(id, root, selector, priority, extension))
-	gsm.AddResponse(NewResponse(id, status, extension))
-
-	gsm.AddBlock(blocks.NewBlock([]byte("W")))
-	gsm.AddBlock(blocks.NewBlock([]byte("E")))
-	gsm.AddBlock(blocks.NewBlock([]byte("F")))
-	gsm.AddBlock(blocks.NewBlock([]byte("M")))
+	builder := NewBuilder(Topic(0))
+	builder.AddRequest(NewRequest(id, root, selector, priority, extension))
+	builder.AddResponseCode(id, status)
+	builder.AddExtensionData(id, extension)
+	builder.AddBlock(blocks.NewBlock([]byte("W")))
+	builder.AddBlock(blocks.NewBlock([]byte("E")))
+	builder.AddBlock(blocks.NewBlock([]byte("F")))
+	builder.AddBlock(blocks.NewBlock([]byte("M")))
+	gsm, err := builder.Build()
+	require.NoError(t, err)
 
 	buf := new(bytes.Buffer)
-	err := gsm.ToNet(buf)
+	err = gsm.ToNet(buf)
 	require.NoError(t, err, "did not serialize protobuf message")
 	deserialized, err := FromNet(buf)
 	require.NoError(t, err, "did not deserialize protobuf message")
@@ -311,7 +323,7 @@ func TestMergeExtensions(t *testing.T) {
 		return []byte(string(oldData) + " " + string(newData)), nil
 	}
 	root := testutil.GenerateCids(1)[0]
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
@@ -373,4 +385,36 @@ func TestMergeExtensions(t *testing.T) {
 		require.True(t, has)
 		require.Equal(t, []byte("cheese"), extData3)
 	})
+}
+
+func TestKnownFuzzIssues(t *testing.T) {
+	inputs := []string{
+		"$\x1a \x8000\x1a\x16002\xf4\xff\xff\xff\xff\xff\xff\xff\xff" +
+			"00000000000000000",
+		"���\x01",
+		"Dخ0000000000\x12000000" +
+			"00000000000000000000" +
+			"000000000 0000000000" +
+			"000000000",
+		"�\xefĽ�\x01\"#    \n\v5 " +
+			"         \n\x10\x01\x80\x01\x19@\xbf\xbd\xff " +
+			"   \n\v     ",
+		"\x0600\x1a\x02\x180",
+	}
+	for _, input := range inputs {
+		//inputAsBytes, err := hex.DecodeString(input)
+		///require.NoError(t, err)
+		msg1, err := FromNet(bytes.NewReader([]byte(input)))
+		if err != nil {
+			continue
+		}
+		buf2 := new(bytes.Buffer)
+		err = msg1.ToNet(buf2)
+		require.NoError(t, err)
+
+		msg2, err := FromNet(buf2)
+		require.NoError(t, err)
+
+		require.Equal(t, msg1, msg2)
+	}
 }

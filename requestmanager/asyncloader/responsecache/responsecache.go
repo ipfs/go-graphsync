@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/metadata"
-	logging "github.com/ipfs/go-log"
-
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-graphsync/linktracker"
+	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/linktracker"
+	"github.com/ipfs/go-graphsync/metadata"
 )
 
 var log = logging.Logger("graphsync")
@@ -20,6 +20,7 @@ var log = logging.Logger("graphsync")
 // as they come in and removing them as they are verified
 type UnverifiedBlockStore interface {
 	PruneBlocks(func(ipld.Link) bool)
+	PruneBlock(ipld.Link)
 	VerifyBlock(ipld.Link) ([]byte, error)
 	AddUnverifiedBlock(ipld.Link, []byte)
 }
@@ -78,14 +79,16 @@ func (rc *ResponseCache) ProcessResponse(responses map[graphsync.RequestID]metad
 	for requestID, md := range responses {
 		for _, item := range md {
 			log.Debugf("Traverse link %s on request ID %d", item.Link.String(), requestID)
-			rc.linkTracker.RecordLinkTraversal(requestID, item.Link, item.BlockPresent)
+			rc.linkTracker.RecordLinkTraversal(requestID, cidlink.Link{Cid: item.Link}, item.BlockPresent)
 		}
 	}
 
 	// prune unused blocks right away
-	rc.unverifiedBlockStore.PruneBlocks(func(link ipld.Link) bool {
-		return rc.linkTracker.BlockRefCount(link) == 0
-	})
+	for _, block := range blks {
+		if rc.linkTracker.BlockRefCount(cidlink.Link{Cid: block.Cid()}) == 0 {
+			rc.unverifiedBlockStore.PruneBlock(cidlink.Link{Cid: block.Cid()})
+		}
+	}
 
 	rc.responseCacheLk.Unlock()
 }

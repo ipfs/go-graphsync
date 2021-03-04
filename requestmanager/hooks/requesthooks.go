@@ -2,9 +2,10 @@ package hooks
 
 import (
 	"github.com/hannahhoward/go-pubsub"
-	"github.com/ipfs/go-graphsync"
 	"github.com/ipld/go-ipld-prime/traversal"
 	peer "github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/ipfs/go-graphsync"
 )
 
 // OutgoingRequestHooks is a set of incoming request hooks that can be processed
@@ -40,7 +41,7 @@ func (orh *OutgoingRequestHooks) Register(hook graphsync.OnOutgoingRequestHook) 
 // RequestResult is the outcome of running requesthooks
 type RequestResult struct {
 	PersistenceOption string
-	CustomChooser     traversal.LinkTargetNodeStyleChooser
+	CustomChooser     traversal.LinkTargetNodePrototypeChooser
 }
 
 // ProcessRequestHooks runs request hooks against an outgoing request
@@ -52,7 +53,7 @@ func (orh *OutgoingRequestHooks) ProcessRequestHooks(p peer.ID, request graphsyn
 
 type requestHookActions struct {
 	persistenceOption  string
-	nodeBuilderChooser traversal.LinkTargetNodeStyleChooser
+	nodeBuilderChooser traversal.LinkTargetNodePrototypeChooser
 }
 
 func (rha *requestHookActions) result() RequestResult {
@@ -66,6 +67,6 @@ func (rha *requestHookActions) UsePersistenceOption(name string) {
 	rha.persistenceOption = name
 }
 
-func (rha *requestHookActions) UseLinkTargetNodeStyleChooser(nodeBuilderChooser traversal.LinkTargetNodeStyleChooser) {
+func (rha *requestHookActions) UseLinkTargetNodePrototypeChooser(nodeBuilderChooser traversal.LinkTargetNodePrototypeChooser) {
 	rha.nodeBuilderChooser = nodeBuilderChooser
 }

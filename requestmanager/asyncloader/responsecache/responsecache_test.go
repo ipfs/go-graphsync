@@ -6,14 +6,13 @@ import (
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-graphsync"
+	ipld "github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/testutil"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-
-	ipld "github.com/ipld/go-ipld-prime"
 )
 
 type fakeUnverifiedBlockStore struct {
@@ -30,6 +29,10 @@ func (ubs *fakeUnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link) boo
 			delete(ubs.inMemoryBlocks, link)
 		}
 	}
+}
+
+func (ubs *fakeUnverifiedBlockStore) PruneBlock(link ipld.Link) {
+	delete(ubs.inMemoryBlocks, link)
 }
 
 func (ubs *fakeUnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
@@ -59,30 +62,30 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 
 	request1Metadata := metadata.Metadata{
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[0].Cid()},
+			Link:         blks[0].Cid(),
 			BlockPresent: true,
 		},
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[1].Cid()},
+			Link:         blks[1].Cid(),
 			BlockPresent: false,
 		},
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[3].Cid()},
+			Link:         blks[3].Cid(),
 			BlockPresent: true,
 		},
 	}
 
 	request2Metadata := metadata.Metadata{
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[1].Cid()},
+			Link:         blks[1].Cid(),
 			BlockPresent: true,
 		},
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[3].Cid()},
+			Link:         blks[3].Cid(),
 			BlockPresent: true,
 		},
 		metadata.Item{
-			Link:         cidlink.Link{Cid: blks[4].Cid()},
+			Link:         blks[4].Cid(),
 			BlockPresent: true,
 		},
 	}
