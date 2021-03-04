@@ -17,7 +17,7 @@ chunk_size = "20"
 links_per_level = "1024"
 raw_leaves = "true"
 disk_store = "true"
-memory_snapshots = "true"
+memory_snapshots = "none"
 
 [[groups]]
 id = "providers"
