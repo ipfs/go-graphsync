@@ -16,9 +16,6 @@ type RequestID int32
 // Priority a priority for a GraphSync request.
 type Priority int32
 
-// ResponseStatusCode is a status returned for a GraphSync Request.
-type ResponseStatusCode int32
-
 // ExtensionName is a name for a GraphSync extension
 type ExtensionName string
 
@@ -45,53 +42,6 @@ const (
 	// ExtensionDeDupByKey tells the responding peer to only deduplicate block sending
 	// for requests that have the same key. The data for the extension is a string key
 	ExtensionDeDupByKey = ExtensionName("graphsync/dedup-by-key")
-
-	// GraphSync Response Status Codes
-
-	// Informational Response Codes (partial)
-
-	// RequestAcknowledged means the request was received and is being worked on.
-	RequestAcknowledged = ResponseStatusCode(10)
-	// AdditionalPeers means additional peers were found that may be able
-	// to satisfy the request and contained in the extra block of the response.
-	AdditionalPeers = ResponseStatusCode(11)
-	// NotEnoughGas means fulfilling this request requires payment.
-	NotEnoughGas = ResponseStatusCode(12)
-	// OtherProtocol means a different type of response than GraphSync is
-	// contained in extra.
-	OtherProtocol = ResponseStatusCode(13)
-	// PartialResponse may include blocks and metadata about the in progress response
-	// in extra.
-	PartialResponse = ResponseStatusCode(14)
-	// RequestPaused indicates a request is paused and will not send any more data
-	// until unpaused
-	RequestPaused = ResponseStatusCode(15)
-
-	// Success Response Codes (request terminated)
-
-	// RequestCompletedFull means the entire fulfillment of the GraphSync request
-	// was sent back.
-	RequestCompletedFull = ResponseStatusCode(20)
-	// RequestCompletedPartial means the response is completed, and part of the
-	// GraphSync request was sent back, but not the complete request.
-	RequestCompletedPartial = ResponseStatusCode(21)
-
-	// Error Response Codes (request terminated)
-
-	// RequestRejected means the node did not accept the incoming request.
-	RequestRejected = ResponseStatusCode(30)
-	// RequestFailedBusy means the node is too busy, try again later. Backoff may
-	// be contained in extra.
-	RequestFailedBusy = ResponseStatusCode(31)
-	// RequestFailedUnknown means the request failed for an unspecified reason. May
-	// contain data about why in extra.
-	RequestFailedUnknown = ResponseStatusCode(32)
-	// RequestFailedLegal means the request failed for legal reasons.
-	RequestFailedLegal = ResponseStatusCode(33)
-	// RequestFailedContentNotFound means the respondent does not have the content.
-	RequestFailedContentNotFound = ResponseStatusCode(34)
-	// RequestCancelled means the responder was processing the request but decided to top, for whatever reason
-	RequestCancelled = ResponseStatusCode(35)
 )
 
 // RequestContextCancelledErr is an error message received on the error channel when the request context given by the user is cancelled/times out
