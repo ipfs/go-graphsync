@@ -1,14 +1,13 @@
 @startuml Responding To A Request
 participant "GraphSync\nTop Level\nInterface" as TLI
 participant ResponseManager
-participant "Query Workers" as QW
+participant "Query Executor" as QW
 participant PeerTaskQueue
 participant PeerTracker
-participant PeerResponseManager
-participant PeerResponseSender
+participant Traverser
+participant ResponseAssembler
 participant LinkTracker
 participant ResponseBuilder
-participant IPLD
 participant "Intercepted Loader" as ILoader
 participant Loader
 participant "Message Sending\nLayer" as Message
@@ -37,63 +36,40 @@ ResponseManager -> ResponseManager : Cancel Request Context
 end
 end
 else
-par
 loop until shutdown
 note over QW: Request Processing Loop
 QW -> PeerTaskQueue : Pop Request
 PeerTaskQueue -> PeerTracker : Pop Request
 PeerTracker -> PeerTaskQueue : Next Request\nTo Process
 PeerTaskQueue -> QW : Next Request\nTo Process
-QW -> IPLD : DecodeNode
-IPLD -> QW : Selector Spec Node
-QW -> IPLD : ParseSelector
-IPLD -> QW : Root Node, IPLD Selector
-QW -> PeerResponseManager : SenderForPeer
-PeerResponseManager -> PeerResponseSender ** : Create for peer\nas neccesary
-PeerResponseSender -> LinkTracker ** : Create
-PeerResponseSender -> QW : PeerResponseSender
-activate PeerResponseSender
-QW -> ILoader ** : Create w/ RequestID, PeerResponseSender, Loader
-QW -> IPLD : Start Traversal Of Selector
+QW -> QW : Process incoming request hooks
+QW -> ILoader ** : Create w/ Request, Peer, and Loader
+QW -> Traverser ** : Create to manage selector traversal
 loop until traversal complete or request context cancelled
-note over PeerResponseSender: Selector Traversal Loop
-IPLD -> ILoader : Request to load blocks\nto perform traversal
+note over Traverser: Selector Traversal Loop
+Traverser -> ILoader : Request to load blocks\nto perform traversal
 ILoader -> Loader : Load blocks\nfrom local storage
 Loader -> ILoader : Blocks From\nlocal storage or error
-ILoader -> IPLD : Blocks to continue\n traversal or error
-ILoader -> PeerResponseSender : Block or error to Send Back
-activate PeerResponseSender
-PeerResponseSender -> LinkTracker : Notify block or\n error, ask whether\n block is duplicate
-LinkTracker -> PeerResponseSender : Whether to\n send block
-PeerResponseSender -> ResponseBuilder ** : Create New As Neccesary
-PeerResponseSender -> ResponseBuilder : Aggregate Response Metadata & Block
-PeerResponseSender -> PeerResponseSender : Signal Work To Do
-deactivate PeerResponseSender
+ILoader -> Traverser : Blocks to continue\n traversal or error
+ILoader -> QW : Block or error to Send Back
+QW -> QW: Processing outgoing block hooks
+QW -> ResponseAssembler: Add outgoing responses
+activate ResponseAssembler
+ResponseAssembler -> LinkTracker ** : Create for peer if not already present
+ResponseAssembler -> LinkTracker : Notify block or\n error, ask whether\n block is duplicate
+LinkTracker -> ResponseAssembler : Whether to\n send block
+ResponseAssembler -> ResponseBuilder : Aggregate Response Metadata & Block
+ResponseAssembler -> Message : Send aggregate response
+deactivate ResponseAssembler
 end
-IPLD -> QW : Traversal Complete
-QW -> PeerResponseSender : Request Finished
-activate PeerResponseSender
-PeerResponseSender -> LinkTracker : Query If Errors\n Were Present
-LinkTracker -> PeerResponseSender : True/False\n if errors present
-PeerResponseSender -> ResponseBuilder : Aggregate request finishing
-PeerResponseSender -> PeerResponseSender : Signal Work To Do
-deactivate PeerResponseSender
-end
-else
-loop until shutdown / disconnect
-note over PeerResponseSender: Message Sending\nLoop
-PeerResponseSender -> PeerResponseSender : Wait For Work Signal
-...
-PeerResponseSender -> ResponseBuilder : build response
-ResponseBuilder -> PeerResponseSender : Response message data to send
-PeerResponseSender -> Message : Send response message data
-activate Message
-Message -> PeerResponseSender : Channel For When Message Processed
-...
-Message -> PeerResponseSender : Notification on channel
-deactivate Message
-end
-deactivate PeerResponseSender
+Traverser -> QW : Traversal Complete
+QW -> ResponseAssembler : Request Finished
+activate ResponseAssembler
+ResponseAssembler -> LinkTracker : Query If Errors\n Were Present
+LinkTracker -> ResponseAssembler : True/False\n if errors present
+ResponseAssembler -> ResponseBuilder : Aggregate request finishing
+ResponseAssembler -> Message : Send aggregate response
+deactivate ResponseAssembler
 end
 deactivate QW
 end

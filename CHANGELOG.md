@@ -1,5 +1,25 @@
 # go-graphsync changelog
 
+# go-graphsync 0.7.0
+
+This is a small release to update some dependencies. Importantly, it pulls in go-ipld-prime with
+some significant breaking changes.
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - chore: update deps (#151) ([ipfs/go-graphsync#151](https://github.com/ipfs/go-graphsync/pull/151))
+  - Automatically record heap profiles in testplans (#147) ([ipfs/go-graphsync#147](https://github.com/ipfs/go-graphsync/pull/147))
+  - feat(deps): update go-ipld-prime v0.7.0 (#145) ([ipfs/go-graphsync#145](https://github.com/ipfs/go-graphsync/pull/145))
+  - Release/v0.6.0 ([ipfs/go-graphsync#144](https://github.com/ipfs/go-graphsync/pull/144))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 2 | +3316/-3015 | 25 |
+| Steven Allen | 1 | +95/-227 | 5 |
+
 # go-graphsync 0.6.0
 
 Major code refactor for simplicity, ease of understanding
