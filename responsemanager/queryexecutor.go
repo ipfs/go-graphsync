@@ -72,7 +72,7 @@ func (qe *queryExecutor) processQueriesWorker() {
 				log.Info("Empty task on peer request stack")
 				continue
 			}
-			log.Debugf("Beginning response execution: ID: %d, Peer: %s, Root CID: %s", key.requestID, key.p.String(), taskData.request.Root().String())
+			log.Debugw("beginning response execution", "id", key.requestID, "peer", key.p.String(), "root_cid", taskData.request.Root().String())
 			status, err := qe.executeTask(key, taskData)
 			isCancelled := err != nil && isContextErr(err)
 			if isCancelled {
@@ -82,7 +82,7 @@ func (qe *queryExecutor) processQueriesWorker() {
 			case qe.messages <- &finishTaskRequest{key, status, err}:
 			case <-qe.ctx.Done():
 			}
-			log.Debugf("Finishing response execution: ID: %d, Peer: %s, Root CID: %s", key.requestID, key.p.String(), taskData.request.Root().String())
+			log.Debugw("finishing response execution", "id", key.requestID, "peer", key.p.String(), "root_cid", taskData.request.Root().String())
 		}
 		qe.queryQueue.TasksDone(pid, tasks...)
 
