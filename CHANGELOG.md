@@ -1,5 +1,81 @@
 # go-graphsync changelog
 
+# go-graphsync 0.7.0
+
+This is a small release to update some dependencies. Importantly, it pulls in go-ipld-prime with
+some significant breaking changes.
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - chore: update deps (#151) ([ipfs/go-graphsync#151](https://github.com/ipfs/go-graphsync/pull/151))
+  - Automatically record heap profiles in testplans (#147) ([ipfs/go-graphsync#147](https://github.com/ipfs/go-graphsync/pull/147))
+  - feat(deps): update go-ipld-prime v0.7.0 (#145) ([ipfs/go-graphsync#145](https://github.com/ipfs/go-graphsync/pull/145))
+  - Release/v0.6.0 ([ipfs/go-graphsync#144](https://github.com/ipfs/go-graphsync/pull/144))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 2 | +3316/-3015 | 25 |
+| Steven Allen | 1 | +95/-227 | 5 |
+
+# go-graphsync 0.6.0
+
+Major code refactor for simplicity, ease of understanding
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Merge branch 'master' into release/v0.6.0
+  - move block allocation into message queue (#140) ([ipfs/go-graphsync#140](https://github.com/ipfs/go-graphsync/pull/140))
+  - Response Assembler Refactor (#138) ([ipfs/go-graphsync#138](https://github.com/ipfs/go-graphsync/pull/138))
+  - Add error listener on receiver (#136) ([ipfs/go-graphsync#136](https://github.com/ipfs/go-graphsync/pull/136))
+  - Run testplan on in CI (#137) ([ipfs/go-graphsync#137](https://github.com/ipfs/go-graphsync/pull/137))
+  - fix(responsemanager): fix network error propogation (#133) ([ipfs/go-graphsync#133](https://github.com/ipfs/go-graphsync/pull/133))
+  - testground test for graphsync (#132) ([ipfs/go-graphsync#132](https://github.com/ipfs/go-graphsync/pull/132))
+  - docs(CHANGELOG): update for v0.5.2 ([ipfs/go-graphsync#130](https://github.com/ipfs/go-graphsync/pull/1
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Alex Cruikshank | 4 | +3269/-1919 | 47 |
+| Hannah Howard | 3 | +777/-511 | 25 |
+| hannahhoward | 1 | +34/-13 | 3 |
+
+# go-graphsync 0.5.2
+
+Minor release resolves bugs in notification system
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - RegisterNetworkErrorListener should fire when there's an error connecting to the peer (#127) ([ipfs/go-graphsync#127](https://github.com/ipfs/go-graphsync/pull/127))
+  - Permit multiple data subscriptions per original topic (#128) ([ipfs/go-graphsync#128](https://github.com/ipfs/go-graphsync/pull/128))
+  - release: v0.5.1 (#123) ([ipfs/go-graphsync#123](https://github.com/ipfs/go-graphsync/pull/123))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 2 | +272/-185 | 10 |
+| Alex Cruikshank | 1 | +188/-110 | 12 |
+| Hannah Howard | 1 | +23/-6 | 3 |
+
+# go-graphsync 0.5.1
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - feat(responsemanager): allow configuration of max requests (#122) ([ipfs/go-graphsync#122](https://github.com/ipfs/go-graphsync/pull/122))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +23/-6 | 3 |
+
 # go-graphsync 0.4.3
 
 Update libp2p to 0.12. This libp2p release includes a breaking change to the libp2p stream interfaces.

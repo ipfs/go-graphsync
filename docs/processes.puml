@@ -51,16 +51,6 @@ fork again
 :ipld.Traverse;
 end fork
 }
-partition "Aggregating Responses" {
-:PeerResponseManager;
-fork
-:PeerResponseSender;
-fork again
-:PeerResponseSender;
-fork again
-:PeerResponseSender;
-end fork
-}
 }
 endif
 partition "Message Sending Layer" {

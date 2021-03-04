@@ -9,13 +9,13 @@ import (
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
-func TestSubscribeOn(t *testing.T) {
+func TestSubscribeWithData(t *testing.T) {
 	ctx := context.Background()
 	testCases := map[string]func(ctx context.Context, t *testing.T, ps notifications.Publisher){
-		"SubscribeOn": func(ctx context.Context, t *testing.T, ps notifications.Publisher) {
+		"SubscribeWithData": func(ctx context.Context, t *testing.T, ps notifications.Publisher) {
 			destTopic := "t2"
 			notifee, verifier := testutil.NewTestNotifee(destTopic, 1)
-			notifications.SubscribeOn(ps, "t1", notifee)
+			notifications.SubscribeWithData(ps, "t1", notifee)
 			ps.Publish("t1", "hi")
 			ps.Shutdown()
 			verifier.ExpectEvents(ctx, t, []notifications.Event{"hi"})

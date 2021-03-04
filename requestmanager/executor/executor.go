@@ -16,7 +16,6 @@ import (
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 )
@@ -28,7 +27,7 @@ type AsyncLoadFn func(graphsync.RequestID, ipld.Link) <-chan types.AsyncLoadResu
 // ExecutionEnv are request parameters that last between requests
 type ExecutionEnv struct {
 	Ctx              context.Context
-	SendRequest      func(peer.ID, gsmsg.GraphSyncRequest, ...notifications.Notifee)
+	SendRequest      func(peer.ID, gsmsg.GraphSyncRequest)
 	RunBlockHooks    func(p peer.ID, response graphsync.ResponseData, blk graphsync.BlockData) error
 	TerminateRequest func(graphsync.RequestID)
 	WaitForMessages  func(ctx context.Context, resumeMessages chan graphsync.ExtensionData) ([]graphsync.ExtensionData, error)

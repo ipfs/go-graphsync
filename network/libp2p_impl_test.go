@@ -37,7 +37,7 @@ func (r *receiver) ReceiveMessage(
 	}
 }
 
-func (r *receiver) ReceiveError(err error) {
+func (r *receiver) ReceiveError(_ peer.ID, _ error) {
 }
 
 func (r *receiver) Connected(p peer.ID) {
@@ -81,9 +81,12 @@ func TestMessageSendAndReceive(t *testing.T) {
 	priority := graphsync.Priority(rand.Int31())
 	status := graphsync.RequestAcknowledged
 
-	sent := gsmsg.New()
-	sent.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	sent.AddResponse(gsmsg.NewResponse(id, status, extension))
+	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	builder.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+	builder.AddResponseCode(id, status)
+	builder.AddExtensionData(id, extension)
+	sent, err := builder.Build()
+	require.NoError(t, err)
 
 	err = gsnet1.ConnectTo(ctx, host2.ID())
 	require.NoError(t, err, "did not connect peers")
