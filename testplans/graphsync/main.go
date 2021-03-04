@@ -359,15 +359,11 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 				if runHTTPTest {
 					// request file directly over http
 					start = time.Now()
-					file, err := ioutil.TempFile(os.TempDir(), fmt.Sprintf("%s-", c.String()))
-					if err != nil {
-						panic(err)
-					}
 					resp, err := http.Get(fmt.Sprintf("http://%s:8080/%s", p.ip.String(), c.String()))
 					if err != nil {
 						panic(err)
 					}
-					bytesRead, err := io.Copy(file, resp.Body)
+					bytesRead, err := io.Copy(ioutil.Discard, resp.Body)
 					if err != nil {
 						panic(err)
 					}
