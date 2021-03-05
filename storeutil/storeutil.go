@@ -2,6 +2,7 @@ package storeutil
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 
@@ -19,7 +20,7 @@ func LoaderForBlockstore(bs bstore.Blockstore) ipld.Loader {
 		if !ok {
 			return nil, fmt.Errorf("Unsupported Link Type")
 		}
-		block, err := bs.Get(asCidLink.Cid)
+		block, err := bs.Get(context.TODO(), asCidLink.Cid)
 		if err != nil {
 			return nil, err
 		}
@@ -41,7 +42,7 @@ func StorerForBlockstore(bs bstore.Blockstore) ipld.Storer {
 			if err != nil {
 				return err
 			}
-			return bs.Put(block)
+			return bs.Put(context.TODO(), block)
 		}
 		return &buffer, committer, nil
 	}

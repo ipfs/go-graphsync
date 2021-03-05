@@ -847,7 +847,7 @@ func TestUnixFSFetch(t *testing.T) {
 				return nil, errors.New("Incorrect Link Type")
 			}
 			// read block from one store
-			block, err := bs.Get(c.Cid)
+			block, err := bs.Get(context.TODO(), c.Cid)
 			if err != nil {
 				return nil, err
 			}
@@ -867,7 +867,7 @@ func TestUnixFSFetch(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				return bs.Put(block)
+				return bs.Put(context.TODO(), block)
 			}
 			return &buf, committer, nil
 		}
