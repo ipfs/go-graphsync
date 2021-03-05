@@ -35,3 +35,4 @@ no_latency_case = { type = "bool", desc = "disable no latency test case", defaul
 block_diagnostics = { type = "bool", desc = "output records of block times", default = "false" }
 use_libp2p_http = { type = "bool", desc = "use libp2p over http for http comparison", default = "false"}
 max_in_progress_requests = { type = "int", desc = "max requests processed by a responder at once", default = "6" }
+test_graphsync = { type = "bool", desc = "use libp2p over http for http comparison", default = "false"}

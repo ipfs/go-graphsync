@@ -343,6 +343,8 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 
 	runHTTPTest := runenv.BooleanParam("compare_http")
 	useLibP2p := runenv.BooleanParam("use_libp2p_http")
+	testGraphsync := runenv.BooleanParam("test_graphsync")
+
 	var client *http.Client
 	if runHTTPTest {
 		if useLibP2p {
@@ -388,25 +390,27 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 			errgrp.Go(func() error {
 				// make a go-ipld-prime link for the root UnixFS node
 				clink := cidlink.Link{Cid: c}
-
+				var start time.Time
+				var dur time.Duration
 				// execute the traversal.
 				runenv.RecordMessage("\t>>> requesting CID %s", c)
+				if testGraphsync {
+					start = time.Now()
+					respCh, errCh := gsync.Request(grpctx, p.peerAddr.ID, clink, sel)
+					for range respCh {
+					}
+					for err := range errCh {
+						return err
+					}
+					dur = time.Since(start)
 
-				start := time.Now()
-				respCh, errCh := gsync.Request(grpctx, p.peerAddr.ID, clink, sel)
-				for range respCh {
-				}
-				for err := range errCh {
-					return err
-				}
-				dur := time.Since(start)
-
-				recorder.recordRun(dur)
-				// verify that we have the CID now.
-				if node, err := dagsrv.Get(grpctx, c); err != nil {
-					return err
-				} else if node == nil {
-					return fmt.Errorf("finished graphsync request, but CID not in store")
+					recorder.recordRun(dur)
+					// verify that we have the CID now.
+					if node, err := dagsrv.Get(grpctx, c); err != nil {
+						return err
+					} else if node == nil {
+						return fmt.Errorf("finished graphsync request, but CID not in store")
+					}
 				}
 				if runHTTPTest {
 					// request file directly over http
