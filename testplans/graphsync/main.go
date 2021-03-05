@@ -38,6 +38,8 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/metrics"
 	"github.com/libp2p/go-libp2p-core/peer"
+	gostream "github.com/libp2p/go-libp2p-gostream"
+	p2phttp "github.com/libp2p/go-libp2p-http"
 	noise "github.com/libp2p/go-libp2p-noise"
 	secio "github.com/libp2p/go-libp2p-secio"
 	tls "github.com/libp2p/go-libp2p-tls"
@@ -127,10 +129,11 @@ func (p networkParams) String() string {
 
 func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 	var (
-		size            = runenv.SizeParam("size")
-		concurrency     = runenv.IntParam("concurrency")
-		networkParams   = parseNetworkConfig(runenv)
-		memorySnapshots = parseMemorySnapshotsParam(runenv)
+		size             = runenv.SizeParam("size")
+		concurrency      = runenv.IntParam("concurrency")
+		blockDiagnostics = runenv.BooleanParam("block_diagnostics")
+		networkParams    = parseNetworkConfig(runenv)
+		memorySnapshots  = parseMemorySnapshotsParam(runenv)
 	)
 	runenv.RecordMessage("started test instance")
 	runenv.RecordMessage("network params: %v", networkParams)
@@ -151,6 +154,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 
 	maxMemoryPerPeer := runenv.SizeParam("max_memory_per_peer")
 	maxMemoryTotal := runenv.SizeParam("max_memory_total")
+	maxInProgressRequests := runenv.IntParam("max_in_progress_requests")
 	var (
 		// make datastore, blockstore, dag service, graphsync
 		bs     = blockstore.NewBlockstore(dss.MutexWrap(datastore))
@@ -161,10 +165,81 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			storeutil.StorerForBlockstore(bs),
 			gsi.MaxMemoryPerPeerResponder(maxMemoryPerPeer),
 			gsi.MaxMemoryResponder(maxMemoryTotal),
+			gsi.MaxInProgressRequests(uint64(maxInProgressRequests)),
 		)
-		recorder = &runRecorder{memorySnapshots: memorySnapshots, runenv: runenv}
+		recorder = &runRecorder{memorySnapshots: memorySnapshots, blockDiagnostics: blockDiagnostics, runenv: runenv}
 	)
 
+	startTimes := make(map[struct {
+		peer.ID
+		gs.RequestID
+	}]time.Time)
+	var startTimesLk gosync.RWMutex
+	gsync.RegisterIncomingRequestHook(func(p peer.ID, request gs.RequestData, hookActions gs.IncomingRequestHookActions) {
+		hookActions.ValidateRequest()
+		startTimesLk.Lock()
+		startTimes[struct {
+			peer.ID
+			gs.RequestID
+		}{p, request.ID()}] = time.Now()
+		startTimesLk.Unlock()
+	})
+	gsync.RegisterOutgoingRequestHook(func(p peer.ID, request gs.RequestData, hookActions gs.OutgoingRequestHookActions) {
+		startTimesLk.Lock()
+		startTimes[struct {
+			peer.ID
+			gs.RequestID
+		}{p, request.ID()}] = time.Now()
+		startTimesLk.Unlock()
+	})
+	gsync.RegisterCompletedResponseListener(func(p peer.ID, request gs.RequestData, status gs.ResponseStatusCode) {
+		startTimesLk.RLock()
+		startTime, ok := startTimes[struct {
+			peer.ID
+			gs.RequestID
+		}{p, request.ID()}]
+		startTimesLk.RUnlock()
+		if ok && status == gs.RequestCompletedFull {
+			duration := time.Since(startTime)
+			recorder.recordRun(duration)
+		}
+	})
+	gsync.RegisterOutgoingBlockHook(func(p peer.ID, request gs.RequestData, block gs.BlockData, ha gs.OutgoingBlockHookActions) {
+		startTimesLk.RLock()
+		startTime := startTimes[struct {
+			peer.ID
+			gs.RequestID
+		}{p, request.ID()}]
+		startTimesLk.RUnlock()
+		recorder.recordBlockQueued(fmt.Sprintf("for request %d at %s", request.ID(), time.Since(startTime)))
+	})
+	gsync.RegisterBlockSentListener(func(p peer.ID, request gs.RequestData, block gs.BlockData) {
+		startTimesLk.RLock()
+		startTime := startTimes[struct {
+			peer.ID
+			gs.RequestID
+		}{p, request.ID()}]
+		startTimesLk.RUnlock()
+		recorder.recordBlock(fmt.Sprintf("sent for request %d at %s", request.ID(), time.Since(startTime)))
+	})
+	gsync.RegisterIncomingResponseHook(func(p peer.ID, response gs.ResponseData, actions gs.IncomingResponseHookActions) {
+		startTimesLk.RLock()
+		startTime := startTimes[struct {
+			peer.ID
+			gs.RequestID
+		}{p, response.RequestID()}]
+		startTimesLk.RUnlock()
+		recorder.recordResponse(fmt.Sprintf("for request %d at %s", response.RequestID(), time.Since(startTime)))
+	})
+	gsync.RegisterIncomingBlockHook(func(p peer.ID, response gs.ResponseData, block gs.BlockData, ha gs.IncomingBlockHookActions) {
+		startTimesLk.RLock()
+		startTime := startTimes[struct {
+			peer.ID
+			gs.RequestID
+		}{p, response.RequestID()}]
+		startTimesLk.RUnlock()
+		recorder.recordBlock(fmt.Sprintf("processed for request %d, cid %s, at %s", response.RequestID(), block.Link().String(), time.Since(startTime)))
+	})
 	defer initCtx.SyncClient.MustSignalAndWait(ctx, "done", runenv.TestInstanceCount)
 
 	switch runenv.TestGroupID {
@@ -175,37 +250,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 
 		runenv.RecordMessage("we are the provider")
 		defer runenv.RecordMessage("done provider")
-
-		startTimes := make(map[struct {
-			peer.ID
-			gs.RequestID
-		}]time.Time)
-		var startTimesLk gosync.Mutex
-		gsync.RegisterIncomingRequestHook(func(p peer.ID, request gs.RequestData, hookActions gs.IncomingRequestHookActions) {
-			hookActions.ValidateRequest()
-			startTimesLk.Lock()
-			startTimes[struct {
-				peer.ID
-				gs.RequestID
-			}{p, request.ID()}] = time.Now()
-			startTimesLk.Unlock()
-		})
-		gsync.RegisterCompletedResponseListener(func(p peer.ID, request gs.RequestData, status gs.ResponseStatusCode) {
-			startTimesLk.Lock()
-			startTime, ok := startTimes[struct {
-				peer.ID
-				gs.RequestID
-			}{p, request.ID()}]
-			startTimesLk.Unlock()
-			if ok && status == gs.RequestCompletedFull {
-				duration := time.Since(startTime)
-				recorder.recordRun(duration)
-			}
-		})
-		gsync.RegisterBlockSentListener(func(p peer.ID, request gs.RequestData, block gs.BlockData) {
-			recorder.recordBlock()
-		})
-		err := runProvider(ctx, runenv, initCtx, dagsrv, size, ip, networkParams, concurrency, memorySnapshots, recorder)
+		err := runProvider(ctx, runenv, initCtx, dagsrv, size, host, ip, networkParams, concurrency, memorySnapshots, recorder)
 		if err != nil {
 			runenv.RecordMessage("Error running provider: %s", err.Error())
 		}
@@ -213,16 +258,13 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 	case "requestors":
 		runenv.RecordMessage("we are the requestor")
 		defer runenv.RecordMessage("done requestor")
-		gsync.RegisterIncomingBlockHook(func(p peer.ID, request gs.ResponseData, block gs.BlockData, ha gs.IncomingBlockHookActions) {
-			recorder.recordBlock()
-		})
 
 		p := peers[0]
 		if err := host.Connect(ctx, *p.peerAddr); err != nil {
 			return err
 		}
 		runenv.RecordMessage("done dialling provider")
-		return runRequestor(ctx, runenv, initCtx, gsync, p, dagsrv, networkParams, concurrency, size, memorySnapshots, recorder)
+		return runRequestor(ctx, runenv, initCtx, gsync, host, p, dagsrv, networkParams, concurrency, size, memorySnapshots, recorder)
 
 	default:
 		panic(fmt.Sprintf("unsupported group ID: %s\n", runenv.TestGroupID))
@@ -292,7 +334,7 @@ func parseMemorySnapshotsParam(runenv *runtime.RunEnv) snapshotMode {
 	}
 }
 
-func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, gsync gs.GraphExchange, p *AddrInfo, dagsrv format.DAGService, networkParams []networkParams, concurrency int, size uint64, memorySnapshots snapshotMode, recorder *runRecorder) error {
+func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, gsync gs.GraphExchange, h host.Host, p *AddrInfo, dagsrv format.DAGService, networkParams []networkParams, concurrency int, size uint64, memorySnapshots snapshotMode, recorder *runRecorder) error {
 	var (
 		cids []cid.Cid
 		// create a selector for the whole UnixFS dag
@@ -300,7 +342,17 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 	)
 
 	runHTTPTest := runenv.BooleanParam("compare_http")
-
+	useLibP2p := runenv.BooleanParam("use_libp2p_http")
+	var client *http.Client
+	if runHTTPTest {
+		if useLibP2p {
+			tr := &http.Transport{}
+			tr.RegisterProtocol("libp2p", p2phttp.NewTransport(h))
+			client = &http.Client{Transport: tr}
+		} else {
+			client = http.DefaultClient
+		}
+	}
 	for round, np := range networkParams {
 		var (
 			topicCid    = sync.NewTopic(fmt.Sprintf("cid-%d", round), []cid.Cid{})
@@ -359,7 +411,13 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 				if runHTTPTest {
 					// request file directly over http
 					start = time.Now()
-					resp, err := http.Get(fmt.Sprintf("http://%s:8080/%s", p.ip.String(), c.String()))
+					var resp *http.Response
+					var err error
+					if useLibP2p {
+						resp, err = client.Get(fmt.Sprintf("libp2p://%s/%s", p.peerAddr.ID.String(), c.String()))
+					} else {
+						resp, err = client.Get(fmt.Sprintf("http://%s:8080/%s", p.ip.String(), c.String()))
+					}
 					if err != nil {
 						panic(err)
 					}
@@ -389,24 +447,37 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 	return nil
 }
 
-func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, dagsrv format.DAGService, size uint64, ip net.IP, networkParams []networkParams, concurrency int, memorySnapshots snapshotMode, recorder *runRecorder) error {
+func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, dagsrv format.DAGService, size uint64, h host.Host, ip net.IP, networkParams []networkParams, concurrency int, memorySnapshots snapshotMode, recorder *runRecorder) error {
 	var (
 		cids       []cid.Cid
 		bufferedDS = format.NewBufferedDAG(ctx, dagsrv)
 	)
 
 	runHTTPTest := runenv.BooleanParam("compare_http")
+	useLibP2p := runenv.BooleanParam("use_libp2p_http")
 	var svr *http.Server
 	if runHTTPTest {
-		// start an http server on port 8080
-		runenv.RecordMessage("creating http server at http://%s:8080", ip.String())
-		svr = &http.Server{Addr: ":8080"}
+		if useLibP2p {
+			listener, _ := gostream.Listen(h, p2phttp.DefaultP2PProtocol)
+			defer listener.Close()
+			// start an http server on port 8080
+			runenv.RecordMessage("creating http server at libp2p://%s", h.ID().String())
+			svr = &http.Server{}
+			go func() {
+				if err := svr.Serve(listener); err != nil {
+					runenv.RecordMessage("shutdown http server at libp2p://%s", h.ID().String())
+				}
+			}()
+		} else {
+			runenv.RecordMessage("creating http server at http://%s:8080", ip.String())
+			svr = &http.Server{Addr: ":8080"}
 
-		go func() {
-			if err := svr.ListenAndServe(); err != nil {
-				runenv.RecordMessage("shutdown http server at http://%s:8080", ip.String())
-			}
-		}()
+			go func() {
+				if err := svr.ListenAndServe(); err != nil {
+					runenv.RecordMessage("shutdown http server at http://%s:8080", ip.String())
+				}
+			}()
+		}
 	}
 
 	for round, np := range networkParams {
@@ -657,23 +728,43 @@ func writeHeap(runenv *runtime.RunEnv, size uint64, np networkParams, concurrenc
 }
 
 type runRecorder struct {
-	memorySnapshots snapshotMode
-	index           int
-	np              networkParams
-	size            uint64
-	concurrency     int
-	round           int
-	runenv          *runtime.RunEnv
-	measurement     string
+	memorySnapshots  snapshotMode
+	blockDiagnostics bool
+	index            int
+	queuedIndex      int
+	responseIndex    int
+	np               networkParams
+	size             uint64
+	concurrency      int
+	round            int
+	runenv           *runtime.RunEnv
+	measurement      string
 }
 
-func (rr *runRecorder) recordBlock() {
+func (rr *runRecorder) recordBlock(postfix string) {
+	if rr.blockDiagnostics {
+		rr.runenv.RecordMessage("block %d %s", rr.index, postfix)
+	}
 	if rr.memorySnapshots == snapshotDetailed {
 		if rr.index%detailedSnapshotFrequency == 0 {
 			recordSnapshots(rr.runenv, rr.size, rr.np, rr.concurrency, fmt.Sprintf("incremental-%d", rr.index))
 		}
 	}
 	rr.index++
+}
+
+func (rr *runRecorder) recordBlockQueued(postfix string) {
+	if rr.blockDiagnostics {
+		rr.runenv.RecordMessage("block %d queued %s", rr.queuedIndex, postfix)
+	}
+	rr.queuedIndex++
+}
+
+func (rr *runRecorder) recordResponse(postfix string) {
+	if rr.blockDiagnostics {
+		rr.runenv.RecordMessage("response %d received %s", rr.responseIndex, postfix)
+	}
+	rr.responseIndex++
 }
 
 func (rr *runRecorder) recordRun(duration time.Duration) {

@@ -28,7 +28,10 @@ raw_leaves = { type = "bool", desc = "should unixfs leaves be left unwrapped", d
 disk_store = { type = "bool", desc = "should data be stored on disk (true) or memory (false)", default = "false"}
 memory_snapshots = { type = "string", desc = "what kind of memory snapshots to take (none, simple, detailed)", default = "none" }
 compare_http = { type = "bool", desc = "run a comparison against http", default = "true"}
-max_memory_per_peer = { type = "int", desc = "max memory a responder can queue up per peer", default = "64MiB"}
-max_memory_total = { type = "int", desc = "max memory a responder can queue up total", default = "512MiB"}
-unlimited_bandwidth_case = { type = "bool", desc = "run a comparison against http", default = "true"}
-no_latency_case = { type = "bool", desc = "run a comparison against http", default = "true"}
+max_memory_per_peer = { type = "int", desc = "max memory a responder can queue up per peer", default = "16MiB"}
+max_memory_total = { type = "int", desc = "max memory a responder can queue up total", default = "256MiB"}
+unlimited_bandwidth_case = { type = "bool", desc = "disable unlimited bandwidth test case", default = "true"}
+no_latency_case = { type = "bool", desc = "disable no latency test case", default = "true"}
+block_diagnostics = { type = "bool", desc = "output records of block times", default = "false" }
+use_libp2p_http = { type = "bool", desc = "use libp2p over http for http comparison", default = "false"}
+max_in_progress_requests = { type = "int", desc = "max requests processed by a responder at once", default = "6" }
