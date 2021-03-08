@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 
+	dagpb "github.com/ipld/go-codec-dagpb"
 	ipld "github.com/ipld/go-ipld-prime"
-	dagpb "github.com/ipld/go-ipld-prime-proto"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	_ "github.com/ipld/go-ipld-prime/codec/raw"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal"
 	ipldtraversal "github.com/ipld/go-ipld-prime/traversal"
@@ -14,11 +16,14 @@ import (
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 )
 
-var (
-	defaultChooser traversal.LinkTargetNodePrototypeChooser = dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
-		return basicnode.Prototype.Any, nil
-	})
-)
+var defaultChooser = func(lnk ipld.Link, lctx ipld.LinkContext) (ipld.NodePrototype, error) {
+	// We can decode all nodes into basicnode's Any, except for
+	// dagpb nodes, which must explicitly use the PBNode prototype.
+	if lnk, ok := lnk.(cidlink.Link); ok && lnk.Cid.Prefix().Codec == 0x70 {
+		return dagpb.Type.PBNode, nil
+	}
+	return basicnode.Prototype.Any, nil
+}
 
 func Traverse(ctx context.Context, loader ipld.Loader, chooser traversal.LinkTargetNodePrototypeChooser, root ipld.Link, s selector.Selector, fn traversal.AdvVisitFn) error {
 	if chooser == nil {
