@@ -288,15 +288,17 @@ func (m *manager) OnRequestDisconnected(ctx context.Context, chid datatransfer.C
 
 func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, completeErr error) error {
 	if completeErr == nil {
+		// If the channel was initiated by the other peer
 		if chid.Initiator != m.peerID {
 			msg, err := m.completeMessage(chid)
 			if err != nil {
 				return nil
 			}
 			if msg != nil {
-				log.Infof("channel %s: sending completion message", chid)
+				// Send the other peer a message that the transfer has completed
+				log.Infof("channel %s: sending completion message to initiator", chid)
 				if err := m.dataTransferNetwork.SendMessage(context.Background(), chid.Initiator, msg); err != nil {
-					log.Warnf("channel %s: failed to send completion message: %s", chid, err)
+					log.Warnf("channel %s: failed to send completion message to initiator: %s", chid, err)
 					return m.OnRequestDisconnected(context.TODO(), chid)
 				}
 			}
@@ -308,6 +310,9 @@ func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, completeErr er
 			}
 			return m.channels.Error(chid, err)
 		}
+
+		// The channel was initiated by this node, so move to the finished state
+		log.Infof("channel %s: transfer initiated by local node is complete", chid)
 		return m.channels.FinishTransfer(chid)
 	}
 	chst, err := m.channels.GetByID(context.TODO(), chid)

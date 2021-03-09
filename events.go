@@ -74,13 +74,15 @@ const (
 	// DataQueued is emitted when data is read and queued for sending to the remote peer
 	DataQueued
 
-	// DataQueuedProgress is emitted the first time a block is queued for
-	// sending to the remote peer. It is used to measure progress of how much
-	// of the total data has been queued.
+	// DataQueuedProgress is emitted when a block is queued for sending to the
+	// remote peer. It is not emitted when the block is resent.
+	// It is used to measure progress of how much of the total data has been
+	// queued.
 	DataQueuedProgress
 
-	// DataSentProgress is emitted the first time a block is sent to the remote
-	// peer. It is used to measure progress of how much of the total data has
+	// DataSentProgress is emitted when a block is sent to the remote peer.
+	// It is not emitted when the block is resent.
+	// It is used to measure progress of how much of the total data has
 	// been sent.
 	DataSentProgress
 

@@ -115,6 +115,7 @@ func (impl *libp2pDataTransferNetwork) openStream(ctx context.Context, id peer.I
 		Jitter: true,
 	}
 
+	start := time.Now()
 	for {
 		tctx, cancel := context.WithTimeout(ctx, impl.openStreamTimeout)
 		defer cancel()
@@ -123,6 +124,11 @@ func (impl *libp2pDataTransferNetwork) openStream(ctx context.Context, id peer.I
 		at := time.Now()
 		s, err := impl.host.NewStream(tctx, id, protocols...)
 		if err == nil {
+			nAttempts := b.Attempt() + 1
+			if b.Attempt() > 0 {
+				log.Debugf("opened stream to %s on attempt %g of %g after %s",
+					id, nAttempts, impl.maxStreamOpenAttempts, time.Since(start))
+			}
 			return s, err
 		}
 
