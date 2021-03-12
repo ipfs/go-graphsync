@@ -728,7 +728,6 @@ func TestSimulatedRetrievalFlow(t *testing.T) {
 	testCases := map[string]struct {
 		unpauseRequestorDelay time.Duration
 		unpauseResponderDelay time.Duration
-		payForUnseal          bool
 		pausePoints           []uint64
 	}{
 		"fast unseal, payment channel ready": {
@@ -770,20 +769,6 @@ func TestSimulatedRetrievalFlow(t *testing.T) {
 			encodedFVR, err := encoding.Encode(finalVoucherResult)
 			require.NoError(t, err)
 			var clientSubscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-				if event.Code == datatransfer.Accept {
-					err := dt2.PauseDataTransferChannel(ctx, chid)
-					require.NoError(t, err)
-					timer := time.NewTimer(config.unpauseRequestorDelay)
-					go func() {
-						<-timer.C
-						err := dt2.ResumeDataTransferChannel(ctx, chid)
-						require.NoError(t, err)
-						if config.payForUnseal {
-							err := dt2.SendVoucher(ctx, chid, testutil.NewFakeDTType())
-							require.NoError(t, err)
-						}
-					}()
-				}
 				if event.Code == datatransfer.Error {
 					errChan <- struct{}{}
 				}
@@ -811,7 +796,7 @@ func TestSimulatedRetrievalFlow(t *testing.T) {
 			providerAccepted := false
 			var providerSubscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 				if event.Code == datatransfer.PauseResponder {
-					if !config.payForUnseal && !providerAccepted {
+					if !providerAccepted {
 						providerAccepted = true
 						timer := time.NewTimer(config.unpauseResponderDelay)
 						go func() {
