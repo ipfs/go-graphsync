@@ -11,10 +11,10 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
-// LoaderForBlockstore returns an IPLD Loader function compatible with graphsync
-// from an IPFS blockstore
-func LoaderForBlockstore(bs bstore.Blockstore) ipld.Loader {
-	return func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
+// LinkSystemForBlockstore constructs an IPLD LinkSystem for a blockstore
+func LinkSystemForBlockstore(bs bstore.Blockstore) ipld.LinkSystem {
+	lsys := cidlink.DefaultLinkSystem()
+	lsys.StorageReadOpener = func(lnkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 		asCidLink, ok := lnk.(cidlink.Link)
 		if !ok {
 			return nil, fmt.Errorf("Unsupported Link Type")
@@ -25,12 +25,7 @@ func LoaderForBlockstore(bs bstore.Blockstore) ipld.Loader {
 		}
 		return bytes.NewBuffer(block.RawData()), nil
 	}
-}
-
-// StorerForBlockstore returns an IPLD Storer function compatible with graphsync
-// from an IPFS blockstore
-func StorerForBlockstore(bs bstore.Blockstore) ipld.Storer {
-	return func(lnkCtx ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
+	lsys.StorageWriteOpener = func(lnkCtx ipld.LinkContext) (io.Writer, ipld.BlockWriteCommitter, error) {
 		var buffer settableBuffer
 		committer := func(lnk ipld.Link) error {
 			asCidLink, ok := lnk.(cidlink.Link)
@@ -45,6 +40,7 @@ func StorerForBlockstore(bs bstore.Blockstore) ipld.Storer {
 		}
 		return &buffer, committer, nil
 	}
+	return lsys
 }
 
 type settableBuffer struct {

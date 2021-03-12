@@ -91,7 +91,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	blockChain2 := testutil.SetupBlockChain(ctx, t, td.loader, td.storer, 100, 5)
+	blockChain2 := testutil.SetupBlockChain(ctx, t, td.persistence, 100, 5)
 
 	returnedResponseChan1, returnedErrorChan1 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 	returnedResponseChan2, returnedErrorChan2 := td.requestManager.SendRequest(requestCtx, peers[0], blockChain2.TipLink, blockChain2.Selector())
@@ -873,8 +873,7 @@ type testData struct {
 	blockHooks            *hooks.IncomingBlockHooks
 	requestManager        *RequestManager
 	blockStore            map[ipld.Link][]byte
-	loader                ipld.Loader
-	storer                ipld.Storer
+	persistence           ipld.LinkSystem
 	blockChain            *testutil.TestBlockChain
 	extensionName1        graphsync.ExtensionName
 	extensionData1        []byte
@@ -898,8 +897,8 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()
 	td.blockStore = make(map[ipld.Link][]byte)
-	td.loader, td.storer = testutil.NewTestStore(td.blockStore)
-	td.blockChain = testutil.SetupBlockChain(ctx, t, td.loader, td.storer, 100, 5)
+	td.persistence = testutil.NewTestStore(td.blockStore)
+	td.blockChain = testutil.SetupBlockChain(ctx, t, td.persistence, 100, 5)
 	td.extensionData1 = testutil.RandomBytes(100)
 	td.extensionName1 = graphsync.ExtensionName("AppleSauce/McGee")
 	td.extension1 = graphsync.ExtensionData{

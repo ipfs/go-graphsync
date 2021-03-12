@@ -29,7 +29,7 @@ type inProgressResponseStatus struct {
 	ctx        context.Context
 	cancelFn   func()
 	request    gsmsg.GraphSyncRequest
-	loader     ipld.Loader
+	loader     ipld.BlockReadOpener
 	traverser  ipldutil.Traverser
 	signals    signals
 	updates    []gsmsg.GraphSyncRequest
@@ -53,7 +53,7 @@ type responseTaskData struct {
 	subscriber *notifications.TopicDataSubscriber
 	ctx        context.Context
 	request    gsmsg.GraphSyncRequest
-	loader     ipld.Loader
+	loader     ipld.BlockReadOpener
 	traverser  ipldutil.Traverser
 	signals    signals
 }
@@ -135,7 +135,7 @@ type ResponseManager struct {
 
 // New creates a new response manager for responding to requests
 func New(ctx context.Context,
-	loader ipld.Loader,
+	linkSystem ipld.LinkSystem,
 	responseAssembler ResponseAssembler,
 	queryQueue QueryQueue,
 	requestHooks RequestHooks,
@@ -156,7 +156,7 @@ func New(ctx context.Context,
 		updateHooks:        updateHooks,
 		cancelledListeners: cancelledListeners,
 		responseAssembler:  responseAssembler,
-		loader:             loader,
+		linkSystem:         linkSystem,
 		queryQueue:         queryQueue,
 		messages:           messages,
 		ctx:                ctx,
@@ -270,7 +270,7 @@ type finishTaskRequest struct {
 
 type setResponseDataRequest struct {
 	key       responseKey
-	loader    ipld.Loader
+	loader    ipld.BlockReadOpener
 	traverser ipldutil.Traverser
 }
 

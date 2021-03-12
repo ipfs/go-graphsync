@@ -19,7 +19,7 @@ type ResponseSender func(
 // RunTraversal wraps a given loader with an interceptor that sends loaded
 // blocks out to the network with the given response sender.
 func RunTraversal(
-	loader ipld.Loader,
+	loader ipld.BlockReadOpener,
 	traverser ipldutil.Traverser,
 	sendResponse ResponseSender) error {
 	for {
@@ -28,7 +28,7 @@ func RunTraversal(
 			return err
 		}
 		lnk, lnkCtx := traverser.CurrentRequest()
-		result, err := loader(lnk, lnkCtx)
+		result, err := loader(lnkCtx, lnk)
 		var data []byte
 		if err != nil {
 			traverser.Error(traversal.SkipMe{})

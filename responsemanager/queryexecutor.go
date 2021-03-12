@@ -31,7 +31,7 @@ type queryExecutor struct {
 	updateHooks        UpdateHooks
 	cancelledListeners CancelledListeners
 	responseAssembler  ResponseAssembler
-	loader             ipld.Loader
+	linkSystem         ipld.LinkSystem
 	queryQueue         QueryQueue
 	messages           chan responseManagerMessage
 	ctx                context.Context
@@ -114,7 +114,7 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 
 func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	p peer.ID,
-	request gsmsg.GraphSyncRequest, signals signals, sub *notifications.TopicDataSubscriber) (ipld.Loader, ipldutil.Traverser, bool, error) {
+	request gsmsg.GraphSyncRequest, signals signals, sub *notifications.TopicDataSubscriber) (ipld.BlockReadOpener, ipldutil.Traverser, bool, error) {
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
 	var transactionError error
 	var isPaused bool
@@ -146,16 +146,18 @@ func (qe *queryExecutor) prepareQuery(ctx context.Context,
 		return nil, nil, false, err
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
-	traverser := ipldutil.TraversalBuilder{
-		Root:     rootLink,
-		Selector: request.Selector(),
-		Chooser:  result.CustomChooser,
-	}.Start(ctx)
-	loader := result.CustomLoader
-	if loader == nil {
-		loader = qe.loader
+	linkSystem := result.CustomLinkSystem
+	if linkSystem.StorageReadOpener == nil {
+		linkSystem = qe.linkSystem
 	}
-	return loader, traverser, isPaused, nil
+	traverser := ipldutil.TraversalBuilder{
+		Root:       rootLink,
+		Selector:   request.Selector(),
+		LinkSystem: linkSystem,
+		Chooser:    result.CustomChooser,
+	}.Start(ctx)
+
+	return linkSystem.StorageReadOpener, traverser, isPaused, nil
 }
 
 func (qe *queryExecutor) processDedupByKey(request gsmsg.GraphSyncRequest, p peer.ID, failNotifee notifications.Notifee) error {
@@ -205,7 +207,7 @@ func (qe *queryExecutor) processDoNoSendCids(request gsmsg.GraphSyncRequest, p p
 func (qe *queryExecutor) executeQuery(
 	p peer.ID,
 	request gsmsg.GraphSyncRequest,
-	loader ipld.Loader,
+	loader ipld.BlockReadOpener,
 	traverser ipldutil.Traverser,
 	signals signals,
 	sub *notifications.TopicDataSubscriber) (graphsync.ResponseStatusCode, error) {

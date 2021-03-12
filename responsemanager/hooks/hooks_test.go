@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -19,10 +20,10 @@ import (
 )
 
 type fakePersistenceOptions struct {
-	po map[string]ipld.Loader
+	po map[string]ipld.LinkSystem
 }
 
-func (fpo *fakePersistenceOptions) GetLoader(name string) (ipld.Loader, bool) {
+func (fpo *fakePersistenceOptions) GetLinkSystem(name string) (ipld.LinkSystem, bool) {
 	loader, ok := fpo.po[name]
 	return loader, ok
 }
@@ -31,12 +32,13 @@ func TestRequestHookProcessing(t *testing.T) {
 	fakeChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
 		return basicnode.Prototype.Any, nil
 	}
-	fakeLoader := func(link ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
+	fakeSystem := cidlink.DefaultLinkSystem()
+	fakeSystem.StorageReadOpener = func(lnkCtx ipld.LinkContext, link ipld.Link) (io.Reader, error) {
 		return nil, nil
 	}
 	fpo := &fakePersistenceOptions{
-		po: map[string]ipld.Loader{
-			"chainstore": fakeLoader,
+		po: map[string]ipld.LinkSystem{
+			"chainstore": fakeSystem,
 		},
 	}
 	extensionData := testutil.RandomBytes(100)
@@ -65,7 +67,7 @@ func TestRequestHookProcessing(t *testing.T) {
 				require.False(t, result.IsValidated)
 				require.Empty(t, result.Extensions)
 				require.Nil(t, result.CustomChooser)
-				require.Nil(t, result.CustomLoader)
+				require.Nil(t, result.CustomLinkSystem.StorageReadOpener)
 				require.NoError(t, result.Err)
 			},
 		},
@@ -80,7 +82,7 @@ func TestRequestHookProcessing(t *testing.T) {
 				require.Len(t, result.Extensions, 1)
 				require.Contains(t, result.Extensions, extensionResponse)
 				require.Nil(t, result.CustomChooser)
-				require.Nil(t, result.CustomLoader)
+				require.Nil(t, result.CustomLinkSystem.StorageReadOpener)
 				require.NoError(t, result.Err)
 			},
 		},
@@ -96,7 +98,7 @@ func TestRequestHookProcessing(t *testing.T) {
 				require.Len(t, result.Extensions, 1)
 				require.Contains(t, result.Extensions, extensionResponse)
 				require.Nil(t, result.CustomChooser)
-				require.Nil(t, result.CustomLoader)
+				require.Nil(t, result.CustomLinkSystem.StorageReadOpener)
 				require.NoError(t, result.Err)
 			},
 		},
@@ -114,7 +116,7 @@ func TestRequestHookProcessing(t *testing.T) {
 				require.False(t, result.IsValidated)
 				require.Empty(t, result.Extensions)
 				require.Nil(t, result.CustomChooser)
-				require.Nil(t, result.CustomLoader)
+				require.Nil(t, result.CustomLinkSystem.StorageReadOpener)
 				require.EqualError(t, result.Err, "something went wrong")
 			},
 		},
@@ -130,7 +132,7 @@ func TestRequestHookProcessing(t *testing.T) {
 				require.False(t, result.IsValidated)
 				require.Empty(t, result.Extensions)
 				require.Nil(t, result.CustomChooser)
-				require.Nil(t, result.CustomLoader)
+				require.Nil(t, result.CustomLinkSystem.StorageReadOpener)
 				require.NoError(t, result.Err)
 			},
 		},
@@ -148,7 +150,7 @@ func TestRequestHookProcessing(t *testing.T) {
 				require.Len(t, result.Extensions, 1)
 				require.Contains(t, result.Extensions, extensionResponse)
 				require.Nil(t, result.CustomChooser)
-				require.NotNil(t, result.CustomLoader)
+				require.NotNil(t, result.CustomLinkSystem.StorageReadOpener)
 				require.NoError(t, result.Err)
 			},
 		},
@@ -166,7 +168,7 @@ func TestRequestHookProcessing(t *testing.T) {
 				require.Len(t, result.Extensions, 1)
 				require.Contains(t, result.Extensions, extensionResponse)
 				require.Nil(t, result.CustomChooser)
-				require.Nil(t, result.CustomLoader)
+				require.Nil(t, result.CustomLinkSystem.StorageReadOpener)
 				require.EqualError(t, result.Err, "unknown loader option")
 			},
 		},
@@ -197,7 +199,7 @@ func TestRequestHookProcessing(t *testing.T) {
 				require.Len(t, result.Extensions, 1)
 				require.Contains(t, result.Extensions, extensionResponse)
 				require.NotNil(t, result.CustomChooser)
-				require.Nil(t, result.CustomLoader)
+				require.Nil(t, result.CustomLinkSystem.StorageReadOpener)
 				require.NoError(t, result.Err)
 			},
 		},

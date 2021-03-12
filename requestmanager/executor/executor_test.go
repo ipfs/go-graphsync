@@ -259,8 +259,8 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			ctx := context.Background()
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			loader, storer := testutil.NewTestStore(make(map[ipld.Link][]byte))
-			tbc := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 10)
+			persistence := testutil.NewTestStore(make(map[ipld.Link][]byte))
+			tbc := testutil.SetupBlockChain(ctx, t, persistence, 100, 10)
 			fal := testloader.NewFakeAsyncLoader()
 			requestID := graphsync.RequestID(rand.Int31())
 			p := testutil.GeneratePeers(1)[0]

@@ -44,14 +44,15 @@ func TestTraverser(t *testing.T) {
 
 	t.Run("traverses correctly, blockchain", func(t *testing.T) {
 		store := make(map[ipld.Link][]byte)
-		loader, storer := testutil.NewTestStore(store)
-		blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 10)
+		persistence := testutil.NewTestStore(store)
+		blockChain := testutil.SetupBlockChain(ctx, t, persistence, 100, 10)
 		inProgressChan := make(chan graphsync.ResponseProgress)
 		done := make(chan struct{})
 		traverser := TraversalBuilder{
-			Root:     blockChain.TipLink,
-			Selector: blockChain.Selector(),
-			Chooser:  blockChain.Chooser,
+			Root:       blockChain.TipLink,
+			Selector:   blockChain.Selector(),
+			Chooser:    blockChain.Chooser,
+			LinkSystem: persistence,
 			Visitor: func(tp traversal.Progress, node ipld.Node, r traversal.VisitReason) error {
 				select {
 				case <-ctx.Done():

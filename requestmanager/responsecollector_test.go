@@ -29,8 +29,8 @@ func TestBufferingResponseProgress(t *testing.T) {
 		requestCtx, incomingResponses, incomingErrors, cancelRequest)
 
 	blockStore := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blockStore)
-	blockChain := testutil.SetupBlockChain(ctx, t, loader, storer, 100, 10)
+	persistence := testutil.NewTestStore(blockStore)
+	blockChain := testutil.SetupBlockChain(ctx, t, persistence, 100, 10)
 	blocks := blockChain.AllBlocks()
 
 	for i, block := range blocks {

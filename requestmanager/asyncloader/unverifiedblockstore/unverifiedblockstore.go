@@ -14,12 +14,12 @@ type settableWriter interface {
 // that have not been verified to be part of a traversal
 type UnverifiedBlockStore struct {
 	inMemoryBlocks map[ipld.Link][]byte
-	storer         ipld.Storer
+	storer         ipld.BlockWriteOpener
 }
 
 // New initializes a new unverified store with the given storer function for writing
 // to permaneant storage if the block is verified
-func New(storer ipld.Storer) *UnverifiedBlockStore {
+func New(storer ipld.BlockWriteOpener) *UnverifiedBlockStore {
 	return &UnverifiedBlockStore{
 		inMemoryBlocks: make(map[ipld.Link][]byte),
 		storer:         storer,

@@ -7,12 +7,14 @@ import (
 	"sync"
 
 	ipld "github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
 // NewTestStore provides a loader and storer for the given in memory link -> byte data map
-func NewTestStore(blocksWritten map[ipld.Link][]byte) (ipld.Loader, ipld.Storer) {
+func NewTestStore(blocksWritten map[ipld.Link][]byte) ipld.LinkSystem {
 	var storeLk sync.RWMutex
-	storer := func(lnkCtx ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
+	lsys := cidlink.DefaultLinkSystem()
+	lsys.StorageWriteOpener = func(lnkCtx ipld.LinkContext) (io.Writer, ipld.BlockWriteCommitter, error) {
 		var buffer bytes.Buffer
 		committer := func(lnk ipld.Link) error {
 			storeLk.Lock()
@@ -22,7 +24,7 @@ func NewTestStore(blocksWritten map[ipld.Link][]byte) (ipld.Loader, ipld.Storer)
 		}
 		return &buffer, committer, nil
 	}
-	loader := func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
+	lsys.StorageReadOpener = func(lnkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 		storeLk.RLock()
 		data, ok := blocksWritten[lnk]
 		storeLk.RUnlock()
@@ -32,5 +34,5 @@ func NewTestStore(blocksWritten map[ipld.Link][]byte) (ipld.Loader, ipld.Storer)
 		return nil, fmt.Errorf("unable to load block")
 	}
 
-	return loader, storer
+	return lsys
 }

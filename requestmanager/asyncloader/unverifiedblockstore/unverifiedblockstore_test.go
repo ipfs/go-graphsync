@@ -14,10 +14,10 @@ import (
 
 func TestVerifyBlockPresent(t *testing.T) {
 	blocksWritten := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blocksWritten)
-	unverifiedBlockStore := New(storer)
+	lsys := testutil.NewTestStore(blocksWritten)
+	unverifiedBlockStore := New(lsys.StorageWriteOpener)
 	block := testutil.GenerateBlocksOfSize(1, 100)[0]
-	reader, err := loader(cidlink.Link{Cid: block.Cid()}, ipld.LinkContext{})
+	reader, err := lsys.StorageReadOpener(ipld.LinkContext{}, cidlink.Link{Cid: block.Cid()})
 	require.Nil(t, reader)
 	require.Error(t, err, "block should not be loadable till it's verified and stored")
 
@@ -26,7 +26,7 @@ func TestVerifyBlockPresent(t *testing.T) {
 	require.Error(t, err, "block should not be verifiable till it's added as an unverifiable block")
 
 	unverifiedBlockStore.AddUnverifiedBlock(cidlink.Link{Cid: block.Cid()}, block.RawData())
-	reader, err = loader(cidlink.Link{Cid: block.Cid()}, ipld.LinkContext{})
+	reader, err = lsys.StorageReadOpener(ipld.LinkContext{}, cidlink.Link{Cid: block.Cid()})
 	require.Nil(t, reader)
 	require.Error(t, err, "block should not be loadable till it's verified")
 
@@ -34,7 +34,7 @@ func TestVerifyBlockPresent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, block.RawData(), data, "block should be returned on verification if added")
 
-	reader, err = loader(cidlink.Link{Cid: block.Cid()}, ipld.LinkContext{})
+	reader, err = lsys.StorageReadOpener(ipld.LinkContext{}, cidlink.Link{Cid: block.Cid()})
 	require.NoError(t, err)
 	var buffer bytes.Buffer
 	_, err = io.Copy(&buffer, reader)

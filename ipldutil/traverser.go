@@ -6,9 +6,12 @@ import (
 	"io"
 
 	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 )
+
+var defaultLinkSystem = cidlink.DefaultLinkSystem()
 
 var defaultVisitor traversal.AdvVisitFn = func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil }
 
@@ -22,10 +25,11 @@ func (cp ContextCancelError) Error() string {
 
 // TraversalBuilder defines parameters for an iterative traversal
 type TraversalBuilder struct {
-	Root     ipld.Link
-	Selector ipld.Node
-	Visitor  traversal.AdvVisitFn
-	Chooser  traversal.LinkTargetNodePrototypeChooser
+	Root       ipld.Link
+	Selector   ipld.Node
+	Visitor    traversal.AdvVisitFn
+	LinkSystem ipld.LinkSystem
+	Chooser    traversal.LinkTargetNodePrototypeChooser
 }
 
 // Traverser is an interface for performing a selector traversal that operates iteratively --
@@ -67,6 +71,7 @@ func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 		selector:     tb.Selector,
 		visitor:      defaultVisitor,
 		chooser:      defaultChooser,
+		linkSystem:   tb.LinkSystem,
 		awaitRequest: make(chan struct{}, 1),
 		stateChan:    make(chan state, 1),
 		responses:    make(chan nextResponse),
@@ -78,6 +83,16 @@ func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 	if tb.Chooser != nil {
 		t.chooser = tb.Chooser
 	}
+	if tb.LinkSystem.DecoderChooser == nil {
+		t.linkSystem.DecoderChooser = defaultLinkSystem.DecoderChooser
+	}
+	if tb.LinkSystem.EncoderChooser == nil {
+		t.linkSystem.EncoderChooser = defaultLinkSystem.EncoderChooser
+	}
+	if tb.LinkSystem.HasherChooser == nil {
+		t.linkSystem.HasherChooser = defaultLinkSystem.HasherChooser
+	}
+	t.linkSystem.StorageReadOpener = t.loader
 	t.start()
 	return t
 }
@@ -91,6 +106,7 @@ type traverser struct {
 	root           ipld.Link
 	selector       ipld.Node
 	visitor        traversal.AdvVisitFn
+	linkSystem     ipld.LinkSystem
 	chooser        traversal.LinkTargetNodePrototypeChooser
 	currentLink    ipld.Link
 	currentContext ipld.LinkContext
@@ -100,6 +116,20 @@ type traverser struct {
 	stateChan      chan state
 	responses      chan nextResponse
 	stopped        chan struct{}
+}
+
+func (t *traverser) loader(lnkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
+	select {
+	case <-t.ctx.Done():
+		return nil, ContextCancelError{}
+	case t.stateChan <- state{false, nil, lnk, lnkCtx}:
+	}
+	select {
+	case <-t.ctx.Done():
+		return nil, ContextCancelError{}
+	case response := <-t.responses:
+		return response.input, response.err
+	}
 }
 
 func (t *traverser) checkState() {
@@ -134,31 +164,16 @@ func (t *traverser) start() {
 	}
 	go func() {
 		defer close(t.stopped)
-		loader := func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
-			select {
-			case <-t.ctx.Done():
-				return nil, ContextCancelError{}
-			case t.stateChan <- state{false, nil, lnk, lnkCtx}:
-			}
-			select {
-			case <-t.ctx.Done():
-				return nil, ContextCancelError{}
-			case response := <-t.responses:
-				return response.input, response.err
-			}
-		}
 		ns, err := t.chooser(t.root, ipld.LinkContext{})
 		if err != nil {
 			t.writeDone(err)
 			return
 		}
-		nb := ns.NewBuilder()
-		err = t.root.Load(t.ctx, ipld.LinkContext{}, nb, loader)
+		nd, err := t.linkSystem.Load(ipld.LinkContext{Ctx: t.ctx}, t.root, ns)
 		if err != nil {
 			t.writeDone(err)
 			return
 		}
-		nd := nb.Build()
 
 		sel, err := selector.ParseSelector(t.selector)
 		if err != nil {
@@ -168,7 +183,7 @@ func (t *traverser) start() {
 		err = traversal.Progress{
 			Cfg: &traversal.Config{
 				Ctx:                            t.ctx,
-				LinkLoader:                     loader,
+				LinkSystem:                     t.linkSystem,
 				LinkTargetNodePrototypeChooser: t.chooser,
 			},
 		}.WalkAdv(nd, sel, t.visitor)

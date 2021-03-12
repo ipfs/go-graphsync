@@ -13,7 +13,7 @@ import (
 
 // PersistenceOptions is an interface for getting loaders by name
 type PersistenceOptions interface {
-	GetLoader(name string) (ipld.Loader, bool)
+	GetLinkSystem(name string) (ipld.LinkSystem, bool)
 }
 
 // IncomingRequestHooks is a set of incoming request hooks that can be processed
@@ -50,12 +50,12 @@ func (irh *IncomingRequestHooks) Register(hook graphsync.OnIncomingRequestHook) 
 
 // RequestResult is the outcome of running requesthooks
 type RequestResult struct {
-	IsValidated   bool
-	IsPaused      bool
-	CustomLoader  ipld.Loader
-	CustomChooser traversal.LinkTargetNodePrototypeChooser
-	Err           error
-	Extensions    []graphsync.ExtensionData
+	IsValidated      bool
+	IsPaused         bool
+	CustomLinkSystem ipld.LinkSystem
+	CustomChooser    traversal.LinkTargetNodePrototypeChooser
+	Err              error
+	Extensions       []graphsync.ExtensionData
 }
 
 // ProcessRequestHooks runs request hooks against an incoming request
@@ -72,19 +72,19 @@ type requestHookActions struct {
 	isValidated        bool
 	isPaused           bool
 	err                error
-	loader             ipld.Loader
+	linkSystem         ipld.LinkSystem
 	chooser            traversal.LinkTargetNodePrototypeChooser
 	extensions         []graphsync.ExtensionData
 }
 
 func (ha *requestHookActions) result() RequestResult {
 	return RequestResult{
-		IsValidated:   ha.isValidated,
-		IsPaused:      ha.isPaused,
-		CustomLoader:  ha.loader,
-		CustomChooser: ha.chooser,
-		Err:           ha.err,
-		Extensions:    ha.extensions,
+		IsValidated:      ha.isValidated,
+		IsPaused:         ha.isPaused,
+		CustomLinkSystem: ha.linkSystem,
+		CustomChooser:    ha.chooser,
+		Err:              ha.err,
+		Extensions:       ha.extensions,
 	}
 }
 
@@ -101,12 +101,12 @@ func (ha *requestHookActions) ValidateRequest() {
 }
 
 func (ha *requestHookActions) UsePersistenceOption(name string) {
-	loader, ok := ha.persistenceOptions.GetLoader(name)
+	linkSystem, ok := ha.persistenceOptions.GetLinkSystem(name)
 	if !ok {
 		ha.TerminateWithError(errors.New("unknown loader option"))
 		return
 	}
-	ha.loader = loader
+	ha.linkSystem = linkSystem
 }
 
 func (ha *requestHookActions) UseLinkTargetNodePrototypeChooser(chooser traversal.LinkTargetNodePrototypeChooser) {
