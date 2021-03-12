@@ -248,6 +248,8 @@ github.com/ipld/go-ipld-prime v0.7.1-0.20210305140706-7e6922442629 h1:8OaclCESdh
 github.com/ipld/go-ipld-prime v0.7.1-0.20210305140706-7e6922442629/go.mod h1:k++jmk6A1k3gXVnW0XF1M1xBKnk7fGEjC2QDj9Zgvyg=
 github.com/ipld/go-ipld-prime v0.7.1-0.20210312004928-8a500e6b8a62 h1:rYzj0eh2b6VWuF3yRdWugOcItYSI7Z4buf8Q9zxW1Yo=
 github.com/ipld/go-ipld-prime v0.7.1-0.20210312004928-8a500e6b8a62/go.mod h1:ZwznT3awHhuBoB0SgGxSo8SZEg6XbQtsZ6WahL9r9z0=
+github.com/ipld/go-ipld-prime v0.7.1-0.20210312161623-265620eb98f0 h1:0KOxYsU8rDH677vQ5OqLcZF+kBT41Nr7t/fNI4gGEmg=
+github.com/ipld/go-ipld-prime v0.7.1-0.20210312161623-265620eb98f0/go.mod h1:ZwznT3awHhuBoB0SgGxSo8SZEg6XbQtsZ6WahL9r9z0=
 github.com/jackpal/gateway v1.0.5/go.mod h1:lTpwd4ACLXmpyiCTRtfiNyVnUmqT9RivzCDQetPfnjA=
 github.com/jackpal/go-nat-pmp v1.0.1/go.mod h1:QPH045xvCAeXUZOxsnwmrtiCoxIr9eob+4orBN1SBKc=
 github.com/jackpal/go-nat-pmp v1.0.2 h1:KzKSgb7qkJvOUTqYl9/Hg/me3pWgBmERKrTGD7BdWus=

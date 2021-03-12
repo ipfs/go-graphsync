@@ -14,6 +14,7 @@ import (
 func NewTestStore(blocksWritten map[ipld.Link][]byte) ipld.LinkSystem {
 	var storeLk sync.RWMutex
 	lsys := cidlink.DefaultLinkSystem()
+	lsys.TrustedStorage = true
 	lsys.StorageWriteOpener = func(lnkCtx ipld.LinkContext) (io.Writer, ipld.BlockWriteCommitter, error) {
 		var buffer bytes.Buffer
 		committer := func(lnk ipld.Link) error {

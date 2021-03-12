@@ -14,6 +14,7 @@ import (
 // LinkSystemForBlockstore constructs an IPLD LinkSystem for a blockstore
 func LinkSystemForBlockstore(bs bstore.Blockstore) ipld.LinkSystem {
 	lsys := cidlink.DefaultLinkSystem()
+	lsys.TrustedStorage = true
 	lsys.StorageReadOpener = func(lnkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 		asCidLink, ok := lnk.(cidlink.Link)
 		if !ok {
