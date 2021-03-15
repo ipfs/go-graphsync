@@ -38,22 +38,30 @@ func SupportedExtensions(supportedExtensions []graphsync.ExtensionName) Option {
 	}
 }
 
+// RegisterCompletedRequestListener is used by the tests
+func RegisterCompletedRequestListener(l func(channelID datatransfer.ChannelID)) Option {
+	return func(t *Transport) {
+		t.completedRequestListener = l
+	}
+}
+
 // Transport manages graphsync hooks for data transfer, translating from
 // graphsync hooks to semantic data transfer events
 type Transport struct {
-	events                datatransfer.EventsHandler
-	gs                    graphsync.GraphExchange
-	peerID                peer.ID
-	dataLock              sync.RWMutex
-	graphsyncRequestMap   map[graphsyncKey]datatransfer.ChannelID
-	channelIDMap          map[datatransfer.ChannelID]graphsyncKey
-	contextCancelMap      map[datatransfer.ChannelID]func()
-	pending               map[datatransfer.ChannelID]chan struct{}
-	requestorCancelledMap map[datatransfer.ChannelID]struct{}
-	pendingExtensions     map[datatransfer.ChannelID][]graphsync.ExtensionData
-	stores                map[datatransfer.ChannelID]struct{}
-	supportedExtensions   []graphsync.ExtensionName
-	unregisterFuncs       []graphsync.UnregisterHookFunc
+	events                   datatransfer.EventsHandler
+	gs                       graphsync.GraphExchange
+	peerID                   peer.ID
+	dataLock                 sync.RWMutex
+	graphsyncRequestMap      map[graphsyncKey]datatransfer.ChannelID
+	channelIDMap             map[datatransfer.ChannelID]graphsyncKey
+	contextCancelMap         map[datatransfer.ChannelID]func()
+	pending                  map[datatransfer.ChannelID]chan struct{}
+	requestorCancelledMap    map[datatransfer.ChannelID]struct{}
+	pendingExtensions        map[datatransfer.ChannelID][]graphsync.ExtensionData
+	stores                   map[datatransfer.ChannelID]struct{}
+	supportedExtensions      []graphsync.ExtensionName
+	unregisterFuncs          []graphsync.UnregisterHookFunc
+	completedRequestListener func(channelID datatransfer.ChannelID)
 }
 
 // NewTransport makes a new hooks manager with the given hook events interface
@@ -170,6 +178,12 @@ func (t *Transport) executeGsRequest(ctx context.Context, internalCtx context.Co
 	if lastError != nil {
 		completeErr = xerrors.Errorf("graphsync request failed to complete: %w", lastError)
 	}
+
+	// Used by the tests to listen for when a request completes
+	if t.completedRequestListener != nil {
+		t.completedRequestListener(channelID)
+	}
+
 	err := t.events.OnChannelCompleted(channelID, completeErr)
 	if err != nil {
 		log.Error(err)

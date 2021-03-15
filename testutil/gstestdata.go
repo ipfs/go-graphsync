@@ -182,10 +182,9 @@ func (gsData *GraphsyncTestingData) SetupGraphsyncHost1() graphsync.GraphExchang
 }
 
 // SetupGSTransportHost1 sets up a new grapshync transport over real graphsync on the first host
-func (gsData *GraphsyncTestingData) SetupGSTransportHost1() datatransfer.Transport {
+func (gsData *GraphsyncTestingData) SetupGSTransportHost1(opts ...gstransport.Option) datatransfer.Transport {
 	// setup graphsync
 	gs := gsData.SetupGraphsyncHost1()
-	var opts []gstransport.Option
 	if len(gsData.host1Protocols) != 0 {
 		supportedExtensions := make([]graphsync.ExtensionName, 0, len(gsData.host1Protocols))
 		for _, protoID := range gsData.host1Protocols {
@@ -208,10 +207,9 @@ func (gsData *GraphsyncTestingData) SetupGraphsyncHost2() graphsync.GraphExchang
 }
 
 // SetupGSTransportHost2 sets up a new grapshync transport over real graphsync on the second host
-func (gsData *GraphsyncTestingData) SetupGSTransportHost2() datatransfer.Transport {
+func (gsData *GraphsyncTestingData) SetupGSTransportHost2(opts ...gstransport.Option) datatransfer.Transport {
 	// setup graphsync
 	gs := gsData.SetupGraphsyncHost2()
-	var opts []gstransport.Option
 	if len(gsData.host2Protocols) != 0 {
 		supportedExtensions := make([]graphsync.ExtensionName, 0, len(gsData.host2Protocols))
 		for _, protoID := range gsData.host2Protocols {

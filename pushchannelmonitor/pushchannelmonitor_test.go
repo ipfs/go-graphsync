@@ -58,15 +58,18 @@ func TestPushChannelMonitorAutoRestart(t *testing.T) {
 			mockAPI := newMockMonitorAPI(ch, tc.errOnRestart)
 
 			m := NewMonitor(mockAPI, &Config{
+				AcceptTimeout:          time.Hour,
 				Interval:               10 * time.Millisecond,
 				ChecksPerInterval:      10,
 				MinBytesSent:           1,
 				MaxConsecutiveRestarts: 3,
+				CompleteTimeout:        time.Hour,
 			})
 			m.Start()
 			m.AddChannel(ch1)
 			mch := getFirstMonitoredChannel(m)
 
+			mockAPI.accept()
 			mockAPI.dataQueued(tc.dataQueued)
 			mockAPI.dataSent(tc.dataSent)
 			if tc.errorEvent {
@@ -222,10 +225,12 @@ func TestPushChannelMonitorDataRate(t *testing.T) {
 
 			checksPerInterval := uint32(1)
 			m := NewMonitor(mockAPI, &Config{
+				AcceptTimeout:          time.Hour,
 				Interval:               time.Hour,
 				ChecksPerInterval:      checksPerInterval,
 				MinBytesSent:           tc.minBytesSent,
 				MaxConsecutiveRestarts: 3,
+				CompleteTimeout:        time.Hour,
 			})
 
 			// Note: Don't start monitor, we'll call checkDataRate() manually
@@ -268,10 +273,12 @@ func TestPushChannelMonitorMaxConsecutiveRestarts(t *testing.T) {
 
 	maxConsecutiveRestarts := 3
 	m := NewMonitor(mockAPI, &Config{
+		AcceptTimeout:          time.Hour,
 		Interval:               time.Hour,
 		ChecksPerInterval:      1,
 		MinBytesSent:           2,
 		MaxConsecutiveRestarts: uint32(maxConsecutiveRestarts),
+		CompleteTimeout:        time.Hour,
 	})
 
 	// Note: Don't start monitor, we'll call checkDataRate() manually
@@ -312,7 +319,116 @@ func TestPushChannelMonitorMaxConsecutiveRestarts(t *testing.T) {
 	verifyChannelShutdown(t, mch)
 }
 
+func TestPushChannelMonitorTimeouts(t *testing.T) {
+	type testCase struct {
+		name           string
+		expectAccept   bool
+		expectComplete bool
+	}
+	testCases := []testCase{{
+		name:         "accept in time",
+		expectAccept: true,
+	}, {
+		name:         "accept too late",
+		expectAccept: false,
+	}, {
+		name:           "complete in time",
+		expectAccept:   true,
+		expectComplete: true,
+	}, {
+		name:           "complete too late",
+		expectAccept:   true,
+		expectComplete: true,
+	}}
+
+	ch1 := datatransfer.ChannelID{
+		Initiator: "initiator",
+		Responder: "responder",
+		ID:        1,
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ch := &mockChannelState{chid: ch1}
+			mockAPI := newMockMonitorAPI(ch, false)
+
+			verifyClosedAndShutdown := func(mch *monitoredChannel, timeout time.Duration) {
+				// Verify channel has been closed
+				select {
+				case <-time.After(timeout):
+					require.Fail(t, "failed to close channel")
+				case <-mockAPI.closed:
+				}
+
+				// Verify that channel has been shutdown
+				verifyChannelShutdown(t, mch)
+			}
+
+			verifyNotClosed := func(timeout time.Duration) {
+				// Verify channel has not been closed
+				select {
+				case <-time.After(timeout):
+				case <-mockAPI.closed:
+					require.Fail(t, "expected channel not to have been closed")
+				}
+			}
+
+			acceptTimeout := 10 * time.Millisecond
+			completeTimeout := 10 * time.Millisecond
+			m := NewMonitor(mockAPI, &Config{
+				AcceptTimeout:          acceptTimeout,
+				Interval:               time.Hour,
+				ChecksPerInterval:      1,
+				MinBytesSent:           1,
+				MaxConsecutiveRestarts: 1,
+				CompleteTimeout:        completeTimeout,
+			})
+			m.Start()
+			m.AddChannel(ch1)
+			mch := getFirstMonitoredChannel(m)
+
+			if tc.expectAccept {
+				// Fire the Accept event
+				mockAPI.accept()
+			}
+
+			if !tc.expectAccept {
+				// If we are expecting the test to have a timeout waiting for
+				// the accept event verify that channel was closed (because a
+				// timeout error occurred)
+				verifyClosedAndShutdown(mch, 5*acceptTimeout)
+				return
+			}
+
+			// If we're not expecting the test to have a timeout waiting for
+			// the accept event, verify that channel was not closed
+			verifyNotClosed(2 * acceptTimeout)
+
+			// Fire the FinishTransfer event
+			mockAPI.finishTransfer()
+			if tc.expectComplete {
+				// Fire the Complete event
+				mockAPI.completed()
+			}
+
+			if !tc.expectComplete {
+				// If we are expecting the test to have a timeout waiting for
+				// the complete event verify that channel was closed (because a
+				// timeout error occurred)
+				verifyClosedAndShutdown(mch, 5*completeTimeout)
+				return
+			}
+
+			// If we're not expecting the test to have a timeout waiting for
+			// the accept event, verify that channel was not closed
+			verifyNotClosed(2 * completeTimeout)
+		})
+	}
+}
+
 func getFirstMonitoredChannel(m *Monitor) *monitoredChannel {
+	m.lk.Lock()
+	defer m.lk.Unlock()
+
 	var mch *monitoredChannel
 	for mch = range m.channels {
 		return mch
@@ -393,9 +509,13 @@ func (m *mockMonitorAPI) awaitRestart() error {
 	}
 }
 
-func (m *mockMonitorAPI) CloseDataTransferChannel(ctx context.Context, chid datatransfer.ChannelID) error {
+func (m *mockMonitorAPI) CloseDataTransferChannelWithError(ctx context.Context, chid datatransfer.ChannelID, cherr error) error {
 	close(m.closed)
 	return nil
+}
+
+func (m *mockMonitorAPI) accept() {
+	m.callSubscriber(datatransfer.Event{Code: datatransfer.Accept}, m.ch)
 }
 
 func (m *mockMonitorAPI) dataQueued(n uint64) {
@@ -406,6 +526,10 @@ func (m *mockMonitorAPI) dataQueued(n uint64) {
 func (m *mockMonitorAPI) dataSent(n uint64) {
 	m.ch.sent = n
 	m.callSubscriber(datatransfer.Event{Code: datatransfer.DataSent}, m.ch)
+}
+
+func (m *mockMonitorAPI) finishTransfer() {
+	m.callSubscriber(datatransfer.Event{Code: datatransfer.FinishTransfer}, m.ch)
 }
 
 func (m *mockMonitorAPI) completed() {

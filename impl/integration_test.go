@@ -36,6 +36,7 @@ import (
 	. "github.com/filecoin-project/go-data-transfer/impl"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/network"
+	"github.com/filecoin-project/go-data-transfer/pushchannelmonitor"
 	"github.com/filecoin-project/go-data-transfer/testutil"
 	tp "github.com/filecoin-project/go-data-transfer/transport/graphsync"
 	"github.com/filecoin-project/go-data-transfer/transport/graphsync/extension"
@@ -497,99 +498,233 @@ func TestManyReceiversAtOnce(t *testing.T) {
 	}
 }
 
+// disconnectCoordinator is used by TestPushRequestAutoRestart to allow
+// test cases to signal when a disconnect should start, and whether
+// to wait for the disconnect to take effect before continuing
+type disconnectCoordinator struct {
+	readyForDisconnect chan struct{}
+	disconnected       chan struct{}
+}
+
+func newDisconnectCoordinator() *disconnectCoordinator {
+	return &disconnectCoordinator{
+		readyForDisconnect: make(chan struct{}),
+		disconnected:       make(chan struct{}),
+	}
+}
+
+func (dc *disconnectCoordinator) signalReadyForDisconnect(awaitDisconnect bool) {
+	dc.readyForDisconnect <- struct{}{}
+	if awaitDisconnect {
+		<-dc.disconnected
+	}
+}
+
+func (dc *disconnectCoordinator) onDisconnect() {
+	close(dc.disconnected)
+}
+
 // TestPushRequestAutoRestart tests that if the connection for a push request
 // goes down, it will automatically restart (given the right config options)
 func TestPushRequestAutoRestart(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	//logging.SetLogLevel("dt-pushchanmon", "debug")
 
-	gsData := testutil.NewGraphsyncTestingData(ctx, t, nil, nil)
-	netRetry := network.RetryParameters(time.Second, time.Second, 5, 1)
-	gsData.DtNet1 = network.NewFromLibp2pHost(gsData.Host1, netRetry)
-	host1 := gsData.Host1 // initiator, data sender
-	host2 := gsData.Host2 // data recipient
+	testCases := []struct {
+		name                        string
+		expectInitiatorDTFail       bool
+		disconnectOnRequestComplete bool
+		registerResponder           func(responder datatransfer.Manager, dc *disconnectCoordinator)
+	}{{
+		// Verify that the client fires an error event when the disconnect
+		// occurs right when the responder receives the open channel request
+		// (ie the responder doesn't get a chance to respond to the open
+		// channel request)
+		name:                  "when responder receives incoming request",
+		expectInitiatorDTFail: true,
+		registerResponder: func(responder datatransfer.Manager, dc *disconnectCoordinator) {
+			subscriber := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+				if event.Code == datatransfer.Open {
+					dc.signalReadyForDisconnect(true)
+				}
+			}
+			responder.SubscribeToEvents(subscriber)
+		},
+	}, {
+		// Verify that if a disconnect happens right after the responder
+		// receives the first block, the transfer will complete automatically
+		// when the link comes back up
+		name: "when responder receives first block",
+		registerResponder: func(responder datatransfer.Manager, dc *disconnectCoordinator) {
+			rcvdCount := 0
+			subscriber := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+				//t.Logf("resp: %s / %s\n", datatransfer.Events[event.Code], datatransfer.Statuses[channelState.Status()])
+				if event.Code == datatransfer.DataReceived {
+					rcvdCount++
+					if rcvdCount == 1 {
+						dc.signalReadyForDisconnect(false)
+					}
+				}
+			}
+			responder.SubscribeToEvents(subscriber)
+		},
+	}, {
+		// Verify that the client fires an error event when disconnect occurs
+		// right before the responder sends the complete message (ie all blocks
+		// have been received but the responder doesn't get a chance to tell
+		// the initiator before the disconnect)
+		name:                        "before requester sends complete message",
+		expectInitiatorDTFail:       true,
+		disconnectOnRequestComplete: true,
+	}}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
 
-	tp1 := gsData.SetupGSTransportHost1()
-	tp2 := gsData.SetupGSTransportHost2()
+			// Create an object to coordinate disconnect events
+			dc := newDisconnectCoordinator()
 
-	restartConf := PushChannelRestartConfig(100*time.Millisecond, 1, 10, 200*time.Millisecond, 5)
-	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1, gsData.StoredCounter1, restartConf)
-	require.NoError(t, err)
-	testutil.StartAndWaitForReady(ctx, t, dt1)
-	dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2, gsData.StoredCounter2)
-	require.NoError(t, err)
-	testutil.StartAndWaitForReady(ctx, t, dt2)
+			// If the test should disconnect just before the responder sends
+			// the Complete message, add a hook to do so
+			var responderTransportOpts []tp.Option
+			if tc.disconnectOnRequestComplete {
+				responderTransportOpts = []tp.Option{
+					tp.RegisterCompletedRequestListener(func(chid datatransfer.ChannelID) {
+						dc.signalReadyForDisconnect(true)
+					}),
+				}
+			}
 
-	received := make(chan struct{})
-	finished := make(chan struct{}, 2)
-	var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-		//t.Logf("%s: %s\n", datatransfer.Events[event.Code], datatransfer.Statuses[channelState.Status()])
+			gsData := testutil.NewGraphsyncTestingData(ctx, t, nil, nil)
+			netRetry := network.RetryParameters(time.Second, time.Second, 5, 1)
+			gsData.DtNet1 = network.NewFromLibp2pHost(gsData.Host1, netRetry)
+			host1 := gsData.Host1 // initiator, data sender
+			host2 := gsData.Host2 // data recipient
 
-		if event.Code == datatransfer.DataReceived {
-			received <- struct{}{}
-		}
+			initiatorGSTspt := gsData.SetupGSTransportHost1()
+			responderGSTspt := gsData.SetupGSTransportHost2(responderTransportOpts...)
 
-		if channelState.Status() == datatransfer.Completed {
-			finished <- struct{}{}
-		}
-	}
-	dt1.SubscribeToEvents(subscriber)
-	dt2.SubscribeToEvents(subscriber)
-	voucher := testutil.FakeDTType{Data: "applesauce"}
-	sv := testutil.NewStubbedValidator()
+			restartConf := PushChannelRestartConfig(pushchannelmonitor.Config{
+				AcceptTimeout:          100 * time.Millisecond,
+				Interval:               100 * time.Millisecond,
+				MinBytesSent:           1,
+				ChecksPerInterval:      10,
+				RestartBackoff:         200 * time.Millisecond,
+				MaxConsecutiveRestarts: 5,
+				CompleteTimeout:        100 * time.Millisecond,
+			})
+			initiator, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, initiatorGSTspt, gsData.StoredCounter1, restartConf)
+			require.NoError(t, err)
+			testutil.StartAndWaitForReady(ctx, t, initiator)
+			responder, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, responderGSTspt, gsData.StoredCounter2)
+			require.NoError(t, err)
+			testutil.StartAndWaitForReady(ctx, t, responder)
 
-	sourceDagService := gsData.DagService1
-	destDagService := gsData.DagService2
+			//initiator.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+			//	t.Logf("clnt: evt %s / status %s", datatransfer.Events[event.Code], datatransfer.Statuses[channelState.Status()])
+			//})
 
-	root, origBytes := testutil.LoadUnixFSFile(ctx, t, sourceDagService, loremFile)
-	rootCid := root.(cidlink.Link).Cid
+			// Watch for successful completion
+			finished := make(chan struct{}, 2)
+			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+				if channelState.Status() == datatransfer.Completed {
+					finished <- struct{}{}
+				}
+			}
+			initiator.SubscribeToEvents(subscriber)
+			responder.SubscribeToEvents(subscriber)
+			voucher := testutil.FakeDTType{Data: "applesauce"}
+			sv := testutil.NewStubbedValidator()
 
-	require.NoError(t, dt1.RegisterVoucherType(&testutil.FakeDTType{}, sv))
-	require.NoError(t, dt2.RegisterVoucherType(&testutil.FakeDTType{}, sv))
-	chid, err := dt1.OpenPushDataChannel(ctx, host2.ID(), &voucher, rootCid, gsData.AllSelector)
-	require.NoError(t, err)
+			sourceDagService := gsData.DagService1
+			destDagService := gsData.DagService2
 
-	// Wait for a block to be received
-	<-received
+			root, origBytes := testutil.LoadUnixFSFile(ctx, t, sourceDagService, loremFile)
+			rootCid := root.(cidlink.Link).Cid
 
-	// Break connection
-	t.Logf("Breaking connection to peer")
-	require.NoError(t, gsData.Mn.UnlinkPeers(host1.ID(), host2.ID()))
-	require.NoError(t, gsData.Mn.DisconnectPeers(host1.ID(), host2.ID()))
+			require.NoError(t, initiator.RegisterVoucherType(&testutil.FakeDTType{}, sv))
+			require.NoError(t, responder.RegisterVoucherType(&testutil.FakeDTType{}, sv))
 
-	t.Logf("Sleep for a second")
-	time.Sleep(1 * time.Second)
+			// If the test case needs to subscribe to response events, provide
+			// the test case with the responder
+			if tc.registerResponder != nil {
+				tc.registerResponder(responder, dc)
+			}
 
-	// Restore connection
-	t.Logf("Restore connection")
-	require.NoError(t, gsData.Mn.LinkAll())
-	time.Sleep(200 * time.Millisecond)
-	conn, err := gsData.Mn.ConnectPeers(host1.ID(), host2.ID())
-	require.NoError(t, err)
-	require.NotNil(t, conn)
+			// If the initiator is expected to fail, watch for the Failed event
+			initiatorFailed := make(chan struct{})
+			if tc.expectInitiatorDTFail {
+				initiator.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+					if channelState.Status() == datatransfer.Failed {
+						close(initiatorFailed)
+					}
+				})
+			}
 
-	t.Logf("Waiting for auto-restart on push channel %s", chid)
+			// Open a push channel
+			chid, err := initiator.OpenPushDataChannel(ctx, host2.ID(), &voucher, rootCid, gsData.AllSelector)
+			require.NoError(t, err)
 
-	(func() {
-		finishedCount := 0
-		for {
+			// Wait for the moment at which the test case should experience a disconnect
 			select {
-			case <-ctx.Done():
-				t.Fatal("Did not complete successful data transfer")
-				return
-			case <-received:
-			case <-finished:
-				finishedCount++
-				if finishedCount == 2 {
+			case <-time.After(time.Second):
+				t.Fatal("Timed out waiting for point at which to break connection")
+			case <-dc.readyForDisconnect:
+			}
+
+			// Break connection
+			t.Logf("Breaking connection to peer")
+			require.NoError(t, gsData.Mn.UnlinkPeers(host1.ID(), host2.ID()))
+			require.NoError(t, gsData.Mn.DisconnectPeers(host1.ID(), host2.ID()))
+
+			// Inform the coordinator that the disconnect has occurred
+			dc.onDisconnect()
+
+			t.Logf("Sleep for a second")
+			time.Sleep(1 * time.Second)
+
+			// Restore link
+			t.Logf("Restore link")
+			require.NoError(t, gsData.Mn.LinkAll())
+			time.Sleep(200 * time.Millisecond)
+
+			// If we're expecting a Failed event, verify that it occurs
+			if tc.expectInitiatorDTFail {
+				select {
+				case <-ctx.Done():
+					t.Fatal("Initiator data-transfer did not fail as expected")
+					return
+				case <-initiatorFailed:
+					t.Logf("Initiator data-transfer failed as expected")
 					return
 				}
 			}
-		}
-	})()
 
-	// Verify that the file was transferred to the destination node
-	testutil.VerifyHasFile(ctx, t, destDagService, root, origBytes)
+			// We're not expecting a failure event, wait for the transfer to
+			// complete
+			t.Logf("Waiting for auto-restart on push channel %s", chid)
+
+			(func() {
+				finishedCount := 0
+				for {
+					select {
+					case <-ctx.Done():
+						t.Fatal("Did not complete successful data transfer")
+						return
+					case <-finished:
+						finishedCount++
+						if finishedCount == 2 {
+							return
+						}
+					}
+				}
+			})()
+
+			// Verify that the file was transferred to the destination node
+			testutil.VerifyHasFile(ctx, t, destDagService, root, origBytes)
+		})
+	}
 }
 
 func TestRoundTripCancelledRequest(t *testing.T) {
@@ -1474,3 +1609,11 @@ func (r *receiver) ReceiveRestartExistingChannelRequest(ctx context.Context,
 	incoming datatransfer.Request) {
 
 }
+
+//func SetDTLogLevelDebug() {
+//	_ = logging.SetLogLevel("dt-impl", "debug")
+//	_ = logging.SetLogLevel("dt-pushchanmon", "debug")
+//	_ = logging.SetLogLevel("dt_graphsync", "debug")
+//	_ = logging.SetLogLevel("data_transfer", "debug")
+//	_ = logging.SetLogLevel("data_transfer_network", "debug")
+//}
