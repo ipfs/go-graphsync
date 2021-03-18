@@ -315,8 +315,22 @@ func (c *Channels) Error(chid datatransfer.ChannelID, err error) error {
 	return c.send(chid, datatransfer.Error, err)
 }
 
-func (c *Channels) Disconnected(chid datatransfer.ChannelID) error {
-	return c.send(chid, datatransfer.Disconnected)
+// Disconnected indicates that the connection went down and it was not possible
+// to restart it
+func (c *Channels) Disconnected(chid datatransfer.ChannelID, err error) error {
+	return c.send(chid, datatransfer.Disconnected, err)
+}
+
+// RequestTimedOut indicates that the transport layer had a timeout trying to
+// make a request
+func (c *Channels) RequestTimedOut(chid datatransfer.ChannelID, err error) error {
+	return c.send(chid, datatransfer.RequestTimedOut, err)
+}
+
+// SendDataError indicates that the transport layer had an error trying
+// to send data to the remote peer
+func (c *Channels) SendDataError(chid datatransfer.ChannelID, err error) error {
+	return c.send(chid, datatransfer.SendDataError, err)
 }
 
 // HasChannel returns true if the given channel id is being tracked

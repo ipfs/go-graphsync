@@ -55,11 +55,14 @@ type EventsHandler interface {
 
 	// OnRequestTimedOut is called when a request we opened (with the given channel Id) to receive data times out.
 	// Error returns are logged but otherwise have no effect
-	OnRequestTimedOut(ctx context.Context, chid ChannelID) error
+	OnRequestTimedOut(chid ChannelID, err error) error
 
-	// OnRequestDisconnected is called when a network error occurs in a graphsync request
-	// or we appear to stall while receiving data
-	OnRequestDisconnected(ctx context.Context, chid ChannelID) error
+	// OnRequestDisconnected is called when a network error occurs trying to send a request
+	OnRequestDisconnected(chid ChannelID, err error) error
+
+	// OnSendDataError is called when a network error occurs sending data
+	// at the transport layer
+	OnSendDataError(chid ChannelID, err error) error
 }
 
 /*

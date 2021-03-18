@@ -633,7 +633,7 @@ func TestManager(t *testing.T) {
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
-				require.True(t, events.OnRequestDisconnectedCalled)
+				require.True(t, events.OnSendDataErrorCalled)
 			},
 		},
 		"open channel adds doNotSendCids to the DoNotSend extension": {
@@ -974,10 +974,10 @@ type fakeEvents struct {
 	OnDataQueuedMessage         datatransfer.Message
 	OnDataQueuedError           error
 
-	OnRequestTimedOutCalled        bool
-	OnRequestTimedOutChannelId     datatransfer.ChannelID
-	OnRequestDisconnectedCalled    bool
-	OnRequestDisconnectedChannelID datatransfer.ChannelID
+	OnRequestTimedOutCalled    bool
+	OnRequestTimedOutChannelId datatransfer.ChannelID
+	OnSendDataErrorCalled      bool
+	OnSendDataErrorChannelID   datatransfer.ChannelID
 
 	ChannelCompletedSuccess  bool
 	RequestReceivedRequest   datatransfer.Request
@@ -991,16 +991,20 @@ func (fe *fakeEvents) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, 
 	return fe.OnDataQueuedMessage, fe.OnDataQueuedError
 }
 
-func (fe *fakeEvents) OnRequestTimedOut(_ context.Context, chid datatransfer.ChannelID) error {
+func (fe *fakeEvents) OnRequestTimedOut(chid datatransfer.ChannelID, err error) error {
 	fe.OnRequestTimedOutCalled = true
 	fe.OnRequestTimedOutChannelId = chid
 
 	return nil
 }
 
-func (fe *fakeEvents) OnRequestDisconnected(_ context.Context, chid datatransfer.ChannelID) error {
-	fe.OnRequestDisconnectedCalled = true
-	fe.OnRequestDisconnectedChannelID = chid
+func (fe *fakeEvents) OnRequestDisconnected(chid datatransfer.ChannelID, err error) error {
+	return nil
+}
+
+func (fe *fakeEvents) OnSendDataError(chid datatransfer.ChannelID, err error) error {
+	fe.OnSendDataErrorCalled = true
+	fe.OnSendDataErrorChannelID = chid
 	return nil
 }
 

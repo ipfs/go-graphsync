@@ -3,7 +3,6 @@ package impl
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -12,7 +11,6 @@ import (
 	"golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
-	"github.com/filecoin-project/go-data-transfer/channels"
 	"github.com/filecoin-project/go-data-transfer/encoding"
 	"github.com/filecoin-project/go-data-transfer/registry"
 )
@@ -35,19 +33,6 @@ func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, si
 	if err != nil {
 		return err
 	}
-
-	m.reconnectsLk.RLock()
-	reconnect, ok := m.reconnects[chid]
-	var alreadyReconnected bool
-	select {
-	case <-reconnect:
-		alreadyReconnected = true
-	default:
-	}
-	if ok && !alreadyReconnected {
-		close(reconnect)
-	}
-	m.reconnectsLk.RUnlock()
 
 	if chid.Initiator != m.peerID {
 		var result datatransfer.VoucherResult
@@ -99,18 +84,6 @@ func (m *manager) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size
 }
 
 func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) error {
-	m.reconnectsLk.RLock()
-	reconnect, ok := m.reconnects[chid]
-	var alreadyReconnected bool
-	select {
-	case <-reconnect:
-		alreadyReconnected = true
-	default:
-	}
-	if ok && !alreadyReconnected {
-		close(reconnect)
-	}
-	m.reconnectsLk.RUnlock()
 	return m.channels.DataSent(chid, link.(cidlink.Link).Cid, size)
 }
 
@@ -201,92 +174,26 @@ func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response datat
 	return m.resumeOther(chid)
 }
 
-func (m *manager) OnRequestTimedOut(ctx context.Context, chid datatransfer.ChannelID) error {
-	log.Warnf("channel %+v has timed out", chid)
-
-	m.reconnectsLk.Lock()
-	reconnect, ok := m.reconnects[chid]
-	var alreadyReconnected bool
-	select {
-	case <-reconnect:
-		alreadyReconnected = true
-	default:
-	}
-	if !ok || alreadyReconnected {
-		reconnect = make(chan struct{})
-		m.reconnects[chid] = reconnect
-	}
-	m.reconnectsLk.Unlock()
-	timer := time.NewTimer(m.channelRemoveTimeout)
-
-	go func() {
-		select {
-		case <-ctx.Done():
-		case <-reconnect:
-		case <-timer.C:
-			channel, err := m.channels.GetByID(ctx, chid)
-			if err == nil {
-				if !(channels.IsChannelTerminated(channel.Status()) ||
-					channels.IsChannelCleaningUp(channel.Status())) {
-					if err := m.channels.Error(chid, datatransfer.ErrRemoved); err != nil {
-						log.Errorf("failed to cancel timed-out channel: %v", err)
-						return
-					}
-					log.Warnf("channel %+v has ben cancelled because of timeout", chid)
-				}
-			}
-		}
-	}()
-
-	return nil
+func (m *manager) OnRequestTimedOut(chid datatransfer.ChannelID, err error) error {
+	log.Warnf("channel %+v has timed out: %s", chid, err)
+	return m.channels.RequestTimedOut(chid, err)
 }
 
-func (m *manager) OnRequestDisconnected(ctx context.Context, chid datatransfer.ChannelID) error {
-	log.Warnf("channel %+v has stalled or disconnected", chid)
-
-	// mark peer disconnected for informational purposes
-	err := m.channels.Disconnected(chid)
-	if err != nil {
-		return err
-	}
-
-	m.reconnectsLk.Lock()
-	reconnect, ok := m.reconnects[chid]
-	var alreadyReconnected bool
-	select {
-	case <-reconnect:
-		alreadyReconnected = true
-	default:
-	}
-	if !ok || alreadyReconnected {
-		reconnect = make(chan struct{})
-		m.reconnects[chid] = reconnect
-	}
-	m.reconnectsLk.Unlock()
-	timer := time.NewTimer(m.channelRemoveTimeout)
-	go func() {
-		select {
-		case <-ctx.Done():
-		case <-reconnect:
-		case <-timer.C:
-			channel, err := m.channels.GetByID(ctx, chid)
-			if err == nil {
-				if !(channels.IsChannelTerminated(channel.Status()) ||
-					channels.IsChannelCleaningUp(channel.Status())) {
-					if err := m.channels.Error(chid, datatransfer.ErrRemoved); err != nil {
-						log.Errorf("failed to cancel timed-out channel: %v", err)
-						return
-					}
-					log.Warnf("channel %+v has ben cancelled because of timeout", chid)
-				}
-			}
-		}
-	}()
-
-	return nil
+func (m *manager) OnRequestDisconnected(chid datatransfer.ChannelID, err error) error {
+	log.Warnf("channel %+v has stalled or disconnected: %s", chid, err)
+	return m.channels.Disconnected(chid, err)
 }
 
+func (m *manager) OnSendDataError(chid datatransfer.ChannelID, err error) error {
+	log.Warnf("channel %+v had transport send error: %s", chid, err)
+	return m.channels.SendDataError(chid, err)
+}
+
+// OnChannelCompleted is called
+// - by the requester when all data for a transfer has been received
+// - by the responder when all data for a transfer has been sent
 func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, completeErr error) error {
+	// If the channel completed successfully
 	if completeErr == nil {
 		// If the channel was initiated by the other peer
 		if chid.Initiator != m.peerID {
@@ -298,8 +205,9 @@ func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, completeErr er
 				// Send the other peer a message that the transfer has completed
 				log.Infof("channel %s: sending completion message to initiator", chid)
 				if err := m.dataTransferNetwork.SendMessage(context.Background(), chid.Initiator, msg); err != nil {
-					log.Warnf("channel %s: failed to send completion message to initiator: %s", chid, err)
-					return m.OnRequestDisconnected(context.TODO(), chid)
+					err := xerrors.Errorf("channel %s: failed to send completion message to initiator: %w", chid, err)
+					log.Warn(err)
+					return m.OnRequestDisconnected(chid, err)
 				}
 			}
 			if msg.Accepted() {
@@ -315,6 +223,8 @@ func (m *manager) OnChannelCompleted(chid datatransfer.ChannelID, completeErr er
 		log.Infof("channel %s: transfer initiated by local node is complete", chid)
 		return m.channels.FinishTransfer(chid)
 	}
+
+	// There was an error so fire an Error event
 	chst, err := m.channels.GetByID(context.TODO(), chid)
 	if err != nil {
 		return err

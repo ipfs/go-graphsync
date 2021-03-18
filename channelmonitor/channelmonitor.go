@@ -1,4 +1,4 @@
-package pushchannelmonitor
+package channelmonitor
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/filecoin-project/go-data-transfer/channels"
 )
 
-var log = logging.Logger("dt-pushchanmon")
+var log = logging.Logger("dt-chanmon")
 
 type monitorAPI interface {
 	SubscribeToEvents(subscriber datatransfer.Subscriber) datatransfer.Unsubscribe
@@ -21,8 +21,8 @@ type monitorAPI interface {
 	CloseDataTransferChannelWithError(ctx context.Context, chid datatransfer.ChannelID, cherr error) error
 }
 
-// Monitor watches the data-rate for push channels, and restarts
-// a channel if the data-rate falls too low
+// Monitor watches the data-rate for data transfer channels, and restarts
+// a channel if the data-rate falls too low or if there are timeouts / errors
 type Monitor struct {
 	ctx  context.Context
 	stop context.CancelFunc
@@ -30,16 +30,16 @@ type Monitor struct {
 	cfg  *Config
 
 	lk       sync.RWMutex
-	channels map[*monitoredChannel]struct{}
+	channels map[monitoredChan]struct{}
 }
 
 type Config struct {
-	// Max time to wait for other side to accept push before attempting restart
+	// Max time to wait for other side to accept open channel request before attempting restart
 	AcceptTimeout time.Duration
 	// Interval between checks of transfer rate
 	Interval time.Duration
-	// Min bytes that must be sent in interval
-	MinBytesSent uint64
+	// Min bytes that must be sent / received in interval
+	MinBytesTransferred uint64
 	// Number of times to check transfer rate per interval
 	ChecksPerInterval uint32
 	// Backoff after restarting
@@ -59,7 +59,7 @@ func NewMonitor(mgr monitorAPI, cfg *Config) *Monitor {
 		stop:     cancel,
 		mgr:      mgr,
 		cfg:      cfg,
-		channels: make(map[*monitoredChannel]struct{}),
+		channels: make(map[monitoredChan]struct{}),
 	}
 }
 
@@ -68,7 +68,7 @@ func checkConfig(cfg *Config) {
 		return
 	}
 
-	prefix := "data-transfer channel push monitor config "
+	prefix := "data-transfer channel monitor config "
 	if cfg.AcceptTimeout <= 0 {
 		panic(fmt.Sprintf(prefix+"AcceptTimeout is %s but must be > 0", cfg.AcceptTimeout))
 	}
@@ -78,8 +78,8 @@ func checkConfig(cfg *Config) {
 	if cfg.ChecksPerInterval == 0 {
 		panic(fmt.Sprintf(prefix+"ChecksPerInterval is %d but must be > 0", cfg.ChecksPerInterval))
 	}
-	if cfg.MinBytesSent == 0 {
-		panic(fmt.Sprintf(prefix+"MinBytesSent is %d but must be > 0", cfg.MinBytesSent))
+	if cfg.MinBytesTransferred == 0 {
+		panic(fmt.Sprintf(prefix+"MinBytesTransferred is %d but must be > 0", cfg.MinBytesTransferred))
 	}
 	if cfg.MaxConsecutiveRestarts == 0 {
 		panic(fmt.Sprintf(prefix+"MaxConsecutiveRestarts is %d but must be > 0", cfg.MaxConsecutiveRestarts))
@@ -89,8 +89,25 @@ func checkConfig(cfg *Config) {
 	}
 }
 
-// AddChannel adds a channel to the push channel monitor
-func (m *Monitor) AddChannel(chid datatransfer.ChannelID) *monitoredChannel {
+// This interface just makes it easier to abstract some methods between the
+// push and pull monitor implementations
+type monitoredChan interface {
+	Shutdown()
+	checkDataRate()
+}
+
+// AddPushChannel adds a push channel to the channel monitor
+func (m *Monitor) AddPushChannel(chid datatransfer.ChannelID) monitoredChan {
+	return m.addChannel(chid, true)
+}
+
+// AddPullChannel adds a pull channel to the channel monitor
+func (m *Monitor) AddPullChannel(chid datatransfer.ChannelID) monitoredChan {
+	return m.addChannel(chid, false)
+}
+
+// addChannel adds a channel to the channel monitor
+func (m *Monitor) addChannel(chid datatransfer.ChannelID, isPush bool) monitoredChan {
 	if !m.enabled() {
 		return nil
 	}
@@ -98,7 +115,12 @@ func (m *Monitor) AddChannel(chid datatransfer.ChannelID) *monitoredChannel {
 	m.lk.Lock()
 	defer m.lk.Unlock()
 
-	mpc := newMonitoredChannel(m.mgr, chid, m.cfg, m.onMonitoredChannelShutdown)
+	var mpc monitoredChan
+	if isPush {
+		mpc = newMonitoredPushChannel(m.mgr, chid, m.cfg, m.onMonitoredChannelShutdown)
+	} else {
+		mpc = newMonitoredPullChannel(m.mgr, chid, m.cfg, m.onMonitoredChannelShutdown)
+	}
 	m.channels[mpc] = struct{}{}
 	return mpc
 }
@@ -127,7 +149,7 @@ func (m *Monitor) onMonitoredChannelShutdown(mpc *monitoredChannel) {
 	delete(m.channels, mpc)
 }
 
-// enabled indicates whether the push channel monitor is running
+// enabled indicates whether the channel monitor is running
 func (m *Monitor) enabled() bool {
 	return m.cfg != nil
 }
@@ -148,9 +170,9 @@ func (m *Monitor) run() {
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 
-	log.Infof("Starting push channel monitor with "+
+	log.Infof("Starting data-transfer channel monitor with "+
 		"%d checks per %s interval (check interval %s); min bytes per interval: %d, restart backoff: %s; max consecutive restarts: %d",
-		m.cfg.ChecksPerInterval, m.cfg.Interval, tickInterval, m.cfg.MinBytesSent, m.cfg.RestartBackoff, m.cfg.MaxConsecutiveRestarts)
+		m.cfg.ChecksPerInterval, m.cfg.Interval, tickInterval, m.cfg.MinBytesTransferred, m.cfg.RestartBackoff, m.cfg.MaxConsecutiveRestarts)
 
 	for {
 		select {
@@ -172,7 +194,7 @@ func (m *Monitor) checkDataRate() {
 	}
 }
 
-// monitoredChannel keeps track of the data-rate for a push channel, and
+// monitoredChannel keeps track of the data-rate for a channel, and
 // restarts the channel if the rate falls below the minimum allowed
 type monitoredChannel struct {
 	ctx        context.Context
@@ -182,16 +204,12 @@ type monitoredChannel struct {
 	cfg        *Config
 	unsub      datatransfer.Unsubscribe
 	onShutdown func(*monitoredChannel)
+	onDTEvent  datatransfer.Subscriber
 	shutdownLk sync.Mutex
 
-	statsLk             sync.RWMutex
-	queued              uint64
-	sent                uint64
-	dataRatePoints      chan *dataRatePoint
+	restartLk           sync.RWMutex
+	restartedAt         time.Time
 	consecutiveRestarts int
-
-	restartLk   sync.RWMutex
-	restartedAt time.Time
 }
 
 func newMonitoredChannel(
@@ -199,19 +217,24 @@ func newMonitoredChannel(
 	chid datatransfer.ChannelID,
 	cfg *Config,
 	onShutdown func(*monitoredChannel),
+	onDTEvent datatransfer.Subscriber,
 ) *monitoredChannel {
 	ctx, cancel := context.WithCancel(context.Background())
 	mpc := &monitoredChannel{
-		ctx:            ctx,
-		cancel:         cancel,
-		mgr:            mgr,
-		chid:           chid,
-		cfg:            cfg,
-		onShutdown:     onShutdown,
-		dataRatePoints: make(chan *dataRatePoint, cfg.ChecksPerInterval),
+		ctx:        ctx,
+		cancel:     cancel,
+		mgr:        mgr,
+		chid:       chid,
+		cfg:        cfg,
+		onShutdown: onShutdown,
+		onDTEvent:  onDTEvent,
 	}
 	mpc.start()
 	return mpc
+}
+
+// Overridden by sub-classes
+func (mc *monitoredChannel) checkDataRate() {
 }
 
 // Cancel the context and unsubscribe from events
@@ -238,7 +261,7 @@ func (mc *monitoredChannel) start() {
 	mc.shutdownLk.Lock()
 	defer mc.shutdownLk.Unlock()
 
-	log.Debugf("%s: starting push channel data-rate monitoring", mc.chid)
+	log.Debugf("%s: starting channel data-rate monitoring", mc.chid)
 
 	// Watch to make sure the responder accepts the channel in time
 	cancelAcceptTimer := mc.watchForResponderAccept()
@@ -249,13 +272,10 @@ func (mc *monitoredChannel) start() {
 			return
 		}
 
-		mc.statsLk.Lock()
-		defer mc.statsLk.Unlock()
-
 		// Once the channel completes, shut down the monitor
 		state := channelState.Status()
 		if channels.IsChannelCleaningUp(state) || channels.IsChannelTerminated(state) {
-			log.Debugf("%s: stopping push channel data-rate monitoring", mc.chid)
+			log.Debugf("%s: stopping channel data-rate monitoring", mc.chid)
 			go mc.Shutdown()
 			return
 		}
@@ -264,23 +284,20 @@ func (mc *monitoredChannel) start() {
 		case datatransfer.Accept:
 			// The Accept event is fired when we receive an Accept message from the responder
 			cancelAcceptTimer()
-		case datatransfer.Error:
-			// If there's an error, attempt to restart the channel
-			log.Debugf("%s: data transfer error, restarting", mc.chid)
+		case datatransfer.SendDataError:
+			// If the transport layer reports an error sending data over the wire,
+			// attempt to restart the channel
+			log.Warnf("%s: data transfer transport send error, restarting data transfer", mc.chid)
 			go mc.restartChannel()
-		case datatransfer.DataQueued:
-			// Keep track of the amount of data queued
-			mc.queued = channelState.Queued()
-		case datatransfer.DataSent:
-			// Keep track of the amount of data sent
-			mc.sent = channelState.Sent()
-			// Some data was sent so reset the consecutive restart counter
-			mc.consecutiveRestarts = 0
 		case datatransfer.FinishTransfer:
 			// The client has finished sending all data. Watch to make sure
 			// that the responder sends a message to acknowledge that the
 			// transfer is complete
 			go mc.watchForResponderComplete()
+		default:
+			// Delegate to the push channel monitor or pull channel monitor to
+			// handle the event
+			mc.onDTEvent(event, channelState)
 		}
 	})
 }
@@ -326,70 +343,37 @@ func (mc *monitoredChannel) watchForResponderComplete() {
 	}
 }
 
-type dataRatePoint struct {
-	pending uint64
-	sent    uint64
-}
+// clear the consecutive restart count (we do this when data is sent or
+// received)
+func (mc *monitoredChannel) resetConsecutiveRestarts() {
+	mc.restartLk.Lock()
+	defer mc.restartLk.Unlock()
 
-// check if the amount of data sent in the interval was too low, and if so
-// restart the channel
-func (mc *monitoredChannel) checkDataRate() {
-	mc.statsLk.Lock()
-	defer mc.statsLk.Unlock()
-
-	// Before returning, add the current data rate stats to the queue
-	defer func() {
-		var pending uint64
-		if mc.queued > mc.sent { // should always be true but just in case
-			pending = mc.queued - mc.sent
-		}
-		mc.dataRatePoints <- &dataRatePoint{
-			pending: pending,
-			sent:    mc.sent,
-		}
-	}()
-
-	// Check that there are enough data points that an interval has elapsed
-	if len(mc.dataRatePoints) < int(mc.cfg.ChecksPerInterval) {
-		log.Debugf("%s: not enough data points to check data rate yet (%d / %d)",
-			mc.chid, len(mc.dataRatePoints), mc.cfg.ChecksPerInterval)
-
-		return
-	}
-
-	// Pop the data point from one interval ago
-	atIntervalStart := <-mc.dataRatePoints
-
-	// If there was enough pending data to cover the minimum required amount,
-	// and the amount sent was lower than the minimum required, restart the
-	// channel
-	sentInInterval := mc.sent - atIntervalStart.sent
-	log.Debugf("%s: since last check: sent: %d - %d = %d, pending: %d, required %d",
-		mc.chid, mc.sent, atIntervalStart.sent, sentInInterval, atIntervalStart.pending, mc.cfg.MinBytesSent)
-	if atIntervalStart.pending > sentInInterval && sentInInterval < mc.cfg.MinBytesSent {
-		go mc.restartChannel()
-	}
+	mc.consecutiveRestarts = 0
 }
 
 func (mc *monitoredChannel) restartChannel() {
-	// Check if the channel is already being restarted
+	var restartCount int
+	var restartedAt time.Time
 	mc.restartLk.Lock()
-	restartedAt := mc.restartedAt
-	if restartedAt.IsZero() {
-		mc.restartedAt = time.Now()
+	{
+		// If the channel is not already being restarted, record the restart
+		// time and increment the consecutive restart count
+		restartedAt = mc.restartedAt
+		if mc.restartedAt.IsZero() {
+			mc.restartedAt = time.Now()
+			mc.consecutiveRestarts++
+			restartCount = mc.consecutiveRestarts
+		}
 	}
 	mc.restartLk.Unlock()
 
+	// Check if channel is already being restarted
 	if !restartedAt.IsZero() {
 		log.Debugf("%s: restart called but already restarting channel (for %s so far; restart backoff is %s)",
-			mc.chid, time.Since(mc.restartedAt), mc.cfg.RestartBackoff)
+			mc.chid, time.Since(restartedAt), mc.cfg.RestartBackoff)
 		return
 	}
-
-	mc.statsLk.Lock()
-	mc.consecutiveRestarts++
-	restartCount := mc.consecutiveRestarts
-	mc.statsLk.Unlock()
 
 	if uint32(restartCount) > mc.cfg.MaxConsecutiveRestarts {
 		// If no data has been transferred since the last transfer, and we've
@@ -423,6 +407,8 @@ func (mc *monitoredChannel) restartChannel() {
 			mc.chid, mc.cfg.RestartBackoff)
 	}
 
+	// Restart complete, so clear the restart time so that another restart
+	// can begin
 	mc.restartLk.Lock()
 	mc.restartedAt = time.Time{}
 	mc.restartLk.Unlock()
@@ -432,8 +418,171 @@ func (mc *monitoredChannel) closeChannelAndShutdown(cherr error) {
 	log.Errorf("closing data-transfer channel: %s", cherr)
 	err := mc.mgr.CloseDataTransferChannelWithError(mc.ctx, mc.chid, cherr)
 	if err != nil {
-		log.Errorf("error closing data-transfer channel %s: %w", mc.chid, err)
+		log.Errorf("error closing data-transfer channel %s: %s", mc.chid, err)
 	}
 
 	mc.Shutdown()
+}
+
+// Snapshot of the pending and sent data at a particular point in time.
+// The push channel monitor takes regular snapshots and compares them to
+// decide if the data rate has fallen too low.
+type dataRatePoint struct {
+	pending uint64
+	sent    uint64
+}
+
+// Keeps track of the data rate for a push channel
+type monitoredPushChannel struct {
+	*monitoredChannel
+
+	statsLk        sync.RWMutex
+	queued         uint64
+	sent           uint64
+	dataRatePoints chan *dataRatePoint
+}
+
+func newMonitoredPushChannel(
+	mgr monitorAPI,
+	chid datatransfer.ChannelID,
+	cfg *Config,
+	onShutdown func(*monitoredChannel),
+) *monitoredPushChannel {
+	mpc := &monitoredPushChannel{
+		dataRatePoints: make(chan *dataRatePoint, cfg.ChecksPerInterval),
+	}
+	mpc.monitoredChannel = newMonitoredChannel(mgr, chid, cfg, onShutdown, mpc.onDTEvent)
+	return mpc
+}
+
+// check if the amount of data sent in the interval was too low, and if so
+// restart the channel
+func (mc *monitoredPushChannel) checkDataRate() {
+	mc.statsLk.Lock()
+	defer mc.statsLk.Unlock()
+
+	// Before returning, add the current data rate stats to the queue
+	defer func() {
+		var pending uint64
+		if mc.queued > mc.sent { // should always be true but just in case
+			pending = mc.queued - mc.sent
+		}
+		mc.dataRatePoints <- &dataRatePoint{
+			pending: pending,
+			sent:    mc.sent,
+		}
+	}()
+
+	// Check that there are enough data points that an interval has elapsed
+	if len(mc.dataRatePoints) < int(mc.cfg.ChecksPerInterval) {
+		log.Debugf("%s: not enough data points to check data rate yet (%d / %d)",
+			mc.chid, len(mc.dataRatePoints), mc.cfg.ChecksPerInterval)
+
+		return
+	}
+
+	// Pop the data point from one interval ago
+	atIntervalStart := <-mc.dataRatePoints
+
+	// If there was enough pending data to cover the minimum required amount,
+	// and the amount sent was lower than the minimum required, restart the
+	// channel
+	sentInInterval := mc.sent - atIntervalStart.sent
+	log.Debugf("%s: since last check: sent: %d - %d = %d, pending: %d, required %d",
+		mc.chid, mc.sent, atIntervalStart.sent, sentInInterval, atIntervalStart.pending, mc.cfg.MinBytesTransferred)
+	if atIntervalStart.pending > sentInInterval && sentInInterval < mc.cfg.MinBytesTransferred {
+		log.Warnf("%s: data-rate too low, restarting channel: since last check %s ago: sent: %d, required %d",
+			mc.chid, mc.cfg.Interval, mc.sent, mc.cfg.MinBytesTransferred)
+		go mc.restartChannel()
+	}
+}
+
+// Update the queued / sent amount each time it changes
+func (mc *monitoredPushChannel) onDTEvent(event datatransfer.Event, channelState datatransfer.ChannelState) {
+	switch event.Code {
+	case datatransfer.DataQueued:
+		// Keep track of the amount of data queued
+		mc.statsLk.Lock()
+		mc.queued = channelState.Queued()
+		mc.statsLk.Unlock()
+
+	case datatransfer.DataSent:
+		// Keep track of the amount of data sent
+		mc.statsLk.Lock()
+		mc.sent = channelState.Sent()
+		mc.statsLk.Unlock()
+
+		// Some data was sent so reset the consecutive restart counter
+		mc.resetConsecutiveRestarts()
+	}
+}
+
+// Keeps track of the data rate for a pull channel
+type monitoredPullChannel struct {
+	*monitoredChannel
+
+	statsLk        sync.RWMutex
+	received       uint64
+	dataRatePoints chan uint64
+}
+
+func newMonitoredPullChannel(
+	mgr monitorAPI,
+	chid datatransfer.ChannelID,
+	cfg *Config,
+	onShutdown func(*monitoredChannel),
+) *monitoredPullChannel {
+	mpc := &monitoredPullChannel{
+		dataRatePoints: make(chan uint64, cfg.ChecksPerInterval),
+	}
+	mpc.monitoredChannel = newMonitoredChannel(mgr, chid, cfg, onShutdown, mpc.onDTEvent)
+	return mpc
+}
+
+// check if the amount of data received in the interval was too low, and if so
+// restart the channel
+func (mc *monitoredPullChannel) checkDataRate() {
+	mc.statsLk.Lock()
+	defer mc.statsLk.Unlock()
+
+	// Before returning, add the current data rate stats to the queue
+	defer func() {
+		mc.dataRatePoints <- mc.received
+	}()
+
+	// Check that there are enough data points that an interval has elapsed
+	if len(mc.dataRatePoints) < int(mc.cfg.ChecksPerInterval) {
+		log.Debugf("%s: not enough data points to check data rate yet (%d / %d)",
+			mc.chid, len(mc.dataRatePoints), mc.cfg.ChecksPerInterval)
+
+		return
+	}
+
+	// Pop the data point from one interval ago
+	atIntervalStart := <-mc.dataRatePoints
+
+	// If the amount received was lower than the minimum required, restart the
+	// channel
+	rcvdInInterval := mc.received - atIntervalStart
+	log.Debugf("%s: since last check: received: %d - %d = %d, required %d",
+		mc.chid, mc.received, atIntervalStart, rcvdInInterval, mc.cfg.MinBytesTransferred)
+	if rcvdInInterval < mc.cfg.MinBytesTransferred {
+		log.Warnf("%s: data-rate too low, restarting channel: since last check %s ago: received: %d, required %d",
+			mc.chid, mc.cfg.Interval, mc.received, mc.cfg.MinBytesTransferred)
+		go mc.restartChannel()
+	}
+}
+
+// Update the received amount each time it changes
+func (mc *monitoredPullChannel) onDTEvent(event datatransfer.Event, channelState datatransfer.ChannelState) {
+	switch event.Code {
+	case datatransfer.DataReceived:
+		// Keep track of the amount of data received
+		mc.statsLk.Lock()
+		mc.received = channelState.Received()
+		mc.statsLk.Unlock()
+
+		// Some data was received so reset the consecutive restart counter
+		mc.resetConsecutiveRestarts()
+	}
 }

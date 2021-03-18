@@ -90,6 +90,14 @@ const (
 	// the remote peer. It is used to measure progress of how much of the total
 	// data has been received.
 	DataReceivedProgress
+
+	// RequestTimedOut indicates that the transport layer had a timeout trying to
+	// make a request
+	RequestTimedOut
+
+	// SendDataError indicates that the transport layer had an error trying
+	// to send data to the remote peer
+	SendDataError
 )
 
 // Events are human readable names for data transfer events

@@ -45,23 +45,31 @@ func RegisterCompletedRequestListener(l func(channelID datatransfer.ChannelID)) 
 	}
 }
 
+// RegisterCompletedResponseListener is used by the tests
+func RegisterCompletedResponseListener(l func(channelID datatransfer.ChannelID)) Option {
+	return func(t *Transport) {
+		t.completedResponseListener = l
+	}
+}
+
 // Transport manages graphsync hooks for data transfer, translating from
 // graphsync hooks to semantic data transfer events
 type Transport struct {
-	events                   datatransfer.EventsHandler
-	gs                       graphsync.GraphExchange
-	peerID                   peer.ID
-	dataLock                 sync.RWMutex
-	graphsyncRequestMap      map[graphsyncKey]datatransfer.ChannelID
-	channelIDMap             map[datatransfer.ChannelID]graphsyncKey
-	contextCancelMap         map[datatransfer.ChannelID]func()
-	pending                  map[datatransfer.ChannelID]chan struct{}
-	requestorCancelledMap    map[datatransfer.ChannelID]struct{}
-	pendingExtensions        map[datatransfer.ChannelID][]graphsync.ExtensionData
-	stores                   map[datatransfer.ChannelID]struct{}
-	supportedExtensions      []graphsync.ExtensionName
-	unregisterFuncs          []graphsync.UnregisterHookFunc
-	completedRequestListener func(channelID datatransfer.ChannelID)
+	events                    datatransfer.EventsHandler
+	gs                        graphsync.GraphExchange
+	peerID                    peer.ID
+	dataLock                  sync.RWMutex
+	graphsyncRequestMap       map[graphsyncKey]datatransfer.ChannelID
+	channelIDMap              map[datatransfer.ChannelID]graphsyncKey
+	contextCancelMap          map[datatransfer.ChannelID]func()
+	pending                   map[datatransfer.ChannelID]chan struct{}
+	requestorCancelledMap     map[datatransfer.ChannelID]struct{}
+	pendingExtensions         map[datatransfer.ChannelID][]graphsync.ExtensionData
+	stores                    map[datatransfer.ChannelID]struct{}
+	supportedExtensions       []graphsync.ExtensionName
+	unregisterFuncs           []graphsync.UnregisterHookFunc
+	completedRequestListener  func(channelID datatransfer.ChannelID)
+	completedResponseListener func(channelID datatransfer.ChannelID)
 }
 
 // NewTransport makes a new hooks manager with the given hook events interface
@@ -130,7 +138,7 @@ func (t *Transport) OpenChannel(ctx context.Context,
 	}
 	responseChan, errChan := t.gs.Request(internalCtx, dataSender, root, stor, exts...)
 
-	go t.executeGsRequest(ctx, internalCtx, channelID, responseChan, errChan)
+	go t.executeGsRequest(internalCtx, channelID, responseChan, errChan)
 	return nil
 }
 
@@ -144,12 +152,13 @@ func (t *Transport) consumeResponses(responseChan <-chan graphsync.ResponseProgr
 	return lastError
 }
 
-func (t *Transport) executeGsRequest(ctx context.Context, internalCtx context.Context, channelID datatransfer.ChannelID, responseChan <-chan graphsync.ResponseProgress, errChan <-chan error) {
+func (t *Transport) executeGsRequest(internalCtx context.Context, channelID datatransfer.ChannelID, responseChan <-chan graphsync.ResponseProgress, errChan <-chan error) {
 	lastError := t.consumeResponses(responseChan, errChan)
 
 	if _, ok := lastError.(graphsync.RequestContextCancelledErr); ok {
-		log.Warnf("graphsync request context cancelled, channel Id: %v", channelID)
-		if err := t.events.OnRequestTimedOut(ctx, channelID); err != nil {
+		terr := xerrors.Errorf("graphsync request context cancelled")
+		log.Warnf("channel id %v: %s", channelID, terr)
+		if err := t.events.OnRequestTimedOut(channelID, terr); err != nil {
 			log.Error(err)
 		}
 		return
@@ -321,7 +330,7 @@ func (t *Transport) SetEventHandler(events datatransfer.EventsHandler) error {
 	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterIncomingResponseHook(t.gsIncomingResponseHook))
 	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterRequestUpdatedHook(t.gsRequestUpdatedHook))
 	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterRequestorCancelledListener(t.gsRequestorCancelledListener))
-	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterNetworkErrorListener(t.gsNetworkErrorListener))
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterNetworkErrorListener(t.gsNetworkSendErrorListener))
 	return nil
 }
 
@@ -561,6 +570,12 @@ func (t *Transport) gsCompletedResponseListener(p peer.ID, request graphsync.Req
 		statusStr := gsResponseStatusCodeString(status)
 		completeErr = xerrors.Errorf("graphsync response to peer %s did not complete: response status code %s", p, statusStr)
 	}
+
+	// Used by the tests to listen for when a response completes
+	if t.completedResponseListener != nil {
+		t.completedResponseListener(chid)
+	}
+
 	err := t.events.OnChannelCompleted(chid, completeErr)
 	if err != nil {
 		log.Error(err)
@@ -709,15 +724,18 @@ func (t *Transport) gsRequestorCancelledListener(p peer.ID, request graphsync.Re
 	}
 }
 
-func (t *Transport) gsNetworkErrorListener(p peer.ID, request graphsync.RequestData, err error) {
+// Called when there is a graphsync error sending data
+func (t *Transport) gsNetworkSendErrorListener(p peer.ID, request graphsync.RequestData, gserr error) {
 	t.dataLock.Lock()
 	defer t.dataLock.Unlock()
 
 	chid, ok := t.graphsyncRequestMap[graphsyncKey{request.ID(), p}]
-	if ok {
-		err := t.events.OnRequestDisconnected(context.TODO(), chid)
-		if err != nil {
-			log.Error(err)
-		}
+	if !ok {
+		return
+	}
+
+	err := t.events.OnSendDataError(chid, gserr)
+	if err != nil {
+		log.Errorf("failed to fire transport send error %s: %s", gserr, err)
 	}
 }

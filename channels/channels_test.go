@@ -11,6 +11,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
+	dss "github.com/ipfs/go-datastore/sync"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
@@ -37,7 +38,7 @@ func TestChannels(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	ds := datastore.NewMapDatastore()
+	ds := dss.MutexWrap(datastore.NewMapDatastore())
 	received := make(chan event)
 	notifier := func(evt datatransfer.Event, chst datatransfer.ChannelState) {
 		received <- event{evt, chst}
@@ -127,7 +128,7 @@ func TestChannels(t *testing.T) {
 	})
 
 	t.Run("updating send/receive values", func(t *testing.T) {
-		ds := datastore.NewMapDatastore()
+		ds := dss.MutexWrap(datastore.NewMapDatastore())
 		dir := os.TempDir()
 		cidLists, err := cidlists.NewCIDLists(dir)
 		require.NoError(t, err)
@@ -302,7 +303,7 @@ func TestChannels(t *testing.T) {
 	})
 
 	t.Run("test disconnected", func(t *testing.T) {
-		ds := datastore.NewMapDatastore()
+		ds := dss.MutexWrap(datastore.NewMapDatastore())
 		received := make(chan event)
 		notifier := func(evt datatransfer.Event, chst datatransfer.ChannelState) {
 			received <- event{evt, chst}
@@ -320,10 +321,11 @@ func TestChannels(t *testing.T) {
 		state := checkEvent(ctx, t, received, datatransfer.Open)
 		require.Equal(t, datatransfer.Requested, state.Status())
 
-		err = channelList.Disconnected(chid)
+		disconnectErr := xerrors.Errorf("disconnected")
+		err = channelList.Disconnected(chid, disconnectErr)
 		require.NoError(t, err)
 		state = checkEvent(ctx, t, received, datatransfer.Disconnected)
-		require.Equal(t, datatransfer.ErrDisconnected.Error(), state.Message())
+		require.Equal(t, disconnectErr.Error(), state.Message())
 	})
 
 	t.Run("test self peer and other peer", func(t *testing.T) {
@@ -364,7 +366,7 @@ func TestMigrationsV0(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	ds := datastore.NewMapDatastore()
+	ds := dss.MutexWrap(datastore.NewMapDatastore())
 	received := make(chan event)
 	notifier := func(evt datatransfer.Event, chst datatransfer.ChannelState) {
 		received <- event{evt, chst}
@@ -484,7 +486,7 @@ func TestMigrationsV1(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	ds := datastore.NewMapDatastore()
+	ds := dss.MutexWrap(datastore.NewMapDatastore())
 	received := make(chan event)
 	notifier := func(evt datatransfer.Event, chst datatransfer.ChannelState) {
 		received <- event{evt, chst}

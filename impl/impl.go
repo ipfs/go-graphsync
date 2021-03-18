@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
-	"time"
 
 	"github.com/hannahhoward/go-pubsub"
 	"github.com/ipfs/go-cid"
@@ -19,35 +17,32 @@ import (
 	"github.com/filecoin-project/go-storedcounter"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
+	"github.com/filecoin-project/go-data-transfer/channelmonitor"
 	"github.com/filecoin-project/go-data-transfer/channels"
 	"github.com/filecoin-project/go-data-transfer/cidlists"
 	"github.com/filecoin-project/go-data-transfer/encoding"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/network"
-	"github.com/filecoin-project/go-data-transfer/pushchannelmonitor"
 	"github.com/filecoin-project/go-data-transfer/registry"
 )
 
 var log = logging.Logger("dt-impl")
 
 type manager struct {
-	dataTransferNetwork   network.DataTransferNetwork
-	validatedTypes        *registry.Registry
-	resultTypes           *registry.Registry
-	revalidators          *registry.Registry
-	transportConfigurers  *registry.Registry
-	pubSub                *pubsub.PubSub
-	readySub              *pubsub.PubSub
-	channels              *channels.Channels
-	peerID                peer.ID
-	transport             datatransfer.Transport
-	storedCounter         *storedcounter.StoredCounter
-	channelRemoveTimeout  time.Duration
-	reconnectsLk          sync.RWMutex
-	reconnects            map[datatransfer.ChannelID]chan struct{}
-	cidLists              cidlists.CIDLists
-	pushChannelMonitor    *pushchannelmonitor.Monitor
-	pushChannelMonitorCfg *pushchannelmonitor.Config
+	dataTransferNetwork  network.DataTransferNetwork
+	validatedTypes       *registry.Registry
+	resultTypes          *registry.Registry
+	revalidators         *registry.Registry
+	transportConfigurers *registry.Registry
+	pubSub               *pubsub.PubSub
+	readySub             *pubsub.PubSub
+	channels             *channels.Channels
+	peerID               peer.ID
+	transport            datatransfer.Transport
+	storedCounter        *storedcounter.StoredCounter
+	cidLists             cidlists.CIDLists
+	channelMonitor       *channelmonitor.Monitor
+	channelMonitorCfg    *channelmonitor.Config
 }
 
 type internalEvent struct {
@@ -84,22 +79,13 @@ func readyDispatcher(evt pubsub.Event, fn pubsub.SubscriberFn) error {
 // DataTransferOption configures the data transfer manager
 type DataTransferOption func(*manager)
 
-// ChannelRemoveTimeout sets the timeout after which channels are removed from the manager
-func ChannelRemoveTimeout(timeout time.Duration) DataTransferOption {
+// ChannelRestartConfig sets the configuration options for automatically
+// restarting push and pull channels
+func ChannelRestartConfig(cfg channelmonitor.Config) DataTransferOption {
 	return func(m *manager) {
-		m.channelRemoveTimeout = timeout
+		m.channelMonitorCfg = &cfg
 	}
 }
-
-// PushChannelRestartConfig sets the configuration options for automatically
-// restarting push channels
-func PushChannelRestartConfig(cfg pushchannelmonitor.Config) DataTransferOption {
-	return func(m *manager) {
-		m.pushChannelMonitorCfg = &cfg
-	}
-}
-
-const defaultChannelRemoveTimeout = 1 * time.Hour
 
 // NewDataTransfer initializes a new instance of a data transfer manager
 func NewDataTransfer(ds datastore.Batching, cidListsDir string, dataTransferNetwork network.DataTransferNetwork, transport datatransfer.Transport, storedCounter *storedcounter.StoredCounter, options ...DataTransferOption) (datatransfer.Manager, error) {
@@ -114,8 +100,6 @@ func NewDataTransfer(ds datastore.Batching, cidListsDir string, dataTransferNetw
 		peerID:               dataTransferNetwork.ID(),
 		transport:            transport,
 		storedCounter:        storedCounter,
-		channelRemoveTimeout: defaultChannelRemoveTimeout,
-		reconnects:           make(map[datatransfer.ChannelID]chan struct{}),
 	}
 
 	cidLists, err := cidlists.NewCIDLists(cidListsDir)
@@ -134,10 +118,10 @@ func NewDataTransfer(ds datastore.Batching, cidListsDir string, dataTransferNetw
 		option(m)
 	}
 
-	// Start push channel monitor after applying config options as the config
+	// Start push / pull channel monitor after applying config options as the config
 	// options may apply to the monitor
-	m.pushChannelMonitor = pushchannelmonitor.NewMonitor(m, m.pushChannelMonitorCfg)
-	m.pushChannelMonitor.Start()
+	m.channelMonitor = channelmonitor.NewMonitor(m, m.channelMonitorCfg)
+	m.channelMonitor.Start()
 
 	return m, nil
 }
@@ -185,7 +169,7 @@ func (m *manager) OnReady(ready datatransfer.ReadyFunc) {
 // Stop terminates all data transfers and ends processing
 func (m *manager) Stop(ctx context.Context) error {
 	log.Info("stop data-transfer module")
-	m.pushChannelMonitor.Shutdown()
+	m.channelMonitor.Shutdown()
 	return m.transport.Shutdown(ctx)
 }
 
@@ -223,7 +207,7 @@ func (m *manager) OpenPushDataChannel(ctx context.Context, requestTo peer.ID, vo
 		transportConfigurer(chid, voucher, m.transport)
 	}
 	m.dataTransferNetwork.Protect(requestTo, chid.String())
-	monitoredChan := m.pushChannelMonitor.AddChannel(chid)
+	monitoredChan := m.channelMonitor.AddPushChannel(chid)
 	if err := m.dataTransferNetwork.SendMessage(ctx, requestTo, req); err != nil {
 		err = fmt.Errorf("Unable to send request: %w", err)
 		_ = m.channels.Error(chid, err)
@@ -261,9 +245,17 @@ func (m *manager) OpenPullDataChannel(ctx context.Context, requestTo peer.ID, vo
 		transportConfigurer(chid, voucher, m.transport)
 	}
 	m.dataTransferNetwork.Protect(requestTo, chid.String())
+	monitoredChan := m.channelMonitor.AddPullChannel(chid)
 	if err := m.transport.OpenChannel(ctx, requestTo, chid, cidlink.Link{Cid: baseCid}, selector, nil, req); err != nil {
 		err = fmt.Errorf("Unable to send request: %w", err)
 		_ = m.channels.Error(chid, err)
+
+		// If pull channel monitoring is enabled, shutdown the monitor as it
+		// wasn't possible to start the data transfer
+		if monitoredChan != nil {
+			monitoredChan.Shutdown()
+		}
+
 		return chid, err
 	}
 	return chid, nil
@@ -284,7 +276,7 @@ func (m *manager) SendVoucher(ctx context.Context, channelID datatransfer.Channe
 	}
 	if err := m.dataTransferNetwork.SendMessage(ctx, chst.OtherPeer(), updateRequest); err != nil {
 		err = fmt.Errorf("Unable to send request: %w", err)
-		_ = m.OnRequestDisconnected(ctx, channelID)
+		_ = m.OnRequestDisconnected(channelID, err)
 		return err
 	}
 	return m.channels.NewVoucher(channelID, voucher)
@@ -311,7 +303,7 @@ func (m *manager) CloseDataTransferChannel(ctx context.Context, chid datatransfe
 	if err != nil {
 		err = fmt.Errorf("unable to send cancel message for channel %s to peer %s: %w",
 			chid, m.peerID, err)
-		_ = m.OnRequestDisconnected(ctx, chid)
+		_ = m.OnRequestDisconnected(chid, err)
 		log.Warn(err)
 	}
 
@@ -384,7 +376,7 @@ func (m *manager) PauseDataTransferChannel(ctx context.Context, chid datatransfe
 
 	if err := m.dataTransferNetwork.SendMessage(ctx, chid.OtherParty(m.peerID), m.pauseMessage(chid)); err != nil {
 		err = fmt.Errorf("Unable to send pause message: %w", err)
-		_ = m.OnRequestDisconnected(ctx, chid)
+		_ = m.OnRequestDisconnected(chid, err)
 		return err
 	}
 

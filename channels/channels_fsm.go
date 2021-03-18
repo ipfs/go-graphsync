@@ -24,8 +24,12 @@ var transferringStates = []fsm.StateKey{
 
 // ChannelEvents describe the events taht can
 var ChannelEvents = fsm.Events{
+	// Open a channel
 	fsm.Event(datatransfer.Open).FromAny().To(datatransfer.Requested),
+
+	// Remote peer has accepted the Open channel request
 	fsm.Event(datatransfer.Accept).From(datatransfer.Requested).To(datatransfer.Ongoing),
+
 	fsm.Event(datatransfer.Restart).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
 		chst.Message = ""
 		return nil
@@ -52,8 +56,19 @@ var ChannelEvents = fsm.Events{
 			chst.Queued += delta
 			return nil
 		}),
-	fsm.Event(datatransfer.Disconnected).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
-		chst.Message = datatransfer.ErrDisconnected.Error()
+
+	fsm.Event(datatransfer.Disconnected).FromAny().ToNoChange().Action(func(chst *internal.ChannelState, err error) error {
+		chst.Message = err.Error()
+		return nil
+	}),
+
+	fsm.Event(datatransfer.SendDataError).FromAny().ToNoChange().Action(func(chst *internal.ChannelState, err error) error {
+		chst.Message = err.Error()
+		return nil
+	}),
+
+	fsm.Event(datatransfer.RequestTimedOut).FromAny().ToNoChange().Action(func(chst *internal.ChannelState, err error) error {
+		chst.Message = err.Error()
 		return nil
 	}),
 
@@ -61,6 +76,7 @@ var ChannelEvents = fsm.Events{
 		chst.Message = err.Error()
 		return nil
 	}),
+
 	fsm.Event(datatransfer.NewVoucher).FromAny().ToNoChange().
 		Action(func(chst *internal.ChannelState, vtype datatransfer.TypeIdentifier, voucherBytes []byte) error {
 			chst.Vouchers = append(chst.Vouchers, internal.EncodedVoucher{Type: vtype, Voucher: &cbg.Deferred{Raw: voucherBytes}})
@@ -72,32 +88,41 @@ var ChannelEvents = fsm.Events{
 				internal.EncodedVoucherResult{Type: vtype, VoucherResult: &cbg.Deferred{Raw: voucherResultBytes}})
 			return nil
 		}),
+
 	fsm.Event(datatransfer.PauseInitiator).
 		FromMany(datatransfer.Requested, datatransfer.Ongoing).To(datatransfer.InitiatorPaused).
 		From(datatransfer.ResponderPaused).To(datatransfer.BothPaused).
 		FromAny().ToJustRecord(),
+
 	fsm.Event(datatransfer.PauseResponder).
 		FromMany(datatransfer.Requested, datatransfer.Ongoing).To(datatransfer.ResponderPaused).
 		From(datatransfer.InitiatorPaused).To(datatransfer.BothPaused).
 		FromAny().ToJustRecord(),
+
 	fsm.Event(datatransfer.ResumeInitiator).
 		From(datatransfer.InitiatorPaused).To(datatransfer.Ongoing).
 		From(datatransfer.BothPaused).To(datatransfer.ResponderPaused).
 		FromAny().ToJustRecord(),
+
 	fsm.Event(datatransfer.ResumeResponder).
 		From(datatransfer.ResponderPaused).To(datatransfer.Ongoing).
 		From(datatransfer.BothPaused).To(datatransfer.InitiatorPaused).
 		From(datatransfer.Finalizing).To(datatransfer.Completing).
 		FromAny().ToJustRecord(),
+
+	// The transfer has finished on the local node - all data was sent / received
 	fsm.Event(datatransfer.FinishTransfer).
 		FromAny().To(datatransfer.TransferFinished).
 		FromMany(datatransfer.Failing, datatransfer.Cancelling).ToJustRecord().
 		From(datatransfer.ResponderCompleted).To(datatransfer.Completing).
 		From(datatransfer.ResponderFinalizing).To(datatransfer.ResponderFinalizingTransferFinished),
+
 	fsm.Event(datatransfer.ResponderBeginsFinalization).
 		FromAny().To(datatransfer.ResponderFinalizing).
 		FromMany(datatransfer.Failing, datatransfer.Cancelling).ToJustRecord().
 		From(datatransfer.TransferFinished).To(datatransfer.ResponderFinalizingTransferFinished),
+
+	// The remote peer sent a Complete message, meaning it has sent / received all data
 	fsm.Event(datatransfer.ResponderCompletes).
 		FromAny().To(datatransfer.ResponderCompleted).
 		FromMany(datatransfer.Failing, datatransfer.Cancelling).ToJustRecord().
@@ -105,8 +130,12 @@ var ChannelEvents = fsm.Events{
 		From(datatransfer.TransferFinished).To(datatransfer.Completing).
 		From(datatransfer.ResponderFinalizing).To(datatransfer.ResponderCompleted).
 		From(datatransfer.ResponderFinalizingTransferFinished).To(datatransfer.Completing),
+
 	fsm.Event(datatransfer.BeginFinalizing).FromAny().To(datatransfer.Finalizing),
+
+	// Both the local node and the remote peer have completed the transfer
 	fsm.Event(datatransfer.Complete).FromAny().To(datatransfer.Completing),
+
 	fsm.Event(datatransfer.CleanupComplete).
 		From(datatransfer.Cancelling).To(datatransfer.Cancelled).
 		From(datatransfer.Failing).To(datatransfer.Failed).
