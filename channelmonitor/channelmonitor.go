@@ -567,8 +567,8 @@ func (mc *monitoredPullChannel) checkDataRate() {
 	log.Debugf("%s: since last check: received: %d - %d = %d, required %d",
 		mc.chid, mc.received, atIntervalStart, rcvdInInterval, mc.cfg.MinBytesTransferred)
 	if rcvdInInterval < mc.cfg.MinBytesTransferred {
-		log.Warnf("%s: data-rate too low, restarting channel: since last check %s ago: received: %d, required %d",
-			mc.chid, mc.cfg.Interval, mc.received, mc.cfg.MinBytesTransferred)
+		log.Warnf("%s: data-rate too low, restarting channel: since last check %s ago: received %d, required %d",
+			mc.chid, mc.cfg.Interval, rcvdInInterval, mc.cfg.MinBytesTransferred)
 		go mc.restartChannel()
 	}
 }
