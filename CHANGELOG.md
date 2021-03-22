@@ -1,5 +1,24 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.2.9
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix: log line in pull data channel monitor (#165) ([filecoin-project/go-data-transfer#165](https://github.com/filecoin-project/go-data-transfer/pull/165))
+  - feat: better reconnect behaviour (#162) ([filecoin-project/go-data-transfer#162](https://github.com/filecoin-project/go-data-transfer/pull/162))
+  - Improve push channel to detect when not all data has been received (#157) ([filecoin-project/go-data-transfer#157](https://github.com/filecoin-project/go-data-transfer/pull/157))
+  - fix: flaky TestSimulatedRetrievalFlow (#159) ([filecoin-project/go-data-transfer#159](https://github.com/filecoin-project/go-data-transfer/pull/159))
+  - feat: better logging (#155) ([filecoin-project/go-data-transfer#155](https://github.com/filecoin-project/go-data-transfer/pull/155))
+  - fix: add missing event names (#148) ([filecoin-project/go-data-transfer#148](https://github.com/filecoin-project/go-data-transfer/pull/148))
+  - enable codecov. (#146) ([filecoin-project/go-data-transfer#146](https://github.com/filecoin-project/go-data-transfer/pull/146))
+  - Better error message on complete (#145) ([filecoin-project/go-data-transfer#145](https://github.com/filecoin-project/go-data-transfer/pull/145))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 8 | +1492/-750 | 34 |
+| raulk | 1 | +2/-2 | 1 |
+
 # go-data-transfer 1.2.8
 
 - github.com/filecoin-project/go-data-transfer:
