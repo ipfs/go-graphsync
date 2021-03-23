@@ -32,11 +32,8 @@ var resumeTransportStatesResponder = statusList{
 
 // newRequest encapsulates message creation
 func (m *manager) newRequest(ctx context.Context, selector ipld.Node, isPull bool, voucher datatransfer.Voucher, baseCid cid.Cid, to peer.ID) (datatransfer.Request, error) {
-	next, err := m.storedCounter.Next()
-	if err != nil {
-		return nil, err
-	}
-	tid := datatransfer.TransferID(next)
+	// Generate a new transfer ID for the request
+	tid := datatransfer.TransferID(m.transferIDGen.next())
 	return message.NewRequest(tid, false, isPull, voucher.Type(), voucher, baseCid, selector)
 }
 

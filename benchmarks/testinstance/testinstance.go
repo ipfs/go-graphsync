@@ -19,8 +19,6 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 
-	"github.com/filecoin-project/go-storedcounter"
-
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	tn "github.com/filecoin-project/go-data-transfer/benchmarks/testnet"
 	dtimpl "github.com/filecoin-project/go-data-transfer/impl"
@@ -170,8 +168,7 @@ func NewInstance(ctx context.Context, net tn.Network, tempDir string, diskBasedD
 	storer := storeutil.StorerForBlockstore(bstore)
 	gs := gsimpl.New(ctx, gsNet, loader, storer, gsimpl.RejectAllRequestsByDefault())
 	transport := gstransport.NewTransport(p, gs)
-	dtCounter := storedcounter.New(dstore, datastore.NewKey("/data-transfers/counter"))
-	dt, err := dtimpl.NewDataTransfer(namespace.Wrap(dstore, datastore.NewKey("/data-transfers/transfers")), os.TempDir(), dtNet, transport, dtCounter)
+	dt, err := dtimpl.NewDataTransfer(namespace.Wrap(dstore, datastore.NewKey("/data-transfers/transfers")), os.TempDir(), dtNet, transport)
 	if err != nil {
 		return Instance{}, err
 	}

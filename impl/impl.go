@@ -14,8 +14,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"golang.org/x/xerrors"
 
-	"github.com/filecoin-project/go-storedcounter"
-
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/channelmonitor"
 	"github.com/filecoin-project/go-data-transfer/channels"
@@ -39,10 +37,10 @@ type manager struct {
 	channels             *channels.Channels
 	peerID               peer.ID
 	transport            datatransfer.Transport
-	storedCounter        *storedcounter.StoredCounter
 	cidLists             cidlists.CIDLists
 	channelMonitor       *channelmonitor.Monitor
 	channelMonitorCfg    *channelmonitor.Config
+	transferIDGen        *timeCounter
 }
 
 type internalEvent struct {
@@ -88,7 +86,7 @@ func ChannelRestartConfig(cfg channelmonitor.Config) DataTransferOption {
 }
 
 // NewDataTransfer initializes a new instance of a data transfer manager
-func NewDataTransfer(ds datastore.Batching, cidListsDir string, dataTransferNetwork network.DataTransferNetwork, transport datatransfer.Transport, storedCounter *storedcounter.StoredCounter, options ...DataTransferOption) (datatransfer.Manager, error) {
+func NewDataTransfer(ds datastore.Batching, cidListsDir string, dataTransferNetwork network.DataTransferNetwork, transport datatransfer.Transport, options ...DataTransferOption) (datatransfer.Manager, error) {
 	m := &manager{
 		dataTransferNetwork:  dataTransferNetwork,
 		validatedTypes:       registry.NewRegistry(),
@@ -99,7 +97,7 @@ func NewDataTransfer(ds datastore.Batching, cidListsDir string, dataTransferNetw
 		readySub:             pubsub.New(readyDispatcher),
 		peerID:               dataTransferNetwork.ID(),
 		transport:            transport,
-		storedCounter:        storedCounter,
+		transferIDGen:        newTimeCounter(),
 	}
 
 	cidLists, err := cidlists.NewCIDLists(cidListsDir)

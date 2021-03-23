@@ -38,8 +38,6 @@ import (
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/filecoin-project/go-storedcounter"
-
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/network"
 	gstransport "github.com/filecoin-project/go-data-transfer/transport/graphsync"
@@ -71,8 +69,6 @@ type GraphsyncTestingData struct {
 	host2Protocols []protocol.ID
 	Ctx            context.Context
 	Mn             mocknet.Mocknet
-	StoredCounter1 *storedcounter.StoredCounter
-	StoredCounter2 *storedcounter.StoredCounter
 	DtDs1          datastore.Batching
 	DtDs2          datastore.Batching
 	Bs1            bstore.Blockstore
@@ -111,10 +107,6 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T, host1Protocols [
 	// make a blockstore and dag service
 	gsData.Bs1 = bstore.NewBlockstore(namespace.Wrap(ds1, datastore.NewKey("blockstore")))
 	gsData.Bs2 = bstore.NewBlockstore(namespace.Wrap(ds2, datastore.NewKey("blockstore")))
-
-	// make stored counters
-	gsData.StoredCounter1 = storedcounter.New(ds1, datastore.NewKey("counter"))
-	gsData.StoredCounter2 = storedcounter.New(ds2, datastore.NewKey("counter"))
 
 	gsData.DagService1 = merkledag.NewDAGService(blockservice.New(gsData.Bs1, offline.Exchange(gsData.Bs1)))
 	gsData.DagService2 = merkledag.NewDAGService(blockservice.New(gsData.Bs2, offline.Exchange(gsData.Bs2)))
