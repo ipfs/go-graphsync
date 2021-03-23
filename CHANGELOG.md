@@ -1,5 +1,16 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.3.0
+
+- github.com/filecoin-project/go-data-transfer:
+  - feat: use random number instead of incrementing counter for transfer ID (#169) ([filecoin-project/go-data-transfer#169](https://github.com/filecoin-project/go-data-transfer/pull/169))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 2 | +126/-71 | 13 |
+
 # go-data-transfer 1.2.9
 
 - github.com/filecoin-project/go-data-transfer:
