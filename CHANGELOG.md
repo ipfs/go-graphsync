@@ -1,5 +1,17 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.4.0
+
+- github.com/filecoin-project/go-data-transfer:
+  - feat: add config options to enable / disable push or pull monitoring individually (#174) ([filecoin-project/go-data-transfer#174](https://github.com/filecoin-project/go-data-transfer/pull/174))
+  - fix: ensure channel monitor shuts down when transfer complete (#171) ([filecoin-project/go-data-transfer#171](https://github.com/filecoin-project/go-data-transfer/pull/171))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 3 | +46/-14 | 5 |
+
 # go-data-transfer 1.3.0
 
 - github.com/filecoin-project/go-data-transfer:
