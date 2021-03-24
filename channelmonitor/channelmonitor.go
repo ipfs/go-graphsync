@@ -34,6 +34,10 @@ type Monitor struct {
 }
 
 type Config struct {
+	// Indicates whether push channel monitoring is enabled
+	MonitorPushChannels bool
+	// Indicates whether pull channel monitoring is enabled
+	MonitorPullChannels bool
 	// Max time to wait for other side to accept open channel request before attempting restart
 	AcceptTimeout time.Duration
 	// Interval between checks of transfer rate
@@ -109,6 +113,12 @@ func (m *Monitor) AddPullChannel(chid datatransfer.ChannelID) monitoredChan {
 // addChannel adds a channel to the channel monitor
 func (m *Monitor) addChannel(chid datatransfer.ChannelID, isPush bool) monitoredChan {
 	if !m.enabled() {
+		return nil
+	}
+	if isPush && !m.cfg.MonitorPushChannels {
+		return nil
+	}
+	if !isPush && !m.cfg.MonitorPullChannels {
 		return nil
 	}
 

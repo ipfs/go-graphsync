@@ -659,6 +659,8 @@ func TestAutoRestart(t *testing.T) {
 
 			// Set up
 			restartConf := ChannelRestartConfig(channelmonitor.Config{
+				MonitorPushChannels:    true,
+				MonitorPullChannels:    true,
 				AcceptTimeout:          100 * time.Millisecond,
 				Interval:               100 * time.Millisecond,
 				MinBytesTransferred:    1,

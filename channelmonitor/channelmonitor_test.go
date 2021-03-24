@@ -59,6 +59,7 @@ func TestPushChannelMonitorAutoRestart(t *testing.T) {
 			mockAPI := newMockMonitorAPI(ch, tc.errOnRestart)
 
 			m := NewMonitor(mockAPI, &Config{
+				MonitorPushChannels:    true,
 				AcceptTimeout:          time.Hour,
 				Interval:               10 * time.Millisecond,
 				ChecksPerInterval:      10,
@@ -144,6 +145,7 @@ func TestPullChannelMonitorAutoRestart(t *testing.T) {
 			mockAPI := newMockMonitorAPI(ch, tc.errOnRestart)
 
 			m := NewMonitor(mockAPI, &Config{
+				MonitorPullChannels:    true,
 				AcceptTimeout:          time.Hour,
 				Interval:               10 * time.Millisecond,
 				ChecksPerInterval:      10,
@@ -306,6 +308,7 @@ func TestPushChannelMonitorDataRate(t *testing.T) {
 
 			checksPerInterval := uint32(1)
 			m := NewMonitor(mockAPI, &Config{
+				MonitorPushChannels:    true,
 				AcceptTimeout:          time.Hour,
 				Interval:               time.Hour,
 				ChecksPerInterval:      checksPerInterval,
@@ -374,6 +377,7 @@ func TestPullChannelMonitorDataRate(t *testing.T) {
 
 			checksPerInterval := uint32(1)
 			m := NewMonitor(mockAPI, &Config{
+				MonitorPullChannels:    true,
 				AcceptTimeout:          time.Hour,
 				Interval:               time.Hour,
 				ChecksPerInterval:      checksPerInterval,
@@ -418,6 +422,8 @@ func TestChannelMonitorMaxConsecutiveRestarts(t *testing.T) {
 
 			maxConsecutiveRestarts := 3
 			m := NewMonitor(mockAPI, &Config{
+				MonitorPushChannels:    isPush,
+				MonitorPullChannels:    !isPush,
 				AcceptTimeout:          time.Hour,
 				Interval:               time.Hour,
 				ChecksPerInterval:      1,
@@ -536,6 +542,8 @@ func TestChannelMonitorTimeouts(t *testing.T) {
 				acceptTimeout := 10 * time.Millisecond
 				completeTimeout := 10 * time.Millisecond
 				m := NewMonitor(mockAPI, &Config{
+					MonitorPushChannels:    isPush,
+					MonitorPullChannels:    !isPush,
 					AcceptTimeout:          acceptTimeout,
 					Interval:               time.Hour,
 					ChecksPerInterval:      1,
@@ -550,7 +558,7 @@ func TestChannelMonitorTimeouts(t *testing.T) {
 					mch := m.AddPushChannel(ch1).(*monitoredPushChannel)
 					chCtx = mch.ctx
 				} else {
-					mch := m.AddPushChannel(ch1).(*monitoredPushChannel)
+					mch := m.AddPullChannel(ch1).(*monitoredPullChannel)
 					chCtx = mch.ctx
 				}
 
