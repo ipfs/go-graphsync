@@ -3,6 +3,7 @@ package responsemanager
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -124,7 +125,7 @@ func (qe *queryExecutor) prepareQuery(ctx context.Context,
 		if result.Err != nil || !result.IsValidated {
 			rb.FinishWithError(graphsync.RequestFailedUnknown)
 			rb.AddNotifee(failNotifee)
-			transactionError = errors.New("request not valid")
+			transactionError = fmt.Errorf("request not valid: %w ; result.IsValidated: %v", result.Err, result.IsValidated)
 		} else if result.IsPaused {
 			rb.PauseRequest()
 			isPaused = true
