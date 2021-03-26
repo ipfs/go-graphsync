@@ -111,8 +111,7 @@ func Close(instances []Instance) error {
 // Instance is a test instance of bitswap + dependencies for integration testing
 type Instance struct {
 	Peer            peer.ID
-	Loader          ipld.Loader
-	Storer          ipld.Storer
+	LinkSystem      ipld.LinkSystem
 	Exchange        graphsync.GraphExchange
 	BlockStore      blockstore.Blockstore
 	Adapter         gsnet.GraphSyncNetwork
@@ -165,9 +164,8 @@ func NewInstance(ctx context.Context, net tn.Network, p tnet.Identity, gsOptions
 		return Instance{}, err
 	}
 
-	loader := storeutil.LoaderForBlockstore(bstore)
-	storer := storeutil.StorerForBlockstore(bstore)
-	gs := gsimpl.New(ctx, adapter, loader, storer, gsOptions...)
+	lsys := storeutil.LinkSystemForBlockstore(bstore)
+	gs := gsimpl.New(ctx, adapter, lsys, gsOptions...)
 	gs.RegisterIncomingRequestHook(func(p peer.ID, request graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		hookActions.ValidateRequest()
 	})
@@ -176,8 +174,7 @@ func NewInstance(ctx context.Context, net tn.Network, p tnet.Identity, gsOptions
 		Adapter:         adapter,
 		Peer:            p.ID(),
 		Exchange:        gs,
-		Loader:          loader,
-		Storer:          storer,
+		LinkSystem:      lsys,
 		BlockStore:      bstore,
 		blockstoreDelay: bsdelay,
 		ds:              dstore,

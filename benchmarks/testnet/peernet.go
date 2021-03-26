@@ -24,7 +24,10 @@ func (pn *peernet) Adapter(p tnet.Identity) gsnet.GraphSyncNetwork {
 	if err != nil {
 		panic(err.Error())
 	}
-	pn.Mocknet.LinkAll()
+	err = pn.Mocknet.LinkAll()
+	if err != nil {
+		panic(err.Error())
+	}
 	return gsnet.NewFromLibp2pHost(client)
 }
 

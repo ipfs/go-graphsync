@@ -11,7 +11,6 @@ import (
 )
 
 type TestSubscriber struct {
-	expectedTopic  notifications.Topic
 	receivedEvents chan DispatchedEvent
 	closed         chan notifications.Topic
 }

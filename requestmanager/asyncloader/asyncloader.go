@@ -33,32 +33,30 @@ type AsyncLoader struct {
 	incomingMessages chan loaderMessage
 	outgoingMessages chan loaderMessage
 
-	defaultLoader    ipld.Loader
-	defaultStorer    ipld.Storer
-	activeRequests   map[graphsync.RequestID]struct{}
-	requestQueues    map[graphsync.RequestID]string
-	alternateQueues  map[string]alternateQueue
-	responseCache    *responsecache.ResponseCache
-	loadAttemptQueue *loadattemptqueue.LoadAttemptQueue
+	defaultLinkSystem ipld.LinkSystem
+	activeRequests    map[graphsync.RequestID]struct{}
+	requestQueues     map[graphsync.RequestID]string
+	alternateQueues   map[string]alternateQueue
+	responseCache     *responsecache.ResponseCache
+	loadAttemptQueue  *loadattemptqueue.LoadAttemptQueue
 }
 
 // New initializes a new link loading manager for asynchronous loads from the given context
 // and local store loading and storing function
-func New(ctx context.Context, loader ipld.Loader, storer ipld.Storer) *AsyncLoader {
-	responseCache, loadAttemptQueue := setupAttemptQueue(loader, storer)
+func New(ctx context.Context, linkSystem ipld.LinkSystem) *AsyncLoader {
+	responseCache, loadAttemptQueue := setupAttemptQueue(linkSystem)
 	ctx, cancel := context.WithCancel(ctx)
 	return &AsyncLoader{
-		ctx:              ctx,
-		cancel:           cancel,
-		incomingMessages: make(chan loaderMessage),
-		outgoingMessages: make(chan loaderMessage),
-		defaultLoader:    loader,
-		defaultStorer:    storer,
-		activeRequests:   make(map[graphsync.RequestID]struct{}),
-		requestQueues:    make(map[graphsync.RequestID]string),
-		alternateQueues:  make(map[string]alternateQueue),
-		responseCache:    responseCache,
-		loadAttemptQueue: loadAttemptQueue,
+		ctx:               ctx,
+		cancel:            cancel,
+		incomingMessages:  make(chan loaderMessage),
+		outgoingMessages:  make(chan loaderMessage),
+		defaultLinkSystem: linkSystem,
+		activeRequests:    make(map[graphsync.RequestID]struct{}),
+		requestQueues:     make(map[graphsync.RequestID]string),
+		alternateQueues:   make(map[string]alternateQueue),
+		responseCache:     responseCache,
+		loadAttemptQueue:  loadAttemptQueue,
 	}
 }
 
@@ -74,12 +72,12 @@ func (al *AsyncLoader) Shutdown() {
 }
 
 // RegisterPersistenceOption registers a new loader/storer option for processing requests
-func (al *AsyncLoader) RegisterPersistenceOption(name string, loader ipld.Loader, storer ipld.Storer) error {
+func (al *AsyncLoader) RegisterPersistenceOption(name string, lsys ipld.LinkSystem) error {
 	if name == "" {
 		return errors.New("Persistence option must have a name")
 	}
 	response := make(chan error, 1)
-	err := al.sendSyncMessage(&registerPersistenceOptionMessage{name, loader, storer, response}, response)
+	err := al.sendSyncMessage(&registerPersistenceOptionMessage{name, lsys, response}, response)
 	return err
 }
 
@@ -167,10 +165,9 @@ type newResponsesAvailableMessage struct {
 }
 
 type registerPersistenceOptionMessage struct {
-	name     string
-	loader   ipld.Loader
-	storer   ipld.Storer
-	response chan error
+	name       string
+	linkSystem ipld.LinkSystem
+	response   chan error
 }
 
 type unregisterPersistenceOptionMessage struct {
@@ -258,7 +255,7 @@ func (rpom *registerPersistenceOptionMessage) register(al *AsyncLoader) error {
 	if existing {
 		return errors.New("already registerd a persistence option with this name")
 	}
-	responseCache, loadAttemptQueue := setupAttemptQueue(rpom.loader, rpom.storer)
+	responseCache, loadAttemptQueue := setupAttemptQueue(rpom.linkSystem)
 	al.alternateQueues[rpom.name] = alternateQueue{responseCache, loadAttemptQueue}
 	return nil
 }
@@ -347,16 +344,16 @@ func (crm *cleanupRequestMessage) handle(al *AsyncLoader) {
 	al.responseCache.FinishRequest(crm.requestID)
 }
 
-func setupAttemptQueue(loader ipld.Loader, storer ipld.Storer) (*responsecache.ResponseCache, *loadattemptqueue.LoadAttemptQueue) {
+func setupAttemptQueue(lsys ipld.LinkSystem) (*responsecache.ResponseCache, *loadattemptqueue.LoadAttemptQueue) {
 
-	unverifiedBlockStore := unverifiedblockstore.New(storer)
+	unverifiedBlockStore := unverifiedblockstore.New(lsys.StorageWriteOpener)
 	responseCache := responsecache.New(unverifiedBlockStore)
 	loadAttemptQueue := loadattemptqueue.New(func(requestID graphsync.RequestID, link ipld.Link) types.AsyncLoadResult {
 		// load from response cache
 		data, err := responseCache.AttemptLoad(requestID, link)
 		if data == nil && err == nil {
 			// fall back to local store
-			stream, loadErr := loader(link, ipld.LinkContext{})
+			stream, loadErr := lsys.StorageReadOpener(ipld.LinkContext{}, link)
 			if stream != nil && loadErr == nil {
 				localData, loadErr := ioutil.ReadAll(stream)
 				if loadErr == nil && localData != nil {

@@ -304,6 +304,9 @@ func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
 
 func (gsm GraphSyncMessage) ToNet(w io.Writer) error {
 	msg, err := gsm.ToProto()
+	if err != nil {
+		return err
+	}
 	size := proto.Size(msg)
 	buf := pool.Get(size + binary.MaxVarintLen64)
 	defer pool.Put(buf)

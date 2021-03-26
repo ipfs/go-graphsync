@@ -444,17 +444,3 @@ func (fph *fakePeerHandler) sendResponse(p peer.ID, responses []gsmsg.GraphSyncR
 	fph.lastBlocks = blks
 	fph.lastNotifiees = notifees
 }
-
-type fakeAllocator struct {
-	response chan error
-}
-
-func newFakeAllocator() *fakeAllocator {
-	return &fakeAllocator{
-		response: make(chan error, 0),
-	}
-}
-
-func (fa *fakeAllocator) AllocateBlockMemory(p peer.ID, amount uint64) <-chan error {
-	return fa.response
-}

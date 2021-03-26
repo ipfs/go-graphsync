@@ -34,9 +34,7 @@ func (m *TopicDataSubscriber) getData(id Topic) []TopicData {
 		return []TopicData{}
 	}
 	newData := make([]TopicData, len(data))
-	for i, d := range data {
-		newData[i] = d
-	}
+	copy(newData, data)
 	return newData
 }
 

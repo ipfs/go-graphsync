@@ -36,8 +36,7 @@ const defaultMaxInProgressRequests = uint64(6)
 // the graphsync protocol.
 type GraphSync struct {
 	network                     gsnet.GraphSyncNetwork
-	loader                      ipld.Loader
-	storer                      ipld.Storer
+	linkSystem                  ipld.LinkSystem
 	requestManager              *requestmanager.RequestManager
 	responseManager             *responsemanager.ResponseManager
 	asyncLoader                 *asyncloader.AsyncLoader
@@ -107,7 +106,7 @@ func MaxInProgressRequests(maxInProgressRequests uint64) Option {
 // New creates a new GraphSync Exchange on the given network,
 // and the given link loader+storer.
 func New(parent context.Context, network gsnet.GraphSyncNetwork,
-	loader ipld.Loader, storer ipld.Storer, options ...Option) graphsync.GraphExchange {
+	linkSystem ipld.LinkSystem, options ...Option) graphsync.GraphExchange {
 	ctx, cancel := context.WithCancel(parent)
 
 	gsConfig := &graphsyncConfigOptions{
@@ -139,15 +138,14 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		return messagequeue.New(ctx, p, network, allocator)
 	}
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
-	asyncLoader := asyncloader.New(ctx, loader, storer)
+	asyncLoader := asyncloader.New(ctx, linkSystem)
 	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	peerTaskQueue := peertaskqueue.New()
-	responseManager := responsemanager.New(ctx, loader, responseAssembler, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressRequests)
+	responseManager := responsemanager.New(ctx, linkSystem, responseAssembler, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressRequests)
 	graphSync := &GraphSync{
 		network:                     network,
-		loader:                      loader,
-		storer:                      storer,
+		linkSystem:                  linkSystem,
 		requestManager:              requestManager,
 		responseManager:             responseManager,
 		asyncLoader:                 asyncLoader,
@@ -203,12 +201,12 @@ func (gs *GraphSync) RegisterOutgoingRequestHook(hook graphsync.OnOutgoingReques
 }
 
 // RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
-func (gs *GraphSync) RegisterPersistenceOption(name string, loader ipld.Loader, storer ipld.Storer) error {
-	err := gs.asyncLoader.RegisterPersistenceOption(name, loader, storer)
+func (gs *GraphSync) RegisterPersistenceOption(name string, lsys ipld.LinkSystem) error {
+	err := gs.asyncLoader.RegisterPersistenceOption(name, lsys)
 	if err != nil {
 		return err
 	}
-	return gs.persistenceOptions.Register(name, loader)
+	return gs.persistenceOptions.Register(name, lsys)
 }
 
 // UnregisterPersistenceOption unregisters an alternate loader/storer combo

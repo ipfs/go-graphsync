@@ -38,19 +38,19 @@ func TestDecodeEncodeMetadata(t *testing.T) {
 
 	// verify metadata is equivalent of IPLD node encoding
 	encodedNode := new(bytes.Buffer)
-	err = dagcbor.Encoder(nd, encodedNode)
+	err = dagcbor.Encode(nd, encodedNode)
 	require.NoError(t, err)
 	decodedMetadataFromNode, err := DecodeMetadata(encodedNode.Bytes())
 	require.NoError(t, err)
 	require.Equal(t, decodedMetadata, decodedMetadataFromNode, "metadata not equal to IPLD encoding")
 
 	nb := basicnode.Prototype.List.NewBuilder()
-	err = dagcbor.Decoder(nb, encodedNode)
+	err = dagcbor.Decode(nb, encodedNode)
 	require.NoError(t, err)
 	decodedNode := nb.Build()
 	require.Equal(t, nd, decodedNode)
 	nb = basicnode.Prototype.List.NewBuilder()
-	err = dagcbor.Decoder(nb, bytes.NewReader(encoded))
+	err = dagcbor.Decode(nb, bytes.NewReader(encoded))
 	require.NoError(t, err)
 	decodedNodeFromMetadata := nb.Build()
 	require.Equal(t, decodedNode, decodedNodeFromMetadata, "deserialzed metadata does not match deserialized node")

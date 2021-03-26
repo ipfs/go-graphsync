@@ -257,7 +257,7 @@ type GraphExchange interface {
 	Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...ExtensionData) (<-chan ResponseProgress, <-chan error)
 
 	// RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
-	RegisterPersistenceOption(name string, loader ipld.Loader, storer ipld.Storer) error
+	RegisterPersistenceOption(name string, lsys ipld.LinkSystem) error
 
 	// UnregisterPersistenceOption unregisters an alternate loader/storer combo
 	UnregisterPersistenceOption(name string) error

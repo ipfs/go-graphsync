@@ -44,6 +44,7 @@ import (
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
+	"github.com/ipfs/go-graphsync/storeutil"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -60,7 +61,7 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	graphSync := td.GraphSyncHost1()
 
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader1, td.storer1, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence1, 100, blockChainLength)
 
 	requestCtx, requestCancel := context.WithCancel(ctx)
 	defer requestCancel()
@@ -110,7 +111,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	)
 
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	requestID := graphsync.RequestID(rand.Int31())
 
@@ -164,7 +165,7 @@ func TestRejectRequestsByDefault(t *testing.T) {
 	_ = td.GraphSyncHost2(RejectAllRequestsByDefault())
 
 	blockChainLength := 5
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 5, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 5, blockChainLength)
 
 	// send request across network
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
@@ -185,7 +186,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
@@ -295,7 +296,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	firstHalf := blockChain.Blocks(0, 50)
 	set := cid.NewSet()
@@ -344,7 +345,7 @@ func TestPauseResume(t *testing.T) {
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
@@ -396,7 +397,7 @@ func TestPauseResumeRequest(t *testing.T) {
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
 	blockSize := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, uint64(blockSize), blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, uint64(blockSize), blockChainLength)
 
 	// initialize graphsync on second node to response to requests
 	_ = td.GraphSyncHost2()
@@ -454,7 +455,7 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
@@ -503,7 +504,7 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	stopPoint := 50
 	blocksReceived := 0
@@ -562,7 +563,7 @@ func TestNetworkDisconnect(t *testing.T) {
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
@@ -609,8 +610,8 @@ func TestNetworkDisconnect(t *testing.T) {
 	testutil.AssertChannelEmpty(t, networkError, "no network errors so far")
 
 	// unlink peers so they cannot communicate
-	td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID())
-	td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID())
+	require.NoError(t, td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID()))
+	require.NoError(t, td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID()))
 	requestID := <-requestIDChan
 	err := responder.UnpauseResponse(td.host1.ID(), requestID)
 	require.NoError(t, err)
@@ -632,14 +633,14 @@ func TestConnectFail(t *testing.T) {
 	requestor := td.GraphSyncHost1()
 
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	requestCtx, requestCancel := context.WithTimeout(ctx, 1*time.Second)
 	defer requestCancel()
 
 	// unlink peers so they cannot communicate
-	td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID())
-	td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID())
+	require.NoError(t, td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID()))
+	require.NoError(t, td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID()))
 
 	reqNetworkError := make(chan error, 1)
 	requestor.RegisterNetworkErrorListener(func(p peer.ID, request graphsync.RequestData, err error) {
@@ -671,20 +672,22 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 
 	// alternate storing location for responder
 	altStore1 := make(map[ipld.Link][]byte)
-	altLoader1, altStorer1 := testutil.NewTestStore(altStore1)
+	altPersistence1 := testutil.NewTestStore(altStore1)
 
 	// alternate storing location for requestor
 	altStore2 := make(map[ipld.Link][]byte)
-	altLoader2, altStorer2 := testutil.NewTestStore(altStore2)
+	altPersistence2 := testutil.NewTestStore(altStore2)
 
-	err := requestor.RegisterPersistenceOption("chainstore", altLoader1, altStorer1)
+	err := requestor.RegisterPersistenceOption("chainstore", altPersistence1)
 	require.NoError(t, err)
 
-	err = responder.RegisterPersistenceOption("chainstore", altLoader2, altStorer2)
+	err = responder.RegisterPersistenceOption("chainstore", altPersistence2)
 	require.NoError(t, err)
 
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, altLoader1, altStorer2, 100, blockChainLength)
+	blockChainPersistence := altPersistence1
+	blockChainPersistence.StorageWriteOpener = altPersistence2.StorageWriteOpener
+	blockChain := testutil.SetupBlockChain(ctx, t, blockChainPersistence, 100, blockChainLength)
 
 	extensionName := graphsync.ExtensionName("blockchain")
 	extension := graphsync.ExtensionData{
@@ -734,20 +737,20 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 
 	// alternate storing location for responder
 	altStore1 := make(map[ipld.Link][]byte)
-	altLoader1, altStorer1 := testutil.NewTestStore(altStore1)
+	altPersistence1 := testutil.NewTestStore(altStore1)
 
 	// alternate storing location for requestor
 	altStore2 := make(map[ipld.Link][]byte)
-	altLoader2, altStorer2 := testutil.NewTestStore(altStore2)
+	altPersistence2 := testutil.NewTestStore(altStore2)
 
-	err := requestor.RegisterPersistenceOption("chainstore1", altLoader1, altStorer1)
+	err := requestor.RegisterPersistenceOption("chainstore1", altPersistence1)
 	require.NoError(t, err)
 
-	err = requestor.RegisterPersistenceOption("chainstore2", altLoader2, altStorer2)
+	err = requestor.RegisterPersistenceOption("chainstore2", altPersistence2)
 	require.NoError(t, err)
 
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	extensionName1 := graphsync.ExtensionName("blockchain1")
 	extension1 := graphsync.ExtensionData{
@@ -808,7 +811,9 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 40
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader1, td.storer2, 200000, blockChainLength)
+	blockChainPersistence := td.persistence1
+	blockChainPersistence.StorageWriteOpener = td.persistence2.StorageWriteOpener
+	blockChain := testutil.SetupBlockChain(ctx, t, blockChainPersistence, 200000, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
 	td.GraphSyncHost2()
@@ -840,38 +845,6 @@ func TestUnixFSFetch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
-	makeLoader := func(bs bstore.Blockstore) ipld.Loader {
-		return func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
-			c, ok := lnk.(cidlink.Link)
-			if !ok {
-				return nil, errors.New("Incorrect Link Type")
-			}
-			// read block from one store
-			block, err := bs.Get(c.Cid)
-			if err != nil {
-				return nil, err
-			}
-			return bytes.NewReader(block.RawData()), nil
-		}
-	}
-
-	makeStorer := func(bs bstore.Blockstore) ipld.Storer {
-		return func(lnkCtx ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
-			var buf bytes.Buffer
-			var committer ipld.StoreCommitter = func(lnk ipld.Link) error {
-				c, ok := lnk.(cidlink.Link)
-				if !ok {
-					return errors.New("Incorrect Link Type")
-				}
-				block, err := blocks.NewBlockWithCid(buf.Bytes(), c.Cid)
-				if err != nil {
-					return err
-				}
-				return bs.Put(block)
-			}
-			return &buf, committer, nil
-		}
-	}
 	// make a blockstore and dag service
 	bs1 := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
 
@@ -913,16 +886,14 @@ func TestUnixFSFetch(t *testing.T) {
 	origBytes := buf.Bytes()
 
 	// setup an IPLD loader/storer for blockstore 1
-	loader1 := makeLoader(bs1)
-	storer1 := makeStorer(bs1)
+	persistence1 := storeutil.LinkSystemForBlockstore(bs1)
 
 	// setup an IPLD loader/storer for blockstore 2
-	loader2 := makeLoader(bs2)
-	storer2 := makeStorer(bs2)
+	persistence2 := storeutil.LinkSystemForBlockstore(bs2)
 
 	td := newGsTestData(ctx, t)
-	requestor := New(ctx, td.gsnet1, loader1, storer1)
-	responder := New(ctx, td.gsnet2, loader2, storer2)
+	requestor := New(ctx, td.gsnet1, persistence1)
+	responder := New(ctx, td.gsnet2, persistence2)
 	extensionName := graphsync.ExtensionName("Free for all")
 	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		hookActions.ValidateRequest()
@@ -985,7 +956,7 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 100, blockChainLength)
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
@@ -1054,22 +1025,21 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 }
 
 type gsTestData struct {
-	mn                       mocknet.Mocknet
-	ctx                      context.Context
-	host1                    host.Host
-	host2                    host.Host
-	gsnet1                   gsnet.GraphSyncNetwork
-	gsnet2                   gsnet.GraphSyncNetwork
-	blockStore1, blockStore2 map[ipld.Link][]byte
-	loader1, loader2         ipld.Loader
-	storer1, storer2         ipld.Storer
-	extensionData            []byte
-	extensionName            graphsync.ExtensionName
-	extension                graphsync.ExtensionData
-	extensionResponseData    []byte
-	extensionResponse        graphsync.ExtensionData
-	extensionUpdateData      []byte
-	extensionUpdate          graphsync.ExtensionData
+	mn                         mocknet.Mocknet
+	ctx                        context.Context
+	host1                      host.Host
+	host2                      host.Host
+	gsnet1                     gsnet.GraphSyncNetwork
+	gsnet2                     gsnet.GraphSyncNetwork
+	blockStore1, blockStore2   map[ipld.Link][]byte
+	persistence1, persistence2 ipld.LinkSystem
+	extensionData              []byte
+	extensionName              graphsync.ExtensionName
+	extension                  graphsync.ExtensionData
+	extensionResponseData      []byte
+	extensionResponse          graphsync.ExtensionData
+	extensionUpdateData        []byte
+	extensionUpdate            graphsync.ExtensionData
 }
 
 func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
@@ -1087,9 +1057,9 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 	td.gsnet1 = gsnet.NewFromLibp2pHost(td.host1)
 	td.gsnet2 = gsnet.NewFromLibp2pHost(td.host2)
 	td.blockStore1 = make(map[ipld.Link][]byte)
-	td.loader1, td.storer1 = testutil.NewTestStore(td.blockStore1)
+	td.persistence1 = testutil.NewTestStore(td.blockStore1)
 	td.blockStore2 = make(map[ipld.Link][]byte)
-	td.loader2, td.storer2 = testutil.NewTestStore(td.blockStore2)
+	td.persistence2 = testutil.NewTestStore(td.blockStore2)
 	// setup extension handlers
 	td.extensionData = testutil.RandomBytes(100)
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
@@ -1112,12 +1082,12 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 }
 
 func (td *gsTestData) GraphSyncHost1(options ...Option) graphsync.GraphExchange {
-	return New(td.ctx, td.gsnet1, td.loader1, td.storer1, options...)
+	return New(td.ctx, td.gsnet1, td.persistence1, options...)
 }
 
 func (td *gsTestData) GraphSyncHost2(options ...Option) graphsync.GraphExchange {
 
-	return New(td.ctx, td.gsnet2, td.loader2, td.storer2, options...)
+	return New(td.ctx, td.gsnet2, td.persistence2, options...)
 }
 
 type receivedMessage struct {

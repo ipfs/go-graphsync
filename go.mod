@@ -28,8 +28,8 @@ require (
 	github.com/ipfs/go-merkledag v0.3.2
 	github.com/ipfs/go-peertaskqueue v0.2.0
 	github.com/ipfs/go-unixfs v0.2.4
-	github.com/ipld/go-ipld-prime v0.7.0
-	github.com/ipld/go-ipld-prime-proto v0.1.1
+	github.com/ipld/go-codec-dagpb v1.2.0
+	github.com/ipld/go-ipld-prime v0.9.1-0.20210324083106-dc342a9917db
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-libp2p v0.13.0
@@ -39,11 +39,11 @@ require (
 	github.com/libp2p/go-libp2p-testing v0.4.0
 	github.com/libp2p/go-msgio v0.0.6
 	github.com/multiformats/go-multiaddr v0.3.1
-	github.com/multiformats/go-multihash v0.0.14
-	github.com/polydawn/refmt v0.0.0-20201211092308-30ac6d18308e // indirect
+	github.com/multiformats/go-multihash v0.0.15
 	github.com/smartystreets/assertions v1.0.1 // indirect
 	github.com/stretchr/testify v1.6.1
 	github.com/whyrusleeping/cbor-gen v0.0.0-20210219115102-f37d292932f2
+	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
 	golang.org/x/tools v0.1.1-0.20210225150353-54dc8c5edb56 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	google.golang.org/protobuf v1.25.0

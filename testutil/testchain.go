@@ -33,7 +33,7 @@ const blockChainTraversedNodesPerBlock = 2
 type TestBlockChain struct {
 	t                TestingT
 	blockChainLength int
-	loader           ipld.Loader
+	loader           ipld.BlockReadOpener
 	GenisisNode      ipld.Node
 	GenisisLink      ipld.Link
 	MiddleNodes      []ipld.Node
@@ -96,14 +96,13 @@ func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
 func SetupBlockChain(
 	ctx context.Context,
 	t TestingT,
-	loader ipld.Loader,
-	storer ipld.Storer,
+	lsys ipld.LinkSystem,
 	size uint64,
 	blockChainLength int) *TestBlockChain {
-	linkBuilder := cidlink.LinkBuilder{Prefix: cid.NewPrefixV1(cid.DagCBOR, mh.SHA2_256)}
+	linkPrototype := cidlink.LinkPrototype{Prefix: cid.NewPrefixV1(cid.DagCBOR, mh.SHA2_256)}
 	genisisNode, err := createBlock([]ipld.Link{}, size)
 	require.NoError(t, err, "Error creating genesis block")
-	genesisLink, err := linkBuilder.Build(ctx, ipld.LinkContext{}, genisisNode, storer)
+	genesisLink, err := lsys.Store(ipld.LinkContext{Ctx: ctx}, linkPrototype, genisisNode)
 	require.NoError(t, err, "Error creating link to genesis block")
 	parent := genesisLink
 	middleNodes := make([]ipld.Node, 0, blockChainLength-2)
@@ -112,16 +111,16 @@ func SetupBlockChain(
 		node, err := createBlock([]ipld.Link{parent}, size)
 		require.NoError(t, err, "Error creating middle block")
 		middleNodes = append(middleNodes, node)
-		link, err := linkBuilder.Build(ctx, ipld.LinkContext{}, node, storer)
+		link, err := lsys.Store(ipld.LinkContext{Ctx: ctx}, linkPrototype, node)
 		require.NoError(t, err, "Error creating link to middle block")
 		middleLinks = append(middleLinks, link)
 		parent = link
 	}
 	tipNode, err := createBlock([]ipld.Link{parent}, size)
 	require.NoError(t, err, "Error creating tip block")
-	tipLink, err := linkBuilder.Build(ctx, ipld.LinkContext{}, tipNode, storer)
+	tipLink, err := lsys.Store(ipld.LinkContext{Ctx: ctx}, linkPrototype, tipNode)
 	require.NoError(t, err, "Error creating link to tip block")
-	return &TestBlockChain{t, blockChainLength, loader, genisisNode, genesisLink, middleNodes, middleLinks, tipNode, tipLink}
+	return &TestBlockChain{t, blockChainLength, lsys.StorageReadOpener, genisisNode, genesisLink, middleNodes, middleLinks, tipNode, tipLink}
 }
 
 // Selector returns the selector to recursive traverse the block chain parent links
@@ -249,7 +248,7 @@ func (tbc *TestBlockChain) Blocks(from int, to int) []blocks.Block {
 	var blks []blocks.Block
 	for i := from; i < to; i++ {
 		link := tbc.LinkTipIndex(i)
-		reader, err := tbc.loader(link, ipld.LinkContext{})
+		reader, err := tbc.loader(ipld.LinkContext{}, link)
 		require.NoError(tbc.t, err)
 		data, err := ioutil.ReadAll(reader)
 		require.NoError(tbc.t, err)

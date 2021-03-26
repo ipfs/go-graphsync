@@ -29,16 +29,14 @@ import (
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
-	peer "github.com/libp2p/go-libp2p-core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ipfs/go-graphsync/benchmarks/testinstance"
 	tn "github.com/ipfs/go-graphsync/benchmarks/testnet"
 	graphsync "github.com/ipfs/go-graphsync/impl"
 )
-
-const stdBlockSize = 8000
 
 type runStats struct {
 	Time time.Duration
@@ -96,34 +94,36 @@ func benchmarkRepeatedDisconnects(ctx context.Context, b *testing.B, numnodes in
 	b.ReportAllocs()
 	fetcher := instances[0]
 	for i := 0; i < b.N; i++ {
-		var wg sync.WaitGroup
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		require.NoError(b, err)
 		start := time.Now()
+		errgrp, grpctx := errgroup.WithContext(ctx)
 		for j := 0; j < numnodes; j++ {
 			instance := instances[j+1]
-			_, errChan := fetcher.Exchange.Request(ctx, instance.Peer, cidlink.Link{Cid: allCids[i][j]}, allSelector)
+			_, errChan := fetcher.Exchange.Request(grpctx, instance.Peer, cidlink.Link{Cid: allCids[i][j]}, allSelector)
+			other := instance.Peer
 
-			wg.Add(1)
-			go func(other peer.ID) {
+			errgrp.Go(func() error {
 				defer func() {
-					mn.DisconnectPeers(fetcher.Peer, other)
-					wg.Done()
+					_ = mn.DisconnectPeers(fetcher.Peer, other)
 				}()
 				for {
 					select {
-					case <-ctx.Done():
-						return
+					case <-grpctx.Done():
+						return nil
 					case err, ok := <-errChan:
 						if !ok {
-							return
+							return nil
 						}
-						b.Fatalf("received error on request: %s", err.Error())
+						return err
 					}
 				}
-			}(instance.Peer)
+			})
+
 		}
-		wg.Wait()
+		if err := errgrp.Wait(); err != nil {
+			b.Fatalf("received error on request: %s", err.Error())
+		}
 		result := runStats{
 			Time: time.Since(start),
 			Name: b.Name(),
@@ -163,24 +163,24 @@ func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc,
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		fetcher := instances[i+1]
-		var wg sync.WaitGroup
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		require.NoError(b, err)
 		start := time.Now()
+		errgrp, grpctx := errgroup.WithContext(ctx)
 		for j := 0; j < numfiles; j++ {
-			responseChan, errChan := fetcher.Exchange.Request(ctx, instances[0].Peer, cidlink.Link{Cid: allCids[j]}, allSelector)
-
-			wg.Add(1)
-			go func(j int) {
-				defer wg.Done()
-				for _ = range responseChan {
+			responseChan, errChan := fetcher.Exchange.Request(grpctx, instances[0].Peer, cidlink.Link{Cid: allCids[j]}, allSelector)
+			errgrp.Go(func() error {
+				for range responseChan {
 				}
 				for err := range errChan {
-					b.Fatalf("received error on request: %s", err.Error())
+					return err
 				}
-			}(j)
+				return nil
+			})
 		}
-		wg.Wait()
+		if err := errgrp.Wait(); err != nil {
+			b.Fatalf("received error on request: %s", err.Error())
+		}
 		result := runStats{
 			Time: time.Since(start),
 			Name: b.Name(),
@@ -216,31 +216,31 @@ func subtestDistributeAndFetch(ctx context.Context, b *testing.B, numnodes int, 
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		fetcher := instances[i+numnodes]
-		var wg sync.WaitGroup
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		require.NoError(b, err)
 		start := time.Now()
+		errgrp, grpctx := errgroup.WithContext(ctx)
 		for j := 0; j < numnodes; j++ {
 			instance := instances[j]
-			_, errChan := fetcher.Exchange.Request(ctx, instance.Peer, cidlink.Link{Cid: destCids[j]}, allSelector)
+			_, errChan := fetcher.Exchange.Request(grpctx, instance.Peer, cidlink.Link{Cid: destCids[j]}, allSelector)
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			errgrp.Go(func() error {
 				for {
 					select {
 					case <-ctx.Done():
-						return
+						return err
 					case err, ok := <-errChan:
 						if !ok {
-							return
+							return nil
 						}
-						b.Fatalf("received error on request: %s", err.Error())
+						return err
 					}
 				}
-			}()
+			})
 		}
-		wg.Wait()
+		if err := errgrp.Wait(); err != nil {
+			b.Fatalf("received error on request: %s", err.Error())
+		}
 		result := runStats{
 			Time: time.Since(start),
 			Name: b.Name(),

@@ -133,7 +133,7 @@ func (mq *MessageQueue) Shutdown() {
 
 func (mq *MessageQueue) runQueue() {
 	defer func() {
-		mq.allocator.ReleasePeerMemory(mq.p)
+		_ = mq.allocator.ReleasePeerMemory(mq.p)
 		mq.eventPublisher.Shutdown()
 	}()
 	mq.eventPublisher.Startup()
@@ -308,12 +308,12 @@ func (mp *messagePublisher) publishQueued() {
 
 func (mp *messagePublisher) publishSent() {
 	mp.mq.eventPublisher.Publish(mp.topic, Event{Name: Sent})
-	mp.mq.allocator.ReleaseBlockMemory(mp.mq.p, mp.msgSize)
+	_ = mp.mq.allocator.ReleaseBlockMemory(mp.mq.p, mp.msgSize)
 }
 
 func (mp *messagePublisher) publishError(err error) {
 	mp.mq.eventPublisher.Publish(mp.topic, Event{Name: Error, Err: err})
-	mp.mq.allocator.ReleaseBlockMemory(mp.mq.p, mp.msgSize)
+	_ = mp.mq.allocator.ReleaseBlockMemory(mp.mq.p, mp.msgSize)
 }
 
 func (mp *messagePublisher) close() {

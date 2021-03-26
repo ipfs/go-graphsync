@@ -205,7 +205,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWithFailure()
 
-		err := td.peristenceOptions.Register("chainstore", td.loader)
+		err := td.peristenceOptions.Register("chainstore", td.persistence)
 		require.NoError(t, err)
 		// register hook to use different loader
 		_ = td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
@@ -843,8 +843,7 @@ type testData struct {
 	t                         *testing.T
 	cancel                    func()
 	blockStore                map[ipld.Link][]byte
-	loader                    ipld.Loader
-	storer                    ipld.Storer
+	persistence               ipld.LinkSystem
 	blockChainLength          int
 	blockChain                *testutil.TestBlockChain
 	completedRequestChan      chan completedRequest
@@ -889,9 +888,9 @@ func newTestData(t *testing.T) testData {
 	td.ctx, td.cancel = context.WithTimeout(ctx, 10*time.Second)
 
 	td.blockStore = make(map[ipld.Link][]byte)
-	td.loader, td.storer = testutil.NewTestStore(td.blockStore)
+	td.persistence = testutil.NewTestStore(td.blockStore)
 	td.blockChainLength = 5
-	td.blockChain = testutil.SetupBlockChain(ctx, t, td.loader, td.storer, 100, td.blockChainLength)
+	td.blockChain = testutil.SetupBlockChain(ctx, t, td.persistence, 100, td.blockChainLength)
 
 	td.completedRequestChan = make(chan completedRequest, 1)
 	td.sentResponses = make(chan sentResponse, td.blockChainLength*2)
@@ -970,13 +969,13 @@ func newTestData(t *testing.T) testData {
 }
 
 func (td *testData) newResponseManager() *ResponseManager {
-	return New(td.ctx, td.loader, td.responseAssembler, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
+	return New(td.ctx, td.persistence, td.responseAssembler, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
 }
 
 func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 	obs := make(map[ipld.Link][]byte)
-	oloader, _ := testutil.NewTestStore(obs)
-	return New(td.ctx, oloader, td.responseAssembler, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
+	persistence := testutil.NewTestStore(obs)
+	return New(td.ctx, persistence, td.responseAssembler, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
 }
 
 func (td *testData) assertPausedRequest() {

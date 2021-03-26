@@ -1,10 +1,6 @@
 package testutil
 
 import (
-	"bytes"
-	"context"
-	"io"
-
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -40,22 +36,15 @@ type TestIPLDTree struct {
 // NewTestIPLDTree returns a fake tree of nodes, spread across 5 blocks
 func NewTestIPLDTree() TestIPLDTree {
 	var storage = make(map[ipld.Link][]byte)
+	persistence := NewTestStore(storage)
 	encode := func(n ipld.Node) (ipld.Node, ipld.Link) {
-		lb := cidlink.LinkBuilder{Prefix: cid.Prefix{
+		lp := cidlink.LinkPrototype{Prefix: cid.Prefix{
 			Version:  1,
 			Codec:    0x0129,
-			MhType:   0x17,
+			MhType:   0x13,
 			MhLength: 4,
 		}}
-		lnk, err := lb.Build(context.Background(), ipld.LinkContext{}, n,
-			func(ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
-				buf := bytes.Buffer{}
-				return &buf, func(lnk ipld.Link) error {
-					storage[lnk] = buf.Bytes()
-					return nil
-				}, nil
-			},
-		)
+		lnk, err := persistence.Store(ipld.LinkContext{}, lp, n)
 		if err != nil {
 			panic(err)
 		}

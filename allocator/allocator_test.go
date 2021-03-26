@@ -319,7 +319,8 @@ func TestAllocator(t *testing.T) {
 					select {
 					case <-allocated:
 					default:
-						pending = append(pending, pendingResultWithChan{pendingResult{op.p, op.amount}, allocated})
+
+						pending = append(pending, pendingResultWithChan{pendingResult{p: op.p, amount: op.amount}, allocated}) //nolint:gosimple
 					}
 				case releasePeer:
 					err := allocator.ReleasePeerMemory(op.p)

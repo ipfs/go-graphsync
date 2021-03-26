@@ -2,54 +2,29 @@ package ipldutil
 
 import (
 	"bytes"
-	"context"
 
+	dagpb "github.com/ipld/go-codec-dagpb"
 	ipld "github.com/ipld/go-ipld-prime"
-	dagpb "github.com/ipld/go-ipld-prime-proto"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	_ "github.com/ipld/go-ipld-prime/codec/raw"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/ipld/go-ipld-prime/traversal"
-	ipldtraversal "github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 )
 
-var (
-	defaultChooser traversal.LinkTargetNodePrototypeChooser = dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
-		return basicnode.Prototype.Any, nil
-	})
-)
-
-func Traverse(ctx context.Context, loader ipld.Loader, chooser traversal.LinkTargetNodePrototypeChooser, root ipld.Link, s selector.Selector, fn traversal.AdvVisitFn) error {
-	if chooser == nil {
-		chooser = defaultChooser
+var defaultChooser = func(lnk ipld.Link, lctx ipld.LinkContext) (ipld.NodePrototype, error) {
+	// We can decode all nodes into basicnode's Any, except for
+	// dagpb nodes, which must explicitly use the PBNode prototype.
+	if lnk, ok := lnk.(cidlink.Link); ok && lnk.Cid.Prefix().Codec == 0x70 {
+		return dagpb.Type.PBNode, nil
 	}
-	ns, err := chooser(root, ipld.LinkContext{})
-	if err != nil {
-		return err
-	}
-	nb := ns.NewBuilder()
-	err = root.Load(ctx, ipld.LinkContext{}, nb, loader)
-	if err != nil {
-		return err
-	}
-	node := nb.Build()
-	return traversal.Progress{
-		Cfg: &traversal.Config{
-			Ctx:                            ctx,
-			LinkLoader:                     loader,
-			LinkTargetNodePrototypeChooser: chooser,
-		},
-	}.WalkAdv(node, s, fn)
-}
-
-func WalkMatching(node ipld.Node, s selector.Selector, fn traversal.VisitFn) error {
-	return ipldtraversal.WalkMatching(node, s, fn)
+	return basicnode.Prototype.Any, nil
 }
 
 func EncodeNode(node ipld.Node) ([]byte, error) {
 	var buffer bytes.Buffer
-	err := dagcbor.Encoder(node, &buffer)
+	err := dagcbor.Encode(node, &buffer)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +33,7 @@ func EncodeNode(node ipld.Node) ([]byte, error) {
 
 func DecodeNode(encoded []byte) (ipld.Node, error) {
 	nb := basicnode.Prototype.Any.NewBuilder()
-	if err := dagcbor.Decoder(nb, bytes.NewReader(encoded)); err != nil {
+	if err := dagcbor.Decode(nb, bytes.NewReader(encoded)); err != nil {
 		return nil, err
 	}
 	return nb.Build(), nil

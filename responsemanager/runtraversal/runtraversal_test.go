@@ -111,7 +111,7 @@ type fakeLoader struct {
 	currentLoader int
 }
 
-func (fl *fakeLoader) Load(link ipld.Link, linkCtx ipld.LinkContext) (io.Reader, error) {
+func (fl *fakeLoader) Load(linkCtx ipld.LinkContext, link ipld.Link) (io.Reader, error) {
 	fl.receivedLoads = append(fl.receivedLoads, loadedLink{link, linkCtx})
 	outcome := fl.loadReturns[fl.currentLoader]
 	fl.currentLoader++

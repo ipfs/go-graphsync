@@ -199,7 +199,7 @@ func TestRegisterUnregister(t *testing.T) {
 		err := asyncLoader.StartRequest(requestID1, "other")
 		require.EqualError(t, err, "Unknown persistence option")
 
-		err = asyncLoader.RegisterPersistenceOption("other", otherSt.loader, otherSt.storer)
+		err = asyncLoader.RegisterPersistenceOption("other", otherSt.lsys)
 		require.NoError(t, err)
 		requestID2 := graphsync.RequestID(rand.Int31())
 		err = asyncLoader.StartRequest(requestID2, "other")
@@ -224,7 +224,7 @@ func TestRequestSplittingLoadLocallyFromBlockstore(t *testing.T) {
 	block := testutil.GenerateBlocksOfSize(1, 100)[0]
 	link := otherSt.Store(t, block)
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
-		err := asyncLoader.RegisterPersistenceOption("other", otherSt.loader, otherSt.storer)
+		err := asyncLoader.RegisterPersistenceOption("other", otherSt.lsys)
 		require.NoError(t, err)
 		requestID1 := graphsync.RequestID(rand.Int31())
 		resultChan1 := asyncLoader.AsyncLoad(requestID1, link)
@@ -246,7 +246,7 @@ func TestRequestSplittingSameBlockTwoStores(t *testing.T) {
 	block := blocks[0]
 	link := cidlink.Link{Cid: block.Cid()}
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
-		err := asyncLoader.RegisterPersistenceOption("other", otherSt.loader, otherSt.storer)
+		err := asyncLoader.RegisterPersistenceOption("other", otherSt.lsys)
 		require.NoError(t, err)
 		requestID1 := graphsync.RequestID(rand.Int31())
 		requestID2 := graphsync.RequestID(rand.Int31())
@@ -286,7 +286,7 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 	block := blocks[0]
 	link := cidlink.Link{Cid: block.Cid()}
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
-		err := asyncLoader.RegisterPersistenceOption("other", otherSt.loader, otherSt.storer)
+		err := asyncLoader.RegisterPersistenceOption("other", otherSt.lsys)
 		require.NoError(t, err)
 		requestID1 := graphsync.RequestID(rand.Int31())
 		requestID2 := graphsync.RequestID(rand.Int31())
@@ -314,8 +314,8 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 }
 
 type store struct {
-	internalLoader ipld.Loader
-	storer         ipld.Storer
+	internalLoader ipld.BlockReadOpener
+	lsys           ipld.LinkSystem
 	blockstore     map[ipld.Link][]byte
 	localLoads     int
 	called         chan struct{}
@@ -323,24 +323,25 @@ type store struct {
 
 func newStore() *store {
 	blockstore := make(map[ipld.Link][]byte)
-	loader, storer := testutil.NewTestStore(blockstore)
-	return &store{
-		internalLoader: loader,
-		storer:         storer,
-		blockstore:     blockstore,
-		localLoads:     0,
-		called:         make(chan struct{}),
+	st := &store{
+		lsys:       testutil.NewTestStore(blockstore),
+		blockstore: blockstore,
+		localLoads: 0,
+		called:     make(chan struct{}),
 	}
+	st.internalLoader = st.lsys.StorageReadOpener
+	st.lsys.StorageReadOpener = st.loader
+	return st
 }
 
-func (st *store) loader(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
+func (st *store) loader(lnkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 	select {
 	case <-st.called:
 	default:
 		close(st.called)
 	}
 	st.localLoads++
-	return st.internalLoader(lnk, lnkCtx)
+	return st.internalLoader(lnkCtx, lnk)
 }
 
 func (st *store) AssertLocalLoads(t *testing.T, localLoads int) {
@@ -356,7 +357,7 @@ func (st *store) AssertAttemptLoadWithoutResult(ctx context.Context, t *testing.
 }
 
 func (st *store) Store(t *testing.T, blk blocks.Block) ipld.Link {
-	writer, commit, err := st.storer(ipld.LinkContext{})
+	writer, commit, err := st.lsys.StorageWriteOpener(ipld.LinkContext{})
 	require.NoError(t, err)
 	_, err = writer.Write(blk.RawData())
 	require.NoError(t, err, "seeds block store")
@@ -370,7 +371,7 @@ func withLoader(st *store, exec func(ctx context.Context, asyncLoader *AsyncLoad
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	asyncLoader := New(ctx, st.loader, st.storer)
+	asyncLoader := New(ctx, st.lsys)
 	asyncLoader.Startup()
 	exec(ctx, asyncLoader)
 }
