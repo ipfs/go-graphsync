@@ -332,7 +332,7 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 	defer cancel()
 
 	p := testutil.GeneratePeers(1)[0]
-	messagesSent := make(chan gsmsg.GraphSyncMessage, 0)
+	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
 	messageSender := &fakeMessageSender{nil, fullClosedChan, resetChan, messagesSent}
@@ -363,6 +363,7 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 
 	// assert transaction does not complete within 200ms because it is waiting on memory
 	ctx2, cancel2 := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel2()
 	select {
 	case <-finishes:
 		t.Fatal("transaction failed to wait on memory")

@@ -610,8 +610,8 @@ func TestNetworkDisconnect(t *testing.T) {
 	testutil.AssertChannelEmpty(t, networkError, "no network errors so far")
 
 	// unlink peers so they cannot communicate
-	td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID())
-	td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID())
+	require.NoError(t, td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID()))
+	require.NoError(t, td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID()))
 	requestID := <-requestIDChan
 	err := responder.UnpauseResponse(td.host1.ID(), requestID)
 	require.NoError(t, err)
@@ -639,8 +639,8 @@ func TestConnectFail(t *testing.T) {
 	defer requestCancel()
 
 	// unlink peers so they cannot communicate
-	td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID())
-	td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID())
+	require.NoError(t, td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID()))
+	require.NoError(t, td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID()))
 
 	reqNetworkError := make(chan error, 1)
 	requestor.RegisterNetworkErrorListener(func(p peer.ID, request graphsync.RequestData, err error) {

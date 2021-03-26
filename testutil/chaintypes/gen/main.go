@@ -28,5 +28,5 @@ func main() {
 		schema.SpawnStructRepresentationMap(nil),
 	))
 	gengo.Generate(".", pkgName, ts, adjCfg)
-	exec.Command("go", "fmt").Run()
+	_ = exec.Command("go", "fmt").Run()
 }
