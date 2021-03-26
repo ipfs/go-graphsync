@@ -1,5 +1,31 @@
 # go-graphsync changelog
 
+# go-graphsync 0.8.0
+
+This release updates to the v0.9.0 branch of go-ipld-prime and adds a "trusted store" optimization that may produce important speed improvements.
+
+It also includes several improvements to the internal testplan & updated
+architecture docs.
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Update for LinkSystem (#161) ([ipfs/go-graphsync#161](https://github.com/ipfs/go-graphsync/pull/161))
+  - Round out diagnostic parameters (#157) ([ipfs/go-graphsync#157](https://github.com/ipfs/go-graphsync/pull/157))
+  - map response codes to names (#148) ([ipfs/go-graphsync#148](https://github.com/ipfs/go-graphsync/pull/148))
+  - Discard http output (#156) ([ipfs/go-graphsync#156](https://github.com/ipfs/go-graphsync/pull/156))
+  - Add debug logging (#121) ([ipfs/go-graphsync#121](https://github.com/ipfs/go-graphsync/pull/121))
+  - Add optional HTTP comparison (#153) ([ipfs/go-graphsync#153](https://github.com/ipfs/go-graphsync/pull/153))
+  - docs(architecture): update architecture docs (#154) ([ipfs/go-graphsync#154](https://github.com/ipfs/go-graphsync/pull/154))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 5 | +885/-598 | 55 |
+| dirkmc | 1 | +79/-50 | 2 |
+| Aarsh Shah | 1 | +2/-6 | 2 |
+
 # go-graphsync 0.7.0
 
 This is a small release to update some dependencies. Importantly, it pulls in go-ipld-prime with
