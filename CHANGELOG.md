@@ -1,5 +1,16 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.4.1
+
+- github.com/filecoin-project/go-data-transfer:
+  - Add ChannelStages to keep track of history of lifecycle of a DataTransfer (#163) ([filecoin-project/go-data-transfer#163](https://github.com/filecoin-project/go-data-transfer/pull/163))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Anton Evangelatov | 1 | +572/-28 | 8 |
+
 # go-data-transfer 1.4.0
 
 - github.com/filecoin-project/go-data-transfer:
