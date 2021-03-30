@@ -614,13 +614,17 @@ func TestAutoRestart(t *testing.T) {
 		// right before the responder sends the complete message (ie responder sent
 		// all blocks, but the responder doesn't get a chance to tell the initiator
 		// before the disconnect)
-		name:                        "push: before requester sends complete message",
-		isPush:                      true,
+		name:                        "pull: before responder sends complete message",
+		isPush:                      false,
 		expectInitiatorDTFail:       true,
 		disconnectOnRequestComplete: true,
 	}}
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
+		expectFailMsg := ""
+		if tc.expectInitiatorDTFail {
+			expectFailMsg = " (expect failure)"
+		}
+		t.Run(tc.name+expectFailMsg, func(t *testing.T) {
 			ctx := context.Background()
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
@@ -659,8 +663,8 @@ func TestAutoRestart(t *testing.T) {
 
 			// Set up
 			restartConf := ChannelRestartConfig(channelmonitor.Config{
-				MonitorPushChannels:    true,
-				MonitorPullChannels:    true,
+				MonitorPushChannels:    tc.isPush,
+				MonitorPullChannels:    !tc.isPush,
 				AcceptTimeout:          100 * time.Millisecond,
 				Interval:               100 * time.Millisecond,
 				MinBytesTransferred:    1,
