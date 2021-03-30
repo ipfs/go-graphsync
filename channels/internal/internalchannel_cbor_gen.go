@@ -19,7 +19,7 @@ func (t *ChannelState) MarshalCBOR(w io.Writer) error {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{176}); err != nil {
+	if _, err := w.Write([]byte{177}); err != nil {
 		return err
 	}
 
@@ -340,6 +340,22 @@ func (t *ChannelState) MarshalCBOR(w io.Writer) error {
 			return err
 		}
 	}
+
+	// t.Stages (datatransfer.ChannelStages) (struct)
+	if len("Stages") > cbg.MaxLength {
+		return xerrors.Errorf("Value in field \"Stages\" was too long")
+	}
+
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len("Stages"))); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(w, string("Stages")); err != nil {
+		return err
+	}
+
+	if err := t.Stages.MarshalCBOR(w); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -614,6 +630,27 @@ func (t *ChannelState) UnmarshalCBOR(r io.Reader) error {
 				}
 
 				t.VoucherResults[i] = v
+			}
+
+			// t.Stages (datatransfer.ChannelStages) (struct)
+		case "Stages":
+
+			{
+
+				b, err := br.ReadByte()
+				if err != nil {
+					return err
+				}
+				if b != cbg.CborNull[0] {
+					if err := br.UnreadByte(); err != nil {
+						return err
+					}
+					t.Stages = new(datatransfer.ChannelStages)
+					if err := t.Stages.UnmarshalCBOR(br); err != nil {
+						return xerrors.Errorf("unmarshaling t.Stages pointer: %w", err)
+					}
+				}
+
 			}
 
 		default:

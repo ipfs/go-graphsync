@@ -806,6 +806,10 @@ func (m *mockChannelState) LastVoucherResult() datatransfer.VoucherResult {
 	panic("implement me")
 }
 
+func (m *mockChannelState) Stages() *datatransfer.ChannelStages {
+	panic("implement me")
+}
+
 func (m *mockChannelState) ReceivedCids() []cid.Cid {
 	panic("implement me")
 }

@@ -165,6 +165,7 @@ func (c *Channels) CreateNew(selfPeer peer.ID, tid datatransfer.TransferID, base
 		Selector:   &cbg.Deferred{Raw: selBytes},
 		Sender:     dataSender,
 		Recipient:  dataReceiver,
+		Stages:     &datatransfer.ChannelStages{},
 		Vouchers: []internal.EncodedVoucher{
 			{
 				Type: voucher.Type(),

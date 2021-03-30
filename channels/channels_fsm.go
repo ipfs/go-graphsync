@@ -25,102 +25,139 @@ var transferringStates = []fsm.StateKey{
 // ChannelEvents describe the events taht can
 var ChannelEvents = fsm.Events{
 	// Open a channel
-	fsm.Event(datatransfer.Open).FromAny().To(datatransfer.Requested),
-
-	// Remote peer has accepted the Open channel request
-	fsm.Event(datatransfer.Accept).From(datatransfer.Requested).To(datatransfer.Ongoing),
-
-	fsm.Event(datatransfer.Restart).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
-		chst.Message = ""
+	fsm.Event(datatransfer.Open).FromAny().To(datatransfer.Requested).Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
 		return nil
 	}),
-
-	fsm.Event(datatransfer.Cancel).FromAny().To(datatransfer.Cancelling),
-
-	fsm.Event(datatransfer.DataReceived).FromMany(transferringStates...).ToNoChange(),
+	// Remote peer has accepted the Open channel request
+	fsm.Event(datatransfer.Accept).From(datatransfer.Requested).To(datatransfer.Ongoing).Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
+	fsm.Event(datatransfer.Restart).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
+		chst.Message = ""
+		chst.AddLog("")
+		return nil
+	}),
+	fsm.Event(datatransfer.Cancel).FromAny().To(datatransfer.Cancelling).Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
+	fsm.Event(datatransfer.DataReceived).FromMany(transferringStates...).ToNoChange().Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 	fsm.Event(datatransfer.DataReceivedProgress).FromMany(transferringStates...).ToNoChange().
 		Action(func(chst *internal.ChannelState, delta uint64) error {
 			chst.Received += delta
+			chst.AddLog("received data")
 			return nil
 		}),
-
-	fsm.Event(datatransfer.DataSent).FromMany(transferringStates...).ToNoChange(),
+	fsm.Event(datatransfer.DataSent).FromMany(transferringStates...).ToNoChange().Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 	fsm.Event(datatransfer.DataSentProgress).FromMany(transferringStates...).ToNoChange().
 		Action(func(chst *internal.ChannelState, delta uint64) error {
 			chst.Sent += delta
+			chst.AddLog("sending data")
 			return nil
 		}),
-	fsm.Event(datatransfer.DataQueued).FromMany(transferringStates...).ToNoChange(),
+	fsm.Event(datatransfer.DataQueued).FromMany(transferringStates...).ToNoChange().Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 	fsm.Event(datatransfer.DataQueuedProgress).FromMany(transferringStates...).ToNoChange().
 		Action(func(chst *internal.ChannelState, delta uint64) error {
 			chst.Queued += delta
+			chst.AddLog("")
 			return nil
 		}),
-
 	fsm.Event(datatransfer.Disconnected).FromAny().ToNoChange().Action(func(chst *internal.ChannelState, err error) error {
 		chst.Message = err.Error()
+		chst.AddLog("data transfer disconnected: %s", chst.Message)
 		return nil
 	}),
-
 	fsm.Event(datatransfer.SendDataError).FromAny().ToNoChange().Action(func(chst *internal.ChannelState, err error) error {
 		chst.Message = err.Error()
+		chst.AddLog("data transfer send error: %s", chst.Message)
 		return nil
 	}),
-
 	fsm.Event(datatransfer.RequestTimedOut).FromAny().ToNoChange().Action(func(chst *internal.ChannelState, err error) error {
 		chst.Message = err.Error()
+		chst.AddLog("data transfer request timed out: %s", chst.Message)
 		return nil
 	}),
-
 	fsm.Event(datatransfer.Error).FromAny().To(datatransfer.Failing).Action(func(chst *internal.ChannelState, err error) error {
 		chst.Message = err.Error()
+		chst.AddLog("data transfer erred: %s", chst.Message)
 		return nil
 	}),
 
 	fsm.Event(datatransfer.NewVoucher).FromAny().ToNoChange().
 		Action(func(chst *internal.ChannelState, vtype datatransfer.TypeIdentifier, voucherBytes []byte) error {
 			chst.Vouchers = append(chst.Vouchers, internal.EncodedVoucher{Type: vtype, Voucher: &cbg.Deferred{Raw: voucherBytes}})
+			chst.AddLog("got new voucher")
 			return nil
 		}),
 	fsm.Event(datatransfer.NewVoucherResult).FromAny().ToNoChange().
 		Action(func(chst *internal.ChannelState, vtype datatransfer.TypeIdentifier, voucherResultBytes []byte) error {
 			chst.VoucherResults = append(chst.VoucherResults,
 				internal.EncodedVoucherResult{Type: vtype, VoucherResult: &cbg.Deferred{Raw: voucherResultBytes}})
+			chst.AddLog("got new voucher result")
 			return nil
 		}),
 
 	fsm.Event(datatransfer.PauseInitiator).
 		FromMany(datatransfer.Requested, datatransfer.Ongoing).To(datatransfer.InitiatorPaused).
 		From(datatransfer.ResponderPaused).To(datatransfer.BothPaused).
-		FromAny().ToJustRecord(),
+		FromAny().ToJustRecord().Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 
 	fsm.Event(datatransfer.PauseResponder).
 		FromMany(datatransfer.Requested, datatransfer.Ongoing).To(datatransfer.ResponderPaused).
 		From(datatransfer.InitiatorPaused).To(datatransfer.BothPaused).
-		FromAny().ToJustRecord(),
+		FromAny().ToJustRecord().Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 
 	fsm.Event(datatransfer.ResumeInitiator).
 		From(datatransfer.InitiatorPaused).To(datatransfer.Ongoing).
 		From(datatransfer.BothPaused).To(datatransfer.ResponderPaused).
-		FromAny().ToJustRecord(),
+		FromAny().ToJustRecord().Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 
 	fsm.Event(datatransfer.ResumeResponder).
 		From(datatransfer.ResponderPaused).To(datatransfer.Ongoing).
 		From(datatransfer.BothPaused).To(datatransfer.InitiatorPaused).
 		From(datatransfer.Finalizing).To(datatransfer.Completing).
-		FromAny().ToJustRecord(),
+		FromAny().ToJustRecord().Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 
 	// The transfer has finished on the local node - all data was sent / received
 	fsm.Event(datatransfer.FinishTransfer).
 		FromAny().To(datatransfer.TransferFinished).
 		FromMany(datatransfer.Failing, datatransfer.Cancelling).ToJustRecord().
 		From(datatransfer.ResponderCompleted).To(datatransfer.Completing).
-		From(datatransfer.ResponderFinalizing).To(datatransfer.ResponderFinalizingTransferFinished),
+		From(datatransfer.ResponderFinalizing).To(datatransfer.ResponderFinalizingTransferFinished).Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 
 	fsm.Event(datatransfer.ResponderBeginsFinalization).
 		FromAny().To(datatransfer.ResponderFinalizing).
 		FromMany(datatransfer.Failing, datatransfer.Cancelling).ToJustRecord().
-		From(datatransfer.TransferFinished).To(datatransfer.ResponderFinalizingTransferFinished),
+		From(datatransfer.TransferFinished).To(datatransfer.ResponderFinalizingTransferFinished).Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 
 	// The remote peer sent a Complete message, meaning it has sent / received all data
 	fsm.Event(datatransfer.ResponderCompletes).
@@ -129,20 +166,35 @@ var ChannelEvents = fsm.Events{
 		From(datatransfer.ResponderPaused).To(datatransfer.ResponderFinalizing).
 		From(datatransfer.TransferFinished).To(datatransfer.Completing).
 		From(datatransfer.ResponderFinalizing).To(datatransfer.ResponderCompleted).
-		From(datatransfer.ResponderFinalizingTransferFinished).To(datatransfer.Completing),
+		From(datatransfer.ResponderFinalizingTransferFinished).To(datatransfer.Completing).Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 
-	fsm.Event(datatransfer.BeginFinalizing).FromAny().To(datatransfer.Finalizing),
+	fsm.Event(datatransfer.BeginFinalizing).FromAny().To(datatransfer.Finalizing).Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 
 	// Both the local node and the remote peer have completed the transfer
-	fsm.Event(datatransfer.Complete).FromAny().To(datatransfer.Completing),
+	fsm.Event(datatransfer.Complete).FromAny().To(datatransfer.Completing).Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 
 	fsm.Event(datatransfer.CleanupComplete).
 		From(datatransfer.Cancelling).To(datatransfer.Cancelled).
 		From(datatransfer.Failing).To(datatransfer.Failed).
-		From(datatransfer.Completing).To(datatransfer.Completed),
+		From(datatransfer.Completing).To(datatransfer.Completed).Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 
 	// will kickoff state handlers for channels that were cleaning up
-	fsm.Event(datatransfer.CompleteCleanupOnRestart).FromAny().ToNoChange(),
+	fsm.Event(datatransfer.CompleteCleanupOnRestart).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
+		chst.AddLog("")
+		return nil
+	}),
 }
 
 // ChannelStateEntryFuncs are handlers called as we enter different states

@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"fmt"
+
 	"github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	cbg "github.com/whyrusleeping/cbor-gen"
@@ -58,4 +60,23 @@ type ChannelState struct {
 	Message        string
 	Vouchers       []EncodedVoucher
 	VoucherResults []EncodedVoucherResult
+
+	// Stages traces the execution fo a data transfer.
+	//
+	// EXPERIMENTAL; subject to change.
+	Stages *datatransfer.ChannelStages
+}
+
+// AddLog takes an fmt string with arguments, and adds the formatted string to
+// the logs for the current deal stage.
+//
+// EXPERIMENTAL; subject to change.
+func (cs *ChannelState) AddLog(msg string, a ...interface{}) {
+	if len(a) > 0 {
+		msg = fmt.Sprintf(msg, a...)
+	}
+
+	stage := datatransfer.Statuses[cs.Status]
+
+	cs.Stages.AddLog(stage, msg)
 }
