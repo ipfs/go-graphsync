@@ -1,5 +1,16 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.4.3
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix: dont throw error from cancel event if state machine already terminated (#188) ([filecoin-project/go-data-transfer#188](https://github.com/filecoin-project/go-data-transfer/pull/188))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 2 | +23/-1 | 2 |
+
 # go-data-transfer 1.4.2
 
 - github.com/filecoin-project/go-data-transfer:
