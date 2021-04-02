@@ -15,6 +15,7 @@ import (
 
 	versioning "github.com/filecoin-project/go-ds-versioning/pkg"
 	versionedfsm "github.com/filecoin-project/go-ds-versioning/pkg/fsm"
+	"github.com/filecoin-project/go-statemachine"
 	"github.com/filecoin-project/go-statemachine/fsm"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
@@ -308,7 +309,15 @@ func (c *Channels) BeginFinalizing(chid datatransfer.ChannelID) error {
 
 // Cancel indicates a channel was cancelled prematurely
 func (c *Channels) Cancel(chid datatransfer.ChannelID) error {
-	return c.send(chid, datatransfer.Cancel)
+	err := c.send(chid, datatransfer.Cancel)
+
+	// If there was an error because the state machine already terminated,
+	// sending a Cancel event is redundant anyway, so just ignore it
+	if errors.Is(err, statemachine.ErrTerminated) {
+		return nil
+	}
+
+	return err
 }
 
 // Error indicates something that went wrong on a channel
