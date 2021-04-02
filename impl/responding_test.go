@@ -197,6 +197,10 @@ func TestDataTransferResponding(t *testing.T) {
 				sv.ExpectSuccessPush()
 				sv.StubResult(testutil.NewFakeDTType())
 			},
+			configureRevalidator: func(sv *testutil.StubbedRevalidator) {
+				sv.ExpectSuccessErrResume()
+			},
+
 			verify: func(t *testing.T, h *receiverHarness) {
 				h.network.Delegate.ReceiveRequest(h.ctx, h.peers[1], h.pushRequest)
 				_, err := h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.voucherUpdate)
@@ -278,7 +282,7 @@ func TestDataTransferResponding(t *testing.T) {
 			configureRevalidator: func(srv *testutil.StubbedRevalidator) {
 				srv.ExpectPausePushCheck()
 				srv.StubRevalidationResult(testutil.NewFakeDTType())
-				srv.ExpectSuccessRevalidation()
+				srv.ExpectSuccessErrResume()
 				srv.StubCheckResult(testutil.NewFakeDTType())
 			},
 			verify: func(t *testing.T, h *receiverHarness) {
@@ -415,7 +419,7 @@ func TestDataTransferResponding(t *testing.T) {
 			configureRevalidator: func(srv *testutil.StubbedRevalidator) {
 				srv.ExpectPausePullCheck()
 				srv.StubRevalidationResult(testutil.NewFakeDTType())
-				srv.ExpectSuccessRevalidation()
+				srv.ExpectSuccessErrResume()
 				srv.StubCheckResult(testutil.NewFakeDTType())
 			},
 			verify: func(t *testing.T, h *receiverHarness) {
@@ -464,7 +468,7 @@ func TestDataTransferResponding(t *testing.T) {
 			configureRevalidator: func(srv *testutil.StubbedRevalidator) {
 				srv.ExpectPauseComplete()
 				srv.StubRevalidationResult(testutil.NewFakeDTType())
-				srv.ExpectSuccessRevalidation()
+				srv.ExpectSuccessErrResume()
 			},
 			verify: func(t *testing.T, h *receiverHarness) {
 				_, err := h.transport.EventHandler.OnRequestReceived(channelID(h.id, h.peers), h.pullRequest)

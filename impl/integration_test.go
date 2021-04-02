@@ -1030,7 +1030,7 @@ func TestSimulatedRetrievalFlow(t *testing.T) {
 			srv := &retrievalRevalidator{
 				testutil.NewStubbedRevalidator(), 0, 0, config.pausePoints, finalVoucherResult,
 			}
-			srv.ExpectSuccessRevalidation()
+			srv.ExpectSuccessErrResume()
 			require.NoError(t, dt1.RegisterRevalidator(testutil.NewFakeDTType(), srv))
 
 			require.NoError(t, dt2.RegisterVoucherResultType(testutil.NewFakeDTType()))

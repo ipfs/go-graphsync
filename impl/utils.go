@@ -38,7 +38,7 @@ func (m *manager) newRequest(ctx context.Context, selector ipld.Node, isPull boo
 }
 
 func (m *manager) response(isRestart bool, isNew bool, err error, tid datatransfer.TransferID, voucherResult datatransfer.VoucherResult) (datatransfer.Response, error) {
-	isAccepted := err == nil || err == datatransfer.ErrPause
+	isAccepted := err == nil || err == datatransfer.ErrPause || err == datatransfer.ErrResume
 	isPaused := err == datatransfer.ErrPause
 	resultType := datatransfer.EmptyTypeIdentifier
 	if voucherResult != nil {
@@ -55,7 +55,7 @@ func (m *manager) response(isRestart bool, isNew bool, err error, tid datatransf
 }
 
 func (m *manager) completeResponse(err error, tid datatransfer.TransferID, voucherResult datatransfer.VoucherResult) (datatransfer.Response, error) {
-	isAccepted := err == nil || err == datatransfer.ErrPause
+	isAccepted := err == nil || err == datatransfer.ErrPause || err == datatransfer.ErrResume
 	isPaused := err == datatransfer.ErrPause
 	resultType := datatransfer.EmptyTypeIdentifier
 	if voucherResult != nil {

@@ -313,6 +313,13 @@ func (srv *StubbedRevalidator) StubPauseRevalidation() {
 	srv.revalidationError = datatransfer.ErrPause
 }
 
+// ExpectSuccessErrResume configures Revalidate to return an ErrResume
+// and expect a Revalidate call.
+func (srv *StubbedRevalidator) ExpectSuccessErrResume() {
+	srv.expectRevalidate = true
+	srv.revalidationError = datatransfer.ErrResume
+}
+
 // ExpectErrorRevalidation expects Revalidate to error
 func (srv *StubbedRevalidator) ExpectErrorRevalidation() {
 	srv.expectRevalidate = true
