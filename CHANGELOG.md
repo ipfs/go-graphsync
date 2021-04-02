@@ -1,5 +1,18 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.4.2
+
+- github.com/filecoin-project/go-data-transfer:
+  - Support no-op error responses  (#186) ([filecoin-project/go-data-transfer#186](https://github.com/filecoin-project/go-data-transfer/pull/186))
+  - fix: fail a pull channel when there is a timeout receiving the Complete message (#179) ([filecoin-project/go-data-transfer#179](https://github.com/filecoin-project/go-data-transfer/pull/179))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 1 | +23/-122 | 6 |
+| dirkmc | 2 | +65/-21 | 3 |
+
 # go-data-transfer 1.4.1
 
 - github.com/filecoin-project/go-data-transfer:
