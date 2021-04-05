@@ -227,18 +227,21 @@ func (c *Channels) CompleteCleanupOnRestart(chid datatransfer.ChannelID) error {
 	return c.send(chid, datatransfer.CompleteCleanupOnRestart)
 }
 
-func (c *Channels) DataSent(chid datatransfer.ChannelID, k cid.Cid, delta uint64) error {
+// Returns true if this is the first time the block has been sent
+func (c *Channels) DataSent(chid datatransfer.ChannelID, k cid.Cid, delta uint64) (bool, error) {
 	return c.fireProgressEvent(chid, datatransfer.DataSent, datatransfer.DataSentProgress, k, delta)
 }
 
-func (c *Channels) DataQueued(chid datatransfer.ChannelID, k cid.Cid, delta uint64) error {
+// Returns true if this is the first time the block has been queued
+func (c *Channels) DataQueued(chid datatransfer.ChannelID, k cid.Cid, delta uint64) (bool, error) {
 	return c.fireProgressEvent(chid, datatransfer.DataQueued, datatransfer.DataQueuedProgress, k, delta)
 }
 
-func (c *Channels) DataReceived(chid datatransfer.ChannelID, k cid.Cid, delta uint64) error {
+// Returns true if this is the first time the block has been received
+func (c *Channels) DataReceived(chid datatransfer.ChannelID, k cid.Cid, delta uint64) (bool, error) {
 	err := c.cidLists.AppendList(chid, k)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	return c.fireProgressEvent(chid, datatransfer.DataReceived, datatransfer.DataReceivedProgress, k, delta)
@@ -366,31 +369,34 @@ func (c *Channels) removeSeenCIDCaches(chid datatransfer.ChannelID) error {
 	return nil
 }
 
-// onProgress fires an event indicating progress has been made in
-// queuing / sending / receiving blocks.
-// These events are fired only for new blocks (not for example if
-// a block is resent)
-func (c *Channels) fireProgressEvent(chid datatransfer.ChannelID, evt datatransfer.EventCode, progressEvt datatransfer.EventCode, k cid.Cid, delta uint64) error {
+// fireProgressEvent fires
+// - an event for queuing / sending / receiving blocks
+// - a corresponding "progress" event if the block has not been seen before
+// For example, if a block is being sent for the first time, the method will
+// fire both DataSent AND DataSentProgress.
+// If a block is resent, the method will fire DataSent but not DataSentProgress.
+// Returns true if the block is new (both the event and a progress event were fired).
+func (c *Channels) fireProgressEvent(chid datatransfer.ChannelID, evt datatransfer.EventCode, progressEvt datatransfer.EventCode, k cid.Cid, delta uint64) (bool, error) {
 	if err := c.checkChannelExists(chid, evt); err != nil {
-		return err
+		return false, err
 	}
 
 	// Check if the block has already been seen
 	sid := cidsets.SetID(chid.String() + "/" + datatransfer.Events[evt])
 	seen, err := c.seenCIDs.InsertSetCID(sid, k)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// If the block has not been seen before, fire the progress event
 	if !seen {
 		if err := c.stateMachines.Send(chid, progressEvt, delta); err != nil {
-			return err
+			return false, err
 		}
 	}
 
 	// Fire the regular event
-	return c.stateMachines.Send(chid, evt)
+	return !seen, c.stateMachines.Send(chid, evt)
 }
 
 func (c *Channels) send(chid datatransfer.ChannelID, code datatransfer.EventCode, args ...interface{}) error {

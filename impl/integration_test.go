@@ -41,6 +41,7 @@ import (
 )
 
 const loremFile = "lorem.txt"
+const loremFileTransferBytes = 20439
 
 // nil means use the default protocols
 // tests data transfer for the following protocol combinations:
@@ -520,6 +521,66 @@ func (dc *disconnectCoordinator) onDisconnect() {
 	close(dc.disconnected)
 }
 
+type restartRevalidator struct {
+	*testutil.StubbedRevalidator
+	pullDataSent map[datatransfer.ChannelID][]uint64
+	pushDataRcvd map[datatransfer.ChannelID][]uint64
+}
+
+func newRestartRevalidator() *restartRevalidator {
+	return &restartRevalidator{
+		StubbedRevalidator: testutil.NewStubbedRevalidator(),
+		pullDataSent:       make(map[datatransfer.ChannelID][]uint64),
+		pushDataRcvd:       make(map[datatransfer.ChannelID][]uint64),
+	}
+}
+
+func (r *restartRevalidator) OnPullDataSent(chid datatransfer.ChannelID, additionalBytesSent uint64) (bool, datatransfer.VoucherResult, error) {
+	chSent, ok := r.pullDataSent[chid]
+	if !ok {
+		chSent = []uint64{}
+	}
+	chSent = append(chSent, additionalBytesSent)
+	r.pullDataSent[chid] = chSent
+
+	return true, nil, nil
+}
+
+func (r *restartRevalidator) pullDataSum(chid datatransfer.ChannelID) uint64 {
+	pullDataSent, ok := r.pullDataSent[chid]
+	var total uint64
+	if !ok {
+		return total
+	}
+	for _, sent := range pullDataSent {
+		total += sent
+	}
+	return total
+}
+
+func (r *restartRevalidator) OnPushDataReceived(chid datatransfer.ChannelID, additionalBytesReceived uint64) (bool, datatransfer.VoucherResult, error) {
+	chRcvd, ok := r.pushDataRcvd[chid]
+	if !ok {
+		chRcvd = []uint64{}
+	}
+	chRcvd = append(chRcvd, additionalBytesReceived)
+	r.pushDataRcvd[chid] = chRcvd
+
+	return true, nil, nil
+}
+
+func (r *restartRevalidator) pushDataSum(chid datatransfer.ChannelID) uint64 {
+	pushDataRcvd, ok := r.pushDataRcvd[chid]
+	var total uint64
+	if !ok {
+		return total
+	}
+	for _, rcvd := range pushDataRcvd {
+		total += rcvd
+	}
+	return total
+}
+
 // TestAutoRestart tests that if the connection for a push or pull request
 // goes down, it will automatically restart (given the right config options)
 func TestAutoRestart(t *testing.T) {
@@ -714,6 +775,10 @@ func TestAutoRestart(t *testing.T) {
 			require.NoError(t, initiator.RegisterVoucherType(&testutil.FakeDTType{}, sv))
 			require.NoError(t, responder.RegisterVoucherType(&testutil.FakeDTType{}, sv))
 
+			// Register a revalidator that records calls to OnPullDataSent and OnPushDataReceived
+			srv := newRestartRevalidator()
+			require.NoError(t, responder.RegisterRevalidator(testutil.NewFakeDTType(), srv))
+
 			// If the test case needs to subscribe to response events, provide
 			// the test case with the responder
 			if tc.registerResponder != nil {
@@ -794,6 +859,14 @@ func TestAutoRestart(t *testing.T) {
 					}
 				}
 			})()
+
+			// Verify that the total amount of data sent / received that was
+			// reported to the revalidator is correct
+			if tc.isPush {
+				require.EqualValues(t, loremFileTransferBytes, srv.pushDataSum(chid))
+			} else {
+				require.EqualValues(t, loremFileTransferBytes, srv.pullDataSum(chid))
+			}
 
 			// Verify that the file was transferred to the destination node
 			testutil.VerifyHasFile(ctx, t, destDagService, root, origBytes)
