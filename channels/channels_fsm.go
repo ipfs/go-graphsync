@@ -34,7 +34,7 @@ var ChannelEvents = fsm.Events{
 		chst.AddLog("")
 		return nil
 	}),
-	fsm.Event(datatransfer.Restart).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
+	fsm.Event(datatransfer.Restart).FromAny().ToJustRecord().Action(func(chst *internal.ChannelState) error {
 		chst.Message = ""
 		chst.AddLog("")
 		return nil
@@ -43,7 +43,7 @@ var ChannelEvents = fsm.Events{
 		chst.AddLog("")
 		return nil
 	}),
-	fsm.Event(datatransfer.DataReceived).FromMany(transferringStates...).ToNoChange().Action(func(chst *internal.ChannelState) error {
+	fsm.Event(datatransfer.DataReceived).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
 		chst.AddLog("")
 		return nil
 	}),
