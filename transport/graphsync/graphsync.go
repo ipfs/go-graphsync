@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
@@ -20,6 +21,13 @@ import (
 var log = logging.Logger("dt_graphsync")
 
 var errContextCancelled = errors.New("context cancelled")
+
+// When restarting a data transfer, we cancel the existing graphsync request
+// before opening a new one.
+// These constants define the minimum and maximum time to wait for the request
+// to be cancelled.
+const minGSCancelWait = 100 * time.Millisecond
+const maxGSCancelWait = time.Second
 
 type graphsyncKey struct {
 	requestID graphsync.RequestID
@@ -52,6 +60,11 @@ func RegisterCompletedResponseListener(l func(channelID datatransfer.ChannelID))
 	}
 }
 
+type cancelRequest struct {
+	cancel    context.CancelFunc
+	completed chan struct{}
+}
+
 // Transport manages graphsync hooks for data transfer, translating from
 // graphsync hooks to semantic data transfer events
 type Transport struct {
@@ -59,9 +72,10 @@ type Transport struct {
 	gs                        graphsync.GraphExchange
 	peerID                    peer.ID
 	dataLock                  sync.RWMutex
+	chanLocker                *channelLocker
 	graphsyncRequestMap       map[graphsyncKey]datatransfer.ChannelID
 	channelIDMap              map[datatransfer.ChannelID]graphsyncKey
-	contextCancelMap          map[datatransfer.ChannelID]func()
+	contextCancelMap          map[datatransfer.ChannelID]cancelRequest
 	pending                   map[datatransfer.ChannelID]chan struct{}
 	requestorCancelledMap     map[datatransfer.ChannelID]struct{}
 	pendingExtensions         map[datatransfer.ChannelID][]graphsync.ExtensionData
@@ -77,8 +91,9 @@ func NewTransport(peerID peer.ID, gs graphsync.GraphExchange, options ...Option)
 	t := &Transport{
 		gs:                    gs,
 		peerID:                peerID,
+		chanLocker:            newChannelLocker(),
 		graphsyncRequestMap:   make(map[graphsyncKey]datatransfer.ChannelID),
-		contextCancelMap:      make(map[datatransfer.ChannelID]func()),
+		contextCancelMap:      make(map[datatransfer.ChannelID]cancelRequest),
 		requestorCancelledMap: make(map[datatransfer.ChannelID]struct{}),
 		pendingExtensions:     make(map[datatransfer.ChannelID][]graphsync.ExtensionData),
 		channelIDMap:          make(map[datatransfer.ChannelID]graphsyncKey),
@@ -112,17 +127,42 @@ func (t *Transport) OpenChannel(ctx context.Context,
 		return err
 	}
 
-	internalCtx, internalCancel := context.WithCancel(ctx)
+	// Make sure OpenChannel can only be called once at a time, per channel
+	unlockChannel := t.chanLocker.lock(channelID)
+	defer unlockChannel()
 
 	t.dataLock.Lock()
 	// if we have an existing request pending for the channelID, cancel it first.
-	if cancelF, ok := t.contextCancelMap[channelID]; ok {
-		cancelF()
+	if cancelRQ, ok := t.contextCancelMap[channelID]; ok {
+		log.Warnf("Restarting %s - canceling existing graphsync request for channel", channelID)
+		completed := cancelRQ.completed
+		cancelRQ.cancel()
+
+		// Unlock while cancelling the request
+		t.dataLock.Unlock()
+
+		err := waitForCancelComplete(ctx, completed)
+		if err != nil {
+			return err
+		}
+
+		// Relock now that request has been cancelled
+		t.dataLock.Lock()
 	}
+	// Set up the request listeners
 	t.pending[channelID] = make(chan struct{})
-	t.contextCancelMap[channelID] = internalCancel
+
+	internalCtx, internalCancel := context.WithCancel(ctx)
+	cancelRQ := cancelRequest{
+		cancel:    internalCancel,
+		completed: make(chan struct{}),
+	}
+	t.contextCancelMap[channelID] = cancelRQ
 	t.dataLock.Unlock()
 
+	// If this is a restart request, the client can send a list of CIDs of
+	// blocks that it has already received, so that the provider knows not
+	// to resend those blocks
 	if len(doNotSendCids) != 0 {
 		set := cid.NewSet()
 		for _, c := range doNotSendCids {
@@ -136,10 +176,41 @@ func (t *Transport) OpenChannel(ctx context.Context,
 			Data: bz}
 		exts = append(exts, doNotSendExt)
 	}
+
+	log.Infof("Opening graphsync request to %s for root %s with %d CIDs already received",
+		dataSender, root, len(doNotSendCids))
 	responseChan, errChan := t.gs.Request(internalCtx, dataSender, root, stor, exts...)
 
-	go t.executeGsRequest(internalCtx, channelID, responseChan, errChan)
+	go t.executeGsRequest(internalCtx, channelID, responseChan, errChan, func() {
+		// When the transfer completes, close the completed channel
+		close(cancelRQ.completed)
+	})
 	return nil
+}
+
+func waitForCancelComplete(ctx context.Context, completed chan struct{}) error {
+	// Wait for the cancel to propagate through to graphsync, and for
+	// the graphsync request to complete
+	select {
+	case <-completed:
+		// Graphsync request has completed.
+		// Now wait for a minimum backoff before initiating another
+		// graphsync request.
+		// We need to do this to make sure that graphsync has finished
+		// emitting all events for the current request before
+		// initiating a new one.
+		select {
+		case <-time.After(minGSCancelWait):
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	case <-time.After(maxGSCancelWait):
+		// Fail-safe: give up waiting after a certain amount of time
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (t *Transport) consumeResponses(responseChan <-chan graphsync.ResponseProgress, errChan <-chan error) error {
@@ -152,7 +223,15 @@ func (t *Transport) consumeResponses(responseChan <-chan graphsync.ResponseProgr
 	return lastError
 }
 
-func (t *Transport) executeGsRequest(internalCtx context.Context, channelID datatransfer.ChannelID, responseChan <-chan graphsync.ResponseProgress, errChan <-chan error) {
+func (t *Transport) executeGsRequest(
+	internalCtx context.Context,
+	channelID datatransfer.ChannelID,
+	responseChan <-chan graphsync.ResponseProgress,
+	errChan <-chan error,
+	onComplete func(),
+) {
+	defer onComplete()
+
 	lastError := t.consumeResponses(responseChan, errChan)
 
 	if _, ok := lastError.(graphsync.RequestContextCancelledErr); ok {
@@ -287,12 +366,12 @@ func (t *Transport) CloseChannel(ctx context.Context, chid datatransfer.ChannelI
 	}
 	if gsKey.p == t.peerID {
 		t.dataLock.RLock()
-		cancelFn, ok := t.contextCancelMap[chid]
+		cancelRQ, ok := t.contextCancelMap[chid]
 		t.dataLock.RUnlock()
 		if !ok {
 			return datatransfer.ErrChannelNotFound
 		}
-		cancelFn()
+		cancelRQ.cancel()
 		return nil
 	}
 	t.dataLock.Lock()
@@ -340,8 +419,8 @@ func (t *Transport) Shutdown(ctx context.Context) error {
 		unregisterFunc()
 	}
 	t.dataLock.RLock()
-	for _, cancel := range t.contextCancelMap {
-		cancel()
+	for _, cancelRQ := range t.contextCancelMap {
+		cancelRQ.cancel()
 	}
 	t.dataLock.RUnlock()
 	return nil
@@ -617,9 +696,10 @@ func (t *Transport) cleanupChannel(chid datatransfer.ChannelID, gsKey graphsyncK
 	delete(t.requestorCancelledMap, chid)
 	_, ok := t.stores[chid]
 	if ok {
-		err := t.gs.UnregisterPersistenceOption("data-transfer-" + chid.String())
+		opt := "data-transfer-" + chid.String()
+		err := t.gs.UnregisterPersistenceOption(opt)
 		if err != nil {
-			log.Error(err)
+			log.Errorf("failed to unregister persistence option %s: %s", opt, err)
 		}
 	}
 	delete(t.stores, chid)
