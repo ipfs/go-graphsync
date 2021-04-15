@@ -1,5 +1,16 @@
 # go-graphsync changelog
 
+# go-graphsync 0.6.1
+
+- github.com/ipfs/go-graphsync:
+  - feat: fire network error when network disconnects during request (#164) ([ipfs/go-graphsync#164](https://github.com/ipfs/go-graphsync/pull/164))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 1 | +86/-8 | 4 |
+
 # go-graphsync 0.6.0
 
 Major code refactor for simplicity, ease of understanding
