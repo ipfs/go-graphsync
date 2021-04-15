@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/hannahhoward/go-pubsub"
+	"golang.org/x/xerrors"
 	"sync/atomic"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -70,6 +72,7 @@ type RequestManager struct {
 	peerHandler PeerHandler
 	rc          *responseCollector
 	asyncLoader AsyncLoader
+	disconnectNotif *pubsub.PubSub
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
 	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
@@ -111,6 +114,7 @@ func New(ctx context.Context,
 		ctx:                       ctx,
 		cancel:                    cancel,
 		asyncLoader:               asyncLoader,
+		disconnectNotif:           pubsub.New(disconnectDispatcher),
 		rc:                        newResponseCollector(ctx),
 		messages:                  make(chan requestManagerMessage, 16),
 		inProgressRequestStatuses: make(map[graphsync.RequestID]*inProgressRequestStatus),
@@ -128,6 +132,7 @@ func (rm *RequestManager) SetDelegate(peerHandler PeerHandler) {
 
 type inProgressRequest struct {
 	requestID     graphsync.RequestID
+	request       gsmsg.GraphSyncRequest
 	incoming      chan graphsync.ResponseProgress
 	incomingError chan error
 }
@@ -166,6 +171,11 @@ func (rm *RequestManager) SendRequest(ctx context.Context,
 	case receivedInProgressRequest = <-inProgressRequestChan:
 	}
 
+	// If the connection to the peer is disconnected, fire an error
+	unsub := rm.listenForDisconnect(p, func(neterr error) {
+		rm.networkErrorListeners.NotifyNetworkErrorListeners(p, receivedInProgressRequest.request, neterr)
+	})
+
 	return rm.rc.collectResponses(ctx,
 		receivedInProgressRequest.incoming,
 		receivedInProgressRequest.incomingError,
@@ -173,7 +183,34 @@ func (rm *RequestManager) SendRequest(ctx context.Context,
 			rm.cancelRequest(receivedInProgressRequest.requestID,
 				receivedInProgressRequest.incoming,
 				receivedInProgressRequest.incomingError)
-		})
+		},
+		// Once the request has completed, stop listening for disconnect events
+		unsub,
+	)
+}
+
+// Dispatch the Disconnect event to subscribers
+func disconnectDispatcher(p pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
+	listener := subscriberFn.(func(peer.ID))
+	listener(p.(peer.ID))
+	return nil
+}
+
+// Listen for the Disconnect event for the given peer
+func (rm *RequestManager) listenForDisconnect(p peer.ID, onDisconnect func(neterr error)) func() {
+	// Subscribe to Disconnect notifications
+	return rm.disconnectNotif.Subscribe(func(evtPeer peer.ID) {
+		// If the peer is the one we're interested in, call the listener
+		if evtPeer == p {
+			onDisconnect(xerrors.Errorf("disconnected from peer %s", p))
+		}
+	})
+}
+
+// Disconnected is called when a peer disconnects
+func (rm *RequestManager) Disconnected(p peer.ID) {
+	// Notify any listeners that a peer has disconnected
+	_ = rm.disconnectNotif.Publish(p)
 }
 
 func (rm *RequestManager) emptyResponse() (chan graphsync.ResponseProgress, chan error) {
@@ -311,17 +348,19 @@ type terminateRequestMessage struct {
 	requestID graphsync.RequestID
 }
 
-func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *RequestManager) (chan graphsync.ResponseProgress, chan error) {
+func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *RequestManager) (gsmsg.GraphSyncRequest, chan graphsync.ResponseProgress, chan error) {
 	request, hooksResult, err := rm.validateRequest(requestID, nrm.p, nrm.root, nrm.selector, nrm.extensions)
 	if err != nil {
-		return rm.singleErrorResponse(err)
+		rp, err := rm.singleErrorResponse(err)
+		return request, rp, err
 	}
 	doNotSendCidsData, has := request.Extension(graphsync.ExtensionDoNotSendCIDs)
 	var doNotSendCids *cid.Set
 	if has {
 		doNotSendCids, err = cidset.DecodeCidSet(doNotSendCidsData)
 		if err != nil {
-			return rm.singleErrorResponse(err)
+			rp, err := rm.singleErrorResponse(err)
+			return request, rp, err
 		}
 	} else {
 		doNotSendCids = cid.NewSet()
@@ -355,14 +394,14 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 			ResumeMessages:       resumeMessages,
 			PauseMessages:        pauseMessages,
 		})
-	return incoming, incomingError
+	return request, incoming, incomingError
 }
 
 func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	var ipr inProgressRequest
 	ipr.requestID = rm.nextRequestID
 	rm.nextRequestID++
-	ipr.incoming, ipr.incomingError = nrm.setupRequest(ipr.requestID, rm)
+	ipr.request, ipr.incoming, ipr.incomingError = nrm.setupRequest(ipr.requestID, rm)
 
 	select {
 	case nrm.inProgressRequestChan <- ipr:
