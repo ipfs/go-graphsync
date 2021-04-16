@@ -116,10 +116,9 @@ func NewDataTransfer(ds datastore.Batching, cidListsDir string, dataTransferNetw
 		option(m)
 	}
 
-	// Start push / pull channel monitor after applying config options as the config
+	// Create push / pull channel monitor after applying config options as the config
 	// options may apply to the monitor
 	m.channelMonitor = channelmonitor.NewMonitor(m, m.channelMonitorCfg)
-	m.channelMonitor.Start()
 
 	return m, nil
 }
@@ -320,6 +319,12 @@ func (m *manager) CloseDataTransferChannel(ctx context.Context, chid datatransfe
 	return nil
 }
 
+// ConnectTo opens a connection to a peer on the data-transfer protocol,
+// retrying if necessary
+func (m *manager) ConnectTo(ctx context.Context, p peer.ID) error {
+	return m.dataTransferNetwork.ConnectWithRetry(ctx, p)
+}
+
 // close an open channel and fire an error event
 func (m *manager) CloseDataTransferChannelWithError(ctx context.Context, chid datatransfer.ChannelID, cherr error) error {
 	log.Infof("close channel %s with error %s", chid, cherr)
@@ -510,4 +515,8 @@ func (m *manager) channelDataTransferType(channel datatransfer.ChannelState) Cha
 
 	// we received a push channel
 	return ManagerPeerReceivePush
+}
+
+func (m *manager) PeerID() peer.ID {
+	return m.peerID
 }

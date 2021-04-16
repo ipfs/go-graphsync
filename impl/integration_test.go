@@ -495,7 +495,7 @@ func TestManyReceiversAtOnce(t *testing.T) {
 	}
 }
 
-// disconnectCoordinator is used by TestPushRequestAutoRestart to allow
+// disconnectCoordinator is used by TestAutoRestart to allow
 // test cases to signal when a disconnect should start, and whether
 // to wait for the disconnect to take effect before continuing
 type disconnectCoordinator struct {
@@ -724,14 +724,10 @@ func TestAutoRestart(t *testing.T) {
 
 			// Set up
 			restartConf := ChannelRestartConfig(channelmonitor.Config{
-				MonitorPushChannels:    tc.isPush,
-				MonitorPullChannels:    !tc.isPush,
 				AcceptTimeout:          100 * time.Millisecond,
-				Interval:               100 * time.Millisecond,
-				MinBytesTransferred:    1,
-				ChecksPerInterval:      10,
 				RestartBackoff:         500 * time.Millisecond,
 				MaxConsecutiveRestarts: 5,
+				RestartAckTimeout:      100 * time.Millisecond,
 				CompleteTimeout:        100 * time.Millisecond,
 			})
 			initiator, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, initiatorGSTspt, restartConf)

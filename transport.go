@@ -63,6 +63,10 @@ type EventsHandler interface {
 	// OnSendDataError is called when a network error occurs sending data
 	// at the transport layer
 	OnSendDataError(chid ChannelID, err error) error
+
+	// OnReceiveDataError is called when a network error occurs receiving data
+	// at the transport layer
+	OnReceiveDataError(chid ChannelID, err error) error
 }
 
 /*

@@ -3,6 +3,7 @@ module github.com/filecoin-project/go-data-transfer
 go 1.14
 
 require (
+	github.com/bep/debounce v1.2.0
 	github.com/filecoin-project/go-ds-versioning v0.1.0
 	github.com/filecoin-project/go-statemachine v0.0.0-20200925024713-05bd7c71fbfe
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20200817222906-ea96cece81f1
@@ -12,7 +13,7 @@ require (
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-datastore v0.4.5
 	github.com/ipfs/go-ds-badger v0.2.3
-	github.com/ipfs/go-graphsync v0.6.0
+	github.com/ipfs/go-graphsync v0.6.1
 	github.com/ipfs/go-ipfs-blockstore v1.0.1
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-chunker v0.0.5

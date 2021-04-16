@@ -346,6 +346,12 @@ func (c *Channels) SendDataError(chid datatransfer.ChannelID, err error) error {
 	return c.send(chid, datatransfer.SendDataError, err)
 }
 
+// ReceiveDataError indicates that the transport layer had an error receiving
+// data from the remote peer
+func (c *Channels) ReceiveDataError(chid datatransfer.ChannelID, err error) error {
+	return c.send(chid, datatransfer.ReceiveDataError, err)
+}
+
 // HasChannel returns true if the given channel id is being tracked
 func (c *Channels) HasChannel(chid datatransfer.ChannelID) (bool, error) {
 	return c.stateMachines.Has(chid)

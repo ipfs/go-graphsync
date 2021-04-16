@@ -83,6 +83,11 @@ var ChannelEvents = fsm.Events{
 		chst.AddLog("data transfer send error: %s", chst.Message)
 		return nil
 	}),
+	fsm.Event(datatransfer.ReceiveDataError).FromAny().ToNoChange().Action(func(chst *internal.ChannelState, err error) error {
+		chst.Message = err.Error()
+		chst.AddLog("data transfer receive error: %s", chst.Message)
+		return nil
+	}),
 	fsm.Event(datatransfer.RequestTimedOut).FromAny().ToNoChange().Action(func(chst *internal.ChannelState, err error) error {
 		chst.Message = err.Error()
 		chst.AddLog("data transfer request timed out: %s", chst.Message)

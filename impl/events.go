@@ -227,6 +227,11 @@ func (m *manager) OnSendDataError(chid datatransfer.ChannelID, err error) error 
 	return m.channels.SendDataError(chid, err)
 }
 
+func (m *manager) OnReceiveDataError(chid datatransfer.ChannelID, err error) error {
+	log.Warnf("channel %+v had transport receive error: %s", chid, err)
+	return m.channels.ReceiveDataError(chid, err)
+}
+
 // OnChannelCompleted is called
 // - by the requester when all data for a transfer has been received
 // - by the responder when all data for a transfer has been sent

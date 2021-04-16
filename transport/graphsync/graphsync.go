@@ -410,6 +410,7 @@ func (t *Transport) SetEventHandler(events datatransfer.EventsHandler) error {
 	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterRequestUpdatedHook(t.gsRequestUpdatedHook))
 	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterRequestorCancelledListener(t.gsRequestorCancelledListener))
 	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterNetworkErrorListener(t.gsNetworkSendErrorListener))
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterReceiverNetworkErrorListener(t.gsNetworkReceiveErrorListener))
 	return nil
 }
 
@@ -809,13 +810,36 @@ func (t *Transport) gsNetworkSendErrorListener(p peer.ID, request graphsync.Requ
 	t.dataLock.Lock()
 	defer t.dataLock.Unlock()
 
+	// Fire an error if the graphsync request was made by this node or the remote peer
 	chid, ok := t.graphsyncRequestMap[graphsyncKey{request.ID(), p}]
 	if !ok {
-		return
+		chid, ok = t.graphsyncRequestMap[graphsyncKey{request.ID(), t.peerID}]
+		if !ok {
+			return
+		}
 	}
 
 	err := t.events.OnSendDataError(chid, gserr)
 	if err != nil {
 		log.Errorf("failed to fire transport send error %s: %s", gserr, err)
+	}
+}
+
+// Called when there is a graphsync error receiving data
+func (t *Transport) gsNetworkReceiveErrorListener(p peer.ID, gserr error) {
+	t.dataLock.Lock()
+	defer t.dataLock.Unlock()
+
+	// Fire a receive data error on all ongoing graphsync transfers with that
+	// peer
+	for _, chid := range t.graphsyncRequestMap {
+		if chid.Initiator != p && chid.Responder != p {
+			continue
+		}
+
+		err := t.events.OnReceiveDataError(chid, gserr)
+		if err != nil {
+			log.Errorf("failed to fire transport receive error %s: %s", gserr, err)
+		}
 	}
 }

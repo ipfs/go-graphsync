@@ -26,6 +26,11 @@ type DataTransferNetwork interface {
 	// ConnectTo establishes a connection to the given peer
 	ConnectTo(context.Context, peer.ID) error
 
+	// ConnectWithRetry establishes a connection to the given peer, retrying if
+	// necessary, and opens a stream on the data-transfer protocol to verify
+	// the peer will accept messages on the protocol
+	ConnectWithRetry(ctx context.Context, p peer.ID) error
+
 	// ID returns the peer id of this libp2p host
 	ID() peer.ID
 }

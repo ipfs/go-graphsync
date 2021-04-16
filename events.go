@@ -98,6 +98,10 @@ const (
 	// SendDataError indicates that the transport layer had an error trying
 	// to send data to the remote peer
 	SendDataError
+
+	// ReceiveDataError indicates that the transport layer had an error
+	// receiving data from the remote peer
+	ReceiveDataError
 )
 
 // Events are human readable names for data transfer events
@@ -127,6 +131,9 @@ var Events = map[EventCode]string{
 	DataQueuedProgress:          "DataQueuedProgress",
 	DataSentProgress:            "DataSentProgress",
 	DataReceivedProgress:        "DataReceivedProgress",
+	RequestTimedOut:             "RequestTimedOut",
+	SendDataError:               "SendDataError",
+	ReceiveDataError:            "ReceiveDataError",
 }
 
 // Event is a struct containing information about a data transfer event

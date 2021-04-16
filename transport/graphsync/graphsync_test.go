@@ -331,7 +331,7 @@ func TestManager(t *testing.T) {
 				require.False(t, events.OnDataQueuedCalled)
 			},
 		},
-		"outgoing data send error will terminate request": {
+		"outgoing data queued error will terminate request": {
 			events: fakeEvents{
 				OnDataQueuedError: errors.New("something went wrong"),
 			},
@@ -345,7 +345,7 @@ func TestManager(t *testing.T) {
 				require.Error(t, gsData.outgoingBlockHookActions.TerminationError)
 			},
 		},
-		"outgoing data send error == pause will pause request": {
+		"outgoing data queued error == pause will pause request": {
 			events: fakeEvents{
 				OnDataQueuedError: datatransfer.ErrPause,
 			},
@@ -626,7 +626,7 @@ func TestManager(t *testing.T) {
 				assertHasOutgoingMessage(t, gsData.incomingRequestHookActions.SentExtensions, gsData.incoming)
 			},
 		},
-		"recognized incoming request will record network error": {
+		"recognized incoming request will record network send error": {
 			action: func(gsData *harness) {
 				gsData.incomingRequestHook()
 				gsData.networkErrorListener(errors.New("something went wrong"))
@@ -634,6 +634,34 @@ func TestManager(t *testing.T) {
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
 				require.True(t, events.OnSendDataErrorCalled)
+			},
+		},
+		"recognized outgoing request will record network send error": {
+			action: func(gsData *harness) {
+				gsData.outgoingRequestHook()
+				gsData.networkErrorListener(errors.New("something went wrong"))
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				require.True(t, events.OnSendDataErrorCalled)
+			},
+		},
+		"recognized incoming request will record network receive error": {
+			action: func(gsData *harness) {
+				gsData.incomingRequestHook()
+				gsData.receiverNetworkErrorListener(errors.New("something went wrong"))
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				require.Equal(t, 1, events.OnRequestReceivedCallCount)
+				require.True(t, events.OnReceiveDataErrorCalled)
+			},
+		},
+		"recognized outgoing request will record network receive error": {
+			action: func(gsData *harness) {
+				gsData.outgoingRequestHook()
+				gsData.receiverNetworkErrorListener(errors.New("something went wrong"))
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				require.True(t, events.OnReceiveDataErrorCalled)
 			},
 		},
 		"open channel adds doNotSendCids to the DoNotSend extension": {
@@ -974,10 +1002,12 @@ type fakeEvents struct {
 	OnDataQueuedMessage         datatransfer.Message
 	OnDataQueuedError           error
 
-	OnRequestTimedOutCalled    bool
-	OnRequestTimedOutChannelId datatransfer.ChannelID
-	OnSendDataErrorCalled      bool
-	OnSendDataErrorChannelID   datatransfer.ChannelID
+	OnRequestTimedOutCalled     bool
+	OnRequestTimedOutChannelId  datatransfer.ChannelID
+	OnSendDataErrorCalled       bool
+	OnSendDataErrorChannelID    datatransfer.ChannelID
+	OnReceiveDataErrorCalled    bool
+	OnReceiveDataErrorChannelID datatransfer.ChannelID
 
 	ChannelCompletedSuccess  bool
 	RequestReceivedRequest   datatransfer.Request
@@ -1005,6 +1035,12 @@ func (fe *fakeEvents) OnRequestDisconnected(chid datatransfer.ChannelID, err err
 func (fe *fakeEvents) OnSendDataError(chid datatransfer.ChannelID, err error) error {
 	fe.OnSendDataErrorCalled = true
 	fe.OnSendDataErrorChannelID = chid
+	return nil
+}
+
+func (fe *fakeEvents) OnReceiveDataError(chid datatransfer.ChannelID, err error) error {
+	fe.OnReceiveDataErrorCalled = true
+	fe.OnReceiveDataErrorChannelID = chid
 	return nil
 }
 
@@ -1098,6 +1134,9 @@ func (ha *harness) requestorCancelledListener() {
 }
 func (ha *harness) networkErrorListener(err error) {
 	ha.fgs.NetworkErrorListener(ha.other, ha.request, err)
+}
+func (ha *harness) receiverNetworkErrorListener(err error) {
+	ha.fgs.ReceiverNetworkErrorListener(ha.other, err)
 }
 
 type dtConfig struct {

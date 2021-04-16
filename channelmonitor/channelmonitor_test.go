@@ -2,6 +2,7 @@ package channelmonitor
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -21,443 +22,157 @@ var ch1 = datatransfer.ChannelID{
 	ID:        1,
 }
 
-func TestPushChannelMonitorAutoRestart(t *testing.T) {
+func TestChannelMonitorAutoRestart(t *testing.T) {
 	type testCase struct {
-		name         string
-		errOnRestart bool
-		dataQueued   uint64
-		dataSent     uint64
-		errorEvent   bool
+		name              string
+		errReconnect      bool
+		errSendRestartMsg bool
+		timeoutRestartAck bool
 	}
 	testCases := []testCase{{
-		name:         "attempt restart",
-		errOnRestart: false,
-		dataQueued:   10,
-		dataSent:     5,
+		name: "attempt restart",
 	}, {
-		name:         "fail attempt restart",
-		errOnRestart: true,
-		dataQueued:   10,
-		dataSent:     5,
+		name:         "fail to reconnect to peer",
+		errReconnect: true,
 	}, {
-		name:         "error event",
-		errOnRestart: false,
-		dataQueued:   10,
-		dataSent:     10,
-		errorEvent:   true,
+		name:              "fail to send restart message",
+		errSendRestartMsg: true,
 	}, {
-		name:         "error event then fail attempt restart",
-		errOnRestart: true,
-		dataQueued:   10,
-		dataSent:     10,
-		errorEvent:   true,
+		name:              "timeout waiting for restart message ack from peer",
+		timeoutRestartAck: true,
 	}}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ch := &mockChannelState{chid: ch1}
-			mockAPI := newMockMonitorAPI(ch, tc.errOnRestart)
+	runTest := func(name string, isPush bool) {
+		for _, tc := range testCases {
+			t.Run(name+": "+tc.name, func(t *testing.T) {
+				ch := &mockChannelState{chid: ch1}
+				mockAPI := newMockMonitorAPI(ch, tc.errReconnect, tc.errSendRestartMsg)
 
-			m := NewMonitor(mockAPI, &Config{
-				MonitorPushChannels:    true,
-				AcceptTimeout:          time.Hour,
-				Interval:               10 * time.Millisecond,
-				ChecksPerInterval:      10,
-				MinBytesTransferred:    1,
-				MaxConsecutiveRestarts: 3,
-				CompleteTimeout:        time.Hour,
-			})
-			m.Start()
-			mch := m.AddPushChannel(ch1).(*monitoredPushChannel)
+				triggerErrorEvent := func() {
+					if isPush {
+						mockAPI.sendDataErrorEvent()
+					} else {
+						mockAPI.receiveDataErrorEvent()
+					}
+				}
 
-			// Simulate the responder sending Accept
-			mockAPI.accept()
+				m := NewMonitor(mockAPI, &Config{
+					AcceptTimeout:          time.Hour,
+					MaxConsecutiveRestarts: 3,
+					RestartAckTimeout:      20 * time.Millisecond,
+					CompleteTimeout:        time.Hour,
+				})
 
-			// Simulate data being queued and sent
-			// If sent - queued > MinBytesTransferred it should cause a restart
-			mockAPI.dataQueued(tc.dataQueued)
-			mockAPI.dataSent(tc.dataSent)
+				var mch *monitoredChannel
+				if isPush {
+					mch = m.AddPushChannel(ch1)
+				} else {
+					mch = m.AddPullChannel(ch1)
+				}
 
-			if tc.errorEvent {
-				// Fire an error event, should cause a restart
-				mockAPI.sendDataErrorEvent()
-			}
+				// Simulate the responder sending Accept
+				mockAPI.accept()
 
-			if tc.errOnRestart {
+				if isPush {
+					// Simulate data being queued and sent
+					mockAPI.dataQueued(10)
+					mockAPI.dataSent(5)
+				} else {
+					// Simulate data being received
+					mockAPI.dataReceived(10)
+				}
+
+				// Simulate error sending / receiving data
+				triggerErrorEvent()
+
 				// If there is an error attempting to restart, just wait for
 				// the push channel to be closed
-				<-mockAPI.closed
-				return
-			}
+				if tc.errReconnect || tc.errSendRestartMsg {
+					mockAPI.verifyChannelClosed(t, true)
+					return
+				}
 
-			// Verify that channel is restarted within interval
-			select {
-			case <-time.After(100 * time.Millisecond):
-				require.Fail(t, "failed to restart channel")
-			case <-mockAPI.restarts:
-			}
+				// Verify that restart message is sent
+				err := mockAPI.awaitRestartSent()
+				require.NoError(t, err)
 
-			// Simulate sending the remaining data
-			delta := tc.dataQueued - tc.dataSent
-			if delta > 0 {
-				mockAPI.dataSent(delta)
-			}
+				// If simulating a restart ack timeout, don't fire the restart
+				// ack event and expect the channel to be closed with an error
+				if tc.timeoutRestartAck {
+					mockAPI.verifyChannelClosed(t, true)
+					return
+				}
 
-			// Simulate the complete event
-			mockAPI.completed()
+				// Simulate receiving restart message ack from responder
+				mockAPI.restartEvent()
 
-			// Verify that channel has been shutdown
-			verifyChannelShutdown(t, mch.ctx)
-		})
-	}
-}
+				if isPush {
+					// Simulate sending the remaining data
+					mockAPI.dataSent(5)
+				} else {
+					// Simulate receiving more data
+					mockAPI.dataReceived(5)
+				}
 
-func TestPullChannelMonitorAutoRestart(t *testing.T) {
-	type testCase struct {
-		name         string
-		errOnRestart bool
-		dataRcvd     uint64
-		errorEvent   bool
-	}
-	testCases := []testCase{{
-		name:         "attempt restart",
-		errOnRestart: false,
-		dataRcvd:     10,
-	}, {
-		name:         "fail attempt restart",
-		errOnRestart: true,
-		dataRcvd:     10,
-	}, {
-		name:         "error event",
-		errOnRestart: false,
-		dataRcvd:     10,
-		errorEvent:   true,
-	}, {
-		name:         "error event then fail attempt restart",
-		errOnRestart: true,
-		dataRcvd:     10,
-		errorEvent:   true,
-	}}
+				// Simulate the complete event
+				mockAPI.completed()
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ch := &mockChannelState{chid: ch1}
-			mockAPI := newMockMonitorAPI(ch, tc.errOnRestart)
-
-			m := NewMonitor(mockAPI, &Config{
-				MonitorPullChannels:    true,
-				AcceptTimeout:          time.Hour,
-				Interval:               10 * time.Millisecond,
-				ChecksPerInterval:      10,
-				MinBytesTransferred:    1,
-				MaxConsecutiveRestarts: 3,
-				CompleteTimeout:        time.Hour,
+				// Verify that channel has been shutdown
+				verifyChannelShutdown(t, mch.ctx)
 			})
-			m.Start()
-			mch := m.AddPullChannel(ch1).(*monitoredPullChannel)
-
-			// Simulate the responder sending Accept
-			mockAPI.accept()
-
-			// Simulate receiving some data
-			mockAPI.dataReceived(tc.dataRcvd)
-
-			if tc.errorEvent {
-				// Fire an error event, should cause a restart
-				mockAPI.sendDataErrorEvent()
-			}
-
-			if tc.errOnRestart {
-				// If there is an error attempting to restart, just wait for
-				// the pull channel to be closed
-				<-mockAPI.closed
-				return
-			}
-
-			// Verify that channel is restarted within interval
-			select {
-			case <-time.After(100 * time.Millisecond):
-				require.Fail(t, "failed to restart channel")
-			case <-mockAPI.restarts:
-			}
-
-			// Simulate sending more data
-			mockAPI.dataSent(tc.dataRcvd)
-
-			// Simulate the complete event
-			mockAPI.completed()
-
-			// Verify that channel has been shutdown
-			verifyChannelShutdown(t, mch.ctx)
-		})
+		}
 	}
-}
 
-func TestPushChannelMonitorDataRate(t *testing.T) {
-	type dataPoint struct {
-		queued uint64
-		sent   uint64
-	}
-	type testCase struct {
-		name          string
-		minBytesSent  uint64
-		dataPoints    []dataPoint
-		expectRestart bool
-	}
-	testCases := []testCase{{
-		name:         "restart when sent (10) < pending (20)",
-		minBytesSent: 1,
-		dataPoints: []dataPoint{{
-			queued: 20,
-			sent:   10,
-		}},
-		expectRestart: true,
-	}, {
-		name:         "dont restart when sent (20) >= pending (10)",
-		minBytesSent: 1,
-		dataPoints: []dataPoint{{
-			queued: 20,
-			sent:   10,
-		}, {
-			queued: 20,
-			sent:   20,
-		}},
-		expectRestart: false,
-	}, {
-		name:         "restart when sent (5) < pending (10)",
-		minBytesSent: 10,
-		dataPoints: []dataPoint{{
-			queued: 20,
-			sent:   10,
-		}, {
-			queued: 20,
-			sent:   15,
-		}},
-		expectRestart: true,
-	}, {
-		name:         "dont restart when pending is zero",
-		minBytesSent: 1,
-		dataPoints: []dataPoint{{
-			queued: 20,
-			sent:   20,
-		}},
-		expectRestart: false,
-	}, {
-		name:         "dont restart when pending increases but sent also increases within interval",
-		minBytesSent: 1,
-		dataPoints: []dataPoint{{
-			queued: 10,
-			sent:   10,
-		}, {
-			queued: 20,
-			sent:   10,
-		}, {
-			queued: 20,
-			sent:   20,
-		}},
-		expectRestart: false,
-	}, {
-		name:         "restart when pending increases and sent doesn't increase within interval",
-		minBytesSent: 1,
-		dataPoints: []dataPoint{{
-			queued: 10,
-			sent:   10,
-		}, {
-			queued: 20,
-			sent:   10,
-		}, {
-			queued: 20,
-			sent:   10,
-		}, {
-			queued: 20,
-			sent:   10,
-		}, {
-			queued: 20,
-			sent:   20,
-		}},
-		expectRestart: true,
-	}, {
-		name:         "dont restart with typical progression",
-		minBytesSent: 1,
-		dataPoints: []dataPoint{{
-			queued: 10,
-			sent:   10,
-		}, {
-			queued: 20,
-			sent:   10,
-		}, {
-			queued: 20,
-			sent:   15,
-		}, {
-			queued: 30,
-			sent:   25,
-		}, {
-			queued: 35,
-			sent:   30,
-		}, {
-			queued: 35,
-			sent:   35,
-		}},
-		expectRestart: false,
-	}}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ch := &mockChannelState{chid: ch1}
-			mockAPI := newMockMonitorAPI(ch, false)
-
-			checksPerInterval := uint32(1)
-			m := NewMonitor(mockAPI, &Config{
-				MonitorPushChannels:    true,
-				AcceptTimeout:          time.Hour,
-				Interval:               time.Hour,
-				ChecksPerInterval:      checksPerInterval,
-				MinBytesTransferred:    tc.minBytesSent,
-				MaxConsecutiveRestarts: 3,
-				CompleteTimeout:        time.Hour,
-			})
-
-			// Note: Don't start monitor, we'll call checkDataRate() manually
-
-			m.AddPushChannel(ch1)
-
-			totalChecks := checksPerInterval + uint32(len(tc.dataPoints))
-			for i := uint32(0); i < totalChecks; i++ {
-				if i < uint32(len(tc.dataPoints)) {
-					dp := tc.dataPoints[i]
-					mockAPI.dataQueued(dp.queued)
-					mockAPI.dataSent(dp.sent)
-				}
-				m.checkDataRate()
-			}
-
-			// Check if channel was restarted
-			select {
-			case <-time.After(5 * time.Millisecond):
-				if tc.expectRestart {
-					require.Fail(t, "failed to restart channel")
-				}
-			case <-mockAPI.restarts:
-				if !tc.expectRestart {
-					require.Fail(t, "expected no channel restart")
-				}
-			}
-		})
-	}
-}
-
-func TestPullChannelMonitorDataRate(t *testing.T) {
-	type testCase struct {
-		name                string
-		minBytesTransferred uint64
-		dataPoints          []uint64
-		expectRestart       bool
-	}
-	testCases := []testCase{{
-		name:                "restart when received (5) < min required (10)",
-		minBytesTransferred: 10,
-		dataPoints:          []uint64{10, 15},
-		expectRestart:       true,
-	}, {
-		name:                "dont restart when received (5) > min required (1)",
-		minBytesTransferred: 1,
-		dataPoints:          []uint64{10, 15},
-		expectRestart:       false,
-	}, {
-		name:                "dont restart with typical progression",
-		minBytesTransferred: 1,
-		dataPoints:          []uint64{10, 20, 30, 40},
-		expectRestart:       false,
-	}}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ch := &mockChannelState{chid: ch1}
-			mockAPI := newMockMonitorAPI(ch, false)
-
-			checksPerInterval := uint32(1)
-			m := NewMonitor(mockAPI, &Config{
-				MonitorPullChannels:    true,
-				AcceptTimeout:          time.Hour,
-				Interval:               time.Hour,
-				ChecksPerInterval:      checksPerInterval,
-				MinBytesTransferred:    tc.minBytesTransferred,
-				MaxConsecutiveRestarts: 3,
-				CompleteTimeout:        time.Hour,
-			})
-
-			// Note: Don't start monitor, we'll call checkDataRate() manually
-
-			m.AddPullChannel(ch1)
-
-			totalChecks := uint32(len(tc.dataPoints))
-			for i := uint32(0); i < totalChecks; i++ {
-				if i < uint32(len(tc.dataPoints)) {
-					rcvd := tc.dataPoints[i]
-					mockAPI.dataReceived(rcvd)
-				}
-				m.checkDataRate()
-			}
-
-			// Check if channel was restarted
-			select {
-			case <-time.After(5 * time.Millisecond):
-				if tc.expectRestart {
-					require.Fail(t, "failed to restart channel")
-				}
-			case <-mockAPI.restarts:
-				if !tc.expectRestart {
-					require.Fail(t, "expected no channel restart")
-				}
-			}
-		})
-	}
+	runTest("push", true)
+	runTest("pull", false)
 }
 
 func TestChannelMonitorMaxConsecutiveRestarts(t *testing.T) {
 	runTest := func(name string, isPush bool) {
 		t.Run(name, func(t *testing.T) {
 			ch := &mockChannelState{chid: ch1}
-			mockAPI := newMockMonitorAPI(ch, false)
+			mockAPI := newMockMonitorAPI(ch, false, false)
+
+			triggerErrorEvent := func() {
+				if isPush {
+					mockAPI.sendDataErrorEvent()
+				} else {
+					mockAPI.receiveDataErrorEvent()
+				}
+			}
 
 			maxConsecutiveRestarts := 3
 			m := NewMonitor(mockAPI, &Config{
-				MonitorPushChannels:    isPush,
-				MonitorPullChannels:    !isPush,
 				AcceptTimeout:          time.Hour,
-				Interval:               time.Hour,
-				ChecksPerInterval:      1,
-				MinBytesTransferred:    2,
 				MaxConsecutiveRestarts: uint32(maxConsecutiveRestarts),
+				RestartAckTimeout:      time.Hour,
 				CompleteTimeout:        time.Hour,
 			})
 
-			// Note: Don't start monitor, we'll call checkDataRate() manually
-
-			var chanCtx context.Context
+			var mch *monitoredChannel
 			if isPush {
-				mch := m.AddPushChannel(ch1).(*monitoredPushChannel)
-				chanCtx = mch.ctx
+				mch = m.AddPushChannel(ch1)
 
 				mockAPI.dataQueued(10)
 				mockAPI.dataSent(5)
 			} else {
-				mch := m.AddPullChannel(ch1).(*monitoredPullChannel)
-				chanCtx = mch.ctx
+				mch = m.AddPullChannel(ch1)
 
 				mockAPI.dataReceived(5)
 			}
 
-			// Check once to add a data point to the queue.
-			// Subsequent checks will compare against the previous data point.
-			m.checkDataRate()
-
-			// Each check should trigger a restart up to the maximum number of restarts
+			// Each error should trigger a restart up to the maximum number of restarts
 			triggerMaxRestarts := func() {
 				for i := 0; i < maxConsecutiveRestarts; i++ {
-					m.checkDataRate()
+					triggerErrorEvent()
 
-					err := mockAPI.awaitRestart()
+					err := mockAPI.awaitRestartSent()
+					require.NoError(t, err)
+
+					// Simulate receiving restart ack from peer
+					mockAPI.restartEvent()
+
+					err = awaitRestartComplete(mch)
 					require.NoError(t, err)
 				}
 			}
@@ -476,10 +191,77 @@ func TestChannelMonitorMaxConsecutiveRestarts(t *testing.T) {
 			// Reached max restarts, so now there should not be another restart
 			// attempt.
 			// Instead the channel should be closed and the monitor shut down.
-			m.checkDataRate()
-			err := mockAPI.awaitRestart()
+			triggerErrorEvent()
+			err := mockAPI.awaitRestartSent()
 			require.Error(t, err) // require error because expecting no restart
-			verifyChannelShutdown(t, chanCtx)
+			verifyChannelShutdown(t, mch.ctx)
+		})
+	}
+
+	// test push channel
+	runTest("push", true)
+	// test pull channel
+	runTest("pull", false)
+}
+
+func awaitRestartComplete(mch *monitoredChannel) error {
+	for i := 0; i < 10; i++ {
+		if !mch.isRestarting() {
+			return nil
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return xerrors.Errorf("restart did not complete after 10ms")
+}
+
+func TestChannelMonitorQueuedRestart(t *testing.T) {
+	runTest := func(name string, isPush bool) {
+		t.Run(name, func(t *testing.T) {
+			ch := &mockChannelState{chid: ch1}
+			mockAPI := newMockMonitorAPI(ch, false, false)
+
+			triggerErrorEvent := func() {
+				if isPush {
+					mockAPI.sendDataErrorEvent()
+				} else {
+					mockAPI.receiveDataErrorEvent()
+				}
+			}
+
+			m := NewMonitor(mockAPI, &Config{
+				AcceptTimeout:          time.Hour,
+				RestartDebounce:        10 * time.Millisecond,
+				MaxConsecutiveRestarts: 3,
+				RestartAckTimeout:      time.Hour,
+				CompleteTimeout:        time.Hour,
+			})
+
+			if isPush {
+				m.AddPushChannel(ch1)
+
+				mockAPI.dataQueued(10)
+				mockAPI.dataSent(5)
+			} else {
+				m.AddPullChannel(ch1)
+
+				mockAPI.dataReceived(5)
+			}
+
+			// Trigger an error event, should cause a restart
+			triggerErrorEvent()
+			// Wait for restart to occur
+			err := mockAPI.awaitRestartSent()
+			require.NoError(t, err)
+
+			// Trigger another error event before the restart has completed
+			triggerErrorEvent()
+
+			// Simulate receiving restart ack from peer (for first restart)
+			mockAPI.restartEvent()
+
+			// A second restart should be sent because of the second error
+			err = mockAPI.awaitRestartSent()
+			require.NoError(t, err)
 		})
 	}
 
@@ -516,49 +298,30 @@ func TestChannelMonitorTimeouts(t *testing.T) {
 		for _, tc := range testCases {
 			t.Run(name+": "+tc.name, func(t *testing.T) {
 				ch := &mockChannelState{chid: ch1}
-				mockAPI := newMockMonitorAPI(ch, false)
+				mockAPI := newMockMonitorAPI(ch, false, false)
 
 				verifyClosedAndShutdown := func(chCtx context.Context, timeout time.Duration) {
-					// Verify channel has been closed
-					select {
-					case <-time.After(timeout):
-						require.Fail(t, "failed to close channel within "+timeout.String())
-					case <-mockAPI.closed:
-					}
+					mockAPI.verifyChannelClosed(t, true)
 
 					// Verify that channel has been shutdown
 					verifyChannelShutdown(t, chCtx)
 				}
 
-				verifyNotClosed := func(timeout time.Duration) {
-					// Verify channel has not been closed
-					select {
-					case <-time.After(timeout):
-					case <-mockAPI.closed:
-						require.Fail(t, "expected channel not to have been closed")
-					}
-				}
-
 				acceptTimeout := 10 * time.Millisecond
 				completeTimeout := 10 * time.Millisecond
 				m := NewMonitor(mockAPI, &Config{
-					MonitorPushChannels:    isPush,
-					MonitorPullChannels:    !isPush,
 					AcceptTimeout:          acceptTimeout,
-					Interval:               time.Hour,
-					ChecksPerInterval:      1,
-					MinBytesTransferred:    1,
 					MaxConsecutiveRestarts: 1,
+					RestartAckTimeout:      time.Hour,
 					CompleteTimeout:        completeTimeout,
 				})
-				m.Start()
 
 				var chCtx context.Context
 				if isPush {
-					mch := m.AddPushChannel(ch1).(*monitoredPushChannel)
+					mch := m.AddPushChannel(ch1)
 					chCtx = mch.ctx
 				} else {
-					mch := m.AddPullChannel(ch1).(*monitoredPullChannel)
+					mch := m.AddPullChannel(ch1)
 					chCtx = mch.ctx
 				}
 
@@ -575,7 +338,7 @@ func TestChannelMonitorTimeouts(t *testing.T) {
 
 				// If we're not expecting the test to have a timeout waiting for
 				// the accept event, verify that channel was not closed
-				verifyNotClosed(2 * acceptTimeout)
+				mockAPI.verifyChannelNotClosed(t, 2*acceptTimeout)
 
 				// Fire the FinishTransfer event
 				mockAPI.finishTransfer()
@@ -594,7 +357,7 @@ func TestChannelMonitorTimeouts(t *testing.T) {
 
 				// If we're not expecting the test to have a timeout waiting for
 				// the accept event, verify that channel was not closed
-				verifyNotClosed(2 * completeTimeout)
+				mockAPI.verifyChannelNotClosed(t, 2*completeTimeout)
 			})
 		}
 	}
@@ -614,105 +377,151 @@ func verifyChannelShutdown(t *testing.T, shutdownCtx context.Context) {
 }
 
 type mockMonitorAPI struct {
-	ch            *mockChannelState
-	restartErrors chan error
-	restarts      chan struct{}
-	closed        chan struct{}
+	ch              *mockChannelState
+	connectErrors   bool
+	restartErrors   bool
+	restartMessages chan struct{}
+	closeErr        chan error
 
-	lk         sync.Mutex
-	subscriber datatransfer.Subscriber
+	lk          sync.Mutex
+	subscribers map[int]datatransfer.Subscriber
 }
 
-func newMockMonitorAPI(ch *mockChannelState, errOnRestart bool) *mockMonitorAPI {
-	m := &mockMonitorAPI{
-		ch:            ch,
-		restarts:      make(chan struct{}, 1),
-		closed:        make(chan struct{}),
-		restartErrors: make(chan error, 1),
+func newMockMonitorAPI(ch *mockChannelState, errOnReconnect, errOnRestart bool) *mockMonitorAPI {
+	return &mockMonitorAPI{
+		ch:              ch,
+		connectErrors:   errOnReconnect,
+		restartErrors:   errOnRestart,
+		restartMessages: make(chan struct{}, 100),
+		closeErr:        make(chan error, 1),
+		subscribers:     make(map[int]datatransfer.Subscriber),
 	}
-	var restartErr error
-	if errOnRestart {
-		restartErr = xerrors.Errorf("restart err")
-	}
-	m.restartErrors <- restartErr
-	return m
 }
 
 func (m *mockMonitorAPI) SubscribeToEvents(subscriber datatransfer.Subscriber) datatransfer.Unsubscribe {
 	m.lk.Lock()
 	defer m.lk.Unlock()
 
-	m.subscriber = subscriber
+	idx := len(m.subscribers)
+	m.subscribers[idx] = subscriber
 
 	return func() {
 		m.lk.Lock()
 		defer m.lk.Unlock()
 
-		m.subscriber = nil
+		delete(m.subscribers, idx)
 	}
 }
 
-func (m *mockMonitorAPI) callSubscriber(e datatransfer.Event, state datatransfer.ChannelState) {
-	m.subscriber(e, state)
+func (m *mockMonitorAPI) fireEvent(e datatransfer.Event, state datatransfer.ChannelState) {
+	m.lk.Lock()
+	defer m.lk.Unlock()
+
+	for _, subscriber := range m.subscribers {
+		subscriber(e, state)
+	}
+}
+
+func (m *mockMonitorAPI) ConnectTo(ctx context.Context, id peer.ID) error {
+	if m.connectErrors {
+		return xerrors.Errorf("connect err")
+	}
+	return nil
+}
+
+func (m *mockMonitorAPI) PeerID() peer.ID {
+	return "p"
 }
 
 func (m *mockMonitorAPI) RestartDataTransferChannel(ctx context.Context, chid datatransfer.ChannelID) error {
 	defer func() {
-		m.restarts <- struct{}{}
+		m.restartMessages <- struct{}{}
 	}()
 
-	select {
-	case err := <-m.restartErrors:
-		return err
-	default:
-		return nil
+	if m.restartErrors {
+		return xerrors.Errorf("restart err")
 	}
+	return nil
 }
 
-func (m *mockMonitorAPI) awaitRestart() error {
+func (m *mockMonitorAPI) awaitRestartSent() error {
+	timeout := 100 * time.Millisecond
 	select {
-	case <-time.After(10 * time.Millisecond):
-		return xerrors.Errorf("failed to restart channel")
-	case <-m.restarts:
+	case <-time.After(timeout):
+		return xerrors.Errorf("failed to restart channel after %s", timeout)
+	case <-m.restartMessages:
 		return nil
 	}
 }
 
 func (m *mockMonitorAPI) CloseDataTransferChannelWithError(ctx context.Context, chid datatransfer.ChannelID, cherr error) error {
-	close(m.closed)
+	m.closeErr <- cherr
 	return nil
 }
 
+func (m *mockMonitorAPI) verifyChannelClosed(t *testing.T, expectErr bool) {
+	// Verify channel has been closed
+	closeTimeout := 100 * time.Millisecond
+	select {
+	case <-time.After(closeTimeout):
+		require.Fail(t, fmt.Sprintf("failed to close channel within %s", closeTimeout))
+	case err := <-m.closeErr:
+		if expectErr && err == nil {
+			require.Fail(t, "expected error on close")
+		}
+		if !expectErr && err != nil {
+			require.Fail(t, fmt.Sprintf("got error on close: %s", err))
+		}
+	}
+}
+
+func (m *mockMonitorAPI) verifyChannelNotClosed(t *testing.T, timeout time.Duration) {
+	// Verify channel has not been closed
+	select {
+	case <-time.After(timeout):
+	case <-m.closeErr:
+		require.Fail(t, "expected channel not to have been closed")
+	}
+}
+
 func (m *mockMonitorAPI) accept() {
-	m.callSubscriber(datatransfer.Event{Code: datatransfer.Accept}, m.ch)
+	m.fireEvent(datatransfer.Event{Code: datatransfer.Accept}, m.ch)
 }
 
 func (m *mockMonitorAPI) dataQueued(n uint64) {
 	m.ch.queued = n
-	m.callSubscriber(datatransfer.Event{Code: datatransfer.DataQueued}, m.ch)
+	m.fireEvent(datatransfer.Event{Code: datatransfer.DataQueued}, m.ch)
 }
 
 func (m *mockMonitorAPI) dataSent(n uint64) {
 	m.ch.sent = n
-	m.callSubscriber(datatransfer.Event{Code: datatransfer.DataSent}, m.ch)
+	m.fireEvent(datatransfer.Event{Code: datatransfer.DataSent}, m.ch)
 }
 
 func (m *mockMonitorAPI) dataReceived(n uint64) {
 	m.ch.received = n
-	m.callSubscriber(datatransfer.Event{Code: datatransfer.DataReceived}, m.ch)
+	m.fireEvent(datatransfer.Event{Code: datatransfer.DataReceived}, m.ch)
 }
 
 func (m *mockMonitorAPI) finishTransfer() {
-	m.callSubscriber(datatransfer.Event{Code: datatransfer.FinishTransfer}, m.ch)
+	m.fireEvent(datatransfer.Event{Code: datatransfer.FinishTransfer}, m.ch)
 }
 
 func (m *mockMonitorAPI) completed() {
 	m.ch.complete = true
-	m.callSubscriber(datatransfer.Event{Code: datatransfer.Complete}, m.ch)
+	m.fireEvent(datatransfer.Event{Code: datatransfer.Complete}, m.ch)
 }
 
 func (m *mockMonitorAPI) sendDataErrorEvent() {
-	m.callSubscriber(datatransfer.Event{Code: datatransfer.SendDataError}, m.ch)
+	m.fireEvent(datatransfer.Event{Code: datatransfer.SendDataError}, m.ch)
+}
+
+func (m *mockMonitorAPI) receiveDataErrorEvent() {
+	m.fireEvent(datatransfer.Event{Code: datatransfer.ReceiveDataError}, m.ch)
+}
+
+func (m *mockMonitorAPI) restartEvent() {
+	m.fireEvent(datatransfer.Event{Code: datatransfer.Restart}, m.ch)
 }
 
 type mockChannelState struct {

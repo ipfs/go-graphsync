@@ -45,6 +45,10 @@ func (fn *FakeNetwork) ConnectTo(_ context.Context, _ peer.ID) error {
 	panic("not implemented")
 }
 
+func (fn *FakeNetwork) ConnectWithRetry(ctx context.Context, p peer.ID) error {
+	panic("implement me")
+}
+
 // ID returns a stubbed id for host of this network
 func (fn *FakeNetwork) ID() peer.ID {
 	return fn.PeerID
