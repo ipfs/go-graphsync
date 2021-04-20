@@ -58,7 +58,7 @@ func TestChannelMonitorAutoRestart(t *testing.T) {
 
 				m := NewMonitor(mockAPI, &Config{
 					AcceptTimeout:          time.Hour,
-					MaxConsecutiveRestarts: 3,
+					MaxConsecutiveRestarts: 1,
 					RestartAckTimeout:      20 * time.Millisecond,
 					CompleteTimeout:        time.Hour,
 				})
