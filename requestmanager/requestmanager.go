@@ -70,6 +70,7 @@ type RequestManager struct {
 	peerHandler PeerHandler
 	rc          *responseCollector
 	asyncLoader AsyncLoader
+	linkSystem  ipld.LinkSystem
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
 	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
@@ -101,6 +102,7 @@ type BlockHooks interface {
 // New generates a new request manager from a context, network, and selectorQuerier
 func New(ctx context.Context,
 	asyncLoader AsyncLoader,
+	linkSystem ipld.LinkSystem,
 	requestHooks RequestHooks,
 	responseHooks ResponseHooks,
 	blockHooks BlockHooks,
@@ -111,6 +113,7 @@ func New(ctx context.Context,
 		ctx:                       ctx,
 		cancel:                    cancel,
 		asyncLoader:               asyncLoader,
+		linkSystem:                linkSystem,
 		rc:                        newResponseCollector(ctx),
 		messages:                  make(chan requestManagerMessage, 16),
 		inProgressRequestStatuses: make(map[graphsync.RequestID]*inProgressRequestStatus),
@@ -343,6 +346,7 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 		TerminateRequest: rm.terminateRequest,
 		RunBlockHooks:    rm.processBlockHooks,
 		Loader:           rm.asyncLoader.AsyncLoad,
+		LinkSystem:       rm.linkSystem,
 	}.Start(
 		executor.RequestExecution{
 			Ctx:                  ctx,
