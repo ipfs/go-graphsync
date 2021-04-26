@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/ipfs/go-graphsync/ipldutil"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
 )
@@ -55,7 +55,7 @@ func RunTraversal(
 				data = blockBuffer.Bytes()
 				err = traverser.Advance(blockBuffer)
 				if err != nil {
-					logger.Errorf("failed to advcance traversal, link=%s, nBlocksRead=%d, err=%s", lnk, nBlocksRead, err)
+					logger.Errorf("failed to advance traversal, link=%s, nBlocksRead=%d, err=%s", lnk, nBlocksRead, err)
 					return err
 				}
 			}
