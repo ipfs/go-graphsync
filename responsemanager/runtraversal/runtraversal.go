@@ -37,6 +37,7 @@ func RunTraversal(
 			return err
 		}
 		lnk, lnkCtx := traverser.CurrentRequest()
+		logger.Debugf("will load link=%s", lnk)
 		result, err := loader(lnk, lnkCtx)
 		var data []byte
 		if err != nil {
@@ -60,6 +61,7 @@ func RunTraversal(
 				}
 			}
 			nBlocksRead++
+			logger.Debugf("successfully loaded link=%s, nBlocksRead=%d", lnk, nBlocksRead)
 		}
 		err = sendResponse(lnk, data)
 		if err != nil {
