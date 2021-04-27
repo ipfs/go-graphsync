@@ -1,5 +1,16 @@
 # go-graphsync changelog
 
+# go-graphsync 0.6.2
+
+- github.com/ipfs/go-graphsync:
+  - Better logging for Graphsync traversal (#167) ([ipfs/go-graphsync#167](https://github.com/ipfs/go-graphsync/pull/167))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 1 | +18/-2 | 2 |
+
 # go-graphsync 0.6.1
 
 - github.com/ipfs/go-graphsync:
