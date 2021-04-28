@@ -1,5 +1,16 @@
 # go-graphsync changelog
 
+# go-graphsync 0.6.3
+
+- github.com/ipfs/go-graphsync:
+  - Fix/log blockstore reads (#169) ([ipfs/go-graphsync#169](https://github.com/ipfs/go-graphsync/pull/169))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 2 | +40/-177 | 6 |
+
 # go-graphsync 0.6.2
 
 - github.com/ipfs/go-graphsync:
