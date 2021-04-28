@@ -30,9 +30,9 @@ func RunTraversal(
 		isComplete, err := traverser.IsComplete()
 		if isComplete {
 			if err != nil {
-				logger.Infof("traversal completion check failed, nBlocksRead=%d, err=%s", traverser.NBlocksTraversed(), err)
+				logger.Errorf("traversal completion check failed, nBlocksRead=%d, err=%s", traverser.NBlocksTraversed(), err)
 			} else {
-				logger.Infof("traversal completed successfully, nBlocksRead=%d", traverser.NBlocksTraversed())
+				logger.Debugf("traversal completed successfully, nBlocksRead=%d", traverser.NBlocksTraversed())
 			}
 			return err
 		}
@@ -59,7 +59,6 @@ func RunTraversal(
 					logger.Errorf("failed to advance traversal, link=%s, nBlocksRead=%d, err=%s", lnk, traverser.NBlocksTraversed(), err)
 					return err
 				}
-				fmt.Println("\n current count is ", traverser.NBlocksTraversed())
 			}
 			logger.Debugf("successfully loaded link=%s, nBlocksRead=%d", lnk, traverser.NBlocksTraversed())
 		}
