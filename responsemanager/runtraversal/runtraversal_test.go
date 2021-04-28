@@ -69,6 +69,10 @@ type fakeTraverser struct {
 	expectedOutcomes []traverseOutcome
 }
 
+func (ft *fakeTraverser) NBlocksTraversed() int {
+	return 0
+}
+
 // IsComplete returns the completion state (boolean) and if so, the final error result from IPLD
 func (ft *fakeTraverser) IsComplete() (bool, error) {
 	if ft.currentLink >= len(ft.loadedLinks) {

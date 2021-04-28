@@ -2,6 +2,7 @@ package runtraversal
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 
 	"github.com/ipfs/go-graphsync/ipldutil"
@@ -24,15 +25,14 @@ func RunTraversal(
 	loader ipld.Loader,
 	traverser ipldutil.Traverser,
 	sendResponse ResponseSender) error {
-	nBlocksRead := 0
 
 	for {
 		isComplete, err := traverser.IsComplete()
 		if isComplete {
 			if err != nil {
-				logger.Infof("traversal completion check failed, nBlocksRead=%d, err=%s", nBlocksRead, err)
+				logger.Infof("traversal completion check failed, nBlocksRead=%d, err=%s", traverser.NBlocksTraversed(), err)
 			} else {
-				logger.Infof("traversal completed successfully, nBlocksRead=%d", nBlocksRead)
+				logger.Infof("traversal completed successfully, nBlocksRead=%d", traverser.NBlocksTraversed())
 			}
 			return err
 		}
@@ -41,7 +41,7 @@ func RunTraversal(
 		result, err := loader(lnk, lnkCtx)
 		var data []byte
 		if err != nil {
-			logger.Errorf("failed to load link=%s, nBlocksRead=%d, err=%s", lnk, nBlocksRead, err)
+			logger.Errorf("failed to load link=%s, nBlocksRead=%d, err=%s", lnk, traverser.NBlocksTraversed(), err)
 			traverser.Error(traversal.SkipMe{})
 		} else {
 			blockBuffer, ok := result.(*bytes.Buffer)
@@ -50,18 +50,18 @@ func RunTraversal(
 				_, err = io.Copy(blockBuffer, result)
 			}
 			if err != nil {
-				logger.Errorf("failed to write to buffer, link=%s, nBlocksRead=%d, err=%s", lnk, nBlocksRead, err)
+				logger.Errorf("failed to write to buffer, link=%s, nBlocksRead=%d, err=%s", lnk, traverser.NBlocksTraversed(), err)
 				traverser.Error(err)
 			} else {
 				data = blockBuffer.Bytes()
 				err = traverser.Advance(blockBuffer)
 				if err != nil {
-					logger.Errorf("failed to advance traversal, link=%s, nBlocksRead=%d, err=%s", lnk, nBlocksRead, err)
+					logger.Errorf("failed to advance traversal, link=%s, nBlocksRead=%d, err=%s", lnk, traverser.NBlocksTraversed(), err)
 					return err
 				}
+				fmt.Println("\n current count is ", traverser.NBlocksTraversed())
 			}
-			nBlocksRead++
-			logger.Debugf("successfully loaded link=%s, nBlocksRead=%d", lnk, nBlocksRead)
+			logger.Debugf("successfully loaded link=%s, nBlocksRead=%d", lnk, traverser.NBlocksTraversed())
 		}
 		err = sendResponse(lnk, data)
 		if err != nil {
