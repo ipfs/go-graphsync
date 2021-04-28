@@ -2,7 +2,6 @@ package runtraversal
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 
 	"github.com/ipfs/go-graphsync/ipldutil"
