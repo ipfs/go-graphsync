@@ -725,6 +725,7 @@ func TestAutoRestart(t *testing.T) {
 			// Set up
 			restartConf := ChannelRestartConfig(channelmonitor.Config{
 				AcceptTimeout:          100 * time.Millisecond,
+				RestartDebounce:        500 * time.Millisecond,
 				RestartBackoff:         500 * time.Millisecond,
 				MaxConsecutiveRestarts: 5,
 				RestartAckTimeout:      100 * time.Millisecond,

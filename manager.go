@@ -13,12 +13,14 @@ import (
 type RequestValidator interface {
 	// ValidatePush validates a push request received from the peer that will send data
 	ValidatePush(
+		isRestart bool,
 		sender peer.ID,
 		voucher Voucher,
 		baseCid cid.Cid,
 		selector ipld.Node) (VoucherResult, error)
 	// ValidatePull validates a pull request received from the peer that will receive data
 	ValidatePull(
+		isRestart bool,
 		receiver peer.ID,
 		voucher Voucher,
 		baseCid cid.Cid,

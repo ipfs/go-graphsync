@@ -322,7 +322,7 @@ func (m *manager) restartRequest(chid datatransfer.ChannelID,
 		return nil, err
 	}
 
-	voucher, result, err := m.validateVoucher(initiator, incoming, incoming.IsPull(), incoming.BaseCid(), stor)
+	voucher, result, err := m.validateVoucher(true, initiator, incoming, incoming.IsPull(), incoming.BaseCid(), stor)
 	if err != nil && err != datatransfer.ErrPause {
 		return result, xerrors.Errorf("failed to validate voucher: %w", err)
 	}
@@ -361,7 +361,7 @@ func (m *manager) acceptRequest(
 		return nil, err
 	}
 
-	voucher, result, err := m.validateVoucher(initiator, incoming, incoming.IsPull(), incoming.BaseCid(), stor)
+	voucher, result, err := m.validateVoucher(false, initiator, incoming, incoming.IsPull(), incoming.BaseCid(), stor)
 	if err != nil && err != datatransfer.ErrPause {
 		return result, err
 	}
@@ -410,16 +410,19 @@ func (m *manager) acceptRequest(
 //   * reading voucher fails
 //   * deserialization of selector fails
 //   * validation fails
-func (m *manager) validateVoucher(sender peer.ID,
+func (m *manager) validateVoucher(
+	isRestart bool,
+	sender peer.ID,
 	incoming datatransfer.Request,
 	isPull bool,
 	baseCid cid.Cid,
-	stor ipld.Node) (datatransfer.Voucher, datatransfer.VoucherResult, error) {
+	stor ipld.Node,
+) (datatransfer.Voucher, datatransfer.VoucherResult, error) {
 	vouch, err := m.decodeVoucher(incoming, m.validatedTypes)
 	if err != nil {
 		return nil, nil, err
 	}
-	var validatorFunc func(peer.ID, datatransfer.Voucher, cid.Cid, ipld.Node) (datatransfer.VoucherResult, error)
+	var validatorFunc func(bool, peer.ID, datatransfer.Voucher, cid.Cid, ipld.Node) (datatransfer.VoucherResult, error)
 	processor, _ := m.validatedTypes.Processor(vouch.Type())
 	validator := processor.(datatransfer.RequestValidator)
 	if isPull {
@@ -428,7 +431,7 @@ func (m *manager) validateVoucher(sender peer.ID,
 		validatorFunc = validator.ValidatePush
 	}
 
-	result, err := validatorFunc(sender, vouch, baseCid, stor)
+	result, err := validatorFunc(isRestart, sender, vouch, baseCid, stor)
 	return vouch, result, err
 }
 

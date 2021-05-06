@@ -52,6 +52,8 @@ type Config struct {
 	// Max time to wait for the responder to send a Complete message once all
 	// data has been sent
 	CompleteTimeout time.Duration
+	// Called when a restart completes successfully
+	OnRestartComplete func(id datatransfer.ChannelID)
 }
 
 func NewMonitor(mgr monitorAPI, cfg *Config) *Monitor {
@@ -382,6 +384,9 @@ func (mc *monitoredChannel) restartChannel() {
 
 		if !restartAgain {
 			// No restart queued, we're done
+			if mc.cfg.OnRestartComplete != nil {
+				mc.cfg.OnRestartComplete(mc.chid)
+			}
 			return
 		}
 

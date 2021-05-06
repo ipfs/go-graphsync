@@ -19,6 +19,7 @@ func NewStubbedValidator() *StubbedValidator {
 
 // ValidatePush returns a stubbed result for a push validation
 func (sv *StubbedValidator) ValidatePush(
+	isRestart bool,
 	sender peer.ID,
 	voucher datatransfer.Voucher,
 	baseCid cid.Cid,
@@ -30,6 +31,7 @@ func (sv *StubbedValidator) ValidatePush(
 
 // ValidatePull returns a stubbed result for a pull validation
 func (sv *StubbedValidator) ValidatePull(
+	isRestart bool,
 	receiver peer.ID,
 	voucher datatransfer.Voucher,
 	baseCid cid.Cid,
