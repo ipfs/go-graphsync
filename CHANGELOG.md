@@ -1,5 +1,26 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.5.0
+
+Support the data transfer being restarted.
+
+- github.com/filecoin-project/go-data-transfer:
+  - Add isRestart param to validators (#197) ([filecoin-project/go-data-transfer#197](https://github.com/filecoin-project/go-data-transfer/pull/197))
+  - fix: flaky TestChannelMonitorAutoRestart (#198) ([filecoin-project/go-data-transfer#198](https://github.com/filecoin-project/go-data-transfer/pull/198))
+  - Channel monitor watches for errors instead of measuring data rate (#190) ([filecoin-project/go-data-transfer#190](https://github.com/filecoin-project/go-data-transfer/pull/190))
+  - fix: prevent concurrent restarts for same channel (#195) ([filecoin-project/go-data-transfer#195](https://github.com/filecoin-project/go-data-transfer/pull/195))
+  - fix: channel state machine event handling (#194) ([filecoin-project/go-data-transfer#194](https://github.com/filecoin-project/go-data-transfer/pull/194))
+  - Dont double count data sent (#185) ([filecoin-project/go-data-transfer#185](https://github.com/filecoin-project/go-data-transfer/pull/185))
+- github.com/ipfs/go-graphsync (v0.6.0 -> v0.6.1):
+  - feat: fire network error when network disconnects during request (#164) ([ipfs/go-graphsync#164](https://github.com/ipfs/go-graphsync/pull/164))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 8 | +1235/-868 | 37 |
+| Dirk McCormick | 1 | +11/-0 | 1 |
+
 # go-data-transfer 1.4.3
 
 - github.com/filecoin-project/go-data-transfer:
