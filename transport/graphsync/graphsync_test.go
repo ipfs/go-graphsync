@@ -668,6 +668,8 @@ func TestManager(t *testing.T) {
 			action: func(gsData *harness) {
 				cids := testutil.GenerateCids(2)
 				stor, _ := gsData.outgoing.Selector()
+
+				go gsData.outgoingRequestHook()
 				_ = gsData.transport.OpenChannel(
 					gsData.ctx,
 					gsData.other,
@@ -696,6 +698,7 @@ func TestManager(t *testing.T) {
 			action: func(gsData *harness) {
 				cids := testutil.GenerateCids(2)
 				stor, _ := gsData.outgoing.Selector()
+				go gsData.outgoingRequestHook()
 				_ = gsData.transport.OpenChannel(
 					gsData.ctx,
 					gsData.other,
@@ -705,6 +708,7 @@ func TestManager(t *testing.T) {
 					cids,
 					gsData.outgoing)
 
+				go gsData.outgoingRequestHook()
 				_ = gsData.transport.OpenChannel(
 					gsData.ctx,
 					gsData.other,
@@ -727,6 +731,7 @@ func TestManager(t *testing.T) {
 				gsData.fgs.LeaveRequestsOpen()
 				stor, _ := gsData.outgoing.Selector()
 
+				go gsData.outgoingRequestHook()
 				_ = gsData.transport.OpenChannel(
 					gsData.ctx,
 					gsData.other,
@@ -752,6 +757,7 @@ func TestManager(t *testing.T) {
 				gsData.fgs.LeaveRequestsOpen()
 				stor, _ := gsData.outgoing.Selector()
 
+				go gsData.outgoingRequestHook()
 				_ = gsData.transport.OpenChannel(
 					gsData.ctx,
 					gsData.other,
@@ -778,6 +784,7 @@ func TestManager(t *testing.T) {
 				gsData.fgs.LeaveRequestsOpen()
 				stor, _ := gsData.outgoing.Selector()
 
+				go gsData.outgoingRequestHook()
 				_ = gsData.transport.OpenChannel(
 					gsData.ctx,
 					gsData.other,
@@ -786,8 +793,6 @@ func TestManager(t *testing.T) {
 					stor,
 					nil,
 					gsData.outgoing)
-
-				gsData.outgoingRequestHook()
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
@@ -808,6 +813,7 @@ func TestManager(t *testing.T) {
 				gsData.fgs.LeaveRequestsOpen()
 				stor, _ := gsData.outgoing.Selector()
 
+				go gsData.outgoingRequestHook()
 				_ = gsData.transport.OpenChannel(
 					gsData.ctx,
 					gsData.other,
@@ -834,6 +840,7 @@ func TestManager(t *testing.T) {
 				gsData.fgs.LeaveRequestsOpen()
 				stor, _ := gsData.outgoing.Selector()
 
+				go gsData.outgoingRequestHook()
 				_ = gsData.transport.OpenChannel(
 					gsData.ctx,
 					gsData.other,
@@ -867,6 +874,7 @@ func TestManager(t *testing.T) {
 				gsData.fgs.LeaveRequestsOpen()
 				stor, _ := gsData.outgoing.Selector()
 
+				go gsData.outgoingRequestHook()
 				_ = gsData.transport.OpenChannel(
 					gsData.ctx,
 					gsData.other,
@@ -939,6 +947,7 @@ func TestManager(t *testing.T) {
 			},
 		},
 	}
+
 	ctx := context.Background()
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {

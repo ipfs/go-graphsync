@@ -131,19 +131,19 @@ func (r *receiver) ReceiveRestartExistingChannelRequest(ctx context.Context,
 
 	// initiator should be me
 	if channel.ChannelID().Initiator != r.manager.peerID {
-		log.Error("cannot restart channel %s: channel initiator is not the manager peer", ch)
+		log.Errorf("cannot restart channel %s: channel initiator is not the manager peer", ch)
 		return
 	}
 
 	// other peer should be the counter party on the channel
 	if channel.OtherPeer() != sender {
-		log.Error("cannot restart channel %s: channel counterparty is not the sender peer", ch)
+		log.Errorf("cannot restart channel %s: channel counterparty is not the sender peer", ch)
 		return
 	}
 
 	// channel should NOT be terminated
 	if channels.IsChannelTerminated(channel.Status()) {
-		log.Error("cannot restart channel %s: channel already terminated", ch)
+		log.Errorf("cannot restart channel %s: channel already terminated", ch)
 		return
 	}
 

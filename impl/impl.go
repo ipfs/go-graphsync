@@ -397,7 +397,7 @@ func (m *manager) ResumeDataTransferChannel(ctx context.Context, chid datatransf
 
 	err := pausable.ResumeChannel(ctx, m.resumeMessage(chid), chid)
 	if err != nil {
-		log.Warnf("Error attempting to pause at transport level: %s", err.Error())
+		log.Warnf("Error attempting to resume at transport level: %s", err.Error())
 	}
 
 	return m.resume(chid)
