@@ -14,6 +14,10 @@ import (
 )
 
 const (
+	// ExtensionIncomingRequest1_1 is the identifier for data sent by the IncomingRequest hook
+	ExtensionIncomingRequest1_1 = graphsync.ExtensionName("fil/data-transfer/incoming-request/1.1")
+	// ExtensionOutgoingBlock1_1 is the identifier for data sent by the OutgoingBlock hook
+	ExtensionOutgoingBlock1_1 = graphsync.ExtensionName("fil/data-transfer/outgoing-block/1.1")
 	// ExtensionDataTransfer1_1 is the identifier for the current data transfer extension to graphsync
 	ExtensionDataTransfer1_1 = graphsync.ExtensionName("fil/data-transfer/1.1")
 	// ExtensionDataTransfer1_0 is the identifier for the legacy data transfer extension to graphsync
@@ -22,8 +26,10 @@ const (
 
 // ProtocolMap maps graphsync extensions to their libp2p protocols
 var ProtocolMap = map[graphsync.ExtensionName]protocol.ID{
-	ExtensionDataTransfer1_1: datatransfer.ProtocolDataTransfer1_1,
-	ExtensionDataTransfer1_0: datatransfer.ProtocolDataTransfer1_0,
+	ExtensionIncomingRequest1_1: datatransfer.ProtocolDataTransfer1_1,
+	ExtensionOutgoingBlock1_1:   datatransfer.ProtocolDataTransfer1_1,
+	ExtensionDataTransfer1_1:    datatransfer.ProtocolDataTransfer1_1,
+	ExtensionDataTransfer1_0:    datatransfer.ProtocolDataTransfer1_0,
 }
 
 // ToExtensionData converts a message to a graphsync extension
@@ -64,23 +70,22 @@ type GsExtended interface {
 //    * nil + nil if the extension is not found
 //    * nil + error if the extendedData fails to unmarshal
 //    * unmarshaled ExtensionDataTransferData + nil if all goes well
-func GetTransferData(extendedData GsExtended) (datatransfer.Message, error) {
-	extName := ExtensionDataTransfer1_1
-	data, ok := extendedData.Extension(extName)
-	if !ok {
-		extName = ExtensionDataTransfer1_0
-		data, ok = extendedData.Extension(extName)
-		if !ok {
-			return nil, nil
+func GetTransferData(extendedData GsExtended, extNames []graphsync.ExtensionName) (datatransfer.Message, error) {
+	for _, name := range extNames {
+		data, ok := extendedData.Extension(name)
+		if ok {
+			reader := bytes.NewReader(data)
+			return decoders[name](reader)
 		}
 	}
-	reader := bytes.NewReader(data)
-	return decoders[extName](reader)
+	return nil, nil
 }
 
 type decoder func(io.Reader) (datatransfer.Message, error)
 
 var decoders = map[graphsync.ExtensionName]decoder{
-	ExtensionDataTransfer1_1: message.FromNet,
-	ExtensionDataTransfer1_0: message1_0.FromNet,
+	ExtensionIncomingRequest1_1: message.FromNet,
+	ExtensionOutgoingBlock1_1:   message.FromNet,
+	ExtensionDataTransfer1_1:    message.FromNet,
+	ExtensionDataTransfer1_0:    message1_0.FromNet,
 }

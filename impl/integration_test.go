@@ -18,9 +18,12 @@ import (
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/storeutil"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
+	chunker "github.com/ipfs/go-ipfs-chunker"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	ipldformat "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-unixfs/importer/balanced"
+	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -983,14 +986,19 @@ type retrievalRevalidator struct {
 	providerPausePoint int
 	pausePoints        []uint64
 	finalVoucher       datatransfer.VoucherResult
+	revalVouchers      []datatransfer.VoucherResult
 }
 
 func (r *retrievalRevalidator) OnPullDataSent(chid datatransfer.ChannelID, additionalBytesSent uint64) (bool, datatransfer.VoucherResult, error) {
 	r.dataSoFar += additionalBytesSent
 	if r.providerPausePoint < len(r.pausePoints) &&
 		r.dataSoFar >= r.pausePoints[r.providerPausePoint] {
+		var v datatransfer.VoucherResult = testutil.NewFakeDTType()
+		if len(r.revalVouchers) > r.providerPausePoint {
+			v = r.revalVouchers[r.providerPausePoint]
+		}
 		r.providerPausePoint++
-		return true, testutil.NewFakeDTType(), datatransfer.ErrPause
+		return true, v, datatransfer.ErrPause
 	}
 	return true, nil, nil
 }
@@ -1098,7 +1106,7 @@ func TestSimulatedRetrievalFlow(t *testing.T) {
 			require.NoError(t, dt1.RegisterVoucherType(&testutil.FakeDTType{}, sv))
 
 			srv := &retrievalRevalidator{
-				testutil.NewStubbedRevalidator(), 0, 0, config.pausePoints, finalVoucherResult,
+				testutil.NewStubbedRevalidator(), 0, 0, config.pausePoints, finalVoucherResult, []datatransfer.VoucherResult{},
 			}
 			srv.ExpectSuccessErrResume()
 			require.NoError(t, dt1.RegisterRevalidator(testutil.NewFakeDTType(), srv))
@@ -1711,6 +1719,180 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 			data.test(t, gsData, tp2, link, id, gsr)
 		})
 	}
+}
+
+// Test the ability to attach data from multiple hooks in the same extension payload by using
+// different names
+func TestMultipleMessagesInExtension(t *testing.T) {
+	pausePoints := []uint64{1000, 3000, 6000, 10000, 15000}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	gsData := testutil.NewGraphsyncTestingData(ctx, t, nil, nil)
+	host1 := gsData.Host1 // initiator, data sender
+
+	root, origBytes := LoadRandomData(ctx, t, gsData.DagService1)
+	gsData.OrigBytes = origBytes
+	rootCid := root.(cidlink.Link).Cid
+	tp1 := gsData.SetupGSTransportHost1()
+	tp2 := gsData.SetupGSTransportHost2()
+
+	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+	require.NoError(t, err)
+	testutil.StartAndWaitForReady(ctx, t, dt1)
+
+	dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+	require.NoError(t, err)
+	testutil.StartAndWaitForReady(ctx, t, dt2)
+
+	var chid datatransfer.ChannelID
+	errChan := make(chan struct{}, 2)
+
+	clientPausePoint := 0
+
+	clientGotResponse := make(chan struct{}, 1)
+	clientFinished := make(chan struct{}, 1)
+
+	// In this retrieval flow we expect 2 voucher results:
+	// The first one is sent as a response from the initial request telling the client
+	// the provider has accepted the request and is starting to send blocks
+	respVoucher := testutil.NewFakeDTType()
+	encodedRVR, err := encoding.Encode(respVoucher)
+	require.NoError(t, err)
+
+	// voucher results are sent by the providers to request payment while pausing until a voucher is sent
+	// to revalidate
+	voucherResults := []datatransfer.VoucherResult{
+		&testutil.FakeDTType{Data: "one"},
+		&testutil.FakeDTType{Data: "two"},
+		&testutil.FakeDTType{Data: "thr"},
+		&testutil.FakeDTType{Data: "for"},
+		&testutil.FakeDTType{Data: "fiv"},
+	}
+
+	// The final voucher result is sent by the provider to request a last payment voucher
+	finalVoucherResult := testutil.NewFakeDTType()
+	encodedFVR, err := encoding.Encode(finalVoucherResult)
+	require.NoError(t, err)
+
+	dt2.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+		if event.Code == datatransfer.Error {
+			errChan <- struct{}{}
+		}
+		// Here we verify reception of voucherResults by the client
+		if event.Code == datatransfer.NewVoucherResult {
+			voucherResult := channelState.LastVoucherResult()
+			encodedVR, err := encoding.Encode(voucherResult)
+			require.NoError(t, err)
+
+			// If this voucher result is the response voucher no action is needed
+			// we just know that the provider has accepted the transfer and is sending blocks
+			if bytes.Equal(encodedVR, encodedRVR) {
+				// The test will fail if no response voucher is received
+				clientGotResponse <- struct{}{}
+			}
+
+			// If this voucher is a revalidation request we need to send a new voucher
+			// to revalidate and unpause the transfer
+			if clientPausePoint < 5 {
+				encodedExpected, err := encoding.Encode(voucherResults[clientPausePoint])
+				require.NoError(t, err)
+				if bytes.Equal(encodedVR, encodedExpected) {
+					_ = dt2.SendVoucher(ctx, chid, testutil.NewFakeDTType())
+					clientPausePoint++
+				}
+			}
+
+			// If this voucher result is the final voucher result we need
+			// to send a new voucher to unpause the provider and complete the transfer
+			if bytes.Equal(encodedVR, encodedFVR) {
+				_ = dt2.SendVoucher(ctx, chid, testutil.NewFakeDTType())
+			}
+		}
+
+		if channelState.Status() == datatransfer.Completed {
+			clientFinished <- struct{}{}
+		}
+	})
+
+	providerFinished := make(chan struct{}, 1)
+	dt1.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+		if event.Code == datatransfer.Error {
+			errChan <- struct{}{}
+		}
+		if channelState.Status() == datatransfer.Completed {
+			providerFinished <- struct{}{}
+		}
+	})
+
+	sv := testutil.NewStubbedValidator()
+	require.NoError(t, dt1.RegisterVoucherType(&testutil.FakeDTType{}, sv))
+	// Stub in the validator so it returns that exact voucher when calling ValidatePull
+	// this validator will not pause transfer when accepting a transfer and will start
+	// sending blocks immediately
+	sv.StubResult(respVoucher)
+
+	srv := &retrievalRevalidator{
+		testutil.NewStubbedRevalidator(), 0, 0, pausePoints, finalVoucherResult, voucherResults,
+	}
+	// The stubbed revalidator will authorize Revalidate and return ErrResume to finisht the transfer
+	srv.ExpectSuccessErrResume()
+	require.NoError(t, dt1.RegisterRevalidator(testutil.NewFakeDTType(), srv))
+
+	// Register our response voucher with the client
+	require.NoError(t, dt2.RegisterVoucherResultType(respVoucher))
+
+	voucher := testutil.FakeDTType{Data: "applesauce"}
+	chid, err = dt2.OpenPullDataChannel(ctx, host1.ID(), &voucher, rootCid, gsData.AllSelector)
+	require.NoError(t, err)
+
+	// Expect the client to receive a response voucher, the provider to complete the transfer and
+	// the client to finish the transfer
+	for clientGotResponse != nil || providerFinished != nil || clientFinished != nil {
+		select {
+		case <-ctx.Done():
+			t.Fatal("Did not complete successful data transfer")
+		case <-clientGotResponse:
+			clientGotResponse = nil
+		case <-providerFinished:
+			providerFinished = nil
+		case <-clientFinished:
+			clientFinished = nil
+		case <-errChan:
+			t.Fatal("received unexpected error")
+		}
+	}
+	sv.VerifyExpectations(t)
+	srv.VerifyExpectations(t)
+	gsData.VerifyFileTransferred(t, root, true)
+}
+
+func LoadRandomData(ctx context.Context, t *testing.T, dagService ipldformat.DAGService) (ipld.Link, []byte) {
+	data := make([]byte, 256000)
+	rand.New(rand.NewSource(time.Now().UnixNano())).Read(data)
+
+	// import to UnixFS
+	bufferedDS := ipldformat.NewBufferedDAG(ctx, dagService)
+
+	params := ihelper.DagBuilderParams{
+		Maxlinks:   1024,
+		RawLeaves:  true,
+		CidBuilder: nil,
+		Dagserv:    bufferedDS,
+	}
+
+	db, err := params.New(chunker.NewSizeSplitter(bytes.NewReader(data), int64(1<<10)))
+	require.NoError(t, err)
+
+	nd, err := balanced.Layout(db)
+	require.NoError(t, err)
+
+	err = bufferedDS.Commit()
+	require.NoError(t, err)
+
+	// save the original files bytes
+	return cidlink.Link{Cid: nd.Cid()}, data
 }
 
 type receivedMessage struct {
