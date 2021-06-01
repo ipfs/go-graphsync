@@ -731,7 +731,6 @@ func TestAutoRestart(t *testing.T) {
 				RestartDebounce:        500 * time.Millisecond,
 				RestartBackoff:         500 * time.Millisecond,
 				MaxConsecutiveRestarts: 10,
-				RestartAckTimeout:      100 * time.Millisecond,
 				CompleteTimeout:        100 * time.Millisecond,
 			})
 			initiator, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, initiatorGSTspt, restartConf)
