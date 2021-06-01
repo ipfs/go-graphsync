@@ -27,7 +27,6 @@ func TestChannelMonitorAutoRestart(t *testing.T) {
 		name              string
 		errReconnect      bool
 		errSendRestartMsg bool
-		timeoutRestartAck bool
 	}
 	testCases := []testCase{{
 		name: "attempt restart",
@@ -37,9 +36,6 @@ func TestChannelMonitorAutoRestart(t *testing.T) {
 	}, {
 		name:              "fail to send restart message",
 		errSendRestartMsg: true,
-	}, {
-		name:              "timeout waiting for restart message ack from peer",
-		timeoutRestartAck: true,
 	}}
 
 	runTest := func(name string, isPush bool) {
@@ -59,7 +55,6 @@ func TestChannelMonitorAutoRestart(t *testing.T) {
 				m := NewMonitor(mockAPI, &Config{
 					AcceptTimeout:          time.Hour,
 					MaxConsecutiveRestarts: 1,
-					RestartAckTimeout:      20 * time.Millisecond,
 					CompleteTimeout:        time.Hour,
 				})
 
@@ -95,16 +90,6 @@ func TestChannelMonitorAutoRestart(t *testing.T) {
 				// Verify that restart message is sent
 				err := mockAPI.awaitRestartSent()
 				require.NoError(t, err)
-
-				// If simulating a restart ack timeout, don't fire the restart
-				// ack event and expect the channel to be closed with an error
-				if tc.timeoutRestartAck {
-					mockAPI.verifyChannelClosed(t, true)
-					return
-				}
-
-				// Simulate receiving restart message ack from responder
-				mockAPI.restartEvent()
 
 				if isPush {
 					// Simulate sending the remaining data
@@ -145,7 +130,6 @@ func TestChannelMonitorMaxConsecutiveRestarts(t *testing.T) {
 			m := NewMonitor(mockAPI, &Config{
 				AcceptTimeout:          time.Hour,
 				MaxConsecutiveRestarts: uint32(maxConsecutiveRestarts),
-				RestartAckTimeout:      time.Hour,
 				CompleteTimeout:        time.Hour,
 			})
 
@@ -168,9 +152,6 @@ func TestChannelMonitorMaxConsecutiveRestarts(t *testing.T) {
 
 					err := mockAPI.awaitRestartSent()
 					require.NoError(t, err)
-
-					// Simulate receiving restart ack from peer
-					mockAPI.restartEvent()
 
 					err = awaitRestartComplete(mch)
 					require.NoError(t, err)
@@ -232,7 +213,6 @@ func TestChannelMonitorQueuedRestart(t *testing.T) {
 				AcceptTimeout:          time.Hour,
 				RestartDebounce:        10 * time.Millisecond,
 				MaxConsecutiveRestarts: 3,
-				RestartAckTimeout:      time.Hour,
 				CompleteTimeout:        time.Hour,
 			})
 
@@ -255,9 +235,6 @@ func TestChannelMonitorQueuedRestart(t *testing.T) {
 
 			// Trigger another error event before the restart has completed
 			triggerErrorEvent()
-
-			// Simulate receiving restart ack from peer (for first restart)
-			mockAPI.restartEvent()
 
 			// A second restart should be sent because of the second error
 			err = mockAPI.awaitRestartSent()
@@ -312,7 +289,6 @@ func TestChannelMonitorTimeouts(t *testing.T) {
 				m := NewMonitor(mockAPI, &Config{
 					AcceptTimeout:          acceptTimeout,
 					MaxConsecutiveRestarts: 1,
-					RestartAckTimeout:      time.Hour,
 					CompleteTimeout:        completeTimeout,
 				})
 
@@ -518,10 +494,6 @@ func (m *mockMonitorAPI) sendDataErrorEvent() {
 
 func (m *mockMonitorAPI) receiveDataErrorEvent() {
 	m.fireEvent(datatransfer.Event{Code: datatransfer.ReceiveDataError}, m.ch)
-}
-
-func (m *mockMonitorAPI) restartEvent() {
-	m.fireEvent(datatransfer.Event{Code: datatransfer.Restart}, m.ch)
 }
 
 type mockChannelState struct {

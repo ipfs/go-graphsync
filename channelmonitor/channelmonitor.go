@@ -46,9 +46,6 @@ type Config struct {
 	RestartBackoff time.Duration
 	// Number of times to try to restart before failing
 	MaxConsecutiveRestarts uint32
-	// Max time to wait for the peer to acknowledge a restart request.
-	// Note: Does not include the time taken to reconnect to the peer.
-	RestartAckTimeout time.Duration
 	// Max time to wait for the responder to send a Complete message once all
 	// data has been sent
 	CompleteTimeout time.Duration
@@ -79,9 +76,6 @@ func checkConfig(cfg *Config) {
 	}
 	if cfg.MaxConsecutiveRestarts == 0 {
 		panic(fmt.Sprintf(prefix+"MaxConsecutiveRestarts is %d but must be > 0", cfg.MaxConsecutiveRestarts))
-	}
-	if cfg.RestartAckTimeout <= 0 {
-		panic(fmt.Sprintf(prefix+"RestartAckTimeout is %s but must be > 0", cfg.RestartAckTimeout))
 	}
 	if cfg.CompleteTimeout <= 0 {
 		panic(fmt.Sprintf(prefix+"CompleteTimeout is %s but must be > 0", cfg.CompleteTimeout))
@@ -414,8 +408,7 @@ func (mc *monitoredChannel) doRestartChannel() error {
 	err := mc.sendRestartMessage(restartCount)
 	if err != nil {
 		log.Warnf("%s: restart failed, trying again: %s", mc.chid, err)
-		// If the restart message could not be sent, or there was a timeout
-		// waiting for the restart to be acknowledged, try again
+		// If the restart message could not be sent, try again
 		return mc.doRestartChannel()
 	}
 	log.Infof("%s: restart completed successfully", mc.chid)
@@ -438,24 +431,11 @@ func (mc *monitoredChannel) sendRestartMessage(restartCount int) error {
 	log.Infof("%s: re-established connection to %s in %s", mc.chid, p, time.Since(start))
 
 	// Send a restart message for the channel
-	restartResult := mc.waitForRestartResponse()
 	log.Infof("%s: sending restart message to %s (%d consecutive restarts)", mc.chid, p, restartCount)
 	err = mc.mgr.RestartDataTransferChannel(mc.ctx, mc.chid)
 	if err != nil {
 		return xerrors.Errorf("%s: failed to send restart message to %s: %w", mc.chid, p, err)
 	}
-
-	// The restart message is fire and forget, so we need to watch for a
-	// restart response to know that the restart message reached the peer.
-	select {
-	case <-mc.ctx.Done():
-		return nil // channel shutdown so just bail out
-	case err = <-restartResult:
-		if err != nil {
-			return xerrors.Errorf("%s: failed to send restart message to %s: %w", mc.chid, p, err)
-		}
-	}
-	log.Infof("%s: received restart response from %s", mc.chid, p)
 
 	// The restart message was sent successfully.
 	// If a restart backoff is configured, backoff after a restart before
@@ -489,48 +469,4 @@ func (mc *monitoredChannel) closeChannelAndShutdown(cherr error) {
 	if err != nil {
 		log.Errorf("error closing data-transfer channel %s: %s", mc.chid, err)
 	}
-}
-
-// Wait for the peer to send an acknowledgement to the restart request
-func (mc *monitoredChannel) waitForRestartResponse() chan error {
-	restartFired := make(chan struct{})
-	restarted := make(chan error, 1)
-	timer := time.NewTimer(mc.cfg.RestartAckTimeout)
-
-	unsub := mc.mgr.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-		if channelState.ChannelID() != mc.chid {
-			return
-		}
-
-		// The Restart event is fired when we receive an acknowledgement
-		// from the peer that it has received a restart request
-		if event.Code == datatransfer.Restart {
-			close(restartFired)
-		}
-	})
-
-	go func() {
-		defer unsub()
-		defer timer.Stop()
-
-		select {
-
-		// Restart ack received from peer
-		case <-restartFired:
-			restarted <- nil
-
-		// Channel monitor shutdown, just bail out
-		case <-mc.ctx.Done():
-			restarted <- nil
-
-		// Timer expired before receiving a restart ack from peer
-		case <-timer.C:
-			p := mc.chid.OtherParty(mc.mgr.PeerID())
-			err := xerrors.Errorf("did not receive response to restart request from %s after %s",
-				p, mc.cfg.RestartAckTimeout)
-			restarted <- err
-		}
-	}()
-
-	return restarted
 }
