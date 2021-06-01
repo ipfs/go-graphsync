@@ -250,9 +250,11 @@ func TestChannelMonitorQueuedRestart(t *testing.T) {
 
 func TestChannelMonitorTimeouts(t *testing.T) {
 	type testCase struct {
-		name           string
-		expectAccept   bool
-		expectComplete bool
+		name                    string
+		expectAccept            bool
+		expectComplete          bool
+		acceptTimeoutDisabled   bool
+		completeTimeoutDisabled bool
 	}
 	testCases := []testCase{{
 		name:           "accept in time",
@@ -262,6 +264,10 @@ func TestChannelMonitorTimeouts(t *testing.T) {
 		name:         "accept too late",
 		expectAccept: false,
 	}, {
+		name:                  "disable accept timeout",
+		acceptTimeoutDisabled: true,
+		expectAccept:          true,
+	}, {
 		name:           "complete in time",
 		expectAccept:   true,
 		expectComplete: true,
@@ -269,6 +275,11 @@ func TestChannelMonitorTimeouts(t *testing.T) {
 		name:           "complete too late",
 		expectAccept:   true,
 		expectComplete: false,
+	}, {
+		name:                    "disable complete timeout",
+		completeTimeoutDisabled: true,
+		expectAccept:            true,
+		expectComplete:          true,
 	}}
 
 	runTest := func(name string, isPush bool) {
@@ -286,6 +297,12 @@ func TestChannelMonitorTimeouts(t *testing.T) {
 
 				acceptTimeout := 10 * time.Millisecond
 				completeTimeout := 10 * time.Millisecond
+				if tc.acceptTimeoutDisabled {
+					acceptTimeout = 0
+				}
+				if tc.completeTimeoutDisabled {
+					completeTimeout = 0
+				}
 				m := NewMonitor(mockAPI, &Config{
 					AcceptTimeout:          acceptTimeout,
 					MaxConsecutiveRestarts: 1,
