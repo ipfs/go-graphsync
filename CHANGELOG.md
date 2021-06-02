@@ -1,5 +1,17 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.6.0
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix: option to disable accept and complete timeouts
+  - fix: disable restart ack timeout
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Dirk McCormick | 2 | +41/-105 | 5 |
+
 # go-data-transfer 1.5.0
 
 Support the data transfer being restarted.
