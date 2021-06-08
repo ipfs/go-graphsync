@@ -20,6 +20,39 @@ some significant breaking changes.
 | Hannah Howard | 2 | +3316/-3015 | 25 |
 | Steven Allen | 1 | +95/-227 | 5 |
 
+# go-graphsync 0.6.3
+
+- github.com/ipfs/go-graphsync:
+  - Fix/log blockstore reads (#169) ([ipfs/go-graphsync#169](https://github.com/ipfs/go-graphsync/pull/169))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 2 | +40/-177 | 6 |
+
+# go-graphsync 0.6.2
+
+- github.com/ipfs/go-graphsync:
+  - Better logging for Graphsync traversal (#167) ([ipfs/go-graphsync#167](https://github.com/ipfs/go-graphsync/pull/167))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 1 | +18/-2 | 2 |
+
+# go-graphsync 0.6.1
+
+- github.com/ipfs/go-graphsync:
+  - feat: fire network error when network disconnects during request (#164) ([ipfs/go-graphsync#164](https://github.com/ipfs/go-graphsync/pull/164))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 1 | +86/-8 | 4 |
+
 # go-graphsync 0.6.0
 
 Major code refactor for simplicity, ease of understanding

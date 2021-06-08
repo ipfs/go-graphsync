@@ -352,6 +352,42 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	require.NotEqual(t, len(errs), 0, "did not send errors")
 }
 
+func TestDisconnectNotification(t *testing.T) {
+	ctx := context.Background()
+	td := newTestData(ctx, t)
+	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	peers := testutil.GeneratePeers(2)
+
+	// Listen for network errors
+	networkErrors := make(chan peer.ID, 1)
+	td.networkErrorListeners.Register(func(p peer.ID, request graphsync.RequestData, err error) {
+		networkErrors <- p
+	})
+
+	// Send a request to the target peer
+	targetPeer := peers[0]
+	td.requestManager.SendRequest(requestCtx, targetPeer, td.blockChain.TipLink, td.blockChain.Selector())
+
+	// Disconnect a random peer, should not fire any events
+	randomPeer := peers[1]
+	td.requestManager.Disconnected(randomPeer)
+	select {
+	case <-networkErrors:
+		t.Fatal("should not fire network error when unrelated peer disconnects")
+		default:
+	}
+
+	// Disconnect the target peer, should fire a network error
+	td.requestManager.Disconnected(targetPeer)
+	select {
+	case p:= <-networkErrors:
+		require.Equal(t, p, targetPeer)
+	default:
+		t.Fatal("should fire network error when peer disconnects")
+	}
+}
+
 func TestEncodingExtensions(t *testing.T) {
 	ctx := context.Background()
 	td := newTestData(ctx, t)

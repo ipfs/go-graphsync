@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"io"
 
+	"github.com/ipfs/go-graphsync/ipldutil"
+	logging "github.com/ipfs/go-log/v2"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
-
-	"github.com/ipfs/go-graphsync/ipldutil"
 )
+
+var logger = logging.Logger("gs-traversal")
 
 // ResponseSender sends responses over the network
 type ResponseSender func(
@@ -22,15 +24,23 @@ func RunTraversal(
 	loader ipld.BlockReadOpener,
 	traverser ipldutil.Traverser,
 	sendResponse ResponseSender) error {
+
 	for {
 		isComplete, err := traverser.IsComplete()
 		if isComplete {
+			if err != nil {
+				logger.Errorf("traversal completion check failed, nBlocksRead=%d, err=%s", traverser.NBlocksTraversed(), err)
+			} else {
+				logger.Debugf("traversal completed successfully, nBlocksRead=%d", traverser.NBlocksTraversed())
+			}
 			return err
 		}
 		lnk, lnkCtx := traverser.CurrentRequest()
+		logger.Debugf("loading link %s", lnk)
 		result, err := loader(lnkCtx, lnk)
 		var data []byte
 		if err != nil {
+			logger.Errorf("failed to load link=%s, nBlocksRead=%d, err=%s", lnk, traverser.NBlocksTraversed(), err)
 			traverser.Error(traversal.SkipMe{})
 		} else {
 			blockBuffer, ok := result.(*bytes.Buffer)
@@ -39,14 +49,17 @@ func RunTraversal(
 				_, err = io.Copy(blockBuffer, result)
 			}
 			if err != nil {
+				logger.Errorf("failed to write to buffer, link=%s, nBlocksRead=%d, err=%s", lnk, traverser.NBlocksTraversed(), err)
 				traverser.Error(err)
 			} else {
 				data = blockBuffer.Bytes()
 				err = traverser.Advance(blockBuffer)
 				if err != nil {
+					logger.Errorf("failed to advance traversal, link=%s, nBlocksRead=%d, err=%s", lnk, traverser.NBlocksTraversed(), err)
 					return err
 				}
 			}
+			logger.Debugf("successfully loaded link=%s, nBlocksRead=%d", lnk, traverser.NBlocksTraversed())
 		}
 		err = sendResponse(lnk, data)
 		if err != nil {

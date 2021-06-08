@@ -45,6 +45,8 @@ type Traverser interface {
 	Error(err error)
 	// Shutdown cancels the traversal
 	Shutdown(ctx context.Context)
+	// NBlocksTraversed returns the number of blocks successfully traversed
+	NBlocksTraversed() int
 }
 
 type state struct {
@@ -64,6 +66,7 @@ type nextResponse struct {
 func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 	ctx, cancel := context.WithCancel(parentCtx)
 	t := &traverser{
+		blocksCount:  0,
 		parentCtx:    parentCtx,
 		ctx:          ctx,
 		cancel:       cancel,
@@ -100,6 +103,7 @@ func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 // traverser is a class to perform a selector traversal that stops every time a new block is loaded
 // and waits for manual input (in the form of advance or error)
 type traverser struct {
+	blocksCount    int
 	parentCtx      context.Context
 	ctx            context.Context
 	cancel         func()
@@ -130,6 +134,10 @@ func (t *traverser) loader(lnkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, e
 	case response := <-t.responses:
 		return response.input, response.err
 	}
+}
+
+func (t *traverser) NBlocksTraversed() int {
+	return t.blocksCount
 }
 
 func (t *traverser) checkState() {
@@ -218,16 +226,20 @@ func (t *traverser) Advance(reader io.Reader) error {
 	if isComplete {
 		return errors.New("cannot advance when done")
 	}
+
 	select {
 	case <-t.ctx.Done():
 		return ContextCancelError{}
 	case t.awaitRequest <- struct{}{}:
 	}
+
 	select {
 	case <-t.ctx.Done():
 		return ContextCancelError{}
 	case t.responses <- nextResponse{reader, nil}:
 	}
+
+	t.blocksCount++
 	return nil
 }
 
