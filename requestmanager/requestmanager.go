@@ -210,7 +210,10 @@ func (rm *RequestManager) listenForDisconnect(p peer.ID, onDisconnect func(neter
 // Disconnected is called when a peer disconnects
 func (rm *RequestManager) Disconnected(p peer.ID) {
 	// Notify any listeners that a peer has disconnected
-	rm.disconnectNotif.Publish(p)
+	err := rm.disconnectNotif.Publish(p)
+	if err != nil {
+		log.Errorf("publishing disconnect notification for peer %s: %s", p, err)
+	}
 }
 
 func (rm *RequestManager) emptyResponse() (chan graphsync.ResponseProgress, chan error) {
