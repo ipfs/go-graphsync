@@ -1,5 +1,24 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.6.1
+
+Remove performance bottleneck with CID lists.
+
+- github.com/filecoin-project/go-data-transfer:
+  - Remove CID lists (#217) ([filecoin-project/go-data-transfer#217](https://github.com/filecoin-project/go-data-transfer/pull/217))
+  - feat: use different extension names to fit multiple hooks data in same graphsync message (#204) ([filecoin-project/go-data-transfer#204](https://github.com/filecoin-project/go-data-transfer/pull/204))
+  - fix: map race in GS transport (#208) ([filecoin-project/go-data-transfer#208](https://github.com/filecoin-project/go-data-transfer/pull/208))
+  - refactor: simplify graphsync transport (#203) ([filecoin-project/go-data-transfer#203](https://github.com/filecoin-project/go-data-transfer/pull/203))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 5 | +1134/-707 | 24 |
+| tchardin | 1 | +261/-33 | 4 |
+| Dirk McCormick | 13 | +193/-2 | 13 |
+| hannahhoward | 1 | +17/-0 | 1 |
+
 # go-data-transfer 1.6.0
 
 - github.com/filecoin-project/go-data-transfer:
