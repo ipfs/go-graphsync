@@ -98,6 +98,7 @@ func TestRestartPush(t *testing.T) {
 			queued := make(chan uint64, totalIncrements*2)
 			sent := make(chan uint64, totalIncrements*2)
 			received := make(chan uint64, totalIncrements*2)
+			var receivedCids []cid.Cid
 			receivedTillNow := atomic.NewInt32(0)
 
 			// counters we will check at the end for correctness
@@ -106,6 +107,7 @@ func TestRestartPush(t *testing.T) {
 			var finishedPeers []peer.ID
 			disConnChan := make(chan struct{})
 
+			var chid datatransfer.ChannelID
 			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 				if event.Code == datatransfer.DataQueued {
 					if channelState.Queued() > 0 {
@@ -133,7 +135,18 @@ func TestRestartPush(t *testing.T) {
 				}
 				if channelState.Status() == datatransfer.Completed {
 					finishedPeersLk.Lock()
-					finishedPeers = append(finishedPeers, channelState.SelfPeer())
+					{
+						finishedPeers = append(finishedPeers, channelState.SelfPeer())
+
+						// When the receiving peer completes, record received CIDs
+						// before they get cleaned up
+						if channelState.SelfPeer() == rh.peer2 {
+							chs, err := rh.dt2.InProgressChannels(rh.testCtx)
+							require.NoError(t, err)
+							require.Len(t, chs, 1)
+							receivedCids = chs[chid].ReceivedCids()
+						}
+					}
 					finishedPeersLk.Unlock()
 					finished <- channelState.SelfPeer()
 				}
@@ -153,7 +166,7 @@ func TestRestartPush(t *testing.T) {
 			rh.dt2.SubscribeToEvents(subscriber)
 
 			// OPEN PUSH
-			chid := tc.openPushF(rh)
+			chid = tc.openPushF(rh)
 			// wait for disconnection to happen
 			<-disConnChan
 			t.Logf("peers unlinked and disconnected, total increments received till now: %d", receivedTillNow.Load())
@@ -205,15 +218,7 @@ func TestRestartPush(t *testing.T) {
 			require.NoError(t, err)
 
 			// verify all cids are present on the receiver
-			chs, err := rh.dt2.InProgressChannels(rh.testCtx)
-			require.NoError(t, err)
-			require.Len(t, chs, 1)
-			cids := chs[chid].ReceivedCids()
-			set := cid.NewSet()
-			for _, c := range cids {
-				set.Add(c)
-			}
-			require.Equal(t, totalIncrements, set.Len())
+			require.Equal(t, totalIncrements, len(receivedCids))
 
 			testutil.VerifyHasFile(rh.testCtx, t, rh.destDagService, rh.root, rh.origBytes)
 			rh.sv.VerifyExpectations(t)
@@ -304,6 +309,7 @@ func TestRestartPull(t *testing.T) {
 			sent := make(chan uint64, totalIncrements)
 			received := make(chan uint64, totalIncrements)
 			receivedTillNow := atomic.NewInt32(0)
+			var receivedCids []cid.Cid
 
 			// counters we will check at the end for correctness
 			opens := atomic.NewInt32(0)
@@ -311,6 +317,7 @@ func TestRestartPull(t *testing.T) {
 			var finishedPeers []peer.ID
 			disConnChan := make(chan struct{})
 
+			var chid datatransfer.ChannelID
 			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 				if event.Code == datatransfer.DataQueued {
 					if channelState.Queued() > 0 {
@@ -333,7 +340,18 @@ func TestRestartPull(t *testing.T) {
 
 				if channelState.Status() == datatransfer.Completed {
 					finishedPeersLk.Lock()
-					finishedPeers = append(finishedPeers, channelState.SelfPeer())
+					{
+						finishedPeers = append(finishedPeers, channelState.SelfPeer())
+
+						// When the receiving peer completes, record received CIDs
+						// before they get cleaned up
+						if channelState.SelfPeer() == rh.peer2 {
+							chs, err := rh.dt2.InProgressChannels(rh.testCtx)
+							require.NoError(t, err)
+							require.Len(t, chs, 1)
+							receivedCids = chs[chid].ReceivedCids()
+						}
+					}
 					finishedPeersLk.Unlock()
 					finished <- channelState.SelfPeer()
 				}
@@ -353,7 +371,7 @@ func TestRestartPull(t *testing.T) {
 			rh.dt2.SubscribeToEvents(subscriber)
 
 			// OPEN pull
-			chid := tc.openPullF(rh)
+			chid = tc.openPullF(rh)
 
 			// wait for disconnection to happen
 			select {
@@ -407,15 +425,7 @@ func TestRestartPull(t *testing.T) {
 			require.NoError(t, err)
 
 			// verify all cids are present on the receiver
-			chs, err := rh.dt2.InProgressChannels(rh.testCtx)
-			require.NoError(t, err)
-			require.Len(t, chs, 1)
-			cids := chs[chid].ReceivedCids()
-			set := cid.NewSet()
-			for _, c := range cids {
-				set.Add(c)
-			}
-			require.Equal(t, totalIncrements, set.Len())
+			require.Equal(t, totalIncrements, len(receivedCids))
 
 			testutil.VerifyHasFile(rh.testCtx, t, rh.destDagService, rh.root, rh.origBytes)
 			rh.sv.VerifyExpectations(t)

@@ -132,6 +132,9 @@ type ChannelState interface {
 	// ReceivedCids returns the cids received so far on the channel
 	ReceivedCids() []cid.Cid
 
+	// ReceivedCidsLen returns the number of cids received so far on the channel
+	ReceivedCidsLen() int
+
 	// Queued returns the number of bytes read from the node and queued for sending
 	Queued() uint64
 

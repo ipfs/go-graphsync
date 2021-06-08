@@ -28,7 +28,10 @@ import (
 
 type DecoderByTypeFunc func(identifier datatransfer.TypeIdentifier) (encoding.Decoder, bool)
 
-type ChannelCIDsReader func(chid datatransfer.ChannelID) ([]cid.Cid, error)
+type ReceivedCidsReader interface {
+	ToArray(chid datatransfer.ChannelID) ([]cid.Cid, error)
+	Len(chid datatransfer.ChannelID) (int, error)
+}
 
 type Notifier func(datatransfer.Event, datatransfer.ChannelState)
 
@@ -55,7 +58,6 @@ type Channels struct {
 	voucherResultDecoder DecoderByTypeFunc
 	stateMachines        fsm.Group
 	migrateStateMachines func(context.Context) error
-	cidLists             cidlists.CIDLists
 	seenCIDs             *cidsets.CIDSetManager
 }
 
@@ -78,7 +80,6 @@ func New(ds datastore.Batching,
 
 	seenCIDsDS := namespace.Wrap(ds, datastore.NewKey("seencids"))
 	c := &Channels{
-		cidLists:             cidLists,
 		seenCIDs:             cidsets.NewCIDSetManager(seenCIDsDS),
 		notifier:             notifier,
 		voucherDecoder:       voucherDecoder,
@@ -123,7 +124,7 @@ func (c *Channels) dispatch(eventName fsm.EventName, channel fsm.StateType) {
 		Timestamp: time.Now(),
 	}
 
-	c.notifier(evt, fromInternalChannelState(realChannel, c.voucherDecoder, c.voucherResultDecoder, c.cidLists.ReadList))
+	c.notifier(evt, c.fromInternalChannelState(realChannel))
 
 	// When the channel has been cleaned up, remove the caches of seen cids
 	if evt.Code == datatransfer.CleanupComplete {
@@ -180,10 +181,6 @@ func (c *Channels) CreateNew(selfPeer peer.ID, tid datatransfer.TransferID, base
 	if err != nil {
 		return datatransfer.ChannelID{}, err
 	}
-	err = c.cidLists.CreateList(chid, nil)
-	if err != nil {
-		return datatransfer.ChannelID{}, err
-	}
 	return chid, c.stateMachines.Send(chid, datatransfer.Open)
 }
 
@@ -197,7 +194,7 @@ func (c *Channels) InProgress() (map[datatransfer.ChannelID]datatransfer.Channel
 	channels := make(map[datatransfer.ChannelID]datatransfer.ChannelState, len(internalChannels))
 	for _, internalChannel := range internalChannels {
 		channels[datatransfer.ChannelID{ID: internalChannel.TransferID, Responder: internalChannel.Responder, Initiator: internalChannel.Initiator}] =
-			fromInternalChannelState(internalChannel, c.voucherDecoder, c.voucherResultDecoder, c.cidLists.ReadList)
+			c.fromInternalChannelState(internalChannel)
 	}
 	return channels, nil
 }
@@ -210,7 +207,7 @@ func (c *Channels) GetByID(ctx context.Context, chid datatransfer.ChannelID) (da
 	if err != nil {
 		return nil, NewErrNotFound(chid)
 	}
-	return fromInternalChannelState(internalChannel, c.voucherDecoder, c.voucherResultDecoder, c.cidLists.ReadList), nil
+	return c.fromInternalChannelState(internalChannel), nil
 }
 
 // Accept marks a data transfer as accepted
@@ -239,11 +236,6 @@ func (c *Channels) DataQueued(chid datatransfer.ChannelID, k cid.Cid, delta uint
 
 // Returns true if this is the first time the block has been received
 func (c *Channels) DataReceived(chid datatransfer.ChannelID, k cid.Cid, delta uint64) (bool, error) {
-	err := c.cidLists.AppendList(chid, k)
-	if err != nil {
-		return false, err
-	}
-
 	return c.fireProgressEvent(chid, datatransfer.DataReceived, datatransfer.DataReceivedProgress, k, delta)
 }
 
@@ -361,12 +353,12 @@ func (c *Channels) HasChannel(chid datatransfer.ChannelID) (bool, error) {
 // blocks that have already been queued / sent / received
 func (c *Channels) removeSeenCIDCaches(chid datatransfer.ChannelID) error {
 	progressStates := []datatransfer.EventCode{
-		datatransfer.DataQueuedProgress,
-		datatransfer.DataSentProgress,
-		datatransfer.DataReceivedProgress,
+		datatransfer.DataQueued,
+		datatransfer.DataSent,
+		datatransfer.DataReceived,
 	}
 	for _, evt := range progressStates {
-		sid := cidsets.SetID(chid.String() + "/" + datatransfer.Events[evt])
+		sid := seenCidsSetID(chid, evt)
 		err := c.seenCIDs.DeleteSet(sid)
 		if err != nil {
 			return err
@@ -388,7 +380,7 @@ func (c *Channels) fireProgressEvent(chid datatransfer.ChannelID, evt datatransf
 	}
 
 	// Check if the block has already been seen
-	sid := cidsets.SetID(chid.String() + "/" + datatransfer.Events[evt])
+	sid := seenCidsSetID(chid, evt)
 	seen, err := c.seenCIDs.InsertSetCID(sid, k)
 	if err != nil {
 		return false, err
@@ -424,3 +416,40 @@ func (c *Channels) checkChannelExists(chid datatransfer.ChannelID, code datatran
 	}
 	return nil
 }
+
+// Get the ID of the CID set for the given channel ID and event code.
+// The CID set stores a unique list of queued / sent / received CIDs.
+func seenCidsSetID(chid datatransfer.ChannelID, evt datatransfer.EventCode) cidsets.SetID {
+	return cidsets.SetID(chid.String() + "/" + datatransfer.Events[evt])
+}
+
+// Convert from the internally used channel state format to the externally exposed ChannelState
+func (c *Channels) fromInternalChannelState(ch internal.ChannelState) datatransfer.ChannelState {
+	rcr := &receivedCidsReader{
+		seenCIDs: c.seenCIDs,
+	}
+	return fromInternalChannelState(ch, c.voucherDecoder, c.voucherResultDecoder, rcr)
+}
+
+// Implements the ReceivedCidsReader interface so that the internal channel
+// state has access to the received CIDs.
+// The interface is used (instead of passing these values directly)
+// so the values can be loaded lazily. Reading all CIDs from the datastore
+// is an expensive operation so we want to avoid doing it unless necessary.
+// Note that the received CIDs get cleaned up when the channel completes, so
+// these methods will return an empty array after that point.
+type receivedCidsReader struct {
+	seenCIDs *cidsets.CIDSetManager
+}
+
+func (r *receivedCidsReader) ToArray(chid datatransfer.ChannelID) ([]cid.Cid, error) {
+	sid := seenCidsSetID(chid, datatransfer.DataReceived)
+	return r.seenCIDs.SetToArray(sid)
+}
+
+func (r *receivedCidsReader) Len(chid datatransfer.ChannelID) (int, error) {
+	sid := seenCidsSetID(chid, datatransfer.DataReceived)
+	return r.seenCIDs.SetLen(sid)
+}
+
+var _ ReceivedCidsReader = (*receivedCidsReader)(nil)

@@ -12,6 +12,7 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 )
 
+// Deprecated: CIDLists have now been replaced by CID sets (see cidsets directory).
 // CIDLists maintains files that contain a list of CIDs received for different data transfers
 type CIDLists interface {
 	CreateList(chid datatransfer.ChannelID, initalCids []cid.Cid) error

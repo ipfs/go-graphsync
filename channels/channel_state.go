@@ -48,7 +48,7 @@ type channelState struct {
 	voucherResults       []internal.EncodedVoucherResult
 	voucherResultDecoder DecoderByTypeFunc
 	voucherDecoder       DecoderByTypeFunc
-	channelCIDsReader    ChannelCIDsReader
+	receivedCids         ReceivedCidsReader
 
 	// stages tracks the timeline of events related to a data transfer, for
 	// traceability purposes.
@@ -100,11 +100,20 @@ func (c channelState) Voucher() datatransfer.Voucher {
 
 // ReceivedCids returns the cids received so far on this channel
 func (c channelState) ReceivedCids() []cid.Cid {
-	receivedCids, err := c.channelCIDsReader(c.ChannelID())
+	receivedCids, err := c.receivedCids.ToArray(c.ChannelID())
 	if err != nil {
 		log.Error(err)
 	}
 	return receivedCids
+}
+
+// ReceivedCids returns the number of cids received so far on this channel
+func (c channelState) ReceivedCidsLen() int {
+	len, err := c.receivedCids.Len(c.ChannelID())
+	if err != nil {
+		log.Error(err)
+	}
+	return len
 }
 
 // Sender returns the peer id for the node that is sending data
@@ -190,7 +199,7 @@ func (c channelState) Stages() *datatransfer.ChannelStages {
 	return c.stages
 }
 
-func fromInternalChannelState(c internal.ChannelState, voucherDecoder DecoderByTypeFunc, voucherResultDecoder DecoderByTypeFunc, channelCIDsReader ChannelCIDsReader) datatransfer.ChannelState {
+func fromInternalChannelState(c internal.ChannelState, voucherDecoder DecoderByTypeFunc, voucherResultDecoder DecoderByTypeFunc, receivedCidsReader ReceivedCidsReader) datatransfer.ChannelState {
 	return channelState{
 		selfPeer:             c.SelfPeer,
 		isPull:               c.Initiator == c.Recipient,
@@ -209,7 +218,7 @@ func fromInternalChannelState(c internal.ChannelState, voucherDecoder DecoderByT
 		voucherResults:       c.VoucherResults,
 		voucherResultDecoder: voucherResultDecoder,
 		voucherDecoder:       voucherDecoder,
-		channelCIDsReader:    channelCIDsReader,
+		receivedCids:         receivedCidsReader,
 		stages:               c.Stages,
 	}
 }

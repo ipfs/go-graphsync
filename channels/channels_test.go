@@ -179,7 +179,7 @@ func TestChannels(t *testing.T) {
 		state = checkEvent(ctx, t, received, datatransfer.DataReceived)
 		require.Equal(t, uint64(100), state.Received())
 		require.Equal(t, uint64(100), state.Sent())
-		require.Equal(t, []cid.Cid{cids[0], cids[1]}, state.ReceivedCids())
+		require.ElementsMatch(t, []cid.Cid{cids[0], cids[1]}, state.ReceivedCids())
 
 		isNew, err = channelList.DataSent(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[1], 25)
 		require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestChannels(t *testing.T) {
 		state = checkEvent(ctx, t, received, datatransfer.DataSent)
 		require.Equal(t, uint64(100), state.Received())
 		require.Equal(t, uint64(100), state.Sent())
-		require.Equal(t, []cid.Cid{cids[0], cids[1]}, state.ReceivedCids())
+		require.ElementsMatch(t, []cid.Cid{cids[0], cids[1]}, state.ReceivedCids())
 
 		isNew, err = channelList.DataReceived(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[0], 50)
 		require.NoError(t, err)
@@ -195,7 +195,7 @@ func TestChannels(t *testing.T) {
 		state = checkEvent(ctx, t, received, datatransfer.DataReceived)
 		require.Equal(t, uint64(100), state.Received())
 		require.Equal(t, uint64(100), state.Sent())
-		require.Equal(t, []cid.Cid{cids[0], cids[1], cids[0]}, state.ReceivedCids())
+		require.ElementsMatch(t, []cid.Cid{cids[0], cids[1]}, state.ReceivedCids())
 	})
 
 	t.Run("pause/resume", func(t *testing.T) {
@@ -613,7 +613,10 @@ func TestMigrationsV1(t *testing.T) {
 		require.Equal(t, messages[i], channel.Message())
 		require.Equal(t, vouchers[i], channel.LastVoucher())
 		require.Equal(t, voucherResults[i], channel.LastVoucherResult())
-		require.Equal(t, receivedCids[i], channel.ReceivedCids())
+		// No longer relying on this migration to migrate CID lists as they
+		// have been deprecated since we moved to CID sets:
+		// https://github.com/filecoin-project/go-data-transfer/pull/217
+		//require.Equal(t, receivedCids[i], channel.ReceivedCids())
 	}
 }
 
