@@ -1,5 +1,9 @@
 # go-graphsync changelog
 
+# go-graphsync 0.6.4
+- github.com/ipfs/go-graphsync:
+  - feat/request-queued-hook (#172) ([ipfs/go-graphsync#172](https://github.com/ipfs/go-graphsync/pull/172))
+
 # go-graphsync 0.6.3
 
 - github.com/ipfs/go-graphsync:
