@@ -304,6 +304,7 @@ func TestManager(t *testing.T) {
 				require.NoError(t, gsData.outgoingBlockHookActions.TerminationError)
 			},
 		},
+
 		"incoming gs request with recognized dt response will record outgoing blocks": {
 			requestConfig: gsRequestConfig{
 				dtIsResponse: true,
@@ -485,6 +486,7 @@ func TestManager(t *testing.T) {
 				require.True(t, events.ChannelCompletedSuccess)
 			},
 		},
+
 		"recognized incoming request will record unsuccessful request completion": {
 			responseConfig: gsResponseConfig{
 				status: graphsync.RequestCompletedPartial,
@@ -586,6 +588,35 @@ func TestManager(t *testing.T) {
 				gsData.fgs.AssertNoPauseResponseReceived(t)
 			},
 		},
+
+		"incoming request can be queued": {
+			action: func(gsData *harness) {
+				gsData.incomingRequestQueuedHook()
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				require.True(t, events.TransferQueuedCalled)
+				require.Equal(t, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other},
+					events.TransferQueuedChannelID)
+			},
+		},
+
+		"incoming request with dtResponse can be queued": {
+			requestConfig: gsRequestConfig{
+				dtIsResponse: true,
+			},
+			responseConfig: gsResponseConfig{
+				dtIsResponse: true,
+			},
+			action: func(gsData *harness) {
+				gsData.incomingRequestQueuedHook()
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				require.True(t, events.TransferQueuedCalled)
+				require.Equal(t, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
+					events.TransferQueuedChannelID)
+			},
+		},
+
 		"recognized incoming request can be resumed": {
 			action: func(gsData *harness) {
 				gsData.incomingRequestHook()
@@ -600,6 +631,7 @@ func TestManager(t *testing.T) {
 				gsData.fgs.AssertResumeResponseReceived(gsData.ctx, t)
 			},
 		},
+
 		"unrecognized request cannot be resumed": {
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				err := gsData.transport.ResumeChannel(gsData.ctx,
@@ -1018,6 +1050,9 @@ type fakeEvents struct {
 	OnReceiveDataErrorCalled    bool
 	OnReceiveDataErrorChannelID datatransfer.ChannelID
 
+	TransferQueuedCalled    bool
+	TransferQueuedChannelID datatransfer.ChannelID
+
 	ChannelCompletedSuccess  bool
 	RequestReceivedRequest   datatransfer.Request
 	RequestReceivedResponse  datatransfer.Response
@@ -1035,6 +1070,11 @@ func (fe *fakeEvents) OnRequestTimedOut(chid datatransfer.ChannelID, err error) 
 	fe.OnRequestTimedOutChannelId = chid
 
 	return nil
+}
+
+func (fe *fakeEvents) OnTransferQueued(chid datatransfer.ChannelID) {
+	fe.TransferQueuedCalled = true
+	fe.TransferQueuedChannelID = chid
 }
 
 func (fe *fakeEvents) OnRequestDisconnected(chid datatransfer.ChannelID, err error) error {
@@ -1129,6 +1169,11 @@ func (ha *harness) outgoingBlockHook() {
 func (ha *harness) incomingRequestHook() {
 	ha.fgs.IncomingRequestHook(ha.other, ha.request, ha.incomingRequestHookActions)
 }
+
+func (ha *harness) incomingRequestQueuedHook() {
+	ha.fgs.IncomingRequestQueuedHook(ha.other, ha.request)
+}
+
 func (ha *harness) requestUpdatedHook() {
 	ha.fgs.RequestUpdatedHook(ha.other, ha.request, ha.updatedRequest, ha.requestUpdatedHookActions)
 }

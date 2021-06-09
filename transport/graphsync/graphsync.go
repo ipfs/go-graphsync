@@ -285,6 +285,7 @@ func (t *Transport) SetEventHandler(events datatransfer.EventsHandler) error {
 	}
 	t.events = events
 
+	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterIncomingRequestQueuedHook(t.gsReqQueuedHook))
 	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterIncomingRequestHook(t.gsReqRecdHook))
 	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterCompletedResponseListener(t.gsCompletedResponseListener))
 	t.unregisterFuncs = append(t.unregisterFuncs, t.gs.RegisterIncomingBlockHook(t.gsIncomingBlockHook))
@@ -444,6 +445,40 @@ func (t *Transport) gsOutgoingBlockHook(p peer.ID, request graphsync.RequestData
 		}
 		for _, extension := range extensions {
 			hookActions.SendExtensionData(extension)
+		}
+	}
+}
+
+// gsReqQueuedHook is called when graphsync enqueues an incoming request for data
+func (t *Transport) gsReqQueuedHook(p peer.ID, request graphsync.RequestData) {
+	msg, err := extension.GetTransferData(request, t.supportedExtensions)
+	if err != nil {
+		log.Errorf("failed GetTransferData, req=%+v, err=%s", request, err)
+	}
+	// extension not found; probably not our request.
+	if msg == nil {
+		return
+	}
+
+	var chid datatransfer.ChannelID
+	if msg.IsRequest() {
+		// when a data transfer request comes in on graphsync, the remote peer
+		// initiated a pull
+		chid = datatransfer.ChannelID{ID: msg.TransferID(), Initiator: p, Responder: t.peerID}
+		request := msg.(datatransfer.Request)
+		if request.IsNew() {
+			log.Infof("%s, pull request queued, req=%+v", chid, request)
+			t.events.OnTransferQueued(chid)
+		}
+	} else {
+		// when a data transfer response comes in on graphsync, this node
+		// initiated a push, and the remote peer responded with a request
+		// for data
+		chid = datatransfer.ChannelID{ID: msg.TransferID(), Initiator: t.peerID, Responder: p}
+		response := msg.(datatransfer.Response)
+		if response.IsNew() {
+			log.Infof("%s, GS pull request queued in response to our push, req=%+v", chid, request)
+			t.events.OnTransferQueued(chid)
 		}
 	}
 }

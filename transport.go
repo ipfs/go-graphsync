@@ -39,6 +39,9 @@ type EventsHandler interface {
 	// OnDataSent is called when we send data for the given channel ID
 	OnDataSent(chid ChannelID, link ipld.Link, size uint64) error
 
+	// OnTransferQueued is called when a new data transfer request is queued in the transport layer.
+	OnTransferQueued(chid ChannelID)
+
 	// OnRequestReceived is called when we receive a new request to send data
 	// for the given channel ID
 	// return values are:

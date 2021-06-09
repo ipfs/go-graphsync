@@ -127,6 +127,17 @@ func TestChannels(t *testing.T) {
 		require.True(t, xerrors.As(err, new(*channels.ErrNotFound)))
 	})
 
+	t.Run("transfer queued", func(t *testing.T) {
+		state, err := channelList.GetByID(ctx, datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1})
+		require.NoError(t, err)
+		require.Equal(t, state.Status(), datatransfer.Ongoing)
+
+		err = channelList.TransferRequestQueued(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1})
+		require.NoError(t, err)
+		state = checkEvent(ctx, t, received, datatransfer.TransferRequestQueued)
+		require.Equal(t, state.Status(), datatransfer.Ongoing)
+	})
+
 	t.Run("updating send/receive values", func(t *testing.T) {
 		ds := dss.MutexWrap(datastore.NewMapDatastore())
 		dir := os.TempDir()

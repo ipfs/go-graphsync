@@ -160,6 +160,10 @@ func (m *manager) OnRequestReceived(chid datatransfer.ChannelID, request datatra
 	return nil, nil
 }
 
+func (m *manager) OnTransferQueued(chid datatransfer.ChannelID) {
+	m.channels.TransferRequestQueued(chid)
+}
+
 func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response datatransfer.Response) error {
 	if response.IsCancel() {
 		log.Infof("channel %s: received cancel response, cancelling channel", chid)
