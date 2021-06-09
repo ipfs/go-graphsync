@@ -247,6 +247,10 @@ type RequestUpdatedHookActions interface {
 	UnpauseResponse()
 }
 
+// OnIncomingRequestQueuedHook is a hook that runs each time a new incoming request is added to the responder's task queue.
+// It receives the peer that sent the request and all data about the request.
+type OnIncomingRequestQueuedHook func(p peer.ID, request RequestData)
+
 // OnIncomingRequestHook is a hook that runs each time a new request is received.
 // It receives the peer that sent the request and all data about the request.
 // It receives an interface for customizing the response to this request
@@ -311,6 +315,9 @@ type GraphExchange interface {
 
 	// UnregisterPersistenceOption unregisters an alternate loader/storer combo
 	UnregisterPersistenceOption(name string) error
+
+	// RegisterIncomingRequestQueuedHook adds a hook that runs when a new incoming request is added to the responder's task queue.
+	RegisterIncomingRequestQueuedHook(hook OnIncomingRequestQueuedHook) UnregisterHookFunc
 
 	// RegisterIncomingRequestHook adds a hook that runs when a request is received
 	RegisterIncomingRequestHook(hook OnIncomingRequestHook) UnregisterHookFunc
