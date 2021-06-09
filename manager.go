@@ -14,6 +14,7 @@ type RequestValidator interface {
 	// ValidatePush validates a push request received from the peer that will send data
 	ValidatePush(
 		isRestart bool,
+		chid ChannelID,
 		sender peer.ID,
 		voucher Voucher,
 		baseCid cid.Cid,
@@ -21,6 +22,7 @@ type RequestValidator interface {
 	// ValidatePull validates a pull request received from the peer that will receive data
 	ValidatePull(
 		isRestart bool,
+		chid ChannelID,
 		receiver peer.ID,
 		voucher Voucher,
 		baseCid cid.Cid,

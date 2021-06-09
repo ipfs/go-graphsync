@@ -131,7 +131,7 @@ func (m *manager) OnRequestReceived(chid datatransfer.ChannelID, request datatra
 	}
 
 	if request.IsNew() {
-		return m.receiveNewRequest(chid.Initiator, request)
+		return m.receiveNewRequest(chid, request)
 	}
 	if request.IsCancel() {
 		log.Infof("channel %s: received cancel request, cleaning up channel", chid)
@@ -292,12 +292,10 @@ func (m *manager) receiveRestartRequest(chid datatransfer.ChannelID, incoming da
 	return msg, err
 }
 
-func (m *manager) receiveNewRequest(
-	initiator peer.ID,
-	incoming datatransfer.Request) (datatransfer.Response, error) {
-	log.Infof("received new channel request from %s", initiator)
+func (m *manager) receiveNewRequest(chid datatransfer.ChannelID, incoming datatransfer.Request) (datatransfer.Response, error) {
+	log.Infof("channel %s: received new channel request from %s", chid, chid.Initiator)
 
-	result, err := m.acceptRequest(initiator, incoming)
+	result, err := m.acceptRequest(chid, incoming)
 	msg, msgErr := m.response(false, true, err, incoming.TransferID(), result)
 	if msgErr != nil {
 		return nil, msgErr
@@ -322,7 +320,7 @@ func (m *manager) restartRequest(chid datatransfer.ChannelID,
 		return nil, err
 	}
 
-	voucher, result, err := m.validateVoucher(true, initiator, incoming, incoming.IsPull(), incoming.BaseCid(), stor)
+	voucher, result, err := m.validateVoucher(true, chid, initiator, incoming, incoming.IsPull(), incoming.BaseCid(), stor)
 	if err != nil && err != datatransfer.ErrPause {
 		return result, xerrors.Errorf("failed to validate voucher: %w", err)
 	}
@@ -352,16 +350,14 @@ func (m *manager) restartRequest(chid datatransfer.ChannelID,
 	return result, voucherErr
 }
 
-func (m *manager) acceptRequest(
-	initiator peer.ID,
-	incoming datatransfer.Request) (datatransfer.VoucherResult, error) {
+func (m *manager) acceptRequest(chid datatransfer.ChannelID, incoming datatransfer.Request) (datatransfer.VoucherResult, error) {
 
 	stor, err := incoming.Selector()
 	if err != nil {
 		return nil, err
 	}
 
-	voucher, result, err := m.validateVoucher(false, initiator, incoming, incoming.IsPull(), incoming.BaseCid(), stor)
+	voucher, result, err := m.validateVoucher(false, chid, chid.Initiator, incoming, incoming.IsPull(), incoming.BaseCid(), stor)
 	if err != nil && err != datatransfer.ErrPause {
 		return result, err
 	}
@@ -370,13 +366,13 @@ func (m *manager) acceptRequest(
 	var dataSender, dataReceiver peer.ID
 	if incoming.IsPull() {
 		dataSender = m.peerID
-		dataReceiver = initiator
+		dataReceiver = chid.Initiator
 	} else {
-		dataSender = initiator
+		dataSender = chid.Initiator
 		dataReceiver = m.peerID
 	}
 
-	chid, err := m.channels.CreateNew(m.peerID, incoming.TransferID(), incoming.BaseCid(), stor, voucher, initiator, dataSender, dataReceiver)
+	_, err = m.channels.CreateNew(m.peerID, incoming.TransferID(), incoming.BaseCid(), stor, voucher, chid.Initiator, dataSender, dataReceiver)
 	if err != nil {
 		return result, err
 	}
@@ -394,7 +390,7 @@ func (m *manager) acceptRequest(
 		transportConfigurer := processor.(datatransfer.TransportConfigurer)
 		transportConfigurer(chid, voucher, m.transport)
 	}
-	m.dataTransferNetwork.Protect(initiator, chid.String())
+	m.dataTransferNetwork.Protect(chid.Initiator, chid.String())
 	if voucherErr == datatransfer.ErrPause {
 		err := m.channels.PauseResponder(chid)
 		if err != nil {
@@ -412,6 +408,7 @@ func (m *manager) acceptRequest(
 //   * validation fails
 func (m *manager) validateVoucher(
 	isRestart bool,
+	chid datatransfer.ChannelID,
 	sender peer.ID,
 	incoming datatransfer.Request,
 	isPull bool,
@@ -422,7 +419,7 @@ func (m *manager) validateVoucher(
 	if err != nil {
 		return nil, nil, err
 	}
-	var validatorFunc func(bool, peer.ID, datatransfer.Voucher, cid.Cid, ipld.Node) (datatransfer.VoucherResult, error)
+	var validatorFunc func(bool, datatransfer.ChannelID, peer.ID, datatransfer.Voucher, cid.Cid, ipld.Node) (datatransfer.VoucherResult, error)
 	processor, _ := m.validatedTypes.Processor(vouch.Type())
 	validator := processor.(datatransfer.RequestValidator)
 	if isPull {
@@ -431,7 +428,7 @@ func (m *manager) validateVoucher(
 		validatorFunc = validator.ValidatePush
 	}
 
-	result, err := validatorFunc(isRestart, sender, vouch, baseCid, stor)
+	result, err := validatorFunc(isRestart, chid, sender, vouch, baseCid, stor)
 	return vouch, result, err
 }
 

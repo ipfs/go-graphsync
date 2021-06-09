@@ -73,7 +73,7 @@ func (m *manager) validateRestartVoucher(channel datatransfer.ChannelState, isPu
 	}
 
 	// revalidate the voucher by reconstructing the request that would have led to the creation of this channel
-	if _, _, err := m.validateVoucher(true, channel.OtherPeer(), req, isPull, channel.BaseCID(), channel.Selector()); err != nil {
+	if _, _, err := m.validateVoucher(true, chid, channel.OtherPeer(), req, isPull, channel.BaseCID(), channel.Selector()); err != nil {
 		return err
 	}
 
