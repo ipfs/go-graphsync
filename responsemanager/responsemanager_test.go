@@ -37,6 +37,19 @@ func TestIncomingQuery(t *testing.T) {
 	blks := td.blockChain.AllBlocks()
 
 	responseManager := td.newResponseManager()
+
+	type queuedHook struct {
+		p       peer.ID
+		request graphsync.RequestData
+	}
+
+	qhc := make(chan *queuedHook, 1)
+	td.requestQueuedHooks.Register(func(p peer.ID, request graphsync.RequestData) {
+		qhc <- &queuedHook{
+			p:       p,
+			request: request,
+		}
+	})
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 
@@ -45,6 +58,11 @@ func TestIncomingQuery(t *testing.T) {
 	for i := 0; i < len(blks); i++ {
 		td.assertSendBlock()
 	}
+
+	// ensure request queued hook fires.
+	out := <-qhc
+	require.Equal(t, td.p, out.p)
+	require.Equal(t, out.request.ID(), td.requestID)
 }
 
 func TestCancellationQueryInProgress(t *testing.T) {
