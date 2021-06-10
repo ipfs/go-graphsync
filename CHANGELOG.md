@@ -1,5 +1,25 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.7.0
+
+Fire transfer queued event when transfer is queued in graphsync
+
+- github.com/filecoin-project/go-data-transfer:
+  - Fire a transfer queued event when a transfer is queued in Graphsync (#221) ([filecoin-project/go-data-transfer#221](https://github.com/filecoin-project/go-data-transfer/pull/221))
+  - feat: pass ChannelID to ValidatePush & ValidatePull (#220) ([filecoin-project/go-data-transfer#220](https://github.com/filecoin-project/go-data-transfer/pull/220))
+- github.com/ipfs/go-graphsync (v0.6.1 -> v0.6.4):
+  - Request Queued hook ([ipfs/go-graphsync#172](https://github.com/ipfs/go-graphsync/pull/172))
+  - Fix/log blockstore reads (#169) ([ipfs/go-graphsync#169](https://github.com/ipfs/go-graphsync/pull/169))
+  - Better logging for Graphsync traversal (#167) ([ipfs/go-graphsync#167](https://github.com/ipfs/go-graphsync/pull/167))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 3 | +165/-180 | 17 |
+| aarshkshah1992 | 3 | +87/-3 | 7 |
+| dirkmc | 3 | +41/-18 | 6 |
+
 # go-data-transfer 1.6.1
 
 Remove performance bottleneck with CID lists.
