@@ -114,7 +114,7 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	p peer.ID,
 	request gsmsg.GraphSyncRequest, signals signals, sub *notifications.TopicDataSubscriber) (ipld.Loader, ipldutil.Traverser, bool, error) {
-	log.Infof("Processing request hooks for request: %d", request.ID)
+	log.Infof("Processing request hooks for request: %d", request.ID())
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
 	var transactionError error
 	var isPaused bool
