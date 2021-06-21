@@ -442,21 +442,33 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			completedListeners:    rm.completedListeners,
 			networkErrorListeners: rm.networkErrorListeners,
 		})
+		signals := signals{
+			pauseSignal:  make(chan struct{}, 1),
+			updateSignal: make(chan struct{}, 1),
+			errSignal:    make(chan error, 1),
+		}
+		loader, traverser, isPaused, err := (&queryPreparer{rm.qe.requestHooks, rm.responseAssembler, rm.qe.loader}).prepareQuery(ctx, key.p, request, signals, sub)
+		if err != nil {
+			cancelFn()
+			return
+		}
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
 				ctx:        ctx,
 				cancelFn:   cancelFn,
 				subscriber: sub,
 				request:    request,
-				signals: signals{
-					pauseSignal:  make(chan struct{}, 1),
-					updateSignal: make(chan struct{}, 1),
-					errSignal:    make(chan error, 1),
-				},
+				signals:    signals,
+				isPaused:   isPaused,
+				loader:     loader,
+				traverser:  traverser,
 			}
 		// TODO: Use a better work estimation metric.
+		if isPaused {
+			return
+		}
+
 		rm.queryQueue.PushTasks(prm.p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
-		rm.requestQueuedHooks.ProcessRequestQueuedHooks(prm.p, request)
 
 		select {
 		case rm.workSignal <- struct{}{}:
