@@ -104,7 +104,7 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 		case qe.messages <- &setResponseDataRequest{key, loader, traverser}:
 		}
 		if isPaused {
-			log.Debug("Request is paused on initial setup: %d", key.requestID)
+			log.Infof("Request is paused on initial setup: %d", key.requestID)
 			return graphsync.RequestPaused, hooks.ErrPaused{}
 		}
 	}
@@ -114,7 +114,7 @@ func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData)
 func (qe *queryExecutor) prepareQuery(ctx context.Context,
 	p peer.ID,
 	request gsmsg.GraphSyncRequest, signals signals, sub *notifications.TopicDataSubscriber) (ipld.Loader, ipldutil.Traverser, bool, error) {
-	log.Debug("Processing request hooks for request: %d", request.ID)
+	log.Infof("Processing request hooks for request: %d", request.ID)
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
 	var transactionError error
 	var isPaused bool
