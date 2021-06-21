@@ -115,6 +115,7 @@ func TestEarlyCancellation(t *testing.T) {
 	defer td.cancel()
 	td.queryQueue.popWait.Add(1)
 	responseManager := td.newResponseManager()
+	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 
