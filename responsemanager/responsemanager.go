@@ -362,7 +362,6 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 }
 
 func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
-	log.Infof("Unpause request called: %d", requestID)
 	key := responseKey{p, requestID}
 	inProgressResponse, ok := rm.inProgressResponses[key]
 	if !ok {
@@ -432,6 +431,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			rm.processUpdate(key, request)
 			continue
 		}
+		rm.requestQueuedHooks.ProcessRequestQueuedHooks(prm.p, request)
 		ctx, cancelFn := context.WithCancel(rm.ctx)
 		sub := notifications.NewTopicDataSubscriber(&subscriber{
 			p:                     key.p,
@@ -497,7 +497,6 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 		return
 	}
 	if _, ok := ftr.err.(hooks.ErrPaused); ok {
-		log.Infof("Request finished on pause: %d", ftr.key.requestID)
 		response.isPaused = true
 		return
 	}
