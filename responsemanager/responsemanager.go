@@ -450,7 +450,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 		loader, traverser, isPaused, err := (&queryPreparer{rm.qe.requestHooks, rm.responseAssembler, rm.qe.loader}).prepareQuery(ctx, key.p, request, signals, sub)
 		if err != nil {
 			cancelFn()
-			return
+			continue
 		}
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
@@ -465,7 +465,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			}
 		// TODO: Use a better work estimation metric.
 		if isPaused {
-			return
+			continue
 		}
 
 		rm.queryQueue.PushTasks(prm.p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
