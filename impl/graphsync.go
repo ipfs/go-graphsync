@@ -44,7 +44,6 @@ type GraphSync struct {
 	responseAssembler           *responseassembler.ResponseAssembler
 	peerTaskQueue               *peertaskqueue.PeerTaskQueue
 	peerManager                 *peermanager.PeerMessageManager
-	incomingRequestQueuedHooks  *responderhooks.IncomingRequestQueuedHooks
 	incomingRequestHooks        *responderhooks.IncomingRequestHooks
 	outgoingBlockHooks          *responderhooks.OutgoingBlockHooks
 	requestUpdatedHooks         *responderhooks.RequestUpdatedHooks
@@ -126,7 +125,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	networkErrorListeners := listeners.NewNetworkErrorListeners()
 	receiverErrorListeners := listeners.NewReceiverNetworkErrorListeners()
 	persistenceOptions := persistenceoptions.New()
-	requestQueuedHooks := responderhooks.NewRequestQueuedHooks()
 	incomingRequestHooks := responderhooks.NewRequestHooks(persistenceOptions)
 	outgoingBlockHooks := responderhooks.NewBlockHooks()
 	requestUpdatedHooks := responderhooks.NewUpdateHooks()
@@ -145,7 +143,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	peerTaskQueue := peertaskqueue.New()
-	responseManager := responsemanager.New(ctx, loader, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressRequests)
+	responseManager := responsemanager.New(ctx, loader, responseAssembler, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressRequests)
 	graphSync := &GraphSync{
 		network:                     network,
 		loader:                      loader,
@@ -156,7 +154,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		responseAssembler:           responseAssembler,
 		peerTaskQueue:               peerTaskQueue,
 		peerManager:                 peerManager,
-		incomingRequestQueuedHooks:  requestQueuedHooks,
 		incomingRequestHooks:        incomingRequestHooks,
 		outgoingBlockHooks:          outgoingBlockHooks,
 		requestUpdatedHooks:         requestUpdatedHooks,
@@ -193,12 +190,6 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 // the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
 func (gs *GraphSync) RegisterIncomingRequestHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
 	return gs.incomingRequestHooks.Register(hook)
-}
-
-// RegisterIncomingRequestHook adds a hook that runs when a new incoming request is added
-// to the responder's task queue.
-func (gs *GraphSync) RegisterIncomingRequestQueuedHook(hook graphsync.OnIncomingRequestQueuedHook) graphsync.UnregisterHookFunc {
-	return gs.incomingRequestQueuedHooks.Register(hook)
 }
 
 // RegisterIncomingResponseHook adds a hook that runs when a response is received

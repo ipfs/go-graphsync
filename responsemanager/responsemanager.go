@@ -73,11 +73,6 @@ type RequestHooks interface {
 	ProcessRequestHooks(p peer.ID, request graphsync.RequestData) hooks.RequestResult
 }
 
-// RequestQueuedHooks is an interface for processing request queued hooks
-type RequestQueuedHooks interface {
-	ProcessRequestQueuedHooks(p peer.ID, request graphsync.RequestData)
-}
-
 // BlockHooks is an interface for processing block hooks
 type BlockHooks interface {
 	ProcessBlockHooks(p peer.ID, request graphsync.RequestData, blockData graphsync.BlockData) hooks.BlockResult
@@ -128,7 +123,6 @@ type ResponseManager struct {
 	queryQueue            QueryQueue
 	requestHooks          RequestHooks
 	loader                ipld.Loader
-	requestQueuedHooks    RequestQueuedHooks
 	updateHooks           UpdateHooks
 	cancelledListeners    CancelledListeners
 	completedListeners    CompletedListeners
@@ -146,7 +140,6 @@ func New(ctx context.Context,
 	loader ipld.Loader,
 	responseAssembler ResponseAssembler,
 	queryQueue QueryQueue,
-	requestQueuedHooks RequestQueuedHooks,
 	requestHooks RequestHooks,
 	blockHooks BlockHooks,
 	updateHooks UpdateHooks,
@@ -177,7 +170,6 @@ func New(ctx context.Context,
 		loader:                loader,
 		responseAssembler:     responseAssembler,
 		queryQueue:            queryQueue,
-		requestQueuedHooks:    requestQueuedHooks,
 		updateHooks:           updateHooks,
 		cancelledListeners:    cancelledListeners,
 		completedListeners:    completedListeners,
@@ -433,7 +425,6 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			rm.processUpdate(key, request)
 			continue
 		}
-		rm.requestQueuedHooks.ProcessRequestQueuedHooks(prm.p, request)
 		ctx, cancelFn := context.WithCancel(rm.ctx)
 		sub := notifications.NewTopicDataSubscriber(&subscriber{
 			p:                     key.p,
@@ -471,7 +462,6 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 		}
 
 		rm.queryQueue.PushTasks(prm.p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
-
 		select {
 		case rm.workSignal <- struct{}{}:
 		default:
