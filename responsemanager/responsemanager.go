@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -73,11 +73,6 @@ type RequestHooks interface {
 	ProcessRequestHooks(p peer.ID, request graphsync.RequestData) hooks.RequestResult
 }
 
-// RequestQueuedHooks is an interface for processing request queued hooks
-type RequestQueuedHooks interface {
-	ProcessRequestQueuedHooks(p peer.ID, request graphsync.RequestData)
-}
-
 // BlockHooks is an interface for processing block hooks
 type BlockHooks interface {
 	ProcessBlockHooks(p peer.ID, request graphsync.RequestData, blockData graphsync.BlockData) hooks.BlockResult
@@ -126,7 +121,8 @@ type ResponseManager struct {
 	cancelFn              context.CancelFunc
 	responseAssembler     ResponseAssembler
 	queryQueue            QueryQueue
-	requestQueuedHooks    RequestQueuedHooks
+	requestHooks          RequestHooks
+	loader                ipld.Loader
 	updateHooks           UpdateHooks
 	cancelledListeners    CancelledListeners
 	completedListeners    CompletedListeners
@@ -144,7 +140,6 @@ func New(ctx context.Context,
 	loader ipld.Loader,
 	responseAssembler ResponseAssembler,
 	queryQueue QueryQueue,
-	requestQueuedHooks RequestQueuedHooks,
 	requestHooks RequestHooks,
 	blockHooks BlockHooks,
 	updateHooks UpdateHooks,
@@ -158,12 +153,10 @@ func New(ctx context.Context,
 	messages := make(chan responseManagerMessage, 16)
 	workSignal := make(chan struct{}, 1)
 	qe := &queryExecutor{
-		requestHooks:       requestHooks,
 		blockHooks:         blockHooks,
 		updateHooks:        updateHooks,
 		cancelledListeners: cancelledListeners,
 		responseAssembler:  responseAssembler,
-		loader:             loader,
 		queryQueue:         queryQueue,
 		messages:           messages,
 		ctx:                ctx,
@@ -173,9 +166,10 @@ func New(ctx context.Context,
 	return &ResponseManager{
 		ctx:                   ctx,
 		cancelFn:              cancelFn,
+		requestHooks:          requestHooks,
+		loader:                loader,
 		responseAssembler:     responseAssembler,
 		queryQueue:            queryQueue,
-		requestQueuedHooks:    requestQueuedHooks,
 		updateHooks:           updateHooks,
 		cancelledListeners:    cancelledListeners,
 		completedListeners:    completedListeners,
@@ -441,22 +435,33 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			completedListeners:    rm.completedListeners,
 			networkErrorListeners: rm.networkErrorListeners,
 		})
+		signals := signals{
+			pauseSignal:  make(chan struct{}, 1),
+			updateSignal: make(chan struct{}, 1),
+			errSignal:    make(chan error, 1),
+		}
+		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.loader}).prepareQuery(ctx, key.p, request, signals, sub)
+		if err != nil {
+			cancelFn()
+			continue
+		}
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
 				ctx:        ctx,
 				cancelFn:   cancelFn,
 				subscriber: sub,
 				request:    request,
-				signals: signals{
-					pauseSignal:  make(chan struct{}, 1),
-					updateSignal: make(chan struct{}, 1),
-					errSignal:    make(chan error, 1),
-				},
+				signals:    signals,
+				isPaused:   isPaused,
+				loader:     loader,
+				traverser:  traverser,
 			}
 		// TODO: Use a better work estimation metric.
-		rm.queryQueue.PushTasks(prm.p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
-		rm.requestQueuedHooks.ProcessRequestQueuedHooks(prm.p, request)
+		if isPaused {
+			continue
+		}
 
+		rm.queryQueue.PushTasks(prm.p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
 		select {
 		case rm.workSignal <- struct{}{}:
 		default:

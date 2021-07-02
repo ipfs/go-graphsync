@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
+
 	"github.com/hannahhoward/go-pubsub"
 	"golang.org/x/xerrors"
-	"sync/atomic"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -66,12 +67,12 @@ type AsyncLoader interface {
 // RequestManager tracks outgoing requests and processes incoming reponses
 // to them.
 type RequestManager struct {
-	ctx         context.Context
-	cancel      func()
-	messages    chan requestManagerMessage
-	peerHandler PeerHandler
-	rc          *responseCollector
-	asyncLoader AsyncLoader
+	ctx             context.Context
+	cancel          func()
+	messages        chan requestManagerMessage
+	peerHandler     PeerHandler
+	rc              *responseCollector
+	asyncLoader     AsyncLoader
 	disconnectNotif *pubsub.PubSub
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID

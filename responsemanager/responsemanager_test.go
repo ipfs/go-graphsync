@@ -37,19 +37,6 @@ func TestIncomingQuery(t *testing.T) {
 	blks := td.blockChain.AllBlocks()
 
 	responseManager := td.newResponseManager()
-
-	type queuedHook struct {
-		p       peer.ID
-		request graphsync.RequestData
-	}
-
-	qhc := make(chan *queuedHook, 1)
-	td.requestQueuedHooks.Register(func(p peer.ID, request graphsync.RequestData) {
-		qhc <- &queuedHook{
-			p:       p,
-			request: request,
-		}
-	})
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 
@@ -58,11 +45,6 @@ func TestIncomingQuery(t *testing.T) {
 	for i := 0; i < len(blks); i++ {
 		td.assertSendBlock()
 	}
-
-	// ensure request queued hook fires.
-	out := <-qhc
-	require.Equal(t, td.p, out.p)
-	require.Equal(t, out.request.ID(), td.requestID)
 }
 
 func TestCancellationQueryInProgress(t *testing.T) {
@@ -115,6 +97,7 @@ func TestEarlyCancellation(t *testing.T) {
 	defer td.cancel()
 	td.queryQueue.popWait.Add(1)
 	responseManager := td.newResponseManager()
+	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 
@@ -426,6 +409,27 @@ func TestValidationAndExtensions(t *testing.T) {
 			td.assertCompleteRequestWithSuccess()
 		})
 
+		t.Run("if started paused, unpausing always works", func(t *testing.T) {
+			td := newTestData(t)
+			defer td.cancel()
+			responseManager := td.newResponseManager()
+			responseManager.Startup()
+			advance := make(chan struct{})
+			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+				hookActions.ValidateRequest()
+				hookActions.PauseResponse()
+				close(advance)
+			})
+			go func() {
+				<-advance
+				err := responseManager.UnpauseResponse(td.p, td.requestID)
+				require.NoError(t, err)
+			}()
+			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+			td.assertPausedRequest()
+			td.verifyNResponses(td.blockChainLength)
+			td.assertCompleteRequestWithSuccess()
+		})
 	})
 
 	t.Run("test update hook processing", func(t *testing.T) {
@@ -886,7 +890,6 @@ type testData struct {
 	updateRequests            []gsmsg.GraphSyncRequest
 	p                         peer.ID
 	peristenceOptions         *persistenceoptions.PersistenceOptions
-	requestQueuedHooks        *hooks.IncomingRequestQueuedHooks
 	requestHooks              *hooks.IncomingRequestHooks
 	blockHooks                *hooks.OutgoingBlockHooks
 	updateHooks               *hooks.RequestUpdatedHooks
@@ -960,7 +963,6 @@ func newTestData(t *testing.T) testData {
 	}
 	td.p = testutil.GeneratePeers(1)[0]
 	td.peristenceOptions = persistenceoptions.New()
-	td.requestQueuedHooks = hooks.NewRequestQueuedHooks()
 	td.requestHooks = hooks.NewRequestHooks(td.peristenceOptions)
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()
@@ -990,13 +992,13 @@ func newTestData(t *testing.T) testData {
 }
 
 func (td *testData) newResponseManager() *ResponseManager {
-	return New(td.ctx, td.loader, td.responseAssembler, td.queryQueue, td.requestQueuedHooks, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
+	return New(td.ctx, td.loader, td.responseAssembler, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
 }
 
 func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 	obs := make(map[ipld.Link][]byte)
 	oloader, _ := testutil.NewTestStore(obs)
-	return New(td.ctx, oloader, td.responseAssembler, td.queryQueue, td.requestQueuedHooks, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
+	return New(td.ctx, oloader, td.responseAssembler, td.queryQueue, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
 }
 
 func (td *testData) assertPausedRequest() {
