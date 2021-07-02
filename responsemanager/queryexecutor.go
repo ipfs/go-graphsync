@@ -22,12 +22,10 @@ var errCancelledByCommand = errors.New("response cancelled by responder")
 
 // TODO: Move this into a seperate module and fully seperate from the ResponseManager
 type queryExecutor struct {
-	requestHooks       RequestHooks
 	blockHooks         BlockHooks
 	updateHooks        UpdateHooks
 	cancelledListeners CancelledListeners
 	responseAssembler  ResponseAssembler
-	loader             ipld.Loader
 	queryQueue         QueryQueue
 	messages           chan responseManagerMessage
 	ctx                context.Context

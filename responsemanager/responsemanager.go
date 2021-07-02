@@ -126,6 +126,8 @@ type ResponseManager struct {
 	cancelFn              context.CancelFunc
 	responseAssembler     ResponseAssembler
 	queryQueue            QueryQueue
+	requestHooks          RequestHooks
+	loader                ipld.Loader
 	requestQueuedHooks    RequestQueuedHooks
 	updateHooks           UpdateHooks
 	cancelledListeners    CancelledListeners
@@ -158,12 +160,10 @@ func New(ctx context.Context,
 	messages := make(chan responseManagerMessage, 16)
 	workSignal := make(chan struct{}, 1)
 	qe := &queryExecutor{
-		requestHooks:       requestHooks,
 		blockHooks:         blockHooks,
 		updateHooks:        updateHooks,
 		cancelledListeners: cancelledListeners,
 		responseAssembler:  responseAssembler,
-		loader:             loader,
 		queryQueue:         queryQueue,
 		messages:           messages,
 		ctx:                ctx,
@@ -173,6 +173,8 @@ func New(ctx context.Context,
 	return &ResponseManager{
 		ctx:                   ctx,
 		cancelFn:              cancelFn,
+		requestHooks:          requestHooks,
+		loader:                loader,
 		responseAssembler:     responseAssembler,
 		queryQueue:            queryQueue,
 		requestQueuedHooks:    requestQueuedHooks,
@@ -447,7 +449,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			updateSignal: make(chan struct{}, 1),
 			errSignal:    make(chan error, 1),
 		}
-		loader, traverser, isPaused, err := (&queryPreparer{rm.qe.requestHooks, rm.responseAssembler, rm.qe.loader}).prepareQuery(ctx, key.p, request, signals, sub)
+		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.loader}).prepareQuery(ctx, key.p, request, signals, sub)
 		if err != nil {
 			cancelFn()
 			continue
