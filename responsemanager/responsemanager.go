@@ -267,21 +267,15 @@ func (rm *ResponseManager) synchronize() {
 	_ = rm.sendSyncMessage(&synchronizeMessage{sync}, sync)
 }
 
-type responseDataRequest struct {
-	key          responseKey
+type startTaskRequest struct {
+	task         *peertask.Task
 	taskDataChan chan responseTaskData
 }
 
 type finishTaskRequest struct {
-	key    responseKey
+	task   *peertask.Task
 	status graphsync.ResponseStatusCode
 	err    error
-}
-
-type setResponseDataRequest struct {
-	key       responseKey
-	loader    ipld.Loader
-	traverser ipldutil.Traverser
 }
 
 type responseUpdateRequest struct {
@@ -444,31 +438,20 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			completedListeners:    rm.completedListeners,
 			networkErrorListeners: rm.networkErrorListeners,
 		})
-		signals := signals{
-			pauseSignal:  make(chan struct{}, 1),
-			updateSignal: make(chan struct{}, 1),
-			errSignal:    make(chan error, 1),
-		}
-		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.loader}).prepareQuery(ctx, key.p, request, signals, sub)
-		if err != nil {
-			cancelFn()
-			continue
-		}
+
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
 				ctx:        ctx,
 				cancelFn:   cancelFn,
 				subscriber: sub,
 				request:    request,
-				signals:    signals,
-				isPaused:   isPaused,
-				loader:     loader,
-				traverser:  traverser,
+				signals: signals{
+					pauseSignal:  make(chan struct{}, 1),
+					updateSignal: make(chan struct{}, 1),
+					errSignal:    make(chan error, 1),
+				},
 			}
 		// TODO: Use a better work estimation metric.
-		if isPaused {
-			continue
-		}
 
 		rm.queryQueue.PushTasks(prm.p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
 
@@ -479,22 +462,45 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 	}
 }
 
-func (rdr *responseDataRequest) handle(rm *ResponseManager) {
-	response, ok := rm.inProgressResponses[rdr.key]
-	var taskData responseTaskData
-	if ok {
-		taskData = responseTaskData{false, response.subscriber, response.ctx, response.request, response.loader, response.traverser, response.signals}
-	} else {
-		taskData = responseTaskData{empty: true}
+func (str *startTaskRequest) handle(rm *ResponseManager) {
+	key := str.task.Topic.(responseKey)
+	taskData := str.responseTaskData(rm, key)
+	if taskData.empty {
+		rm.queryQueue.TasksDone(key.p, str.task)
 	}
 	select {
 	case <-rm.ctx.Done():
-	case rdr.taskDataChan <- taskData:
+	case str.taskDataChan <- taskData:
 	}
 }
 
+func (str *startTaskRequest) responseTaskData(rm *ResponseManager, key responseKey) responseTaskData {
+	response, hasResponse := rm.inProgressResponses[key]
+	if !hasResponse {
+		return responseTaskData{empty: true}
+	}
+
+	if response.loader == nil || response.traverser == nil {
+		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.loader}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
+		if err != nil {
+			response.cancelFn()
+			delete(rm.inProgressResponses, key)
+			return responseTaskData{empty: true}
+		}
+		response.loader = loader
+		response.traverser = traverser
+		if isPaused {
+			response.isPaused = true
+			return responseTaskData{empty: true}
+		}
+	}
+	return responseTaskData{false, response.subscriber, response.ctx, response.request, response.loader, response.traverser, response.signals}
+}
+
 func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
-	response, ok := rm.inProgressResponses[ftr.key]
+	key := ftr.task.Topic.(responseKey)
+	rm.queryQueue.TasksDone(key.p, ftr.task)
+	response, ok := rm.inProgressResponses[key]
 	if !ok {
 		return
 	}
@@ -505,17 +511,8 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 	if ftr.err != nil {
 		log.Infof("response failed: %w", ftr.err)
 	}
-	delete(rm.inProgressResponses, ftr.key)
+	delete(rm.inProgressResponses, key)
 	response.cancelFn()
-}
-
-func (srdr *setResponseDataRequest) handle(rm *ResponseManager) {
-	response, ok := rm.inProgressResponses[srdr.key]
-	if !ok {
-		return
-	}
-	response.loader = srdr.loader
-	response.traverser = srdr.traverser
 }
 
 func (rur *responseUpdateRequest) handle(rm *ResponseManager) {

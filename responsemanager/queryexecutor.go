@@ -51,9 +51,8 @@ func (qe *queryExecutor) processQueriesWorker() {
 			}
 		}
 		for _, task := range tasks {
-			key := task.Topic.(responseKey)
 			select {
-			case qe.messages <- &responseDataRequest{key, taskDataChan}:
+			case qe.messages <- &startTaskRequest{task, taskDataChan}:
 			case <-qe.ctx.Done():
 				return
 			}
@@ -66,17 +65,16 @@ func (qe *queryExecutor) processQueriesWorker() {
 				log.Info("Empty task on peer request stack")
 				continue
 			}
-			status, err := qe.executeQuery(key.p, taskData.request, taskData.loader, taskData.traverser, taskData.signals, taskData.subscriber)
+			status, err := qe.executeQuery(pid, taskData.request, taskData.loader, taskData.traverser, taskData.signals, taskData.subscriber)
 			isCancelled := err != nil && isContextErr(err)
 			if isCancelled {
-				qe.cancelledListeners.NotifyCancelledListeners(key.p, taskData.request)
+				qe.cancelledListeners.NotifyCancelledListeners(pid, taskData.request)
 			}
 			select {
-			case qe.messages <- &finishTaskRequest{key, status, err}:
+			case qe.messages <- &finishTaskRequest{task, status, err}:
 			case <-qe.ctx.Done():
 			}
 		}
-		qe.queryQueue.TasksDone(pid, tasks...)
 	}
 }
 
