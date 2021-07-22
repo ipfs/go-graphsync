@@ -115,6 +115,7 @@ func TestEarlyCancellation(t *testing.T) {
 	defer td.cancel()
 	td.queryQueue.popWait.Add(1)
 	responseManager := td.newResponseManager()
+	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 
@@ -426,6 +427,27 @@ func TestValidationAndExtensions(t *testing.T) {
 			td.assertCompleteRequestWithSuccess()
 		})
 
+		t.Run("if started paused, unpausing always works", func(t *testing.T) {
+			td := newTestData(t)
+			defer td.cancel()
+			responseManager := td.newResponseManager()
+			responseManager.Startup()
+			advance := make(chan struct{})
+			td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+				hookActions.ValidateRequest()
+				hookActions.PauseResponse()
+				close(advance)
+			})
+			go func() {
+				<-advance
+				err := responseManager.UnpauseResponse(td.p, td.requestID)
+				require.NoError(t, err)
+			}()
+			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+			td.assertPausedRequest()
+			td.verifyNResponses(td.blockChainLength)
+			td.assertCompleteRequestWithSuccess()
+		})
 	})
 
 	t.Run("test update hook processing", func(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
