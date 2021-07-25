@@ -88,7 +88,7 @@ storer := storeutil.StorerForBlockstore(bs)
 exchange := graphsync.New(ctx, network, loader, storer)
 ```
 
-### Write A Loader An IPFS BlockStore
+### Write A Loader From An IPFS BlockStore
 
 If you are using a traditional go-ipfs-blockstore, your link loading function looks like this:
 
