@@ -949,7 +949,7 @@ func (c *dtChannel) gsReqOpened(gsKey graphsyncKey, hookActions graphsync.Outgoi
 	if c.hasStore() {
 		hookActions.UsePersistenceOption("data-transfer-" + c.channelID.String())
 	}
-
+	log.Infow("outgoing graphsync request", "peer", gsKey.p, "graphsync request id", gsKey.requestID, "data transfer channel id", c.channelID)
 	// Save a mapping from the graphsync key to the channel ID so that
 	// subsequent graphsync callbacks are associated with this channel
 	c.gsKeyToChannelID.set(gsKey, c.channelID)
@@ -982,6 +982,7 @@ func (c *dtChannel) gsDataRequestRcvd(gsKey graphsyncKey, hookActions graphsync.
 	// Save a mapping from the graphsync key to the channel ID so that
 	// subsequent graphsync callbacks are associated with this channel
 	c.gsKey = gsKey
+	log.Infow("incoming graphsync request", "peer", gsKey.p, "graphsync request id", gsKey.requestID, "data transfer channel id", c.channelID)
 	c.gsKeyToChannelID.set(gsKey, c.channelID)
 
 	c.isOpen = true

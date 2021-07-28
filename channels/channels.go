@@ -123,7 +123,7 @@ func (c *Channels) dispatch(eventName fsm.EventName, channel fsm.StateType) {
 		Message:   realChannel.Message,
 		Timestamp: time.Now(),
 	}
-
+	log.Debugw("process data transfer listeners", "name", datatransfer.Events[evtCode], "transfer ID", realChannel.TransferID)
 	c.notifier(evt, c.fromInternalChannelState(realChannel))
 
 	// When the channel has been cleaned up, remove the caches of seen cids
@@ -406,6 +406,7 @@ func (c *Channels) send(chid datatransfer.ChannelID, code datatransfer.EventCode
 	if err != nil {
 		return err
 	}
+	log.Debugw("send data transfer event", "name", datatransfer.Events[code], "transfer ID", chid.ID, "args", args)
 	return c.stateMachines.Send(chid, code, args...)
 }
 
