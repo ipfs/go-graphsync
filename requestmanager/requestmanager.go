@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/hannahhoward/go-pubsub"
 	"golang.org/x/xerrors"
@@ -39,6 +40,7 @@ const (
 
 type inProgressRequestStatus struct {
 	ctx            context.Context
+	startTime      time.Time
 	cancelFn       func()
 	p              peer.ID
 	networkError   chan error
@@ -350,6 +352,8 @@ type terminateRequestMessage struct {
 }
 
 func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *RequestManager) (gsmsg.GraphSyncRequest, chan graphsync.ResponseProgress, chan error) {
+	log.Infow("graphsync request initiated", "request id", requestID, "peer", nrm.p, "root", nrm.root)
+
 	request, hooksResult, err := rm.validateRequest(requestID, nrm.p, nrm.root, nrm.selector, nrm.extensions)
 	if err != nil {
 		rp, err := rm.singleErrorResponse(err)
@@ -372,7 +376,7 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 	pauseMessages := make(chan struct{}, 1)
 	networkError := make(chan error, 1)
 	requestStatus := &inProgressRequestStatus{
-		ctx: ctx, cancelFn: cancel, p: p, resumeMessages: resumeMessages, pauseMessages: pauseMessages, networkError: networkError,
+		ctx: ctx, startTime: time.Now(), cancelFn: cancel, p: p, resumeMessages: resumeMessages, pauseMessages: pauseMessages, networkError: networkError,
 	}
 	lastResponse := &requestStatus.lastResponse
 	lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
@@ -411,6 +415,10 @@ func (nrm *newRequestMessage) handle(rm *RequestManager) {
 }
 
 func (trm *terminateRequestMessage) handle(rm *RequestManager) {
+	ipr, ok := rm.inProgressRequestStatuses[trm.requestID]
+	if ok {
+		log.Infow("graphsync request complete", "request id", trm.requestID, "peer", ipr.p, "total time", time.Since(ipr.startTime))
+	}
 	delete(rm.inProgressRequestStatuses, trm.requestID)
 	rm.asyncLoader.CleanupRequest(trm.requestID)
 }
