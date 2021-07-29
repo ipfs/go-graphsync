@@ -179,8 +179,10 @@ func (c *Channels) CreateNew(selfPeer peer.ID, tid datatransfer.TransferID, base
 		Status: datatransfer.Requested,
 	})
 	if err != nil {
+		log.Errorw("failed to create new tracking channel for data-transfer", "channelID", chid, "err", err)
 		return datatransfer.ChannelID{}, err
 	}
+	log.Debugw("created tracking channel for data-transfer, emitting channel Open event", "channelID", chid)
 	return chid, c.stateMachines.Send(chid, datatransfer.Open)
 }
 
