@@ -31,13 +31,18 @@ func (qe *queryPreparer) prepareQuery(ctx context.Context,
 	var transactionError error
 	var isPaused bool
 	failNotifee := notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: sub}
+	rejectNotifee := notifications.Notifee{Data: graphsync.RequestRejected, Subscriber: sub}
 	err := qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
 		for _, extension := range result.Extensions {
 			rb.SendExtensionData(extension)
 		}
-		if result.Err != nil || !result.IsValidated {
+		if result.Err != nil {
 			rb.FinishWithError(graphsync.RequestFailedUnknown)
 			rb.AddNotifee(failNotifee)
+			transactionError = result.Err
+		} else if !result.IsValidated {
+			rb.FinishWithError(graphsync.RequestRejected)
+			rb.AddNotifee(rejectNotifee)
 			transactionError = errors.New("request not valid")
 		} else if result.IsPaused {
 			rb.PauseRequest()

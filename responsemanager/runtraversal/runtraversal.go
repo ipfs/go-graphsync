@@ -12,6 +12,15 @@ import (
 
 var logger = logging.Logger("gs-traversal")
 
+type errorString string
+
+func (e errorString) Error() string {
+	return string(e)
+}
+
+// ErrFirstBlockLoad indicates the traversal was unable to load the very first block in the traversal
+const ErrFirstBlockLoad = errorString("Unable to load first block")
+
 // ResponseSender sends responses over the network
 type ResponseSender func(
 	link ipld.Link,
@@ -30,6 +39,9 @@ func RunTraversal(
 		if isComplete {
 			if err != nil {
 				logger.Errorf("traversal completion check failed, nBlocksRead=%d, err=%s", traverser.NBlocksTraversed(), err)
+				if (traverser.NBlocksTraversed() == 0 && err == traversal.SkipMe{}) {
+					return ErrFirstBlockLoad
+				}
 			} else {
 				logger.Debugf("traversal completed successfully, nBlocksRead=%d", traverser.NBlocksTraversed())
 			}
