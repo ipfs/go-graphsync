@@ -261,13 +261,11 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 	require.Len(t, errors, 1)
 	_, ok := errors[0].(graphsync.RequestClientCancelledErr)
 	require.True(t, ok)
-	fmt.Println("here")
 	select {
 	case <-loadPostCancel:
 		t.Fatalf("Loaded block after cancel")
 	case <-requestCtx.Done():
 	}
-	fmt.Println("here2")
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {

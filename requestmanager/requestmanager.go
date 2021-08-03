@@ -315,6 +315,8 @@ func (rm *RequestManager) sendSyncMessage(message requestManagerMessage, respons
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("Context Cancelled")
+	case <-done:
+		return errors.New("Context Cancelled")
 	case rm.messages <- message:
 	}
 	select {
