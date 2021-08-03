@@ -443,6 +443,12 @@ func (trm *terminateRequestMessage) handle(rm *RequestManager) {
 func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[crm.requestID]
 	if !ok {
+		if crm.onTerminated != nil {
+			select {
+			case crm.onTerminated <- errors.New("request not found"):
+			case <-rm.ctx.Done():
+			}
+		}
 		return
 	}
 
