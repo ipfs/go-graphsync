@@ -371,6 +371,6 @@ type GraphExchange interface {
 	// CancelResponse cancels an in progress response
 	CancelResponse(peer.ID, RequestID) error
 
-	// CancelRequest cancels an in progress response
+	// CancelRequest cancels an in progress request
 	CancelRequest(context.Context, RequestID) error
 }
