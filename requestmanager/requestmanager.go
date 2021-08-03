@@ -268,7 +268,7 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID,
 // CancelRequest cancels the given request ID and waits for the request to terminate
 func (rm *RequestManager) CancelRequest(requestID graphsync.RequestID) error {
 	terminated := make(chan error, 1)
-	return rm.sendSyncMessage(&cancelRequestMessage{requestID, false, terminated, graphsync.RequestContextCancelledErr{}}, terminated)
+	return rm.sendSyncMessage(&cancelRequestMessage{requestID, false, terminated, graphsync.RequestClientCancelledErr{}}, terminated)
 }
 
 type processResponseMessage struct {

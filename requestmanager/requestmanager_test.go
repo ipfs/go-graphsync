@@ -212,7 +212,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 
 	errors := testutil.CollectErrors(requestCtx, t, returnedErrorChan1)
 	require.Len(t, errors, 1)
-	_, ok := errors[0].(graphsync.RequestContextCancelledErr)
+	_, ok := errors[0].(graphsync.RequestClientCancelledErr)
 	require.True(t, ok)
 }
 func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
@@ -258,7 +258,7 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 
 	errors := testutil.CollectErrors(requestCtx, t, returnedErrorChan1)
 	require.Len(t, errors, 1)
-	_, ok := errors[0].(graphsync.RequestContextCancelledErr)
+	_, ok := errors[0].(graphsync.RequestClientCancelledErr)
 	require.True(t, ok)
 	fmt.Println("here")
 	select {

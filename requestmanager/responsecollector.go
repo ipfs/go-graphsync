@@ -85,7 +85,7 @@ func (rc *responseCollector) collectResponses(
 			case <-requestCtx.Done():
 				select {
 				case <-rc.ctx.Done():
-				case returnedErrors <- graphsync.RequestContextCancelledErr{}:
+				case returnedErrors <- graphsync.RequestClientCancelledErr{}:
 				}
 				return
 			case err, ok := <-incomingErrors:
@@ -97,7 +97,7 @@ func (rc *responseCollector) collectResponses(
 					case <-requestCtx.Done():
 						select {
 						case <-rc.ctx.Done():
-						case returnedErrors <- graphsync.RequestContextCancelledErr{}:
+						case returnedErrors <- graphsync.RequestClientCancelledErr{}:
 						}
 					default:
 					}
