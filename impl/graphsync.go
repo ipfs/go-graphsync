@@ -195,7 +195,7 @@ func (gs *GraphSync) RegisterIncomingRequestHook(hook graphsync.OnIncomingReques
 	return gs.incomingRequestHooks.Register(hook)
 }
 
-// RegisterIncomingRequestHook adds a hook that runs when a new incoming request is added
+// RegisterIncomingRequestQueuedHook adds a hook that runs when a new incoming request is added
 // to the responder's task queue.
 func (gs *GraphSync) RegisterIncomingRequestQueuedHook(hook graphsync.OnIncomingRequestQueuedHook) graphsync.UnregisterHookFunc {
 	return gs.incomingRequestQueuedHooks.Register(hook)
@@ -294,6 +294,11 @@ func (gs *GraphSync) PauseResponse(p peer.ID, requestID graphsync.RequestID) err
 // CancelResponse cancels an in progress response
 func (gs *GraphSync) CancelResponse(p peer.ID, requestID graphsync.RequestID) error {
 	return gs.responseManager.CancelResponse(p, requestID)
+}
+
+// CancelRequest cancels an in progress request
+func (gs *GraphSync) CancelRequest(requestID graphsync.RequestID) error {
+	return gs.requestManager.CancelRequest(requestID)
 }
 
 type graphSyncReceiver GraphSync
