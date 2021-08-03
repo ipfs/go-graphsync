@@ -297,8 +297,8 @@ func (gs *GraphSync) CancelResponse(p peer.ID, requestID graphsync.RequestID) er
 }
 
 // CancelRequest cancels an in progress request
-func (gs *GraphSync) CancelRequest(requestID graphsync.RequestID) error {
-	return gs.requestManager.CancelRequest(requestID)
+func (gs *GraphSync) CancelRequest(ctx context.Context, requestID graphsync.RequestID) error {
+	return gs.requestManager.CancelRequest(ctx, requestID)
 }
 
 type graphSyncReceiver GraphSync

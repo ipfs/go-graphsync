@@ -266,9 +266,9 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID,
 }
 
 // CancelRequest cancels the given request ID and waits for the request to terminate
-func (rm *RequestManager) CancelRequest(requestID graphsync.RequestID) error {
+func (rm *RequestManager) CancelRequest(ctx context.Context, requestID graphsync.RequestID) error {
 	terminated := make(chan error, 1)
-	return rm.sendSyncMessage(&cancelRequestMessage{requestID, false, terminated, graphsync.RequestClientCancelledErr{}}, terminated)
+	return rm.sendSyncMessage(&cancelRequestMessage{requestID, false, terminated, graphsync.RequestClientCancelledErr{}}, terminated, ctx.Done())
 }
 
 type processResponseMessage struct {
@@ -297,7 +297,7 @@ type unpauseRequestMessage struct {
 // Can also send extensions with unpause
 func (rm *RequestManager) UnpauseRequest(requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	response := make(chan error, 1)
-	return rm.sendSyncMessage(&unpauseRequestMessage{requestID, extensions, response}, response)
+	return rm.sendSyncMessage(&unpauseRequestMessage{requestID, extensions, response}, response, nil)
 }
 
 type pauseRequestMessage struct {
@@ -308,10 +308,10 @@ type pauseRequestMessage struct {
 // PauseRequest pauses an in progress request (may take 1 or more blocks to process)
 func (rm *RequestManager) PauseRequest(requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
-	return rm.sendSyncMessage(&pauseRequestMessage{requestID, response}, response)
+	return rm.sendSyncMessage(&pauseRequestMessage{requestID, response}, response, nil)
 }
 
-func (rm *RequestManager) sendSyncMessage(message requestManagerMessage, response chan error) error {
+func (rm *RequestManager) sendSyncMessage(message requestManagerMessage, response chan error, done <-chan struct{}) error {
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("Context Cancelled")
@@ -319,6 +319,8 @@ func (rm *RequestManager) sendSyncMessage(message requestManagerMessage, respons
 	}
 	select {
 	case <-rm.ctx.Done():
+		return errors.New("Context Cancelled")
+	case <-done:
 		return errors.New("Context Cancelled")
 	case err := <-response:
 		return err

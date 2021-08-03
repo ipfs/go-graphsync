@@ -245,9 +245,10 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 		td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
 		td.fal.SuccessResponseOn(requestRecords[0].gsr.ID(), firstBlocks)
 	}()
-	fmt.Println("her")
 
-	err := td.requestManager.CancelRequest(requestRecords[0].gsr.ID())
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, time.Second)
+	defer timeoutCancel()
+	err := td.requestManager.CancelRequest(timeoutCtx, requestRecords[0].gsr.ID())
 	require.NoError(t, err)
 	postCancel <- struct{}{}
 
