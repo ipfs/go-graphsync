@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	blocks "github.com/ipfs/go-block-format"
 	ipld "github.com/ipld/go-ipld-prime"
@@ -20,6 +21,22 @@ import (
 
 func TestTraverser(t *testing.T) {
 	ctx := context.Background()
+
+	t.Run("started with shutdown context, then shutdown", func(t *testing.T) {
+		cancelledCtx, cancel := context.WithCancel(ctx)
+		cancel()
+		testdata := testutil.NewTestIPLDTree()
+		ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+		sel := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
+		traverser := TraversalBuilder{
+			Root:     testdata.RootNodeLnk,
+			Selector: sel,
+		}.Start(cancelledCtx)
+		timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		traverser.Shutdown(timeoutCtx)
+		require.NoError(t, timeoutCtx.Err())
+	})
 
 	t.Run("traverses correctly, simple struct", func(t *testing.T) {
 		testdata := testutil.NewTestIPLDTree()
