@@ -893,7 +893,7 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.responseHooks = hooks.NewResponseHooks()
 	td.blockHooks = hooks.NewBlockHooks()
 	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
-	td.requestManager = New(ctx, td.fal, td.requestHooks, td.responseHooks, td.blockHooks, td.networkErrorListeners)
+	td.requestManager = New(ctx, td.fal, cidlink.DefaultLinkSystem(), td.requestHooks, td.responseHooks, td.blockHooks, td.networkErrorListeners)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()
 	td.blockStore = make(map[ipld.Link][]byte)
