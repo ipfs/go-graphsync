@@ -20,6 +20,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/testloader"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
@@ -952,7 +953,48 @@ func TestPauseResumeExternal(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 }
 
+func TestPanics(t *testing.T) {
+	t.Run("panic on async laod (executor go routine)", func(t *testing.T) {
+		ctx := context.Background()
+		td := newTestData(ctx, t)
+		requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		peers := testutil.GeneratePeers(1)
+
+		td.fal.OnAsyncLoad(func(graphsync.RequestID, ipld.Link, <-chan types.AsyncLoadResult) {
+			panic("something went wrong")
+		})
+
+		_, _ = td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+
+		_ = readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)
+		td.assertPanic("something went wrong", "(*requestExecutor).run")
+	})
+	t.Run("panic on request hook (main internal go routine)", func(t *testing.T) {
+		ctx := context.Background()
+		td := newTestData(ctx, t)
+		requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		peers := testutil.GeneratePeers(1)
+
+		td.requestHooks.Register(func(p peer.ID, r graphsync.RequestData, ha graphsync.OutgoingRequestHookActions) {
+			panic("something went wrong")
+		})
+		go td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+
+		td.assertPanic("something went wrong", "(*RequestManager).run")
+	})
+
+}
+
+type capturedPanic struct {
+	recoverObj      interface{}
+	debugStackTrace string
+}
+
 type testData struct {
+	ctx                   context.Context
+	t                     *testing.T
 	requestRecordChan     chan requestRecord
 	fph                   *fakePeerHandler
 	fal                   *testloader.FakeAsyncLoader
@@ -971,10 +1013,14 @@ type testData struct {
 	extensionData2        []byte
 	extension2            graphsync.ExtensionData
 	networkErrorListeners *listeners.NetworkErrorListeners
+	panics                chan capturedPanic
+	panicHandler          func()
 }
 
 func newTestData(ctx context.Context, t *testing.T) *testData {
 	td := &testData{}
+	td.ctx = ctx
+	td.t = t
 	td.requestRecordChan = make(chan requestRecord, 3)
 	td.fph = &fakePeerHandler{td.requestRecordChan}
 	td.fal = testloader.NewFakeAsyncLoader()
@@ -982,7 +1028,9 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.responseHooks = hooks.NewResponseHooks()
 	td.blockHooks = hooks.NewBlockHooks()
 	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
-	td.requestManager = New(ctx, td.fal, td.requestHooks, td.responseHooks, td.blockHooks, td.networkErrorListeners)
+	td.panics = make(chan capturedPanic, 1)
+	td.panicHandler = panics.MakeHandler(td.capturePanic)
+	td.requestManager = New(ctx, td.fal, td.requestHooks, td.responseHooks, td.blockHooks, td.networkErrorListeners, td.panicHandler)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()
 	td.blockStore = make(map[ipld.Link][]byte)
@@ -1001,4 +1049,15 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 		Data: td.extensionData2,
 	}
 	return td
+}
+
+func (td *testData) assertPanic(obj interface{}, debugStackTraceSubString string) {
+	var panic capturedPanic
+	testutil.AssertReceive(td.ctx, td.t, td.panics, &panic, "should capture a panic")
+	require.Equal(td.t, obj, panic.recoverObj)
+	require.Contains(td.t, panic.debugStackTrace, debugStackTraceSubString)
+}
+
+func (td *testData) capturePanic(recoverObj interface{}, debugStackTrace string) {
+	td.panics <- capturedPanic{recoverObj, debugStackTrace}
 }

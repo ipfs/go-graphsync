@@ -1053,6 +1053,35 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 	require.Equal(t, blockChainLength, blocksSent)
 }
 
+func TestPanics(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	capturedPanics := make(chan interface{}, 1)
+	cb := func(recoverObj interface{}, debugStackTrace string) {
+		capturedPanics <- recoverObj
+	}
+
+	requestor := td.GraphSyncHost1(CapturePanics(cb))
+	requestor.RegisterIncomingBlockHook(func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
+		panic("something went wrong")
+	})
+	_ = td.GraphSyncHost2()
+
+	blockChainLength := 5
+	blockChain := testutil.SetupBlockChain(ctx, t, td.loader2, td.storer2, 5, blockChainLength)
+
+	// send request
+	_, _ = requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+	var capturedPanic interface{}
+
+	testutil.AssertReceive(ctx, t, capturedPanics, &capturedPanic, "capture publish panic")
+	require.Equal(t, "something went wrong", capturedPanic)
+}
+
 type gsTestData struct {
 	mn                       mocknet.Mocknet
 	ctx                      context.Context

@@ -14,6 +14,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -313,6 +314,34 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 	})
 }
 
+func TestAsyncLoadPanics(t *testing.T) {
+	block := testutil.GenerateBlocksOfSize(1, 100)[0]
+	st := newStore()
+	link := st.Store(t, block)
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	panicLoader := func(ipld.Link, ipld.LinkContext) (io.Reader, error) {
+		panic("something went wrong")
+	}
+	panicStorer := func(lnkCtx ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
+		panic("something went wrong")
+	}
+	capturedPanics := make(chan interface{}, 1)
+	panicHandler := panics.MakeHandler(func(recoverObj interface{}, debugStackTrace string) {
+		capturedPanics <- recoverObj
+	})
+	asyncLoader := New(ctx, panicLoader, panicStorer, panicHandler)
+	asyncLoader.Startup()
+
+	requestID := graphsync.RequestID(rand.Int31())
+	_ = asyncLoader.AsyncLoad(requestID, link)
+
+	var capturedPanic interface{}
+	testutil.AssertReceive(ctx, t, capturedPanics, &capturedPanic, "capture publish panic")
+	require.Equal(t, "something went wrong", capturedPanic)
+}
+
 type store struct {
 	internalLoader ipld.Loader
 	storer         ipld.Storer
@@ -370,7 +399,7 @@ func withLoader(st *store, exec func(ctx context.Context, asyncLoader *AsyncLoad
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	asyncLoader := New(ctx, st.loader, st.storer)
+	asyncLoader := New(ctx, st.loader, st.storer, nil)
 	asyncLoader.Startup()
 	exec(ctx, asyncLoader)
 }

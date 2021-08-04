@@ -21,22 +21,29 @@ type cmd struct {
 
 // publisher is a publisher of events for
 type publisher struct {
-	lk      sync.RWMutex
-	closed  chan struct{}
-	cmdChan chan cmd
+	lk           sync.RWMutex
+	closed       chan struct{}
+	cmdChan      chan cmd
+	panicHandler func()
 }
 
 // NewPublisher returns a new message event publisher
-func NewPublisher() Publisher {
+func NewPublisher(panicHandler func()) Publisher {
 	ps := &publisher{
-		cmdChan: make(chan cmd),
-		closed:  make(chan struct{}),
+		cmdChan:      make(chan cmd),
+		closed:       make(chan struct{}),
+		panicHandler: panicHandler,
 	}
 	return ps
 }
 
 func (ps *publisher) Startup() {
-	go ps.start()
+	go func() {
+		if ps.panicHandler != nil {
+			defer ps.panicHandler()
+		}
+		ps.start()
+	}()
 }
 
 // Publish publishes an event for the given message id

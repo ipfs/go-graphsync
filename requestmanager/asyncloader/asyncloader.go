@@ -40,11 +40,12 @@ type AsyncLoader struct {
 	alternateQueues  map[string]alternateQueue
 	responseCache    *responsecache.ResponseCache
 	loadAttemptQueue *loadattemptqueue.LoadAttemptQueue
+	panicHandler     func()
 }
 
 // New initializes a new link loading manager for asynchronous loads from the given context
 // and local store loading and storing function
-func New(ctx context.Context, loader ipld.Loader, storer ipld.Storer) *AsyncLoader {
+func New(ctx context.Context, loader ipld.Loader, storer ipld.Storer, panicHandler func()) *AsyncLoader {
 	responseCache, loadAttemptQueue := setupAttemptQueue(loader, storer)
 	ctx, cancel := context.WithCancel(ctx)
 	return &AsyncLoader{
@@ -59,6 +60,7 @@ func New(ctx context.Context, loader ipld.Loader, storer ipld.Storer) *AsyncLoad
 		alternateQueues:  make(map[string]alternateQueue),
 		responseCache:    responseCache,
 		loadAttemptQueue: loadAttemptQueue,
+		panicHandler:     panicHandler,
 	}
 }
 
@@ -193,6 +195,9 @@ type cleanupRequestMessage struct {
 }
 
 func (al *AsyncLoader) run() {
+	if al.panicHandler != nil {
+		defer al.panicHandler()
+	}
 	for {
 		select {
 		case <-al.ctx.Done():
@@ -204,6 +209,9 @@ func (al *AsyncLoader) run() {
 }
 
 func (al *AsyncLoader) messageQueueWorker() {
+	if al.panicHandler != nil {
+		defer al.panicHandler()
+	}
 	var messageBuffer []loaderMessage
 	nextMessage := func() loaderMessage {
 		if len(messageBuffer) == 0 {

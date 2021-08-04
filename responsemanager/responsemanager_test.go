@@ -3,6 +3,7 @@ package responsemanager
 import (
 	"context"
 	"errors"
+	"io"
 	"math/rand"
 	"sync"
 	"testing"
@@ -24,6 +25,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
@@ -697,6 +699,77 @@ func TestNetworkErrors(t *testing.T) {
 	})
 }
 
+func TestPanicCapture(t *testing.T) {
+	t.Run("panic - block load (worker routine)", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		td.loader = func(ipld.Link, ipld.LinkContext) (io.Reader, error) {
+			panic("something went wrong")
+		}
+		responseManager := td.newResponseManager()
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+		})
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		td.assertPanic("something went wrong", "(*queryExecutor).processQueriesWorker")
+	})
+
+	t.Run("panic - block hook (worker routine)", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := td.newResponseManager()
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+		})
+		td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+			panic("something went wrong")
+		})
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		td.assertPanic("something went wrong", "(*queryExecutor).processQueriesWorker")
+	})
+
+	t.Run("panic - request hook (main internal go routine)", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := td.newResponseManager()
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			panic("something went wrong")
+		})
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		td.assertPanic("something went wrong", "(*ResponseManager).run")
+	})
+
+	t.Run("panic - link prototype chooser (traverser internal routine)", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := td.newResponseManager()
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+			hookActions.UseLinkTargetNodePrototypeChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
+				panic("something went wrong")
+			})
+		})
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		td.assertPanic("something went wrong", "ipldutil.(*traverser).start")
+	})
+
+	t.Run("panic - request queued listner (main internal go routine)", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := td.newResponseManager()
+		responseManager.Startup()
+		td.requestQueuedHooks.Register(func(p peer.ID, request graphsync.RequestData) {
+			panic("something went wrong")
+		})
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		td.assertPanic("something went wrong", "(*ResponseManager).run")
+	})
+}
+
 type fakeQueryQueue struct {
 	popWait   sync.WaitGroup
 	queriesLk sync.RWMutex
@@ -798,6 +871,11 @@ type fakeBlkData struct {
 	size uint64
 }
 
+type capturedPanic struct {
+	recoverObj      interface{}
+	debugStackTrace string
+}
+
 func (fbd fakeBlkData) Link() ipld.Link {
 	return fbd.link
 }
@@ -894,6 +972,8 @@ type testData struct {
 	clearedRequests           chan clearedRequest
 	ignoredLinks              chan []ipld.Link
 	dedupKeys                 chan string
+	panics                    chan capturedPanic
+	panicHandler              func()
 	responseAssembler         *fakeResponseAssembler
 	queryQueue                *fakeQueryQueue
 	extensionData             []byte
@@ -941,6 +1021,7 @@ func newTestData(t *testing.T) testData {
 	td.clearedRequests = make(chan clearedRequest, 1)
 	td.ignoredLinks = make(chan []ipld.Link, 1)
 	td.dedupKeys = make(chan string, 1)
+	td.panics = make(chan capturedPanic, 1)
 	td.blockSends = make(chan graphsync.BlockData, td.blockChainLength*2)
 	td.completedResponseStatuses = make(chan graphsync.ResponseStatusCode, 1)
 	td.networkErrorChan = make(chan error, td.blockChainLength*2)
@@ -1008,17 +1089,18 @@ func newTestData(t *testing.T) testData {
 		default:
 		}
 	})
+	td.panicHandler = panics.MakeHandler(td.capturePanic)
 	return td
 }
 
 func (td *testData) newResponseManager() *ResponseManager {
-	return New(td.ctx, td.loader, td.responseAssembler, td.queryQueue, td.requestQueuedHooks, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
+	return New(td.ctx, td.loader, td.responseAssembler, td.queryQueue, td.requestQueuedHooks, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, td.panicHandler, 6)
 }
 
 func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 	obs := make(map[ipld.Link][]byte)
 	oloader, _ := testutil.NewTestStore(obs)
-	return New(td.ctx, oloader, td.responseAssembler, td.queryQueue, td.requestQueuedHooks, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6)
+	return New(td.ctx, oloader, td.responseAssembler, td.queryQueue, td.requestQueuedHooks, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, td.panicHandler, 6)
 }
 
 func (td *testData) assertPausedRequest() {
@@ -1171,4 +1253,15 @@ func (td *testData) assertHasNetworkErrors(err error) {
 	var receivedErr error
 	testutil.AssertReceive(td.ctx, td.t, td.networkErrorChan, &receivedErr, "should sent block")
 	require.EqualError(td.t, receivedErr, err.Error())
+}
+
+func (td *testData) capturePanic(recoverObj interface{}, debugStackTrace string) {
+	td.panics <- capturedPanic{recoverObj, debugStackTrace}
+}
+
+func (td *testData) assertPanic(obj interface{}, debugStackTraceSubString string) {
+	var panic capturedPanic
+	testutil.AssertReceive(td.ctx, td.t, td.panics, &panic, "should capture a panic")
+	require.Equal(td.t, obj, panic.recoverObj)
+	require.Contains(td.t, panic.debugStackTrace, debugStackTraceSubString)
 }

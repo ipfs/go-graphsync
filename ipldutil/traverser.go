@@ -28,10 +28,11 @@ func (cp ContextCancelError) Error() string {
 
 // TraversalBuilder defines parameters for an iterative traversal
 type TraversalBuilder struct {
-	Root     ipld.Link
-	Selector ipld.Node
-	Visitor  traversal.AdvVisitFn
-	Chooser  traversal.LinkTargetNodePrototypeChooser
+	Root         ipld.Link
+	Selector     ipld.Node
+	Visitor      traversal.AdvVisitFn
+	Chooser      traversal.LinkTargetNodePrototypeChooser
+	PanicHandler func()
 }
 
 // Traverser is an interface for performing a selector traversal that operates iteratively --
@@ -76,6 +77,7 @@ func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 		selector:     tb.Selector,
 		visitor:      defaultVisitor,
 		chooser:      defaultChooser,
+		panicHandler: tb.PanicHandler,
 		awaitRequest: make(chan struct{}, 1),
 		stateChan:    make(chan state, 1),
 		responses:    make(chan nextResponse),
@@ -102,6 +104,7 @@ type traverser struct {
 	selector       ipld.Node
 	visitor        traversal.AdvVisitFn
 	chooser        traversal.LinkTargetNodePrototypeChooser
+	panicHandler   func()
 	currentLink    ipld.Link
 	currentContext ipld.LinkContext
 	isDone         bool
@@ -148,6 +151,9 @@ func (t *traverser) start() {
 	case t.awaitRequest <- struct{}{}:
 	}
 	go func() {
+		if t.panicHandler != nil {
+			defer t.panicHandler()
+		}
 		defer close(t.stopped)
 		loader := func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
 			select {

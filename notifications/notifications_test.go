@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSubscribeWithData(t *testing.T) {
@@ -142,11 +144,38 @@ func TestSubscribeWithData(t *testing.T) {
 		t.Run(testCase, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 			defer cancel()
-			ps := notifications.NewPublisher()
+			ps := notifications.NewPublisher(nil)
 			ps.Startup()
 			testPublisher(ctx, t, ps)
 			ps.Shutdown()
 		})
 	}
+}
 
+func TestPanic(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	capturedPanics := make(chan interface{}, 1)
+	ps := notifications.NewPublisher(panics.MakeHandler(func(recoverObj interface{}, debugStackTrace string) {
+		capturedPanics <- recoverObj
+	}))
+	ps.Startup()
+	ps.Subscribe("t1", panicSubscriber{"something went wrong"})
+	ps.Publish("t1", "hi")
+	var capturedPanic interface{}
+
+	testutil.AssertReceive(ctx, t, capturedPanics, &capturedPanic, "capture publish panic")
+	require.Equal(t, "something went wrong", capturedPanic)
+}
+
+type panicSubscriber struct{ panicMessage string }
+
+func (p panicSubscriber) OnNext(_ notifications.Topic, _ notifications.Event) {
+	panic(p.panicMessage)
+}
+
+func (p panicSubscriber) OnClose(_ notifications.Topic) {
+	panic(p.panicMessage)
 }

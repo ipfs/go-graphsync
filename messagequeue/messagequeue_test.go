@@ -18,6 +18,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -68,7 +69,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator)
+	messageQueue := New(ctx, peer, messageNetwork, allocator, nil)
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
@@ -106,7 +107,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator)
+	messageQueue := New(ctx, peer, messageNetwork, allocator, nil)
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
@@ -154,7 +155,7 @@ func TestProcessingNotification(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator)
+	messageQueue := New(ctx, peer, messageNetwork, allocator, nil)
 	messageQueue.Startup()
 	waitGroup.Add(1)
 	blks := testutil.GenerateBlocksOfSize(3, 128)
@@ -210,7 +211,7 @@ func TestDedupingMessages(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator)
+	messageQueue := New(ctx, peer, messageNetwork, allocator, nil)
 	messageQueue.Startup()
 	waitGroup.Add(1)
 	id := graphsync.RequestID(rand.Int31())
@@ -282,7 +283,7 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator)
+	messageQueue := New(ctx, peer, messageNetwork, allocator, nil)
 	messageQueue.Startup()
 	waitGroup.Add(1)
 
@@ -342,7 +343,7 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 	// use allocator with very small limit
 	allocator := allocator2.NewAllocator(1000, 1000)
 
-	messageQueue := New(ctx, p, messageNetwork, allocator)
+	messageQueue := New(ctx, p, messageNetwork, allocator, nil)
 	messageQueue.Startup()
 	waitGroup.Add(1)
 
@@ -381,4 +382,51 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 	case <-ctx2.Done():
 		t.Fatal("timeout waiting for transaction to complete")
 	}
+}
+
+func TestPanic(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	peer := testutil.GeneratePeers(1)[0]
+	messageSender := &panicMessageSender{"something went wrong"}
+	var waitGroup sync.WaitGroup
+	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
+	allocator := allocator2.NewAllocator(1<<30, 1<<30)
+	capturedPanics := make(chan interface{}, 1)
+	panicHandler := panics.MakeHandler(func(recoverObj interface{}, debugStackTrace string) {
+		capturedPanics <- recoverObj
+	})
+
+	messageQueue := New(ctx, peer, messageNetwork, allocator, panicHandler)
+	messageQueue.Startup()
+	id := graphsync.RequestID(rand.Int31())
+	priority := graphsync.Priority(rand.Int31())
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+	selector := ssb.Matcher().Node()
+	root := testutil.GenerateCids(1)[0]
+
+	waitGroup.Add(1)
+	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
+		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+	}, []notifications.Notifee{})
+
+	var capturedPanic interface{}
+	testutil.AssertReceive(ctx, t, capturedPanics, &capturedPanic, "capture publish panic")
+	require.Equal(t, "something went wrong", capturedPanic)
+}
+
+type panicMessageSender struct {
+	panicMessage string
+}
+
+func (pms *panicMessageSender) SendMsg(ctx context.Context, msg gsmsg.GraphSyncMessage) error {
+	panic(pms.panicMessage)
+}
+func (pms *panicMessageSender) Close() error {
+	panic(pms.panicMessage)
+}
+func (pms *panicMessageSender) Reset() error {
+	panic(pms.panicMessage)
 }

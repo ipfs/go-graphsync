@@ -7,11 +7,12 @@ import (
 )
 
 type responseCollector struct {
-	ctx context.Context
+	ctx          context.Context
+	panicHandler func()
 }
 
-func newResponseCollector(ctx context.Context) *responseCollector {
-	return &responseCollector{ctx}
+func newResponseCollector(ctx context.Context, panicHandler func()) *responseCollector {
+	return &responseCollector{ctx, panicHandler}
 }
 
 func (rc *responseCollector) collectResponses(
@@ -26,6 +27,9 @@ func (rc *responseCollector) collectResponses(
 	returnedErrors := make(chan error)
 
 	go func() {
+		if rc.panicHandler != nil {
+			defer rc.panicHandler()
+		}
 		var receivedResponses []graphsync.ResponseProgress
 		defer close(returnedResponses)
 		defer onComplete()
@@ -62,6 +66,9 @@ func (rc *responseCollector) collectResponses(
 		}
 	}()
 	go func() {
+		if rc.panicHandler != nil {
+			defer rc.panicHandler()
+		}
 		var receivedErrors []error
 		defer close(returnedErrors)
 

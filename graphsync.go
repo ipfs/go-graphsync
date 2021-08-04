@@ -303,6 +303,9 @@ type OnResponseCompletedListener func(p peer.ID, request RequestData, status Res
 // OnRequestorCancelledListener provides a way to listen for responses the requestor canncels
 type OnRequestorCancelledListener func(p peer.ID, request RequestData)
 
+// OnPanicListener provides a way to process panics which happen inside of graphsync go-routines
+type OnPanicListener func(recoverObj interface{}, debugStackTrace string)
+
 // UnregisterHookFunc is a function call to unregister a hook that was previously registered
 type UnregisterHookFunc func()
 

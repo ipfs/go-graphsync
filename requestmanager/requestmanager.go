@@ -84,6 +84,7 @@ type RequestManager struct {
 	responseHooks             ResponseHooks
 	blockHooks                BlockHooks
 	networkErrorListeners     *listeners.NetworkErrorListeners
+	panicHandler              func()
 }
 
 type requestManagerMessage interface {
@@ -112,6 +113,7 @@ func New(ctx context.Context,
 	responseHooks ResponseHooks,
 	blockHooks BlockHooks,
 	networkErrorListeners *listeners.NetworkErrorListeners,
+	panicHandler func(),
 ) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
@@ -119,13 +121,14 @@ func New(ctx context.Context,
 		cancel:                    cancel,
 		asyncLoader:               asyncLoader,
 		disconnectNotif:           pubsub.New(disconnectDispatcher),
-		rc:                        newResponseCollector(ctx),
+		rc:                        newResponseCollector(ctx, panicHandler),
 		messages:                  make(chan requestManagerMessage, 16),
 		inProgressRequestStatuses: make(map[graphsync.RequestID]*inProgressRequestStatus),
 		requestHooks:              requestHooks,
 		responseHooks:             responseHooks,
 		blockHooks:                blockHooks,
 		networkErrorListeners:     networkErrorListeners,
+		panicHandler:              panicHandler,
 	}
 }
 
@@ -340,6 +343,9 @@ func (rm *RequestManager) Shutdown() {
 }
 
 func (rm *RequestManager) run() {
+	if rm.panicHandler != nil {
+		defer rm.panicHandler()
+	}
 	// NOTE: Do not open any streams or connections from anywhere in this
 	// event loop. Really, just don't do anything likely to block.
 	defer rm.cleanupInProcessRequests()
@@ -400,6 +406,7 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 		TerminateRequest: rm.terminateRequest,
 		RunBlockHooks:    rm.processBlockHooks,
 		Loader:           rm.asyncLoader.AsyncLoad,
+		PanicHandler:     rm.panicHandler,
 	}.Start(
 		executor.RequestExecution{
 			Ctx:                  ctx,

@@ -18,7 +18,7 @@ func TestBufferingResponseProgress(t *testing.T) {
 	backgroundCtx := context.Background()
 	ctx, cancel := context.WithTimeout(backgroundCtx, time.Second)
 	defer cancel()
-	rc := newResponseCollector(ctx)
+	rc := newResponseCollector(ctx, nil)
 	requestCtx, requestCancel := context.WithCancel(backgroundCtx)
 	defer requestCancel()
 	incomingResponses := make(chan graphsync.ResponseProgress)
@@ -26,7 +26,7 @@ func TestBufferingResponseProgress(t *testing.T) {
 	cancelRequest := func() {}
 
 	outgoingResponses, outgoingErrors := rc.collectResponses(
-		requestCtx, incomingResponses, incomingErrors, cancelRequest, func(){})
+		requestCtx, incomingResponses, incomingErrors, cancelRequest, func() {})
 
 	blockStore := make(map[ipld.Link][]byte)
 	loader, storer := testutil.NewTestStore(blockStore)

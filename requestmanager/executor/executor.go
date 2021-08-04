@@ -32,6 +32,7 @@ type ExecutionEnv struct {
 	TerminateRequest func(graphsync.RequestID)
 	WaitForMessages  func(ctx context.Context, resumeMessages chan graphsync.ExtensionData) ([]graphsync.ExtensionData, error)
 	Loader           AsyncLoadFn
+	PanicHandler     func()
 }
 
 // RequestExecution are parameters for a single request execution
@@ -99,10 +100,11 @@ func (re *requestExecutor) visitor(tp traversal.Progress, node ipld.Node, tr tra
 
 func (re *requestExecutor) traverse() error {
 	traverser := ipldutil.TraversalBuilder{
-		Root:     cidlink.Link{Cid: re.request.Root()},
-		Selector: re.request.Selector(),
-		Visitor:  re.visitor,
-		Chooser:  re.nodeStyleChooser,
+		Root:         cidlink.Link{Cid: re.request.Root()},
+		Selector:     re.request.Selector(),
+		Visitor:      re.visitor,
+		Chooser:      re.nodeStyleChooser,
+		PanicHandler: re.env.PanicHandler,
 	}.Start(re.ctx)
 	defer traverser.Shutdown(context.Background())
 	for {
@@ -143,6 +145,9 @@ func (re *requestExecutor) traverse() error {
 }
 
 func (re *requestExecutor) run() {
+	if re.env.PanicHandler != nil {
+		defer re.env.PanicHandler()
+	}
 	err := re.traverse()
 	if err != nil {
 		if !isContextErr(err) {

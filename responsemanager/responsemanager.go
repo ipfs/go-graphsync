@@ -134,6 +134,7 @@ type ResponseManager struct {
 	completedListeners    CompletedListeners
 	blockSentListeners    BlockSentListeners
 	networkErrorListeners NetworkErrorListeners
+	panicHandler          func()
 	messages              chan responseManagerMessage
 	workSignal            chan struct{}
 	qe                    *queryExecutor
@@ -154,6 +155,7 @@ func New(ctx context.Context,
 	cancelledListeners CancelledListeners,
 	blockSentListeners BlockSentListeners,
 	networkErrorListeners NetworkErrorListeners,
+	panicHandler func(),
 	maxInProcessRequests uint64,
 ) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
@@ -183,6 +185,7 @@ func New(ctx context.Context,
 		completedListeners:    completedListeners,
 		blockSentListeners:    blockSentListeners,
 		networkErrorListeners: networkErrorListeners,
+		panicHandler:          panicHandler,
 		messages:              messages,
 		workSignal:            workSignal,
 		qe:                    qe,
@@ -285,7 +288,12 @@ type responseUpdateRequest struct {
 
 // Startup starts processing for the WantManager.
 func (rm *ResponseManager) Startup() {
-	go rm.run()
+	go func() {
+		if rm.panicHandler != nil {
+			defer rm.panicHandler()
+		}
+		rm.run()
+	}()
 }
 
 // Shutdown ends processing for the want manager.
@@ -302,7 +310,12 @@ func (rm *ResponseManager) cleanupInProcessResponses() {
 func (rm *ResponseManager) run() {
 	defer rm.cleanupInProcessResponses()
 	for i := uint64(0); i < rm.maxInProcessRequests; i++ {
-		go rm.qe.processQueriesWorker()
+		go func() {
+			if rm.panicHandler != nil {
+				defer rm.panicHandler()
+			}
+			rm.qe.processQueriesWorker()
+		}()
 	}
 
 	for {
@@ -481,7 +494,7 @@ func (str *startTaskRequest) responseTaskData(rm *ResponseManager, key responseK
 	}
 
 	if response.loader == nil || response.traverser == nil {
-		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.loader}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
+		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.loader, rm.panicHandler}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
 		if err != nil {
 			response.cancelFn()
 			delete(rm.inProgressResponses, key)

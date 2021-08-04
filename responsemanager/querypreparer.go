@@ -21,6 +21,7 @@ type queryPreparer struct {
 	requestHooks      RequestHooks
 	responseAssembler ResponseAssembler
 	loader            ipld.Loader
+	panicHandler      func()
 }
 
 func (qe *queryPreparer) prepareQuery(ctx context.Context,
@@ -59,9 +60,10 @@ func (qe *queryPreparer) prepareQuery(ctx context.Context,
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
 	traverser := ipldutil.TraversalBuilder{
-		Root:     rootLink,
-		Selector: request.Selector(),
-		Chooser:  result.CustomChooser,
+		Root:         rootLink,
+		Selector:     request.Selector(),
+		Chooser:      result.CustomChooser,
+		PanicHandler: qe.panicHandler,
 	}.Start(ctx)
 	loader := result.CustomLoader
 	if loader == nil {

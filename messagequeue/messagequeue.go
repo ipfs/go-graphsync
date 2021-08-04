@@ -64,17 +64,19 @@ type MessageQueue struct {
 	builders         []*gsmsg.Builder
 	nextBuilderTopic gsmsg.Topic
 	allocator        Allocator
+	panicHandler     func()
 }
 
 // New creats a new MessageQueue.
-func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Allocator) *MessageQueue {
+func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Allocator, panicHandler func()) *MessageQueue {
 	return &MessageQueue{
 		ctx:            ctx,
 		network:        network,
 		p:              p,
 		outgoingWork:   make(chan struct{}, 1),
 		done:           make(chan struct{}),
-		eventPublisher: notifications.NewPublisher(),
+		eventPublisher: notifications.NewPublisher(panicHandler),
+		panicHandler:   panicHandler,
 		allocator:      allocator,
 	}
 }
@@ -123,7 +125,12 @@ func shouldBeginNewResponse(builders []*gsmsg.Builder, blkSize uint64) bool {
 // Startup starts the processing of messages, and creates an initial message
 // based on the given initial wantlist.
 func (mq *MessageQueue) Startup() {
-	go mq.runQueue()
+	go func() {
+		if mq.panicHandler != nil {
+			defer mq.panicHandler()
+		}
+		mq.runQueue()
+	}()
 }
 
 // Shutdown stops the processing of messages for a message queue.

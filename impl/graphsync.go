@@ -14,6 +14,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
+	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/requestmanager"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
@@ -67,6 +68,7 @@ type graphsyncConfigOptions struct {
 	maxMemoryPerPeer         uint64
 	maxInProgressRequests    uint64
 	registerDefaultValidator bool
+	panicHandler             func()
 }
 
 // Option defines the functional option type that can be used to configure
@@ -105,6 +107,14 @@ func MaxInProgressRequests(maxInProgressRequests uint64) Option {
 	}
 }
 
+// CapturePanics recovers from all panics inside of graphsync go routines
+// WARNING: go routines are NOT restarted however
+func CapturePanics(callbackFn panics.CallBackFn) Option {
+	return func(gs *graphsyncConfigOptions) {
+		gs.panicHandler = panics.MakeHandler(callbackFn)
+	}
+}
+
 // New creates a new GraphSync Exchange on the given network,
 // and the given link loader+storer.
 func New(parent context.Context, network gsnet.GraphSyncNetwork,
@@ -116,6 +126,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		maxMemoryPerPeer:         defaultMaxMemoryPerPeer,
 		maxInProgressRequests:    defaultMaxInProgressRequests,
 		registerDefaultValidator: true,
+		panicHandler:             nil,
 	}
 	for _, option := range options {
 		option(gsConfig)
@@ -138,14 +149,14 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	allocator := allocator.NewAllocator(gsConfig.totalMaxMemory, gsConfig.maxMemoryPerPeer)
 	createMessageQueue := func(ctx context.Context, p peer.ID) peermanager.PeerQueue {
-		return messagequeue.New(ctx, p, network, allocator)
+		return messagequeue.New(ctx, p, network, allocator, gsConfig.panicHandler)
 	}
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
-	asyncLoader := asyncloader.New(ctx, loader, storer)
-	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners)
+	asyncLoader := asyncloader.New(ctx, loader, storer, gsConfig.panicHandler)
+	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners, gsConfig.panicHandler)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	peerTaskQueue := peertaskqueue.New()
-	responseManager := responsemanager.New(ctx, loader, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressRequests)
+	responseManager := responsemanager.New(ctx, loader, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.panicHandler, gsConfig.maxInProgressRequests)
 	graphSync := &GraphSync{
 		network:                     network,
 		loader:                      loader,
