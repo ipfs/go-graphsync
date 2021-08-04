@@ -43,11 +43,12 @@ type inProgressRequestStatus struct {
 	startTime      time.Time
 	cancelFn       func()
 	p              peer.ID
-	networkError   chan error
+	terminalError  chan error
 	resumeMessages chan []graphsync.ExtensionData
 	pauseMessages  chan struct{}
 	paused         bool
 	lastResponse   atomic.Value
+	onTerminated   []chan error
 }
 
 // PeerHandler is an interface that can send requests to peers
@@ -234,8 +235,10 @@ func (rm *RequestManager) singleErrorResponse(err error) (chan graphsync.Respons
 }
 
 type cancelRequestMessage struct {
-	requestID graphsync.RequestID
-	isPause   bool
+	requestID     graphsync.RequestID
+	isPause       bool
+	onTerminated  chan error
+	terminalError error
 }
 
 func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID,
@@ -244,7 +247,7 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID,
 	cancelMessageChannel := rm.messages
 	for cancelMessageChannel != nil || incomingResponses != nil || incomingErrors != nil {
 		select {
-		case cancelMessageChannel <- &cancelRequestMessage{requestID, false}:
+		case cancelMessageChannel <- &cancelRequestMessage{requestID, false, nil, nil}:
 			cancelMessageChannel = nil
 		// clear out any remaining responses, in case and "incoming reponse"
 		// messages get processed before our cancel message
@@ -260,6 +263,12 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID,
 			return
 		}
 	}
+}
+
+// CancelRequest cancels the given request ID and waits for the request to terminate
+func (rm *RequestManager) CancelRequest(ctx context.Context, requestID graphsync.RequestID) error {
+	terminated := make(chan error, 1)
+	return rm.sendSyncMessage(&cancelRequestMessage{requestID, false, terminated, graphsync.RequestClientCancelledErr{}}, terminated, ctx.Done())
 }
 
 type processResponseMessage struct {
@@ -288,7 +297,7 @@ type unpauseRequestMessage struct {
 // Can also send extensions with unpause
 func (rm *RequestManager) UnpauseRequest(requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	response := make(chan error, 1)
-	return rm.sendSyncMessage(&unpauseRequestMessage{requestID, extensions, response}, response)
+	return rm.sendSyncMessage(&unpauseRequestMessage{requestID, extensions, response}, response, nil)
 }
 
 type pauseRequestMessage struct {
@@ -299,17 +308,21 @@ type pauseRequestMessage struct {
 // PauseRequest pauses an in progress request (may take 1 or more blocks to process)
 func (rm *RequestManager) PauseRequest(requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
-	return rm.sendSyncMessage(&pauseRequestMessage{requestID, response}, response)
+	return rm.sendSyncMessage(&pauseRequestMessage{requestID, response}, response, nil)
 }
 
-func (rm *RequestManager) sendSyncMessage(message requestManagerMessage, response chan error) error {
+func (rm *RequestManager) sendSyncMessage(message requestManagerMessage, response chan error, done <-chan struct{}) error {
 	select {
 	case <-rm.ctx.Done():
+		return errors.New("Context Cancelled")
+	case <-done:
 		return errors.New("Context Cancelled")
 	case rm.messages <- message:
 	}
 	select {
 	case <-rm.ctx.Done():
+		return errors.New("Context Cancelled")
+	case <-done:
 		return errors.New("Context Cancelled")
 	case err := <-response:
 		return err
@@ -374,9 +387,9 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 	p := nrm.p
 	resumeMessages := make(chan []graphsync.ExtensionData, 1)
 	pauseMessages := make(chan struct{}, 1)
-	networkError := make(chan error, 1)
+	terminalError := make(chan error, 1)
 	requestStatus := &inProgressRequestStatus{
-		ctx: ctx, startTime: time.Now(), cancelFn: cancel, p: p, resumeMessages: resumeMessages, pauseMessages: pauseMessages, networkError: networkError,
+		ctx: ctx, startTime: time.Now(), cancelFn: cancel, p: p, resumeMessages: resumeMessages, pauseMessages: pauseMessages, terminalError: terminalError,
 	}
 	lastResponse := &requestStatus.lastResponse
 	lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
@@ -392,7 +405,7 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 			Ctx:                  ctx,
 			P:                    p,
 			Request:              request,
-			NetworkError:         networkError,
+			TerminalError:        terminalError,
 			LastResponse:         lastResponse,
 			DoNotSendCids:        doNotSendCids,
 			NodePrototypeChooser: hooksResult.CustomChooser,
@@ -421,12 +434,36 @@ func (trm *terminateRequestMessage) handle(rm *RequestManager) {
 	}
 	delete(rm.inProgressRequestStatuses, trm.requestID)
 	rm.asyncLoader.CleanupRequest(trm.requestID)
+	if ok {
+		for _, onTerminated := range ipr.onTerminated {
+			select {
+			case <-rm.ctx.Done():
+			case onTerminated <- nil:
+			}
+		}
+	}
 }
 
 func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[crm.requestID]
 	if !ok {
+		if crm.onTerminated != nil {
+			select {
+			case crm.onTerminated <- errors.New("request not found"):
+			case <-rm.ctx.Done():
+			}
+		}
 		return
+	}
+
+	if crm.onTerminated != nil {
+		inProgressRequestStatus.onTerminated = append(inProgressRequestStatus.onTerminated, crm.onTerminated)
+	}
+	if crm.terminalError != nil {
+		select {
+		case inProgressRequestStatus.terminalError <- crm.terminalError:
+		default:
+		}
 	}
 
 	rm.sendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(crm.requestID))
@@ -488,8 +525,8 @@ func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg
 		}
 		responseError := rm.generateResponseErrorFromStatus(graphsync.RequestFailedUnknown)
 		select {
-		case requestStatus.networkError <- responseError:
-		case <-requestStatus.ctx.Done():
+		case requestStatus.terminalError <- responseError:
+		default:
 		}
 		rm.sendRequest(p, gsmsg.CancelRequest(response.RequestID()))
 		requestStatus.cancelFn()
@@ -505,8 +542,8 @@ func (rm *RequestManager) processTerminations(responses []gsmsg.GraphSyncRespons
 				requestStatus := rm.inProgressRequestStatuses[response.RequestID()]
 				responseError := rm.generateResponseErrorFromStatus(response.Status())
 				select {
-				case requestStatus.networkError <- responseError:
-				case <-requestStatus.ctx.Done():
+				case requestStatus.terminalError <- responseError:
+				default:
 				}
 				requestStatus.cancelFn()
 			}
@@ -542,7 +579,7 @@ func (rm *RequestManager) processBlockHooks(p peer.ID, response graphsync.Respon
 		_, isPause := result.Err.(hooks.ErrPaused)
 		select {
 		case <-rm.ctx.Done():
-		case rm.messages <- &cancelRequestMessage{response.RequestID(), isPause}:
+		case rm.messages <- &cancelRequestMessage{response.RequestID(), isPause, nil, nil}:
 		}
 	}
 	return result.Err

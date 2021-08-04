@@ -10,6 +10,12 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 )
 
+/* TODO: This traverser creates an extra go-routine and is quite complicated, in order to give calling code control of
+a selector traversal. If it were implemented inside of go-ipld-primes traversal library, with access to private functions,
+it could be done without an extra go-routine, avoiding the possibility of races and simplifying implementation. This has
+been documented here: https://github.com/ipld/go-ipld-prime/issues/213 -- and when this issue is implemented, this traverser
+can go away */
+
 var defaultVisitor traversal.AdvVisitFn = func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil }
 
 // ContextCancelError is a sentinel that indicates the passed in context
@@ -137,6 +143,7 @@ func (t *traverser) writeDone(err error) {
 func (t *traverser) start() {
 	select {
 	case <-t.ctx.Done():
+		close(t.stopped)
 		return
 	case t.awaitRequest <- struct{}{}:
 	}
