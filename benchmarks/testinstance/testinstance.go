@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/ipfs/go-datastore"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"
@@ -116,7 +115,7 @@ type Instance struct {
 	BlockStore      blockstore.Blockstore
 	Adapter         gsnet.GraphSyncNetwork
 	blockstoreDelay delay.D
-	ds              datastore.Batching
+	ds              ds.Batching
 }
 
 // Close closes the associated datastore
@@ -144,7 +143,7 @@ func NewInstance(ctx context.Context, net tn.Network, p tnet.Identity, gsOptions
 	bsdelay := delay.Fixed(0)
 
 	adapter := net.Adapter(p)
-	var dstore datastore.Batching
+	var dstore ds.Batching
 	var err error
 	if diskBasedDatastore {
 		defopts := badgerds.DefaultOptions

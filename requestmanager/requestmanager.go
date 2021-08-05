@@ -11,6 +11,7 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
@@ -147,16 +148,16 @@ type newRequestMessage struct {
 func (rm *RequestManager) SendRequest(ctx context.Context,
 	p peer.ID,
 	root ipld.Link,
-	selector ipld.Node,
+	selectorNode ipld.Node,
 	extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
-	if _, err := ipldutil.ParseSelector(selector); err != nil {
-		return rm.singleErrorResponse(fmt.Errorf("Invalid Selector Spec"))
+	if _, err := selector.ParseSelector(selectorNode); err != nil {
+		return rm.singleErrorResponse(fmt.Errorf("invalid selector spec"))
 	}
 
 	inProgressRequestChan := make(chan inProgressRequest)
 
 	select {
-	case rm.messages <- &newRequestMessage{p, root, selector, extensions, inProgressRequestChan}:
+	case rm.messages <- &newRequestMessage{p, root, selectorNode, extensions, inProgressRequestChan}:
 	case <-rm.ctx.Done():
 		return rm.emptyResponse()
 	case <-ctx.Done():
@@ -268,12 +269,12 @@ func (rm *RequestManager) PauseRequest(requestID graphsync.RequestID) error {
 func (rm *RequestManager) sendSyncMessage(message requestManagerMessage, response chan error) error {
 	select {
 	case <-rm.ctx.Done():
-		return errors.New("Context Cancelled")
+		return errors.New("context cancelled")
 	case rm.messages <- message:
 	}
 	select {
 	case <-rm.ctx.Done():
-		return errors.New("Context Cancelled")
+		return errors.New("context cancelled")
 	case err := <-response:
 		return err
 	}
@@ -516,7 +517,7 @@ func (rm *RequestManager) validateRequest(requestID graphsync.RequestID, p peer.
 	if err != nil {
 		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, err
 	}
-	_, err = ipldutil.ParseSelector(selectorSpec)
+	_, err = selector.ParseSelector(selectorSpec)
 	if err != nil {
 		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, err
 	}

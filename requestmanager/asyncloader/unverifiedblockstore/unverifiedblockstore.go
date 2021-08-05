@@ -52,7 +52,7 @@ func (ubs *UnverifiedBlockStore) PruneBlock(link ipld.Link) {
 func (ubs *UnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
 	data, ok := ubs.inMemoryBlocks[lnk]
 	if !ok {
-		return nil, fmt.Errorf("Block not found")
+		return nil, fmt.Errorf("block not found")
 	}
 	delete(ubs.inMemoryBlocks, lnk)
 	buffer, committer, err := ubs.storer(ipld.LinkContext{})

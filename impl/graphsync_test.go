@@ -32,7 +32,6 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
-	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -41,7 +40,6 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/storeutil"
@@ -79,7 +77,7 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	receivedRequest := receivedRequests[0]
 	receivedSpec := receivedRequest.Selector()
 	require.Equal(t, blockChain.Selector(), receivedSpec, "did not transmit selector spec correctly")
-	_, err := ipldutil.ParseSelector(receivedSpec)
+	_, err := selector.ParseSelector(receivedSpec)
 	require.NoError(t, err, "did not receive parsible selector on other side")
 
 	returnedData, found := receivedRequest.Extension(td.extensionName)
@@ -909,7 +907,7 @@ func TestUnixFSFetch(t *testing.T) {
 	// create a selector for the whole UnixFS dag
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 
-	allSelector := ssb.ExploreRecursive(ipldselector.RecursionLimitNone(),
+	allSelector := ssb.ExploreRecursive(selector.RecursionLimitNone(),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
 
 	// execute the traversal

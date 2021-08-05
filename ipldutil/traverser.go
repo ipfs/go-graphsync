@@ -20,7 +20,7 @@ var defaultVisitor traversal.AdvVisitFn = func(traversal.Progress, ipld.Node, tr
 type ContextCancelError struct{}
 
 func (cp ContextCancelError) Error() string {
-	return "Context cancelled"
+	return "context cancelled"
 }
 
 // TraversalBuilder defines parameters for an iterative traversal
