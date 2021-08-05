@@ -26,7 +26,7 @@ func TestBufferingResponseProgress(t *testing.T) {
 	cancelRequest := func() {}
 
 	outgoingResponses, outgoingErrors := rc.collectResponses(
-		requestCtx, incomingResponses, incomingErrors, cancelRequest, func(){})
+		requestCtx, incomingResponses, incomingErrors, cancelRequest, func() {})
 
 	blockStore := make(map[ipld.Link][]byte)
 	loader, storer := testutil.NewTestStore(blockStore)

@@ -1,15 +1,80 @@
 # go-graphsync changelog
 
+# go-graphsync 0.6.8
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - refactor: replace particular request not found errors with public error (#188) ([ipfs/go-graphsync#188](https://github.com/ipfs/go-graphsync/pull/188))
+  - fix(responsemanager): fix error codes (#182) ([ipfs/go-graphsync#182](https://github.com/ipfs/go-graphsync/pull/182))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +100/-51 | 5 |
+| dirkmc | 1 | +10/-3 | 2 |
+
+# go-graphsync 0.6.7
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Add cancel request and wait function (#185) ([ipfs/go-graphsync#185](https://github.com/ipfs/go-graphsync/pull/185))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +154/-32 | 9 |
+# go-graphsync 0.6.6
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - feat(requestmanager): add request timing (#181) ([ipfs/go-graphsync#181](https://github.com/ipfs/go-graphsync/pull/181))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +9/-1 | 1 |
+
+# go-graphsync 0.6.5
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Resolve 175 race condition, no change to hook timing (#178) ([ipfs/go-graphsync#178](https://github.com/ipfs/go-graphsync/pull/178))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +199/-171 | 10 |
+
 # go-graphsync 0.6.4
+
+### Changelog
+
 - github.com/ipfs/go-graphsync:
   - feat/request-queued-hook (#172) ([ipfs/go-graphsync#172](https://github.com/ipfs/go-graphsync/pull/172))
 
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| aarshkshah1992 | 3 | +87/-3 | 7 |
+| dirkmc | 1 | +11/-0 | 1 |
+
 # go-graphsync 0.6.3
+
+### Changelog
 
 - github.com/ipfs/go-graphsync:
   - Fix/log blockstore reads (#169) ([ipfs/go-graphsync#169](https://github.com/ipfs/go-graphsync/pull/169))
 
-Contributors
+### Contributors
 
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|
@@ -17,10 +82,12 @@ Contributors
 
 # go-graphsync 0.6.2
 
+### Changelog
+
 - github.com/ipfs/go-graphsync:
   - Better logging for Graphsync traversal (#167) ([ipfs/go-graphsync#167](https://github.com/ipfs/go-graphsync/pull/167))
 
-Contributors
+### Contributors
 
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|
@@ -28,10 +95,12 @@ Contributors
 
 # go-graphsync 0.6.1
 
+### Changelog
+
 - github.com/ipfs/go-graphsync:
   - feat: fire network error when network disconnects during request (#164) ([ipfs/go-graphsync#164](https://github.com/ipfs/go-graphsync/pull/164))
 
-Contributors
+### Contributors
 
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|

@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"io"
 
-	"github.com/ipfs/go-graphsync/ipldutil"
 	logging "github.com/ipfs/go-log/v2"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
+
+	"github.com/ipfs/go-graphsync/ipldutil"
 )
 
 var logger = logging.Logger("gs-traversal")
