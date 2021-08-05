@@ -458,7 +458,10 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 	var svr *http.Server
 	if runHTTPTest {
 		if useLibP2p {
-			listener, _ := gostream.Listen(h, p2phttp.DefaultP2PProtocol)
+			listener, err := gostream.Listen(h, p2phttp.DefaultP2PProtocol)
+			if err != nil {
+				return err
+			}
 			defer listener.Close()
 			// start an http server on port 8080
 			runenv.RecordMessage("creating http server at libp2p://%s", h.ID().String())
@@ -538,10 +541,10 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 				// set up http server to send file
 				http.HandleFunc(fmt.Sprintf("/%s", node.Cid()), func(w http.ResponseWriter, r *http.Request) {
 					fileReader, err := os.Open(file.Name())
-					defer func() { _ = fileReader.Close() }()
 					if err != nil {
 						panic(err)
 					}
+					defer fileReader.Close()
 					_, err = io.Copy(w, fileReader)
 					if err != nil {
 						panic(err)
