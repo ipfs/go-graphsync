@@ -77,7 +77,7 @@ func (n Block) LookupByNode(key ipld.Node) (ipld.Node, error) {
 	return n.LookupByString(ks)
 }
 func (Block) LookupByIndex(idx int64) (ipld.Node, error) {
-	return mixins.Map{"chaintypes.Block"}.LookupByIndex(0)
+	return mixins.Map{TypeName: "chaintypes.Block"}.LookupByIndex(0)
 }
 func (n Block) LookupBySegment(seg ipld.PathSegment) (ipld.Node, error) {
 	return n.LookupByString(seg.String())
@@ -125,22 +125,22 @@ func (Block) IsNull() bool {
 	return false
 }
 func (Block) AsBool() (bool, error) {
-	return mixins.Map{"chaintypes.Block"}.AsBool()
+	return mixins.Map{TypeName: "chaintypes.Block"}.AsBool()
 }
 func (Block) AsInt() (int64, error) {
-	return mixins.Map{"chaintypes.Block"}.AsInt()
+	return mixins.Map{TypeName: "chaintypes.Block"}.AsInt()
 }
 func (Block) AsFloat() (float64, error) {
-	return mixins.Map{"chaintypes.Block"}.AsFloat()
+	return mixins.Map{TypeName: "chaintypes.Block"}.AsFloat()
 }
 func (Block) AsString() (string, error) {
-	return mixins.Map{"chaintypes.Block"}.AsString()
+	return mixins.Map{TypeName: "chaintypes.Block"}.AsString()
 }
 func (Block) AsBytes() ([]byte, error) {
-	return mixins.Map{"chaintypes.Block"}.AsBytes()
+	return mixins.Map{TypeName: "chaintypes.Block"}.AsBytes()
 }
 func (Block) AsLink() (ipld.Link, error) {
-	return mixins.Map{"chaintypes.Block"}.AsLink()
+	return mixins.Map{TypeName: "chaintypes.Block"}.AsLink()
 }
 func (Block) Prototype() ipld.NodePrototype {
 	return _Block__Prototype{}
@@ -209,7 +209,7 @@ func (na *_Block__Assembler) BeginMap(int64) (ipld.MapAssembler, error) {
 	return na, nil
 }
 func (_Block__Assembler) BeginList(sizeHint int64) (ipld.ListAssembler, error) {
-	return mixins.MapAssembler{"chaintypes.Block"}.BeginList(0)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block"}.BeginList(0)
 }
 func (na *_Block__Assembler) AssignNull() error {
 	switch *na.m {
@@ -217,7 +217,7 @@ func (na *_Block__Assembler) AssignNull() error {
 		*na.m = schema.Maybe_Null
 		return nil
 	case schema.Maybe_Absent:
-		return mixins.MapAssembler{"chaintypes.Block"}.AssignNull()
+		return mixins.MapAssembler{TypeName: "chaintypes.Block"}.AssignNull()
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
 	case midvalue:
@@ -226,22 +226,22 @@ func (na *_Block__Assembler) AssignNull() error {
 	panic("unreachable")
 }
 func (_Block__Assembler) AssignBool(bool) error {
-	return mixins.MapAssembler{"chaintypes.Block"}.AssignBool(false)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block"}.AssignBool(false)
 }
 func (_Block__Assembler) AssignInt(int64) error {
-	return mixins.MapAssembler{"chaintypes.Block"}.AssignInt(0)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block"}.AssignInt(0)
 }
 func (_Block__Assembler) AssignFloat(float64) error {
-	return mixins.MapAssembler{"chaintypes.Block"}.AssignFloat(0)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block"}.AssignFloat(0)
 }
 func (_Block__Assembler) AssignString(string) error {
-	return mixins.MapAssembler{"chaintypes.Block"}.AssignString("")
+	return mixins.MapAssembler{TypeName: "chaintypes.Block"}.AssignString("")
 }
 func (_Block__Assembler) AssignBytes([]byte) error {
-	return mixins.MapAssembler{"chaintypes.Block"}.AssignBytes(nil)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block"}.AssignBytes(nil)
 }
 func (_Block__Assembler) AssignLink(ipld.Link) error {
-	return mixins.MapAssembler{"chaintypes.Block"}.AssignLink(nil)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block"}.AssignLink(nil)
 }
 func (na *_Block__Assembler) AssignNode(v ipld.Node) error {
 	if v.IsNull() {
@@ -328,7 +328,7 @@ func (ma *_Block__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, error)
 	switch k {
 	case "Parents":
 		if ma.s&fieldBit__Block_Parents != 0 {
-			return nil, ipld.ErrRepeatedMapKey{&fieldName__Block_Parents}
+			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__Block_Parents}
 		}
 		ma.s += fieldBit__Block_Parents
 		ma.state = maState_midValue
@@ -338,7 +338,7 @@ func (ma *_Block__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, error)
 		return &ma.ca_Parents, nil
 	case "Messages":
 		if ma.s&fieldBit__Block_Messages != 0 {
-			return nil, ipld.ErrRepeatedMapKey{&fieldName__Block_Messages}
+			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__Block_Messages}
 		}
 		ma.s += fieldBit__Block_Messages
 		ma.state = maState_midValue
@@ -346,9 +346,8 @@ func (ma *_Block__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, error)
 		ma.ca_Messages.w = &ma.w.Messages
 		ma.ca_Messages.m = &ma.cm
 		return &ma.ca_Messages, nil
-	default:
-		return nil, ipld.ErrInvalidKey{TypeName: "chaintypes.Block", Key: &_String{k}}
 	}
+	return nil, ipld.ErrInvalidKey{TypeName: "chaintypes.Block", Key: &_String{k}}
 }
 func (ma *_Block__Assembler) AssembleKey() ipld.NodeAssembler {
 	switch ma.state {
@@ -434,22 +433,22 @@ func (ma *_Block__Assembler) ValuePrototype(k string) ipld.NodePrototype {
 type _Block__KeyAssembler _Block__Assembler
 
 func (_Block__KeyAssembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
-	return mixins.StringAssembler{"chaintypes.Block.KeyAssembler"}.BeginMap(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.KeyAssembler"}.BeginMap(0)
 }
 func (_Block__KeyAssembler) BeginList(sizeHint int64) (ipld.ListAssembler, error) {
-	return mixins.StringAssembler{"chaintypes.Block.KeyAssembler"}.BeginList(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.KeyAssembler"}.BeginList(0)
 }
 func (na *_Block__KeyAssembler) AssignNull() error {
-	return mixins.StringAssembler{"chaintypes.Block.KeyAssembler"}.AssignNull()
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.KeyAssembler"}.AssignNull()
 }
 func (_Block__KeyAssembler) AssignBool(bool) error {
-	return mixins.StringAssembler{"chaintypes.Block.KeyAssembler"}.AssignBool(false)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.KeyAssembler"}.AssignBool(false)
 }
 func (_Block__KeyAssembler) AssignInt(int64) error {
-	return mixins.StringAssembler{"chaintypes.Block.KeyAssembler"}.AssignInt(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.KeyAssembler"}.AssignInt(0)
 }
 func (_Block__KeyAssembler) AssignFloat(float64) error {
-	return mixins.StringAssembler{"chaintypes.Block.KeyAssembler"}.AssignFloat(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.KeyAssembler"}.AssignFloat(0)
 }
 func (ka *_Block__KeyAssembler) AssignString(k string) error {
 	if ka.state != maState_midKey {
@@ -458,28 +457,29 @@ func (ka *_Block__KeyAssembler) AssignString(k string) error {
 	switch k {
 	case "Parents":
 		if ka.s&fieldBit__Block_Parents != 0 {
-			return ipld.ErrRepeatedMapKey{&fieldName__Block_Parents}
+			return ipld.ErrRepeatedMapKey{Key: &fieldName__Block_Parents}
 		}
 		ka.s += fieldBit__Block_Parents
 		ka.state = maState_expectValue
 		ka.f = 0
+		return nil
 	case "Messages":
 		if ka.s&fieldBit__Block_Messages != 0 {
-			return ipld.ErrRepeatedMapKey{&fieldName__Block_Messages}
+			return ipld.ErrRepeatedMapKey{Key: &fieldName__Block_Messages}
 		}
 		ka.s += fieldBit__Block_Messages
 		ka.state = maState_expectValue
 		ka.f = 1
+		return nil
 	default:
 		return ipld.ErrInvalidKey{TypeName: "chaintypes.Block", Key: &_String{k}}
 	}
-	return nil
 }
 func (_Block__KeyAssembler) AssignBytes([]byte) error {
-	return mixins.StringAssembler{"chaintypes.Block.KeyAssembler"}.AssignBytes(nil)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.KeyAssembler"}.AssignBytes(nil)
 }
 func (_Block__KeyAssembler) AssignLink(ipld.Link) error {
-	return mixins.StringAssembler{"chaintypes.Block.KeyAssembler"}.AssignLink(nil)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.KeyAssembler"}.AssignLink(nil)
 }
 func (ka *_Block__KeyAssembler) AssignNode(v ipld.Node) error {
 	if v2, err := v.AsString(); err != nil {
@@ -527,7 +527,7 @@ func (n *_Block__Repr) LookupByNode(key ipld.Node) (ipld.Node, error) {
 	return n.LookupByString(ks)
 }
 func (_Block__Repr) LookupByIndex(idx int64) (ipld.Node, error) {
-	return mixins.Map{"chaintypes.Block.Repr"}.LookupByIndex(0)
+	return mixins.Map{TypeName: "chaintypes.Block.Repr"}.LookupByIndex(0)
 }
 func (n _Block__Repr) LookupBySegment(seg ipld.PathSegment) (ipld.Node, error) {
 	return n.LookupByString(seg.String())
@@ -575,22 +575,22 @@ func (_Block__Repr) IsNull() bool {
 	return false
 }
 func (_Block__Repr) AsBool() (bool, error) {
-	return mixins.Map{"chaintypes.Block.Repr"}.AsBool()
+	return mixins.Map{TypeName: "chaintypes.Block.Repr"}.AsBool()
 }
 func (_Block__Repr) AsInt() (int64, error) {
-	return mixins.Map{"chaintypes.Block.Repr"}.AsInt()
+	return mixins.Map{TypeName: "chaintypes.Block.Repr"}.AsInt()
 }
 func (_Block__Repr) AsFloat() (float64, error) {
-	return mixins.Map{"chaintypes.Block.Repr"}.AsFloat()
+	return mixins.Map{TypeName: "chaintypes.Block.Repr"}.AsFloat()
 }
 func (_Block__Repr) AsString() (string, error) {
-	return mixins.Map{"chaintypes.Block.Repr"}.AsString()
+	return mixins.Map{TypeName: "chaintypes.Block.Repr"}.AsString()
 }
 func (_Block__Repr) AsBytes() ([]byte, error) {
-	return mixins.Map{"chaintypes.Block.Repr"}.AsBytes()
+	return mixins.Map{TypeName: "chaintypes.Block.Repr"}.AsBytes()
 }
 func (_Block__Repr) AsLink() (ipld.Link, error) {
-	return mixins.Map{"chaintypes.Block.Repr"}.AsLink()
+	return mixins.Map{TypeName: "chaintypes.Block.Repr"}.AsLink()
 }
 func (_Block__Repr) Prototype() ipld.NodePrototype {
 	return _Block__ReprPrototype{}
@@ -652,7 +652,7 @@ func (na *_Block__ReprAssembler) BeginMap(int64) (ipld.MapAssembler, error) {
 	return na, nil
 }
 func (_Block__ReprAssembler) BeginList(sizeHint int64) (ipld.ListAssembler, error) {
-	return mixins.MapAssembler{"chaintypes.Block.Repr"}.BeginList(0)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block.Repr"}.BeginList(0)
 }
 func (na *_Block__ReprAssembler) AssignNull() error {
 	switch *na.m {
@@ -660,7 +660,7 @@ func (na *_Block__ReprAssembler) AssignNull() error {
 		*na.m = schema.Maybe_Null
 		return nil
 	case schema.Maybe_Absent:
-		return mixins.MapAssembler{"chaintypes.Block.Repr.Repr"}.AssignNull()
+		return mixins.MapAssembler{TypeName: "chaintypes.Block.Repr.Repr"}.AssignNull()
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
 	case midvalue:
@@ -669,22 +669,22 @@ func (na *_Block__ReprAssembler) AssignNull() error {
 	panic("unreachable")
 }
 func (_Block__ReprAssembler) AssignBool(bool) error {
-	return mixins.MapAssembler{"chaintypes.Block.Repr"}.AssignBool(false)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block.Repr"}.AssignBool(false)
 }
 func (_Block__ReprAssembler) AssignInt(int64) error {
-	return mixins.MapAssembler{"chaintypes.Block.Repr"}.AssignInt(0)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block.Repr"}.AssignInt(0)
 }
 func (_Block__ReprAssembler) AssignFloat(float64) error {
-	return mixins.MapAssembler{"chaintypes.Block.Repr"}.AssignFloat(0)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block.Repr"}.AssignFloat(0)
 }
 func (_Block__ReprAssembler) AssignString(string) error {
-	return mixins.MapAssembler{"chaintypes.Block.Repr"}.AssignString("")
+	return mixins.MapAssembler{TypeName: "chaintypes.Block.Repr"}.AssignString("")
 }
 func (_Block__ReprAssembler) AssignBytes([]byte) error {
-	return mixins.MapAssembler{"chaintypes.Block.Repr"}.AssignBytes(nil)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block.Repr"}.AssignBytes(nil)
 }
 func (_Block__ReprAssembler) AssignLink(ipld.Link) error {
-	return mixins.MapAssembler{"chaintypes.Block.Repr"}.AssignLink(nil)
+	return mixins.MapAssembler{TypeName: "chaintypes.Block.Repr"}.AssignLink(nil)
 }
 func (na *_Block__ReprAssembler) AssignNode(v ipld.Node) error {
 	if v.IsNull() {
@@ -769,7 +769,7 @@ func (ma *_Block__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssembler, er
 	switch k {
 	case "Parents":
 		if ma.s&fieldBit__Block_Parents != 0 {
-			return nil, ipld.ErrRepeatedMapKey{&fieldName__Block_Parents_serial}
+			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__Block_Parents_serial}
 		}
 		ma.s += fieldBit__Block_Parents
 		ma.state = maState_midValue
@@ -779,7 +779,7 @@ func (ma *_Block__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssembler, er
 		return &ma.ca_Parents, nil
 	case "Messages":
 		if ma.s&fieldBit__Block_Messages != 0 {
-			return nil, ipld.ErrRepeatedMapKey{&fieldName__Block_Messages_serial}
+			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__Block_Messages_serial}
 		}
 		ma.s += fieldBit__Block_Messages
 		ma.state = maState_midValue
@@ -788,8 +788,8 @@ func (ma *_Block__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssembler, er
 		ma.ca_Messages.m = &ma.cm
 		return &ma.ca_Messages, nil
 	default:
-		return nil, ipld.ErrInvalidKey{TypeName: "chaintypes.Block.Repr", Key: &_String{k}}
 	}
+	return nil, ipld.ErrInvalidKey{TypeName: "chaintypes.Block.Repr", Key: &_String{k}}
 }
 func (ma *_Block__ReprAssembler) AssembleKey() ipld.NodeAssembler {
 	switch ma.state {
@@ -875,22 +875,22 @@ func (ma *_Block__ReprAssembler) ValuePrototype(k string) ipld.NodePrototype {
 type _Block__ReprKeyAssembler _Block__ReprAssembler
 
 func (_Block__ReprKeyAssembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
-	return mixins.StringAssembler{"chaintypes.Block.Repr.KeyAssembler"}.BeginMap(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.Repr.KeyAssembler"}.BeginMap(0)
 }
 func (_Block__ReprKeyAssembler) BeginList(sizeHint int64) (ipld.ListAssembler, error) {
-	return mixins.StringAssembler{"chaintypes.Block.Repr.KeyAssembler"}.BeginList(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.Repr.KeyAssembler"}.BeginList(0)
 }
 func (na *_Block__ReprKeyAssembler) AssignNull() error {
-	return mixins.StringAssembler{"chaintypes.Block.Repr.KeyAssembler"}.AssignNull()
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.Repr.KeyAssembler"}.AssignNull()
 }
 func (_Block__ReprKeyAssembler) AssignBool(bool) error {
-	return mixins.StringAssembler{"chaintypes.Block.Repr.KeyAssembler"}.AssignBool(false)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.Repr.KeyAssembler"}.AssignBool(false)
 }
 func (_Block__ReprKeyAssembler) AssignInt(int64) error {
-	return mixins.StringAssembler{"chaintypes.Block.Repr.KeyAssembler"}.AssignInt(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.Repr.KeyAssembler"}.AssignInt(0)
 }
 func (_Block__ReprKeyAssembler) AssignFloat(float64) error {
-	return mixins.StringAssembler{"chaintypes.Block.Repr.KeyAssembler"}.AssignFloat(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.Repr.KeyAssembler"}.AssignFloat(0)
 }
 func (ka *_Block__ReprKeyAssembler) AssignString(k string) error {
 	if ka.state != maState_midKey {
@@ -899,28 +899,28 @@ func (ka *_Block__ReprKeyAssembler) AssignString(k string) error {
 	switch k {
 	case "Parents":
 		if ka.s&fieldBit__Block_Parents != 0 {
-			return ipld.ErrRepeatedMapKey{&fieldName__Block_Parents_serial}
+			return ipld.ErrRepeatedMapKey{Key: &fieldName__Block_Parents_serial}
 		}
 		ka.s += fieldBit__Block_Parents
 		ka.state = maState_expectValue
 		ka.f = 0
+		return nil
 	case "Messages":
 		if ka.s&fieldBit__Block_Messages != 0 {
-			return ipld.ErrRepeatedMapKey{&fieldName__Block_Messages_serial}
+			return ipld.ErrRepeatedMapKey{Key: &fieldName__Block_Messages_serial}
 		}
 		ka.s += fieldBit__Block_Messages
 		ka.state = maState_expectValue
 		ka.f = 1
-	default:
-		return ipld.ErrInvalidKey{TypeName: "chaintypes.Block.Repr", Key: &_String{k}}
+		return nil
 	}
-	return nil
+	return ipld.ErrInvalidKey{TypeName: "chaintypes.Block.Repr", Key: &_String{k}}
 }
 func (_Block__ReprKeyAssembler) AssignBytes([]byte) error {
-	return mixins.StringAssembler{"chaintypes.Block.Repr.KeyAssembler"}.AssignBytes(nil)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.Repr.KeyAssembler"}.AssignBytes(nil)
 }
 func (_Block__ReprKeyAssembler) AssignLink(ipld.Link) error {
-	return mixins.StringAssembler{"chaintypes.Block.Repr.KeyAssembler"}.AssignLink(nil)
+	return mixins.StringAssembler{TypeName: "chaintypes.Block.Repr.KeyAssembler"}.AssignLink(nil)
 }
 func (ka *_Block__ReprKeyAssembler) AssignNode(v ipld.Node) error {
 	if v2, err := v.AsString(); err != nil {
@@ -943,7 +943,7 @@ func (_Bytes__Prototype) FromBytes(v []byte) (Bytes, error) {
 
 type _Bytes__Maybe struct {
 	m schema.Maybe
-	v Bytes
+	v _Bytes
 }
 type MaybeBytes = *_Bytes__Maybe
 
@@ -963,7 +963,7 @@ func (m MaybeBytes) AsNode() ipld.Node {
 	case schema.Maybe_Null:
 		return ipld.Null
 	case schema.Maybe_Value:
-		return m.v
+		return &m.v
 	default:
 		panic("unreachable")
 	}
@@ -972,7 +972,7 @@ func (m MaybeBytes) Must() Bytes {
 	if !m.Exists() {
 		panic("unbox of a maybe rejected")
 	}
-	return m.v
+	return &m.v
 }
 
 var _ ipld.Node = (Bytes)(&_Bytes{})
@@ -982,16 +982,16 @@ func (Bytes) Kind() ipld.Kind {
 	return ipld.Kind_Bytes
 }
 func (Bytes) LookupByString(string) (ipld.Node, error) {
-	return mixins.Bytes{"chaintypes.Bytes"}.LookupByString("")
+	return mixins.Bytes{TypeName: "chaintypes.Bytes"}.LookupByString("")
 }
 func (Bytes) LookupByNode(ipld.Node) (ipld.Node, error) {
-	return mixins.Bytes{"chaintypes.Bytes"}.LookupByNode(nil)
+	return mixins.Bytes{TypeName: "chaintypes.Bytes"}.LookupByNode(nil)
 }
 func (Bytes) LookupByIndex(idx int64) (ipld.Node, error) {
-	return mixins.Bytes{"chaintypes.Bytes"}.LookupByIndex(0)
+	return mixins.Bytes{TypeName: "chaintypes.Bytes"}.LookupByIndex(0)
 }
 func (Bytes) LookupBySegment(seg ipld.PathSegment) (ipld.Node, error) {
-	return mixins.Bytes{"chaintypes.Bytes"}.LookupBySegment(seg)
+	return mixins.Bytes{TypeName: "chaintypes.Bytes"}.LookupBySegment(seg)
 }
 func (Bytes) MapIterator() ipld.MapIterator {
 	return nil
@@ -1009,22 +1009,22 @@ func (Bytes) IsNull() bool {
 	return false
 }
 func (Bytes) AsBool() (bool, error) {
-	return mixins.Bytes{"chaintypes.Bytes"}.AsBool()
+	return mixins.Bytes{TypeName: "chaintypes.Bytes"}.AsBool()
 }
 func (Bytes) AsInt() (int64, error) {
-	return mixins.Bytes{"chaintypes.Bytes"}.AsInt()
+	return mixins.Bytes{TypeName: "chaintypes.Bytes"}.AsInt()
 }
 func (Bytes) AsFloat() (float64, error) {
-	return mixins.Bytes{"chaintypes.Bytes"}.AsFloat()
+	return mixins.Bytes{TypeName: "chaintypes.Bytes"}.AsFloat()
 }
 func (Bytes) AsString() (string, error) {
-	return mixins.Bytes{"chaintypes.Bytes"}.AsString()
+	return mixins.Bytes{TypeName: "chaintypes.Bytes"}.AsString()
 }
 func (n Bytes) AsBytes() ([]byte, error) {
 	return n.x, nil
 }
 func (Bytes) AsLink() (ipld.Link, error) {
-	return mixins.Bytes{"chaintypes.Bytes"}.AsLink()
+	return mixins.Bytes{TypeName: "chaintypes.Bytes"}.AsLink()
 }
 func (Bytes) Prototype() ipld.NodePrototype {
 	return _Bytes__Prototype{}
@@ -1061,10 +1061,10 @@ type _Bytes__Assembler struct {
 
 func (na *_Bytes__Assembler) reset() {}
 func (_Bytes__Assembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
-	return mixins.BytesAssembler{"chaintypes.Bytes"}.BeginMap(0)
+	return mixins.BytesAssembler{TypeName: "chaintypes.Bytes"}.BeginMap(0)
 }
 func (_Bytes__Assembler) BeginList(sizeHint int64) (ipld.ListAssembler, error) {
-	return mixins.BytesAssembler{"chaintypes.Bytes"}.BeginList(0)
+	return mixins.BytesAssembler{TypeName: "chaintypes.Bytes"}.BeginList(0)
 }
 func (na *_Bytes__Assembler) AssignNull() error {
 	switch *na.m {
@@ -1072,38 +1072,35 @@ func (na *_Bytes__Assembler) AssignNull() error {
 		*na.m = schema.Maybe_Null
 		return nil
 	case schema.Maybe_Absent:
-		return mixins.BytesAssembler{"chaintypes.Bytes"}.AssignNull()
+		return mixins.BytesAssembler{TypeName: "chaintypes.Bytes"}.AssignNull()
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
 	}
 	panic("unreachable")
 }
 func (_Bytes__Assembler) AssignBool(bool) error {
-	return mixins.BytesAssembler{"chaintypes.Bytes"}.AssignBool(false)
+	return mixins.BytesAssembler{TypeName: "chaintypes.Bytes"}.AssignBool(false)
 }
 func (_Bytes__Assembler) AssignInt(int64) error {
-	return mixins.BytesAssembler{"chaintypes.Bytes"}.AssignInt(0)
+	return mixins.BytesAssembler{TypeName: "chaintypes.Bytes"}.AssignInt(0)
 }
 func (_Bytes__Assembler) AssignFloat(float64) error {
-	return mixins.BytesAssembler{"chaintypes.Bytes"}.AssignFloat(0)
+	return mixins.BytesAssembler{TypeName: "chaintypes.Bytes"}.AssignFloat(0)
 }
 func (_Bytes__Assembler) AssignString(string) error {
-	return mixins.BytesAssembler{"chaintypes.Bytes"}.AssignString("")
+	return mixins.BytesAssembler{TypeName: "chaintypes.Bytes"}.AssignString("")
 }
 func (na *_Bytes__Assembler) AssignBytes(v []byte) error {
 	switch *na.m {
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
 	}
-	if na.w == nil {
-		na.w = &_Bytes{}
-	}
 	na.w.x = v
 	*na.m = schema.Maybe_Value
 	return nil
 }
 func (_Bytes__Assembler) AssignLink(ipld.Link) error {
-	return mixins.BytesAssembler{"chaintypes.Bytes"}.AssignLink(nil)
+	return mixins.BytesAssembler{TypeName: "chaintypes.Bytes"}.AssignLink(nil)
 }
 func (na *_Bytes__Assembler) AssignNode(v ipld.Node) error {
 	if v.IsNull() {
@@ -1113,11 +1110,6 @@ func (na *_Bytes__Assembler) AssignNode(v ipld.Node) error {
 		switch *na.m {
 		case schema.Maybe_Value, schema.Maybe_Null:
 			panic("invalid state: cannot assign into assembler that's already finished")
-		}
-		if na.w == nil {
-			na.w = v2
-			*na.m = schema.Maybe_Value
-			return nil
 		}
 		*na.w = *v2
 		*na.m = schema.Maybe_Value
@@ -1156,7 +1148,7 @@ func (_Link__Prototype) FromLink(v ipld.Link) (Link, error) {
 
 type _Link__Maybe struct {
 	m schema.Maybe
-	v Link
+	v _Link
 }
 type MaybeLink = *_Link__Maybe
 
@@ -1176,7 +1168,7 @@ func (m MaybeLink) AsNode() ipld.Node {
 	case schema.Maybe_Null:
 		return ipld.Null
 	case schema.Maybe_Value:
-		return m.v
+		return &m.v
 	default:
 		panic("unreachable")
 	}
@@ -1185,7 +1177,7 @@ func (m MaybeLink) Must() Link {
 	if !m.Exists() {
 		panic("unbox of a maybe rejected")
 	}
-	return m.v
+	return &m.v
 }
 
 var _ ipld.Node = (Link)(&_Link{})
@@ -1195,16 +1187,16 @@ func (Link) Kind() ipld.Kind {
 	return ipld.Kind_Link
 }
 func (Link) LookupByString(string) (ipld.Node, error) {
-	return mixins.Link{"chaintypes.Link"}.LookupByString("")
+	return mixins.Link{TypeName: "chaintypes.Link"}.LookupByString("")
 }
 func (Link) LookupByNode(ipld.Node) (ipld.Node, error) {
-	return mixins.Link{"chaintypes.Link"}.LookupByNode(nil)
+	return mixins.Link{TypeName: "chaintypes.Link"}.LookupByNode(nil)
 }
 func (Link) LookupByIndex(idx int64) (ipld.Node, error) {
-	return mixins.Link{"chaintypes.Link"}.LookupByIndex(0)
+	return mixins.Link{TypeName: "chaintypes.Link"}.LookupByIndex(0)
 }
 func (Link) LookupBySegment(seg ipld.PathSegment) (ipld.Node, error) {
-	return mixins.Link{"chaintypes.Link"}.LookupBySegment(seg)
+	return mixins.Link{TypeName: "chaintypes.Link"}.LookupBySegment(seg)
 }
 func (Link) MapIterator() ipld.MapIterator {
 	return nil
@@ -1222,19 +1214,19 @@ func (Link) IsNull() bool {
 	return false
 }
 func (Link) AsBool() (bool, error) {
-	return mixins.Link{"chaintypes.Link"}.AsBool()
+	return mixins.Link{TypeName: "chaintypes.Link"}.AsBool()
 }
 func (Link) AsInt() (int64, error) {
-	return mixins.Link{"chaintypes.Link"}.AsInt()
+	return mixins.Link{TypeName: "chaintypes.Link"}.AsInt()
 }
 func (Link) AsFloat() (float64, error) {
-	return mixins.Link{"chaintypes.Link"}.AsFloat()
+	return mixins.Link{TypeName: "chaintypes.Link"}.AsFloat()
 }
 func (Link) AsString() (string, error) {
-	return mixins.Link{"chaintypes.Link"}.AsString()
+	return mixins.Link{TypeName: "chaintypes.Link"}.AsString()
 }
 func (Link) AsBytes() ([]byte, error) {
-	return mixins.Link{"chaintypes.Link"}.AsBytes()
+	return mixins.Link{TypeName: "chaintypes.Link"}.AsBytes()
 }
 func (n Link) AsLink() (ipld.Link, error) {
 	return n.x, nil
@@ -1274,10 +1266,10 @@ type _Link__Assembler struct {
 
 func (na *_Link__Assembler) reset() {}
 func (_Link__Assembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
-	return mixins.LinkAssembler{"chaintypes.Link"}.BeginMap(0)
+	return mixins.LinkAssembler{TypeName: "chaintypes.Link"}.BeginMap(0)
 }
 func (_Link__Assembler) BeginList(sizeHint int64) (ipld.ListAssembler, error) {
-	return mixins.LinkAssembler{"chaintypes.Link"}.BeginList(0)
+	return mixins.LinkAssembler{TypeName: "chaintypes.Link"}.BeginList(0)
 }
 func (na *_Link__Assembler) AssignNull() error {
 	switch *na.m {
@@ -1285,34 +1277,31 @@ func (na *_Link__Assembler) AssignNull() error {
 		*na.m = schema.Maybe_Null
 		return nil
 	case schema.Maybe_Absent:
-		return mixins.LinkAssembler{"chaintypes.Link"}.AssignNull()
+		return mixins.LinkAssembler{TypeName: "chaintypes.Link"}.AssignNull()
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
 	}
 	panic("unreachable")
 }
 func (_Link__Assembler) AssignBool(bool) error {
-	return mixins.LinkAssembler{"chaintypes.Link"}.AssignBool(false)
+	return mixins.LinkAssembler{TypeName: "chaintypes.Link"}.AssignBool(false)
 }
 func (_Link__Assembler) AssignInt(int64) error {
-	return mixins.LinkAssembler{"chaintypes.Link"}.AssignInt(0)
+	return mixins.LinkAssembler{TypeName: "chaintypes.Link"}.AssignInt(0)
 }
 func (_Link__Assembler) AssignFloat(float64) error {
-	return mixins.LinkAssembler{"chaintypes.Link"}.AssignFloat(0)
+	return mixins.LinkAssembler{TypeName: "chaintypes.Link"}.AssignFloat(0)
 }
 func (_Link__Assembler) AssignString(string) error {
-	return mixins.LinkAssembler{"chaintypes.Link"}.AssignString("")
+	return mixins.LinkAssembler{TypeName: "chaintypes.Link"}.AssignString("")
 }
 func (_Link__Assembler) AssignBytes([]byte) error {
-	return mixins.LinkAssembler{"chaintypes.Link"}.AssignBytes(nil)
+	return mixins.LinkAssembler{TypeName: "chaintypes.Link"}.AssignBytes(nil)
 }
 func (na *_Link__Assembler) AssignLink(v ipld.Link) error {
 	switch *na.m {
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
-	}
-	if na.w == nil {
-		na.w = &_Link{}
 	}
 	na.w.x = v
 	*na.m = schema.Maybe_Value
@@ -1326,11 +1315,6 @@ func (na *_Link__Assembler) AssignNode(v ipld.Node) error {
 		switch *na.m {
 		case schema.Maybe_Value, schema.Maybe_Null:
 			panic("invalid state: cannot assign into assembler that's already finished")
-		}
-		if na.w == nil {
-			na.w = v2
-			*na.m = schema.Maybe_Value
-			return nil
 		}
 		*na.w = *v2
 		*na.m = schema.Maybe_Value
@@ -1373,7 +1357,7 @@ func (n *_Messages) LookupMaybe(idx int64) MaybeBytes {
 	v := &n.x[idx]
 	return &_Bytes__Maybe{
 		m: schema.Maybe_Value,
-		v: v,
+		v: *v,
 	}
 }
 
@@ -1403,7 +1387,7 @@ func (itr *Messages__Itr) Done() bool {
 
 type _Messages__Maybe struct {
 	m schema.Maybe
-	v Messages
+	v _Messages
 }
 type MaybeMessages = *_Messages__Maybe
 
@@ -1423,7 +1407,7 @@ func (m MaybeMessages) AsNode() ipld.Node {
 	case schema.Maybe_Null:
 		return ipld.Null
 	case schema.Maybe_Value:
-		return m.v
+		return &m.v
 	default:
 		panic("unreachable")
 	}
@@ -1432,7 +1416,7 @@ func (m MaybeMessages) Must() Messages {
 	if !m.Exists() {
 		panic("unbox of a maybe rejected")
 	}
-	return m.v
+	return &m.v
 }
 
 var _ ipld.Node = (Messages)(&_Messages{})
@@ -1442,7 +1426,7 @@ func (Messages) Kind() ipld.Kind {
 	return ipld.Kind_List
 }
 func (Messages) LookupByString(string) (ipld.Node, error) {
-	return mixins.List{"chaintypes.Messages"}.LookupByString("")
+	return mixins.List{TypeName: "chaintypes.Messages"}.LookupByString("")
 }
 func (n Messages) LookupByNode(k ipld.Node) (ipld.Node, error) {
 	idx, err := k.AsInt()
@@ -1453,7 +1437,7 @@ func (n Messages) LookupByNode(k ipld.Node) (ipld.Node, error) {
 }
 func (n Messages) LookupByIndex(idx int64) (ipld.Node, error) {
 	if n.Length() <= idx {
-		return nil, ipld.ErrNotExists{ipld.PathSegmentOfInt(idx)}
+		return nil, ipld.ErrNotExists{Segment: ipld.PathSegmentOfInt(idx)}
 	}
 	v := &n.x[idx]
 	return v, nil
@@ -1501,22 +1485,22 @@ func (Messages) IsNull() bool {
 	return false
 }
 func (Messages) AsBool() (bool, error) {
-	return mixins.List{"chaintypes.Messages"}.AsBool()
+	return mixins.List{TypeName: "chaintypes.Messages"}.AsBool()
 }
 func (Messages) AsInt() (int64, error) {
-	return mixins.List{"chaintypes.Messages"}.AsInt()
+	return mixins.List{TypeName: "chaintypes.Messages"}.AsInt()
 }
 func (Messages) AsFloat() (float64, error) {
-	return mixins.List{"chaintypes.Messages"}.AsFloat()
+	return mixins.List{TypeName: "chaintypes.Messages"}.AsFloat()
 }
 func (Messages) AsString() (string, error) {
-	return mixins.List{"chaintypes.Messages"}.AsString()
+	return mixins.List{TypeName: "chaintypes.Messages"}.AsString()
 }
 func (Messages) AsBytes() ([]byte, error) {
-	return mixins.List{"chaintypes.Messages"}.AsBytes()
+	return mixins.List{TypeName: "chaintypes.Messages"}.AsBytes()
 }
 func (Messages) AsLink() (ipld.Link, error) {
-	return mixins.List{"chaintypes.Messages"}.AsLink()
+	return mixins.List{TypeName: "chaintypes.Messages"}.AsLink()
 }
 func (Messages) Prototype() ipld.NodePrototype {
 	return _Messages__Prototype{}
@@ -1560,7 +1544,7 @@ func (na *_Messages__Assembler) reset() {
 	na.va.reset()
 }
 func (_Messages__Assembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
-	return mixins.ListAssembler{"chaintypes.Messages"}.BeginMap(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages"}.BeginMap(0)
 }
 func (na *_Messages__Assembler) BeginList(sizeHint int64) (ipld.ListAssembler, error) {
 	switch *na.m {
@@ -1573,9 +1557,6 @@ func (na *_Messages__Assembler) BeginList(sizeHint int64) (ipld.ListAssembler, e
 	if sizeHint < 0 {
 		sizeHint = 0
 	}
-	if na.w == nil {
-		na.w = &_Messages{}
-	}
 	if sizeHint > 0 {
 		na.w.x = make([]_Bytes, 0, sizeHint)
 	}
@@ -1587,7 +1568,7 @@ func (na *_Messages__Assembler) AssignNull() error {
 		*na.m = schema.Maybe_Null
 		return nil
 	case schema.Maybe_Absent:
-		return mixins.ListAssembler{"chaintypes.Messages"}.AssignNull()
+		return mixins.ListAssembler{TypeName: "chaintypes.Messages"}.AssignNull()
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
 	case midvalue:
@@ -1596,22 +1577,22 @@ func (na *_Messages__Assembler) AssignNull() error {
 	panic("unreachable")
 }
 func (_Messages__Assembler) AssignBool(bool) error {
-	return mixins.ListAssembler{"chaintypes.Messages"}.AssignBool(false)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages"}.AssignBool(false)
 }
 func (_Messages__Assembler) AssignInt(int64) error {
-	return mixins.ListAssembler{"chaintypes.Messages"}.AssignInt(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages"}.AssignInt(0)
 }
 func (_Messages__Assembler) AssignFloat(float64) error {
-	return mixins.ListAssembler{"chaintypes.Messages"}.AssignFloat(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages"}.AssignFloat(0)
 }
 func (_Messages__Assembler) AssignString(string) error {
-	return mixins.ListAssembler{"chaintypes.Messages"}.AssignString("")
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages"}.AssignString("")
 }
 func (_Messages__Assembler) AssignBytes([]byte) error {
-	return mixins.ListAssembler{"chaintypes.Messages"}.AssignBytes(nil)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages"}.AssignBytes(nil)
 }
 func (_Messages__Assembler) AssignLink(ipld.Link) error {
-	return mixins.ListAssembler{"chaintypes.Messages"}.AssignLink(nil)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages"}.AssignLink(nil)
 }
 func (na *_Messages__Assembler) AssignNode(v ipld.Node) error {
 	if v.IsNull() {
@@ -1623,11 +1604,6 @@ func (na *_Messages__Assembler) AssignNode(v ipld.Node) error {
 			panic("invalid state: cannot assign into assembler that's already finished")
 		case midvalue:
 			panic("invalid state: cannot assign null into an assembler that's already begun working on recursive structures!")
-		}
-		if na.w == nil {
-			na.w = v2
-			*na.m = schema.Maybe_Value
-			return nil
 		}
 		*na.w = *v2
 		*na.m = schema.Maybe_Value
@@ -1714,7 +1690,7 @@ func (_Messages__Repr) Kind() ipld.Kind {
 	return ipld.Kind_List
 }
 func (_Messages__Repr) LookupByString(string) (ipld.Node, error) {
-	return mixins.List{"chaintypes.Messages.Repr"}.LookupByString("")
+	return mixins.List{TypeName: "chaintypes.Messages.Repr"}.LookupByString("")
 }
 func (nr *_Messages__Repr) LookupByNode(k ipld.Node) (ipld.Node, error) {
 	v, err := (Messages)(nr).LookupByNode(k)
@@ -1767,22 +1743,22 @@ func (_Messages__Repr) IsNull() bool {
 	return false
 }
 func (_Messages__Repr) AsBool() (bool, error) {
-	return mixins.List{"chaintypes.Messages.Repr"}.AsBool()
+	return mixins.List{TypeName: "chaintypes.Messages.Repr"}.AsBool()
 }
 func (_Messages__Repr) AsInt() (int64, error) {
-	return mixins.List{"chaintypes.Messages.Repr"}.AsInt()
+	return mixins.List{TypeName: "chaintypes.Messages.Repr"}.AsInt()
 }
 func (_Messages__Repr) AsFloat() (float64, error) {
-	return mixins.List{"chaintypes.Messages.Repr"}.AsFloat()
+	return mixins.List{TypeName: "chaintypes.Messages.Repr"}.AsFloat()
 }
 func (_Messages__Repr) AsString() (string, error) {
-	return mixins.List{"chaintypes.Messages.Repr"}.AsString()
+	return mixins.List{TypeName: "chaintypes.Messages.Repr"}.AsString()
 }
 func (_Messages__Repr) AsBytes() ([]byte, error) {
-	return mixins.List{"chaintypes.Messages.Repr"}.AsBytes()
+	return mixins.List{TypeName: "chaintypes.Messages.Repr"}.AsBytes()
 }
 func (_Messages__Repr) AsLink() (ipld.Link, error) {
-	return mixins.List{"chaintypes.Messages.Repr"}.AsLink()
+	return mixins.List{TypeName: "chaintypes.Messages.Repr"}.AsLink()
 }
 func (_Messages__Repr) Prototype() ipld.NodePrototype {
 	return _Messages__ReprPrototype{}
@@ -1826,7 +1802,7 @@ func (na *_Messages__ReprAssembler) reset() {
 	na.va.reset()
 }
 func (_Messages__ReprAssembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
-	return mixins.ListAssembler{"chaintypes.Messages.Repr"}.BeginMap(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages.Repr"}.BeginMap(0)
 }
 func (na *_Messages__ReprAssembler) BeginList(sizeHint int64) (ipld.ListAssembler, error) {
 	switch *na.m {
@@ -1839,9 +1815,6 @@ func (na *_Messages__ReprAssembler) BeginList(sizeHint int64) (ipld.ListAssemble
 	if sizeHint < 0 {
 		sizeHint = 0
 	}
-	if na.w == nil {
-		na.w = &_Messages{}
-	}
 	if sizeHint > 0 {
 		na.w.x = make([]_Bytes, 0, sizeHint)
 	}
@@ -1853,7 +1826,7 @@ func (na *_Messages__ReprAssembler) AssignNull() error {
 		*na.m = schema.Maybe_Null
 		return nil
 	case schema.Maybe_Absent:
-		return mixins.ListAssembler{"chaintypes.Messages.Repr.Repr"}.AssignNull()
+		return mixins.ListAssembler{TypeName: "chaintypes.Messages.Repr.Repr"}.AssignNull()
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
 	case midvalue:
@@ -1862,22 +1835,22 @@ func (na *_Messages__ReprAssembler) AssignNull() error {
 	panic("unreachable")
 }
 func (_Messages__ReprAssembler) AssignBool(bool) error {
-	return mixins.ListAssembler{"chaintypes.Messages.Repr"}.AssignBool(false)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages.Repr"}.AssignBool(false)
 }
 func (_Messages__ReprAssembler) AssignInt(int64) error {
-	return mixins.ListAssembler{"chaintypes.Messages.Repr"}.AssignInt(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages.Repr"}.AssignInt(0)
 }
 func (_Messages__ReprAssembler) AssignFloat(float64) error {
-	return mixins.ListAssembler{"chaintypes.Messages.Repr"}.AssignFloat(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages.Repr"}.AssignFloat(0)
 }
 func (_Messages__ReprAssembler) AssignString(string) error {
-	return mixins.ListAssembler{"chaintypes.Messages.Repr"}.AssignString("")
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages.Repr"}.AssignString("")
 }
 func (_Messages__ReprAssembler) AssignBytes([]byte) error {
-	return mixins.ListAssembler{"chaintypes.Messages.Repr"}.AssignBytes(nil)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages.Repr"}.AssignBytes(nil)
 }
 func (_Messages__ReprAssembler) AssignLink(ipld.Link) error {
-	return mixins.ListAssembler{"chaintypes.Messages.Repr"}.AssignLink(nil)
+	return mixins.ListAssembler{TypeName: "chaintypes.Messages.Repr"}.AssignLink(nil)
 }
 func (na *_Messages__ReprAssembler) AssignNode(v ipld.Node) error {
 	if v.IsNull() {
@@ -1889,11 +1862,6 @@ func (na *_Messages__ReprAssembler) AssignNode(v ipld.Node) error {
 			panic("invalid state: cannot assign into assembler that's already finished")
 		case midvalue:
 			panic("invalid state: cannot assign null into an assembler that's already begun working on recursive structures!")
-		}
-		if na.w == nil {
-			na.w = v2
-			*na.m = schema.Maybe_Value
-			return nil
 		}
 		*na.w = *v2
 		*na.m = schema.Maybe_Value
@@ -1980,7 +1948,7 @@ func (n *_Parents) LookupMaybe(idx int64) MaybeLink {
 	v := &n.x[idx]
 	return &_Link__Maybe{
 		m: schema.Maybe_Value,
-		v: v,
+		v: *v,
 	}
 }
 
@@ -2010,7 +1978,7 @@ func (itr *Parents__Itr) Done() bool {
 
 type _Parents__Maybe struct {
 	m schema.Maybe
-	v Parents
+	v _Parents
 }
 type MaybeParents = *_Parents__Maybe
 
@@ -2030,7 +1998,7 @@ func (m MaybeParents) AsNode() ipld.Node {
 	case schema.Maybe_Null:
 		return ipld.Null
 	case schema.Maybe_Value:
-		return m.v
+		return &m.v
 	default:
 		panic("unreachable")
 	}
@@ -2039,7 +2007,7 @@ func (m MaybeParents) Must() Parents {
 	if !m.Exists() {
 		panic("unbox of a maybe rejected")
 	}
-	return m.v
+	return &m.v
 }
 
 var _ ipld.Node = (Parents)(&_Parents{})
@@ -2049,7 +2017,7 @@ func (Parents) Kind() ipld.Kind {
 	return ipld.Kind_List
 }
 func (Parents) LookupByString(string) (ipld.Node, error) {
-	return mixins.List{"chaintypes.Parents"}.LookupByString("")
+	return mixins.List{TypeName: "chaintypes.Parents"}.LookupByString("")
 }
 func (n Parents) LookupByNode(k ipld.Node) (ipld.Node, error) {
 	idx, err := k.AsInt()
@@ -2060,7 +2028,7 @@ func (n Parents) LookupByNode(k ipld.Node) (ipld.Node, error) {
 }
 func (n Parents) LookupByIndex(idx int64) (ipld.Node, error) {
 	if n.Length() <= idx {
-		return nil, ipld.ErrNotExists{ipld.PathSegmentOfInt(idx)}
+		return nil, ipld.ErrNotExists{Segment: ipld.PathSegmentOfInt(idx)}
 	}
 	v := &n.x[idx]
 	return v, nil
@@ -2108,22 +2076,22 @@ func (Parents) IsNull() bool {
 	return false
 }
 func (Parents) AsBool() (bool, error) {
-	return mixins.List{"chaintypes.Parents"}.AsBool()
+	return mixins.List{TypeName: "chaintypes.Parents"}.AsBool()
 }
 func (Parents) AsInt() (int64, error) {
-	return mixins.List{"chaintypes.Parents"}.AsInt()
+	return mixins.List{TypeName: "chaintypes.Parents"}.AsInt()
 }
 func (Parents) AsFloat() (float64, error) {
-	return mixins.List{"chaintypes.Parents"}.AsFloat()
+	return mixins.List{TypeName: "chaintypes.Parents"}.AsFloat()
 }
 func (Parents) AsString() (string, error) {
-	return mixins.List{"chaintypes.Parents"}.AsString()
+	return mixins.List{TypeName: "chaintypes.Parents"}.AsString()
 }
 func (Parents) AsBytes() ([]byte, error) {
-	return mixins.List{"chaintypes.Parents"}.AsBytes()
+	return mixins.List{TypeName: "chaintypes.Parents"}.AsBytes()
 }
 func (Parents) AsLink() (ipld.Link, error) {
-	return mixins.List{"chaintypes.Parents"}.AsLink()
+	return mixins.List{TypeName: "chaintypes.Parents"}.AsLink()
 }
 func (Parents) Prototype() ipld.NodePrototype {
 	return _Parents__Prototype{}
@@ -2167,7 +2135,7 @@ func (na *_Parents__Assembler) reset() {
 	na.va.reset()
 }
 func (_Parents__Assembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
-	return mixins.ListAssembler{"chaintypes.Parents"}.BeginMap(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents"}.BeginMap(0)
 }
 func (na *_Parents__Assembler) BeginList(sizeHint int64) (ipld.ListAssembler, error) {
 	switch *na.m {
@@ -2180,9 +2148,6 @@ func (na *_Parents__Assembler) BeginList(sizeHint int64) (ipld.ListAssembler, er
 	if sizeHint < 0 {
 		sizeHint = 0
 	}
-	if na.w == nil {
-		na.w = &_Parents{}
-	}
 	if sizeHint > 0 {
 		na.w.x = make([]_Link, 0, sizeHint)
 	}
@@ -2194,7 +2159,7 @@ func (na *_Parents__Assembler) AssignNull() error {
 		*na.m = schema.Maybe_Null
 		return nil
 	case schema.Maybe_Absent:
-		return mixins.ListAssembler{"chaintypes.Parents"}.AssignNull()
+		return mixins.ListAssembler{TypeName: "chaintypes.Parents"}.AssignNull()
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
 	case midvalue:
@@ -2203,22 +2168,22 @@ func (na *_Parents__Assembler) AssignNull() error {
 	panic("unreachable")
 }
 func (_Parents__Assembler) AssignBool(bool) error {
-	return mixins.ListAssembler{"chaintypes.Parents"}.AssignBool(false)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents"}.AssignBool(false)
 }
 func (_Parents__Assembler) AssignInt(int64) error {
-	return mixins.ListAssembler{"chaintypes.Parents"}.AssignInt(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents"}.AssignInt(0)
 }
 func (_Parents__Assembler) AssignFloat(float64) error {
-	return mixins.ListAssembler{"chaintypes.Parents"}.AssignFloat(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents"}.AssignFloat(0)
 }
 func (_Parents__Assembler) AssignString(string) error {
-	return mixins.ListAssembler{"chaintypes.Parents"}.AssignString("")
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents"}.AssignString("")
 }
 func (_Parents__Assembler) AssignBytes([]byte) error {
-	return mixins.ListAssembler{"chaintypes.Parents"}.AssignBytes(nil)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents"}.AssignBytes(nil)
 }
 func (_Parents__Assembler) AssignLink(ipld.Link) error {
-	return mixins.ListAssembler{"chaintypes.Parents"}.AssignLink(nil)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents"}.AssignLink(nil)
 }
 func (na *_Parents__Assembler) AssignNode(v ipld.Node) error {
 	if v.IsNull() {
@@ -2230,11 +2195,6 @@ func (na *_Parents__Assembler) AssignNode(v ipld.Node) error {
 			panic("invalid state: cannot assign into assembler that's already finished")
 		case midvalue:
 			panic("invalid state: cannot assign null into an assembler that's already begun working on recursive structures!")
-		}
-		if na.w == nil {
-			na.w = v2
-			*na.m = schema.Maybe_Value
-			return nil
 		}
 		*na.w = *v2
 		*na.m = schema.Maybe_Value
@@ -2321,7 +2281,7 @@ func (_Parents__Repr) Kind() ipld.Kind {
 	return ipld.Kind_List
 }
 func (_Parents__Repr) LookupByString(string) (ipld.Node, error) {
-	return mixins.List{"chaintypes.Parents.Repr"}.LookupByString("")
+	return mixins.List{TypeName: "chaintypes.Parents.Repr"}.LookupByString("")
 }
 func (nr *_Parents__Repr) LookupByNode(k ipld.Node) (ipld.Node, error) {
 	v, err := (Parents)(nr).LookupByNode(k)
@@ -2374,22 +2334,22 @@ func (_Parents__Repr) IsNull() bool {
 	return false
 }
 func (_Parents__Repr) AsBool() (bool, error) {
-	return mixins.List{"chaintypes.Parents.Repr"}.AsBool()
+	return mixins.List{TypeName: "chaintypes.Parents.Repr"}.AsBool()
 }
 func (_Parents__Repr) AsInt() (int64, error) {
-	return mixins.List{"chaintypes.Parents.Repr"}.AsInt()
+	return mixins.List{TypeName: "chaintypes.Parents.Repr"}.AsInt()
 }
 func (_Parents__Repr) AsFloat() (float64, error) {
-	return mixins.List{"chaintypes.Parents.Repr"}.AsFloat()
+	return mixins.List{TypeName: "chaintypes.Parents.Repr"}.AsFloat()
 }
 func (_Parents__Repr) AsString() (string, error) {
-	return mixins.List{"chaintypes.Parents.Repr"}.AsString()
+	return mixins.List{TypeName: "chaintypes.Parents.Repr"}.AsString()
 }
 func (_Parents__Repr) AsBytes() ([]byte, error) {
-	return mixins.List{"chaintypes.Parents.Repr"}.AsBytes()
+	return mixins.List{TypeName: "chaintypes.Parents.Repr"}.AsBytes()
 }
 func (_Parents__Repr) AsLink() (ipld.Link, error) {
-	return mixins.List{"chaintypes.Parents.Repr"}.AsLink()
+	return mixins.List{TypeName: "chaintypes.Parents.Repr"}.AsLink()
 }
 func (_Parents__Repr) Prototype() ipld.NodePrototype {
 	return _Parents__ReprPrototype{}
@@ -2433,7 +2393,7 @@ func (na *_Parents__ReprAssembler) reset() {
 	na.va.reset()
 }
 func (_Parents__ReprAssembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
-	return mixins.ListAssembler{"chaintypes.Parents.Repr"}.BeginMap(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents.Repr"}.BeginMap(0)
 }
 func (na *_Parents__ReprAssembler) BeginList(sizeHint int64) (ipld.ListAssembler, error) {
 	switch *na.m {
@@ -2446,9 +2406,6 @@ func (na *_Parents__ReprAssembler) BeginList(sizeHint int64) (ipld.ListAssembler
 	if sizeHint < 0 {
 		sizeHint = 0
 	}
-	if na.w == nil {
-		na.w = &_Parents{}
-	}
 	if sizeHint > 0 {
 		na.w.x = make([]_Link, 0, sizeHint)
 	}
@@ -2460,7 +2417,7 @@ func (na *_Parents__ReprAssembler) AssignNull() error {
 		*na.m = schema.Maybe_Null
 		return nil
 	case schema.Maybe_Absent:
-		return mixins.ListAssembler{"chaintypes.Parents.Repr.Repr"}.AssignNull()
+		return mixins.ListAssembler{TypeName: "chaintypes.Parents.Repr.Repr"}.AssignNull()
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
 	case midvalue:
@@ -2469,22 +2426,22 @@ func (na *_Parents__ReprAssembler) AssignNull() error {
 	panic("unreachable")
 }
 func (_Parents__ReprAssembler) AssignBool(bool) error {
-	return mixins.ListAssembler{"chaintypes.Parents.Repr"}.AssignBool(false)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents.Repr"}.AssignBool(false)
 }
 func (_Parents__ReprAssembler) AssignInt(int64) error {
-	return mixins.ListAssembler{"chaintypes.Parents.Repr"}.AssignInt(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents.Repr"}.AssignInt(0)
 }
 func (_Parents__ReprAssembler) AssignFloat(float64) error {
-	return mixins.ListAssembler{"chaintypes.Parents.Repr"}.AssignFloat(0)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents.Repr"}.AssignFloat(0)
 }
 func (_Parents__ReprAssembler) AssignString(string) error {
-	return mixins.ListAssembler{"chaintypes.Parents.Repr"}.AssignString("")
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents.Repr"}.AssignString("")
 }
 func (_Parents__ReprAssembler) AssignBytes([]byte) error {
-	return mixins.ListAssembler{"chaintypes.Parents.Repr"}.AssignBytes(nil)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents.Repr"}.AssignBytes(nil)
 }
 func (_Parents__ReprAssembler) AssignLink(ipld.Link) error {
-	return mixins.ListAssembler{"chaintypes.Parents.Repr"}.AssignLink(nil)
+	return mixins.ListAssembler{TypeName: "chaintypes.Parents.Repr"}.AssignLink(nil)
 }
 func (na *_Parents__ReprAssembler) AssignNode(v ipld.Node) error {
 	if v.IsNull() {
@@ -2496,11 +2453,6 @@ func (na *_Parents__ReprAssembler) AssignNode(v ipld.Node) error {
 			panic("invalid state: cannot assign into assembler that's already finished")
 		case midvalue:
 			panic("invalid state: cannot assign null into an assembler that's already begun working on recursive structures!")
-		}
-		if na.w == nil {
-			na.w = v2
-			*na.m = schema.Maybe_Value
-			return nil
 		}
 		*na.w = *v2
 		*na.m = schema.Maybe_Value
@@ -2587,7 +2539,7 @@ func (_String__Prototype) FromString(v string) (String, error) {
 
 type _String__Maybe struct {
 	m schema.Maybe
-	v String
+	v _String
 }
 type MaybeString = *_String__Maybe
 
@@ -2607,7 +2559,7 @@ func (m MaybeString) AsNode() ipld.Node {
 	case schema.Maybe_Null:
 		return ipld.Null
 	case schema.Maybe_Value:
-		return m.v
+		return &m.v
 	default:
 		panic("unreachable")
 	}
@@ -2616,7 +2568,7 @@ func (m MaybeString) Must() String {
 	if !m.Exists() {
 		panic("unbox of a maybe rejected")
 	}
-	return m.v
+	return &m.v
 }
 
 var _ ipld.Node = (String)(&_String{})
@@ -2626,16 +2578,16 @@ func (String) Kind() ipld.Kind {
 	return ipld.Kind_String
 }
 func (String) LookupByString(string) (ipld.Node, error) {
-	return mixins.String{"chaintypes.String"}.LookupByString("")
+	return mixins.String{TypeName: "chaintypes.String"}.LookupByString("")
 }
 func (String) LookupByNode(ipld.Node) (ipld.Node, error) {
-	return mixins.String{"chaintypes.String"}.LookupByNode(nil)
+	return mixins.String{TypeName: "chaintypes.String"}.LookupByNode(nil)
 }
 func (String) LookupByIndex(idx int64) (ipld.Node, error) {
-	return mixins.String{"chaintypes.String"}.LookupByIndex(0)
+	return mixins.String{TypeName: "chaintypes.String"}.LookupByIndex(0)
 }
 func (String) LookupBySegment(seg ipld.PathSegment) (ipld.Node, error) {
-	return mixins.String{"chaintypes.String"}.LookupBySegment(seg)
+	return mixins.String{TypeName: "chaintypes.String"}.LookupBySegment(seg)
 }
 func (String) MapIterator() ipld.MapIterator {
 	return nil
@@ -2653,22 +2605,22 @@ func (String) IsNull() bool {
 	return false
 }
 func (String) AsBool() (bool, error) {
-	return mixins.String{"chaintypes.String"}.AsBool()
+	return mixins.String{TypeName: "chaintypes.String"}.AsBool()
 }
 func (String) AsInt() (int64, error) {
-	return mixins.String{"chaintypes.String"}.AsInt()
+	return mixins.String{TypeName: "chaintypes.String"}.AsInt()
 }
 func (String) AsFloat() (float64, error) {
-	return mixins.String{"chaintypes.String"}.AsFloat()
+	return mixins.String{TypeName: "chaintypes.String"}.AsFloat()
 }
 func (n String) AsString() (string, error) {
 	return n.x, nil
 }
 func (String) AsBytes() ([]byte, error) {
-	return mixins.String{"chaintypes.String"}.AsBytes()
+	return mixins.String{TypeName: "chaintypes.String"}.AsBytes()
 }
 func (String) AsLink() (ipld.Link, error) {
-	return mixins.String{"chaintypes.String"}.AsLink()
+	return mixins.String{TypeName: "chaintypes.String"}.AsLink()
 }
 func (String) Prototype() ipld.NodePrototype {
 	return _String__Prototype{}
@@ -2705,10 +2657,10 @@ type _String__Assembler struct {
 
 func (na *_String__Assembler) reset() {}
 func (_String__Assembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
-	return mixins.StringAssembler{"chaintypes.String"}.BeginMap(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.String"}.BeginMap(0)
 }
 func (_String__Assembler) BeginList(sizeHint int64) (ipld.ListAssembler, error) {
-	return mixins.StringAssembler{"chaintypes.String"}.BeginList(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.String"}.BeginList(0)
 }
 func (na *_String__Assembler) AssignNull() error {
 	switch *na.m {
@@ -2716,38 +2668,35 @@ func (na *_String__Assembler) AssignNull() error {
 		*na.m = schema.Maybe_Null
 		return nil
 	case schema.Maybe_Absent:
-		return mixins.StringAssembler{"chaintypes.String"}.AssignNull()
+		return mixins.StringAssembler{TypeName: "chaintypes.String"}.AssignNull()
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
 	}
 	panic("unreachable")
 }
 func (_String__Assembler) AssignBool(bool) error {
-	return mixins.StringAssembler{"chaintypes.String"}.AssignBool(false)
+	return mixins.StringAssembler{TypeName: "chaintypes.String"}.AssignBool(false)
 }
 func (_String__Assembler) AssignInt(int64) error {
-	return mixins.StringAssembler{"chaintypes.String"}.AssignInt(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.String"}.AssignInt(0)
 }
 func (_String__Assembler) AssignFloat(float64) error {
-	return mixins.StringAssembler{"chaintypes.String"}.AssignFloat(0)
+	return mixins.StringAssembler{TypeName: "chaintypes.String"}.AssignFloat(0)
 }
 func (na *_String__Assembler) AssignString(v string) error {
 	switch *na.m {
 	case schema.Maybe_Value, schema.Maybe_Null:
 		panic("invalid state: cannot assign into assembler that's already finished")
 	}
-	if na.w == nil {
-		na.w = &_String{}
-	}
 	na.w.x = v
 	*na.m = schema.Maybe_Value
 	return nil
 }
 func (_String__Assembler) AssignBytes([]byte) error {
-	return mixins.StringAssembler{"chaintypes.String"}.AssignBytes(nil)
+	return mixins.StringAssembler{TypeName: "chaintypes.String"}.AssignBytes(nil)
 }
 func (_String__Assembler) AssignLink(ipld.Link) error {
-	return mixins.StringAssembler{"chaintypes.String"}.AssignLink(nil)
+	return mixins.StringAssembler{TypeName: "chaintypes.String"}.AssignLink(nil)
 }
 func (na *_String__Assembler) AssignNode(v ipld.Node) error {
 	if v.IsNull() {
@@ -2757,11 +2706,6 @@ func (na *_String__Assembler) AssignNode(v ipld.Node) error {
 		switch *na.m {
 		case schema.Maybe_Value, schema.Maybe_Null:
 			panic("invalid state: cannot assign into assembler that's already finished")
-		}
-		if na.w == nil {
-			na.w = v2
-			*na.m = schema.Maybe_Value
-			return nil
 		}
 		*na.w = *v2
 		*na.m = schema.Maybe_Value

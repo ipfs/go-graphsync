@@ -48,42 +48,42 @@ const (
 type RequestContextCancelledErr struct{}
 
 func (e RequestContextCancelledErr) Error() string {
-	return "Request Context Cancelled"
+	return "request context cancelled"
 }
 
 // RequestFailedBusyErr is an error message received on the error channel when the peer is busy
 type RequestFailedBusyErr struct{}
 
 func (e RequestFailedBusyErr) Error() string {
-	return "Request Failed - Peer Is Busy"
+	return "request failed - peer is busy"
 }
 
 // RequestFailedContentNotFoundErr is an error message received on the error channel when the content is not found
 type RequestFailedContentNotFoundErr struct{}
 
 func (e RequestFailedContentNotFoundErr) Error() string {
-	return "Request Failed - Content Not Found"
+	return "request failed - content not found"
 }
 
 // RequestFailedLegalErr is an error message received on the error channel when the request fails for legal reasons
 type RequestFailedLegalErr struct{}
 
 func (e RequestFailedLegalErr) Error() string {
-	return "Request Failed - For Legal Reasons"
+	return "request failed - for legal reasons"
 }
 
 // RequestFailedUnknownErr is an error message received on the error channel when the request fails for unknown reasons
 type RequestFailedUnknownErr struct{}
 
 func (e RequestFailedUnknownErr) Error() string {
-	return "Request Failed - Unknown Reason"
+	return "request failed - unknown reason"
 }
 
 // RequestCancelledErr is an error message received on the error channel that indicates the responder cancelled a request
 type RequestCancelledErr struct{}
 
 func (e RequestCancelledErr) Error() string {
-	return "Request Failed - Responder Cancelled"
+	return "request failed - responder cancelled"
 }
 
 var (

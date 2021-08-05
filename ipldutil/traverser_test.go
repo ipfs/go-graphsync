@@ -31,13 +31,13 @@ func TestTraverser(t *testing.T) {
 		}.Start(ctx)
 		checkTraverseSequence(ctx, t, traverser, []blocks.Block{
 			testdata.RootBlock,
-			testdata.LeafAlphaBlock,
-			testdata.MiddleMapBlock,
-			testdata.LeafAlphaBlock,
 			testdata.MiddleListBlock,
 			testdata.LeafAlphaBlock,
 			testdata.LeafAlphaBlock,
 			testdata.LeafBetaBlock,
+			testdata.LeafAlphaBlock,
+			testdata.MiddleMapBlock,
+			testdata.LeafAlphaBlock,
 			testdata.LeafAlphaBlock,
 		})
 	})

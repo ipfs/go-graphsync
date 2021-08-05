@@ -59,7 +59,7 @@ func (rc *ResponseCache) AttemptLoad(requestID graphsync.RequestID, link ipld.Li
 	rc.responseCacheLk.Lock()
 	defer rc.responseCacheLk.Unlock()
 	if rc.linkTracker.IsKnownMissingLink(requestID, link) {
-		return nil, fmt.Errorf("Remote Peer Is Missing Block: %s", link.String())
+		return nil, fmt.Errorf("remote peer is missing block: %s", link.String())
 	}
 	data, _ := rc.unverifiedBlockStore.VerifyBlock(link)
 	return data, nil

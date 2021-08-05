@@ -18,7 +18,7 @@ func LinkSystemForBlockstore(bs bstore.Blockstore) ipld.LinkSystem {
 	lsys.StorageReadOpener = func(lnkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 		asCidLink, ok := lnk.(cidlink.Link)
 		if !ok {
-			return nil, fmt.Errorf("Unsupported Link Type")
+			return nil, fmt.Errorf("unsupported link type")
 		}
 		block, err := bs.Get(asCidLink.Cid)
 		if err != nil {
@@ -31,7 +31,7 @@ func LinkSystemForBlockstore(bs bstore.Blockstore) ipld.LinkSystem {
 		committer := func(lnk ipld.Link) error {
 			asCidLink, ok := lnk.(cidlink.Link)
 			if !ok {
-				return fmt.Errorf("Unsupported Link Type")
+				return fmt.Errorf("unsupported link type")
 			}
 			block, err := blocks.NewBlockWithCid(buffer.Bytes(), asCidLink.Cid)
 			if err != nil {

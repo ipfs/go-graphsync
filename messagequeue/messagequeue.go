@@ -175,7 +175,7 @@ func (mq *MessageQueue) signalWork() {
 	}
 }
 
-var errEmptyMessage = errors.New("Empty Message")
+var errEmptyMessage = errors.New("empty Message")
 
 func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, *messagePublisher, error) {
 	// grab outgoing message

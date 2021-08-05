@@ -236,12 +236,12 @@ func (rm *ResponseManager) CancelResponse(p peer.ID, requestID graphsync.Request
 func (rm *ResponseManager) sendSyncMessage(message responseManagerMessage, response chan error) error {
 	select {
 	case <-rm.ctx.Done():
-		return errors.New("Context Cancelled")
+		return errors.New("context cancelled")
 	case rm.messages <- message:
 	}
 	select {
 	case <-rm.ctx.Done():
-		return errors.New("Context Cancelled")
+		return errors.New("context cancelled")
 	case err := <-response:
 		return err
 	}
