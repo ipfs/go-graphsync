@@ -21,7 +21,7 @@
 
 ## Background
 
-[GraphSync](https://github.com/ipld/specs/blob/master/block-layer/graphsync/graphsync.md) is a protocol for synchronizing IPLD graphs among peers. It allows a host to make a single request to a remote peer for all of the results of traversing an [IPLD selector](https://github.com/ipld/specs/blob/master/block-layer/selectors/selectors.md) on the remote peer's local IPLD graph. 
+[GraphSync](https://github.com/ipld/specs/blob/master/block-layer/graphsync/graphsync.md) is a protocol for synchronizing IPLD graphs among peers. It allows a host to make a single request to a remote peer for all of the results of traversing an [IPLD selector](https://ipld.io/specs/selectors/) on the remote peer's local IPLD graph. 
 
 `go-graphsync` provides an implementation of the Graphsync protocol in go.
 
