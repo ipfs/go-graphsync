@@ -269,7 +269,7 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 
 	for err := range errChan {
 		// verify the error is received for leaf beta node being missing
-		require.EqualError(t, err, fmt.Sprintf("Remote Peer Is Missing Block: %s", tree.LeafBetaLnk.String()))
+		require.EqualError(t, err, fmt.Sprintf("remote peer is missing block: %s", tree.LeafBetaLnk.String()))
 	}
 	require.Equal(t, tree.LeafAlphaBlock.RawData(), td.blockStore1[tree.LeafAlphaLnk])
 	require.Equal(t, tree.MiddleListBlock.RawData(), td.blockStore1[tree.MiddleListNodeLnk])
