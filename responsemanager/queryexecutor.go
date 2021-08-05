@@ -129,12 +129,14 @@ func (qe *queryExecutor) executeQuery(
 				code = graphsync.RequestFailedUnknown
 				return nil
 			}
-			if err == errCancelledByCommand {
+			if err == runtraversal.ErrFirstBlockLoad {
+				code = graphsync.RequestFailedContentNotFound
+			} else if err == errCancelledByCommand {
 				code = graphsync.RequestCancelled
 			} else {
 				code = graphsync.RequestFailedUnknown
 			}
-			rb.FinishWithError(graphsync.RequestCancelled)
+			rb.FinishWithError(code)
 		} else {
 			code = rb.FinishRequest()
 		}
