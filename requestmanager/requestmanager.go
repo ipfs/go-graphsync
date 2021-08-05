@@ -449,7 +449,7 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 	if !ok {
 		if crm.onTerminated != nil {
 			select {
-			case crm.onTerminated <- errors.New("request not found"):
+			case crm.onTerminated <- graphsync.RequestNotFoundErr{}:
 			case <-rm.ctx.Done():
 			}
 		}
@@ -659,7 +659,7 @@ func (rm *RequestManager) sendRequest(p peer.ID, request gsmsg.GraphSyncRequest)
 func (urm *unpauseRequestMessage) unpause(rm *RequestManager) error {
 	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[urm.id]
 	if !ok {
-		return errors.New("request not found")
+		return graphsync.RequestNotFoundErr{}
 	}
 	if !inProgressRequestStatus.paused {
 		return errors.New("request is not paused")
@@ -685,7 +685,7 @@ func (urm *unpauseRequestMessage) handle(rm *RequestManager) {
 func (prm *pauseRequestMessage) pause(rm *RequestManager) error {
 	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[prm.id]
 	if !ok {
-		return errors.New("request not found")
+		return graphsync.RequestNotFoundErr{}
 	}
 	if inProgressRequestStatus.paused {
 		return errors.New("request is already paused")

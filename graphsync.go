@@ -137,6 +137,13 @@ func (e RequestCancelledErr) Error() string {
 	return "Request Failed - Responder Cancelled"
 }
 
+// RequestNotFoundErr indicates that a request with a particular request ID was not found
+type RequestNotFoundErr struct{}
+
+func (e RequestNotFoundErr) Error() string {
+	return "request not found"
+}
+
 var (
 	// ErrExtensionAlreadyRegistered means a user extension can be registered only once
 	ErrExtensionAlreadyRegistered = errors.New("extension already registered")
