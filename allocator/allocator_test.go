@@ -382,8 +382,8 @@ type releasePeer struct {
 }
 
 type pendingResult struct {
-	p      peer.ID
-	amount uint64
+	p      peer.ID //nolint:structcheck
+	amount uint64  //nolint:structcheck
 }
 
 type pendingResultWithChan struct {
