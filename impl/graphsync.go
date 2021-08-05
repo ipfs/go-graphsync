@@ -3,7 +3,7 @@ package graphsync
 import (
 	"context"
 
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -43,6 +43,7 @@ type GraphSync struct {
 	responseAssembler           *responseassembler.ResponseAssembler
 	peerTaskQueue               *peertaskqueue.PeerTaskQueue
 	peerManager                 *peermanager.PeerMessageManager
+	incomingRequestQueuedHooks  *responderhooks.IncomingRequestQueuedHooks
 	incomingRequestHooks        *responderhooks.IncomingRequestHooks
 	outgoingBlockHooks          *responderhooks.OutgoingBlockHooks
 	requestUpdatedHooks         *responderhooks.RequestUpdatedHooks
@@ -124,6 +125,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	networkErrorListeners := listeners.NewNetworkErrorListeners()
 	receiverErrorListeners := listeners.NewReceiverNetworkErrorListeners()
 	persistenceOptions := persistenceoptions.New()
+	requestQueuedHooks := responderhooks.NewRequestQueuedHooks()
 	incomingRequestHooks := responderhooks.NewRequestHooks(persistenceOptions)
 	outgoingBlockHooks := responderhooks.NewBlockHooks()
 	requestUpdatedHooks := responderhooks.NewUpdateHooks()
@@ -142,7 +144,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	peerTaskQueue := peertaskqueue.New()
-	responseManager := responsemanager.New(ctx, linkSystem, responseAssembler, peerTaskQueue, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressRequests)
+	responseManager := responsemanager.New(ctx, linkSystem, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressRequests)
 	graphSync := &GraphSync{
 		network:                     network,
 		linkSystem:                  linkSystem,
@@ -152,6 +154,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		responseAssembler:           responseAssembler,
 		peerTaskQueue:               peerTaskQueue,
 		peerManager:                 peerManager,
+		incomingRequestQueuedHooks:  requestQueuedHooks,
 		incomingRequestHooks:        incomingRequestHooks,
 		outgoingBlockHooks:          outgoingBlockHooks,
 		requestUpdatedHooks:         requestUpdatedHooks,
@@ -188,6 +191,12 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 // the normal validation of requests Graphsync does (i.e. all selectors can be accepted)
 func (gs *GraphSync) RegisterIncomingRequestHook(hook graphsync.OnIncomingRequestHook) graphsync.UnregisterHookFunc {
 	return gs.incomingRequestHooks.Register(hook)
+}
+
+// RegisterIncomingRequestQueuedHook adds a hook that runs when a new incoming request is added
+// to the responder's task queue.
+func (gs *GraphSync) RegisterIncomingRequestQueuedHook(hook graphsync.OnIncomingRequestQueuedHook) graphsync.UnregisterHookFunc {
+	return gs.incomingRequestQueuedHooks.Register(hook)
 }
 
 // RegisterIncomingResponseHook adds a hook that runs when a response is received
@@ -283,6 +292,11 @@ func (gs *GraphSync) PauseResponse(p peer.ID, requestID graphsync.RequestID) err
 // CancelResponse cancels an in progress response
 func (gs *GraphSync) CancelResponse(p peer.ID, requestID graphsync.RequestID) error {
 	return gs.responseManager.CancelResponse(p, requestID)
+}
+
+// CancelRequest cancels an in progress request
+func (gs *GraphSync) CancelRequest(ctx context.Context, requestID graphsync.RequestID) error {
+	return gs.requestManager.CancelRequest(ctx, requestID)
 }
 
 type graphSyncReceiver GraphSync

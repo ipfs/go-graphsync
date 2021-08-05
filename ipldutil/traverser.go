@@ -11,6 +11,12 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 )
 
+/* TODO: This traverser creates an extra go-routine and is quite complicated, in order to give calling code control of
+a selector traversal. If it were implemented inside of go-ipld-primes traversal library, with access to private functions,
+it could be done without an extra go-routine, avoiding the possibility of races and simplifying implementation. This has
+been documented here: https://github.com/ipld/go-ipld-prime/issues/213 -- and when this issue is implemented, this traverser
+can go away */
+
 var defaultLinkSystem = cidlink.DefaultLinkSystem()
 
 var defaultVisitor traversal.AdvVisitFn = func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil }
@@ -45,6 +51,8 @@ type Traverser interface {
 	Error(err error)
 	// Shutdown cancels the traversal
 	Shutdown(ctx context.Context)
+	// NBlocksTraversed returns the number of blocks successfully traversed
+	NBlocksTraversed() int
 }
 
 type state struct {
@@ -64,6 +72,7 @@ type nextResponse struct {
 func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 	ctx, cancel := context.WithCancel(parentCtx)
 	t := &traverser{
+		blocksCount:  0,
 		parentCtx:    parentCtx,
 		ctx:          ctx,
 		cancel:       cancel,
@@ -100,6 +109,7 @@ func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 // traverser is a class to perform a selector traversal that stops every time a new block is loaded
 // and waits for manual input (in the form of advance or error)
 type traverser struct {
+	blocksCount    int
 	parentCtx      context.Context
 	ctx            context.Context
 	cancel         func()
@@ -116,6 +126,10 @@ type traverser struct {
 	stateChan      chan state
 	responses      chan nextResponse
 	stopped        chan struct{}
+}
+
+func (t *traverser) NBlocksTraversed() int {
+	return t.blocksCount
 }
 
 func (t *traverser) loader(lnkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
@@ -159,6 +173,7 @@ func (t *traverser) writeDone(err error) {
 func (t *traverser) start() {
 	select {
 	case <-t.ctx.Done():
+		close(t.stopped)
 		return
 	case t.awaitRequest <- struct{}{}:
 	}
@@ -218,16 +233,20 @@ func (t *traverser) Advance(reader io.Reader) error {
 	if isComplete {
 		return errors.New("cannot advance when done")
 	}
+
 	select {
 	case <-t.ctx.Done():
 		return ContextCancelError{}
 	case t.awaitRequest <- struct{}{}:
 	}
+
 	select {
 	case <-t.ctx.Done():
 		return ContextCancelError{}
 	case t.responses <- nextResponse{reader, nil}:
 	}
+
+	t.blocksCount++
 	return nil
 }
 

@@ -616,7 +616,7 @@ func TestNetworkDisconnect(t *testing.T) {
 
 	testutil.AssertReceive(ctx, t, networkError, &err, "should receive network error")
 	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
-	require.EqualError(t, err, graphsync.RequestContextCancelledErr{}.Error())
+	require.EqualError(t, err, graphsync.RequestClientCancelledErr{}.Error())
 	testutil.AssertReceive(ctx, t, receiverError, &err, "should receive an error on receiver side")
 }
 
@@ -652,7 +652,7 @@ func TestConnectFail(t *testing.T) {
 	var err error
 	testutil.AssertReceive(ctx, t, reqNetworkError, &err, "should receive network error")
 	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
-	require.EqualError(t, err, graphsync.RequestContextCancelledErr{}.Error())
+	require.EqualError(t, err, graphsync.RequestClientCancelledErr{}.Error())
 }
 
 func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {

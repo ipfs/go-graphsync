@@ -18,7 +18,9 @@ func (rc *responseCollector) collectResponses(
 	requestCtx context.Context,
 	incomingResponses <-chan graphsync.ResponseProgress,
 	incomingErrors <-chan error,
-	cancelRequest func()) (<-chan graphsync.ResponseProgress, <-chan error) {
+	cancelRequest func(),
+	onComplete func(),
+) (<-chan graphsync.ResponseProgress, <-chan error) {
 
 	returnedResponses := make(chan graphsync.ResponseProgress)
 	returnedErrors := make(chan error)
@@ -26,6 +28,7 @@ func (rc *responseCollector) collectResponses(
 	go func() {
 		var receivedResponses []graphsync.ResponseProgress
 		defer close(returnedResponses)
+		defer onComplete()
 		outgoingResponses := func() chan<- graphsync.ResponseProgress {
 			if len(receivedResponses) == 0 {
 				return nil
@@ -82,7 +85,7 @@ func (rc *responseCollector) collectResponses(
 			case <-requestCtx.Done():
 				select {
 				case <-rc.ctx.Done():
-				case returnedErrors <- graphsync.RequestContextCancelledErr{}:
+				case returnedErrors <- graphsync.RequestClientCancelledErr{}:
 				}
 				return
 			case err, ok := <-incomingErrors:
@@ -94,7 +97,7 @@ func (rc *responseCollector) collectResponses(
 					case <-requestCtx.Done():
 						select {
 						case <-rc.ctx.Done():
-						case returnedErrors <- graphsync.RequestContextCancelledErr{}:
+						case returnedErrors <- graphsync.RequestClientCancelledErr{}:
 						}
 					default:
 					}
