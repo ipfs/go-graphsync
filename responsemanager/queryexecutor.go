@@ -6,14 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ipfs/go-cid"
 	ipld "github.com/ipld/go-ipld-prime"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/cidset"
-	"github.com/ipfs/go-graphsync/dedupkey"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
@@ -26,12 +22,10 @@ var errCancelledByCommand = errors.New("response cancelled by responder")
 
 // TODO: Move this into a seperate module and fully seperate from the ResponseManager
 type queryExecutor struct {
-	requestHooks       RequestHooks
 	blockHooks         BlockHooks
 	updateHooks        UpdateHooks
 	cancelledListeners CancelledListeners
 	responseAssembler  ResponseAssembler
-	linkSystem         ipld.LinkSystem
 	queryQueue         QueryQueue
 	messages           chan responseManagerMessage
 	ctx                context.Context
@@ -57,9 +51,8 @@ func (qe *queryExecutor) processQueriesWorker() {
 			}
 		}
 		for _, task := range tasks {
-			key := task.Topic.(responseKey)
 			select {
-			case qe.messages <- &responseDataRequest{key, taskDataChan}:
+			case qe.messages <- &startTaskRequest{task, taskDataChan}:
 			case <-qe.ctx.Done():
 				return
 			}
@@ -72,136 +65,19 @@ func (qe *queryExecutor) processQueriesWorker() {
 				log.Info("Empty task on peer request stack")
 				continue
 			}
-			log.Debugw("beginning response execution", "id", key.requestID, "peer", key.p.String(), "root_cid", taskData.request.Root().String())
-			status, err := qe.executeTask(key, taskData)
+			log.Debugw("beginning response execution", "id", taskData.request.ID(), "peer", pid.String(), "root_cid", taskData.request.Root().String())
+			status, err := qe.executeQuery(pid, taskData.request, taskData.loader, taskData.traverser, taskData.signals, taskData.subscriber)
 			isCancelled := err != nil && isContextErr(err)
 			if isCancelled {
-				qe.cancelledListeners.NotifyCancelledListeners(key.p, taskData.request)
+				qe.cancelledListeners.NotifyCancelledListeners(pid, taskData.request)
 			}
 			select {
-			case qe.messages <- &finishTaskRequest{key, status, err}:
+			case qe.messages <- &finishTaskRequest{task, status, err}:
 			case <-qe.ctx.Done():
 			}
-			log.Debugw("finishing response execution", "id", key.requestID, "peer", key.p.String(), "root_cid", taskData.request.Root().String())
-		}
-		qe.queryQueue.TasksDone(pid, tasks...)
-
-	}
-
-}
-
-func (qe *queryExecutor) executeTask(key responseKey, taskData responseTaskData) (graphsync.ResponseStatusCode, error) {
-	var err error
-	loader := taskData.loader
-	traverser := taskData.traverser
-	if loader == nil || traverser == nil {
-		var isPaused bool
-		loader, traverser, isPaused, err = qe.prepareQuery(taskData.ctx, key.p, taskData.request, taskData.signals, taskData.subscriber)
-		if err != nil {
-			return graphsync.RequestFailedUnknown, err
-		}
-		select {
-		case <-qe.ctx.Done():
-			return graphsync.RequestFailedUnknown, errors.New("context cancelled")
-		case qe.messages <- &setResponseDataRequest{key, loader, traverser}:
-		}
-		if isPaused {
-			return graphsync.RequestPaused, hooks.ErrPaused{}
+			log.Debugw("finishing response execution", "id", taskData.request.ID(), "peer", pid.String(), "root_cid", taskData.request.Root().String())
 		}
 	}
-	return qe.executeQuery(key.p, taskData.request, loader, traverser, taskData.signals, taskData.subscriber)
-}
-
-func (qe *queryExecutor) prepareQuery(ctx context.Context,
-	p peer.ID,
-	request gsmsg.GraphSyncRequest, signals signals, sub *notifications.TopicDataSubscriber) (ipld.BlockReadOpener, ipldutil.Traverser, bool, error) {
-	result := qe.requestHooks.ProcessRequestHooks(p, request)
-	var transactionError error
-	var isPaused bool
-	failNotifee := notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: sub}
-	err := qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
-		for _, extension := range result.Extensions {
-			rb.SendExtensionData(extension)
-		}
-		if result.Err != nil || !result.IsValidated {
-			rb.FinishWithError(graphsync.RequestFailedUnknown)
-			rb.AddNotifee(failNotifee)
-			transactionError = errors.New("request not valid")
-		} else if result.IsPaused {
-			rb.PauseRequest()
-			isPaused = true
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, nil, false, err
-	}
-	if transactionError != nil {
-		return nil, nil, false, transactionError
-	}
-	if err := qe.processDedupByKey(request, p, failNotifee); err != nil {
-		return nil, nil, false, err
-	}
-	if err := qe.processDoNoSendCids(request, p, failNotifee); err != nil {
-		return nil, nil, false, err
-	}
-	rootLink := cidlink.Link{Cid: request.Root()}
-	linkSystem := result.CustomLinkSystem
-	if linkSystem.StorageReadOpener == nil {
-		linkSystem = qe.linkSystem
-	}
-	traverser := ipldutil.TraversalBuilder{
-		Root:       rootLink,
-		Selector:   request.Selector(),
-		LinkSystem: linkSystem,
-		Chooser:    result.CustomChooser,
-	}.Start(ctx)
-
-	return linkSystem.StorageReadOpener, traverser, isPaused, nil
-}
-
-func (qe *queryExecutor) processDedupByKey(request gsmsg.GraphSyncRequest, p peer.ID, failNotifee notifications.Notifee) error {
-	dedupData, has := request.Extension(graphsync.ExtensionDeDupByKey)
-	if !has {
-		return nil
-	}
-	key, err := dedupkey.DecodeDedupKey(dedupData)
-	if err != nil {
-		_ = qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
-			rb.FinishWithError(graphsync.RequestFailedUnknown)
-			rb.AddNotifee(failNotifee)
-			return nil
-		})
-		return err
-	}
-	qe.responseAssembler.DedupKey(p, request.ID(), key)
-	return nil
-}
-
-func (qe *queryExecutor) processDoNoSendCids(request gsmsg.GraphSyncRequest, p peer.ID, failNotifee notifications.Notifee) error {
-	doNotSendCidsData, has := request.Extension(graphsync.ExtensionDoNotSendCIDs)
-	if !has {
-		return nil
-	}
-	cidSet, err := cidset.DecodeCidSet(doNotSendCidsData)
-	if err != nil {
-		_ = qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
-			rb.FinishWithError(graphsync.RequestFailedUnknown)
-			rb.AddNotifee(failNotifee)
-			return nil
-		})
-		return err
-	}
-	links := make([]ipld.Link, 0, cidSet.Len())
-	err = cidSet.ForEach(func(c cid.Cid) error {
-		links = append(links, cidlink.Link{Cid: c})
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	qe.responseAssembler.IgnoreBlocks(p, request.ID(), links)
-	return nil
 }
 
 func (qe *queryExecutor) executeQuery(
@@ -255,12 +131,14 @@ func (qe *queryExecutor) executeQuery(
 				code = graphsync.RequestFailedUnknown
 				return nil
 			}
-			if err == errCancelledByCommand {
+			if err == runtraversal.ErrFirstBlockLoad {
+				code = graphsync.RequestFailedContentNotFound
+			} else if err == errCancelledByCommand {
 				code = graphsync.RequestCancelled
 			} else {
 				code = graphsync.RequestFailedUnknown
 			}
-			rb.FinishWithError(graphsync.RequestCancelled)
+			rb.FinishWithError(code)
 		} else {
 			code = rb.FinishRequest()
 		}
