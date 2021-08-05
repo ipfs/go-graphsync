@@ -458,7 +458,10 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 	var svr *http.Server
 	if runHTTPTest {
 		if useLibP2p {
-			listener, _ := gostream.Listen(h, p2phttp.DefaultP2PProtocol)
+			listener, err := gostream.Listen(h, p2phttp.DefaultP2PProtocol)
+			if err != nil {
+				return err
+			}
 			defer listener.Close()
 			// start an http server on port 8080
 			runenv.RecordMessage("creating http server at libp2p://%s", h.ID().String())
@@ -538,10 +541,10 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 				// set up http server to send file
 				http.HandleFunc(fmt.Sprintf("/%s", node.Cid()), func(w http.ResponseWriter, r *http.Request) {
 					fileReader, err := os.Open(file.Name())
-					defer fileReader.Close()
 					if err != nil {
 						panic(err)
 					}
+					defer fileReader.Close()
 					_, err = io.Copy(w, fileReader)
 					if err != nil {
 						panic(err)
@@ -711,7 +714,7 @@ func recordSnapshots(runenv *runtime.RunEnv, size uint64, np networkParams, conc
 
 func writeHeap(runenv *runtime.RunEnv, size uint64, np networkParams, concurrency int, postfix string) error {
 	snapshotName := fmt.Sprintf("heap_lat-%s_bw-%s_concurrency-%d_size-%s_%s", np.latency, humanize.IBytes(np.bandwidth), concurrency, humanize.Bytes(size), postfix)
-	snapshotName = strings.Replace(snapshotName, " ", "", -1)
+	snapshotName = strings.ReplaceAll(snapshotName, " ", "")
 	snapshotFile, err := runenv.CreateRawAsset(snapshotName)
 	if err != nil {
 		return err
@@ -788,6 +791,6 @@ func (rr *runRecorder) beginRun(np networkParams, size uint64, concurrency int, 
 	rr.round = round
 	rr.runenv.RecordMessage("===== ROUND %d: latency=%s, bandwidth=%d =====", rr.round, rr.np.latency, rr.np.bandwidth)
 	measurement := fmt.Sprintf("duration.sec,lat=%s,bw=%s,concurrency=%d,size=%s", rr.np.latency, humanize.IBytes(rr.np.bandwidth), rr.concurrency, humanize.Bytes(rr.size))
-	measurement = strings.Replace(measurement, " ", "", -1)
+	measurement = strings.ReplaceAll(measurement, " ", "")
 	rr.measurement = measurement
 }

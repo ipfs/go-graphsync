@@ -44,46 +44,54 @@ const (
 	ExtensionDeDupByKey = ExtensionName("graphsync/dedup-by-key")
 )
 
-// RequestContextCancelledErr is an error message received on the error channel when the request context given by the user is cancelled/times out
-type RequestContextCancelledErr struct{}
+// RequestClientCancelledErr is an error message received on the error channel when the request is cancelled on by the client code,
+// either by closing the passed request context or calling CancelRequest
+type RequestClientCancelledErr struct{}
 
-func (e RequestContextCancelledErr) Error() string {
-	return "Request Context Cancelled"
+func (e RequestClientCancelledErr) Error() string {
+	return "request cancelled by client"
 }
 
 // RequestFailedBusyErr is an error message received on the error channel when the peer is busy
 type RequestFailedBusyErr struct{}
 
 func (e RequestFailedBusyErr) Error() string {
-	return "Request Failed - Peer Is Busy"
+	return "request failed - peer is busy"
 }
 
 // RequestFailedContentNotFoundErr is an error message received on the error channel when the content is not found
 type RequestFailedContentNotFoundErr struct{}
 
 func (e RequestFailedContentNotFoundErr) Error() string {
-	return "Request Failed - Content Not Found"
+	return "request failed - content not found"
 }
 
 // RequestFailedLegalErr is an error message received on the error channel when the request fails for legal reasons
 type RequestFailedLegalErr struct{}
 
 func (e RequestFailedLegalErr) Error() string {
-	return "Request Failed - For Legal Reasons"
+	return "request failed - for legal reasons"
 }
 
 // RequestFailedUnknownErr is an error message received on the error channel when the request fails for unknown reasons
 type RequestFailedUnknownErr struct{}
 
 func (e RequestFailedUnknownErr) Error() string {
-	return "Request Failed - Unknown Reason"
+	return "request failed - unknown reason"
 }
 
 // RequestCancelledErr is an error message received on the error channel that indicates the responder cancelled a request
 type RequestCancelledErr struct{}
 
 func (e RequestCancelledErr) Error() string {
-	return "Request Failed - Responder Cancelled"
+	return "request failed - responder cancelled"
+}
+
+// RequestNotFoundErr indicates that a request with a particular request ID was not found
+type RequestNotFoundErr struct{}
+
+func (e RequestNotFoundErr) Error() string {
+	return "request not found"
 }
 
 var (
@@ -197,6 +205,10 @@ type RequestUpdatedHookActions interface {
 	UnpauseResponse()
 }
 
+// OnIncomingRequestQueuedHook is a hook that runs each time a new incoming request is added to the responder's task queue.
+// It receives the peer that sent the request and all data about the request.
+type OnIncomingRequestQueuedHook func(p peer.ID, request RequestData)
+
 // OnIncomingRequestHook is a hook that runs each time a new request is received.
 // It receives the peer that sent the request and all data about the request.
 // It receives an interface for customizing the response to this request
@@ -262,6 +274,9 @@ type GraphExchange interface {
 	// UnregisterPersistenceOption unregisters an alternate loader/storer combo
 	UnregisterPersistenceOption(name string) error
 
+	// RegisterIncomingRequestQueuedHook adds a hook that runs when a new incoming request is added to the responder's task queue.
+	RegisterIncomingRequestQueuedHook(hook OnIncomingRequestQueuedHook) UnregisterHookFunc
+
 	// RegisterIncomingRequestHook adds a hook that runs when a request is received
 	RegisterIncomingRequestHook(hook OnIncomingRequestHook) UnregisterHookFunc
 
@@ -312,4 +327,7 @@ type GraphExchange interface {
 
 	// CancelResponse cancels an in progress response
 	CancelResponse(peer.ID, RequestID) error
+
+	// CancelRequest cancels an in progress request
+	CancelRequest(context.Context, RequestID) error
 }

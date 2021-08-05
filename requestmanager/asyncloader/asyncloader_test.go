@@ -197,7 +197,7 @@ func TestRegisterUnregister(t *testing.T) {
 
 		requestID1 := graphsync.RequestID(rand.Int31())
 		err := asyncLoader.StartRequest(requestID1, "other")
-		require.EqualError(t, err, "Unknown persistence option")
+		require.EqualError(t, err, "unknown persistence option")
 
 		err = asyncLoader.RegisterPersistenceOption("other", otherSt.lsys)
 		require.NoError(t, err)
@@ -215,7 +215,7 @@ func TestRegisterUnregister(t *testing.T) {
 
 		requestID3 := graphsync.RequestID(rand.Int31())
 		err = asyncLoader.StartRequest(requestID3, "other")
-		require.EqualError(t, err, "Unknown persistence option")
+		require.EqualError(t, err, "unknown persistence option")
 	})
 }
 func TestRequestSplittingLoadLocallyFromBlockstore(t *testing.T) {

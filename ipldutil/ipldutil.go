@@ -9,8 +9,6 @@ import (
 	_ "github.com/ipld/go-ipld-prime/codec/raw"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/ipld/go-ipld-prime/traversal/selector"
-	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 )
 
 var defaultChooser = func(lnk ipld.Link, lctx ipld.LinkContext) (ipld.NodePrototype, error) {
@@ -37,8 +35,4 @@ func DecodeNode(encoded []byte) (ipld.Node, error) {
 		return nil, err
 	}
 	return nb.Build(), nil
-}
-
-func ParseSelector(selector ipld.Node) (selector.Selector, error) {
-	return ipldselector.ParseSelector(selector)
 }

@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	blocks "github.com/ipfs/go-block-format"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
@@ -59,7 +59,7 @@ func (rc *ResponseCache) AttemptLoad(requestID graphsync.RequestID, link ipld.Li
 	rc.responseCacheLk.Lock()
 	defer rc.responseCacheLk.Unlock()
 	if rc.linkTracker.IsKnownMissingLink(requestID, link) {
-		return nil, fmt.Errorf("Remote Peer Is Missing Block: %s", link.String())
+		return nil, fmt.Errorf("remote peer is missing block: %s", link.String())
 	}
 	data, _ := rc.unverifiedBlockStore.VerifyBlock(link)
 	return data, nil

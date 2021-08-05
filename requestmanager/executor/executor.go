@@ -39,7 +39,7 @@ type ExecutionEnv struct {
 type RequestExecution struct {
 	Ctx                  context.Context
 	P                    peer.ID
-	NetworkError         chan error
+	TerminalError        chan error
 	Request              gsmsg.GraphSyncRequest
 	LastResponse         *atomic.Value
 	DoNotSendCids        *cid.Set
@@ -55,7 +55,7 @@ func (ee ExecutionEnv) Start(re RequestExecution) (chan graphsync.ResponseProgre
 		inProgressErr:    make(chan error),
 		ctx:              re.Ctx,
 		p:                re.P,
-		networkError:     re.NetworkError,
+		terminalError:    re.TerminalError,
 		request:          re.Request,
 		lastResponse:     re.LastResponse,
 		doNotSendCids:    re.DoNotSendCids,
@@ -74,7 +74,7 @@ type requestExecutor struct {
 	inProgressErr     chan error
 	ctx               context.Context
 	p                 peer.ID
-	networkError      chan error
+	terminalError     chan error
 	request           gsmsg.GraphSyncRequest
 	lastResponse      *atomic.Value
 	nodeStyleChooser  traversal.LinkTargetNodePrototypeChooser
@@ -155,9 +155,9 @@ func (re *requestExecutor) run() {
 		}
 	}
 	select {
-	case networkError := <-re.networkError:
+	case terminalError := <-re.terminalError:
 		select {
-		case re.inProgressErr <- networkError:
+		case re.inProgressErr <- terminalError:
 		case <-re.env.Ctx.Done():
 		}
 	default:

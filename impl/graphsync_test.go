@@ -32,7 +32,6 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
-	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -41,7 +40,6 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/storeutil"
@@ -79,7 +77,7 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	receivedRequest := receivedRequests[0]
 	receivedSpec := receivedRequest.Selector()
 	require.Equal(t, blockChain.Selector(), receivedSpec, "did not transmit selector spec correctly")
-	_, err := ipldutil.ParseSelector(receivedSpec)
+	_, err := selector.ParseSelector(receivedSpec)
 	require.NoError(t, err, "did not receive parsible selector on other side")
 
 	returnedData, found := receivedRequest.Extension(td.extensionName)
@@ -271,7 +269,7 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 
 	for err := range errChan {
 		// verify the error is received for leaf beta node being missing
-		require.EqualError(t, err, fmt.Sprintf("Remote Peer Is Missing Block: %s", tree.LeafBetaLnk.String()))
+		require.EqualError(t, err, fmt.Sprintf("remote peer is missing block: %s", tree.LeafBetaLnk.String()))
 	}
 	require.Equal(t, tree.LeafAlphaBlock.RawData(), td.blockStore1[tree.LeafAlphaLnk])
 	require.Equal(t, tree.MiddleListBlock.RawData(), td.blockStore1[tree.MiddleListNodeLnk])
@@ -618,7 +616,7 @@ func TestNetworkDisconnect(t *testing.T) {
 
 	testutil.AssertReceive(ctx, t, networkError, &err, "should receive network error")
 	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
-	require.EqualError(t, err, graphsync.RequestContextCancelledErr{}.Error())
+	require.EqualError(t, err, graphsync.RequestClientCancelledErr{}.Error())
 	testutil.AssertReceive(ctx, t, receiverError, &err, "should receive an error on receiver side")
 }
 
@@ -654,7 +652,7 @@ func TestConnectFail(t *testing.T) {
 	var err error
 	testutil.AssertReceive(ctx, t, reqNetworkError, &err, "should receive network error")
 	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
-	require.EqualError(t, err, graphsync.RequestContextCancelledErr{}.Error())
+	require.EqualError(t, err, graphsync.RequestClientCancelledErr{}.Error())
 }
 
 func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
@@ -909,7 +907,7 @@ func TestUnixFSFetch(t *testing.T) {
 	// create a selector for the whole UnixFS dag
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 
-	allSelector := ssb.ExploreRecursive(ipldselector.RecursionLimitNone(),
+	allSelector := ssb.ExploreRecursive(selector.RecursionLimitNone(),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
 
 	// execute the traversal

@@ -212,8 +212,60 @@ func TestCancelRequestInProgress(t *testing.T) {
 
 	errors := testutil.CollectErrors(requestCtx, t, returnedErrorChan1)
 	require.Len(t, errors, 1)
-	_, ok := errors[0].(graphsync.RequestContextCancelledErr)
+	_, ok := errors[0].(graphsync.RequestClientCancelledErr)
 	require.True(t, ok)
+}
+func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
+	ctx := context.Background()
+	td := newTestData(ctx, t)
+	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	peers := testutil.GeneratePeers(1)
+
+	postCancel := make(chan struct{}, 1)
+	loadPostCancel := make(chan struct{}, 1)
+	td.fal.OnAsyncLoad(func(graphsync.RequestID, ipld.Link, <-chan types.AsyncLoadResult) {
+		select {
+		case <-postCancel:
+			loadPostCancel <- struct{}{}
+		default:
+		}
+	})
+
+	_, returnedErrorChan1 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+
+	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)
+
+	go func() {
+		firstBlocks := td.blockChain.Blocks(0, 3)
+		firstMetadata := encodedMetadataForBlocks(t, firstBlocks, true)
+		firstResponses := []gsmsg.GraphSyncResponse{
+			gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.PartialResponse, firstMetadata),
+		}
+		td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
+		td.fal.SuccessResponseOn(requestRecords[0].gsr.ID(), firstBlocks)
+	}()
+
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, time.Second)
+	defer timeoutCancel()
+	err := td.requestManager.CancelRequest(timeoutCtx, requestRecords[0].gsr.ID())
+	require.NoError(t, err)
+	postCancel <- struct{}{}
+
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
+
+	require.True(t, rr.gsr.IsCancel())
+	require.Equal(t, requestRecords[0].gsr.ID(), rr.gsr.ID())
+
+	errors := testutil.CollectErrors(requestCtx, t, returnedErrorChan1)
+	require.Len(t, errors, 1)
+	_, ok := errors[0].(graphsync.RequestClientCancelledErr)
+	require.True(t, ok)
+	select {
+	case <-loadPostCancel:
+		t.Fatalf("Loaded block after cancel")
+	case <-requestCtx.Done():
+	}
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {
@@ -350,6 +402,42 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	testutil.VerifyEmptyResponse(ctx, t, returnedResponseChan)
 	errs := testutil.CollectErrors(ctx, t, returnedErrorChan)
 	require.NotEqual(t, len(errs), 0, "did not send errors")
+}
+
+func TestDisconnectNotification(t *testing.T) {
+	ctx := context.Background()
+	td := newTestData(ctx, t)
+	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	peers := testutil.GeneratePeers(2)
+
+	// Listen for network errors
+	networkErrors := make(chan peer.ID, 1)
+	td.networkErrorListeners.Register(func(p peer.ID, request graphsync.RequestData, err error) {
+		networkErrors <- p
+	})
+
+	// Send a request to the target peer
+	targetPeer := peers[0]
+	td.requestManager.SendRequest(requestCtx, targetPeer, td.blockChain.TipLink, td.blockChain.Selector())
+
+	// Disconnect a random peer, should not fire any events
+	randomPeer := peers[1]
+	td.requestManager.Disconnected(randomPeer)
+	select {
+	case <-networkErrors:
+		t.Fatal("should not fire network error when unrelated peer disconnects")
+	default:
+	}
+
+	// Disconnect the target peer, should fire a network error
+	td.requestManager.Disconnected(targetPeer)
+	select {
+	case p := <-networkErrors:
+		require.Equal(t, p, targetPeer)
+	default:
+		t.Fatal("should fire network error when peer disconnects")
+	}
 }
 
 func TestEncodingExtensions(t *testing.T) {

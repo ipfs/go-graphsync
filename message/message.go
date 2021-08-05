@@ -33,7 +33,8 @@ func IsTerminalFailureCode(status graphsync.ResponseStatusCode) bool {
 		status == graphsync.RequestFailedContentNotFound ||
 		status == graphsync.RequestFailedLegal ||
 		status == graphsync.RequestFailedUnknown ||
-		status == graphsync.RequestCancelled
+		status == graphsync.RequestCancelled ||
+		status == graphsync.RequestRejected
 }
 
 // IsTerminalResponseCode returns true if the response code signals

@@ -16,6 +16,40 @@ type PersistenceOptions interface {
 	GetLinkSystem(name string) (ipld.LinkSystem, bool)
 }
 
+// IncomingRequestQueuedHooks is a set of incoming request queued hooks that can be processed.
+type IncomingRequestQueuedHooks struct {
+	pubSub *pubsub.PubSub
+}
+
+type internalRequestQueuedHookEvent struct {
+	p       peer.ID
+	request graphsync.RequestData
+}
+
+func requestQueuedHookDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
+	ie := event.(internalRequestQueuedHookEvent)
+	hook := subscriberFn.(graphsync.OnIncomingRequestQueuedHook)
+	hook(ie.p, ie.request)
+	return nil
+}
+
+// Register registers an extension to process new incoming requests.
+func (rqh *IncomingRequestQueuedHooks) Register(hook graphsync.OnIncomingRequestQueuedHook) graphsync.UnregisterHookFunc {
+	return graphsync.UnregisterHookFunc(rqh.pubSub.Subscribe(hook))
+}
+
+// NewRequestQueuedHooks returns a new list of incoming request queued hooks.
+func NewRequestQueuedHooks() *IncomingRequestQueuedHooks {
+	return &IncomingRequestQueuedHooks{
+		pubSub: pubsub.New(requestQueuedHookDispatcher),
+	}
+}
+
+// ProcessRequestQueuedHooks runs request hooks against an incoming queued request.
+func (rqh *IncomingRequestQueuedHooks) ProcessRequestQueuedHooks(p peer.ID, request graphsync.RequestData) {
+	_ = rqh.pubSub.Publish(internalRequestQueuedHookEvent{p, request})
+}
+
 // IncomingRequestHooks is a set of incoming request hooks that can be processed
 type IncomingRequestHooks struct {
 	persistenceOptions PersistenceOptions

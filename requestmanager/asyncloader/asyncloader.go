@@ -74,7 +74,7 @@ func (al *AsyncLoader) Shutdown() {
 // RegisterPersistenceOption registers a new loader/storer option for processing requests
 func (al *AsyncLoader) RegisterPersistenceOption(name string, lsys ipld.LinkSystem) error {
 	if name == "" {
-		return errors.New("Persistence option must have a name")
+		return errors.New("persistence option must have a name")
 	}
 	response := make(chan error, 1)
 	err := al.sendSyncMessage(&registerPersistenceOptionMessage{name, lsys, response}, response)
@@ -84,7 +84,7 @@ func (al *AsyncLoader) RegisterPersistenceOption(name string, lsys ipld.LinkSyst
 // UnregisterPersistenceOption unregisters an existing loader/storer option for processing requests
 func (al *AsyncLoader) UnregisterPersistenceOption(name string) error {
 	if name == "" {
-		return errors.New("Persistence option must have a name")
+		return errors.New("persistence option must have a name")
 	}
 	response := make(chan error, 1)
 	err := al.sendSyncMessage(&unregisterPersistenceOptionMessage{name, response}, response)
@@ -142,12 +142,12 @@ func (al *AsyncLoader) CleanupRequest(requestID graphsync.RequestID) {
 func (al *AsyncLoader) sendSyncMessage(message loaderMessage, response chan error) error {
 	select {
 	case <-al.ctx.Done():
-		return errors.New("Context Closed")
+		return errors.New("context closed")
 	case al.incomingMessages <- message:
 	}
 	select {
 	case <-al.ctx.Done():
-		return errors.New("Context Closed")
+		return errors.New("context closed")
 	case err := <-response:
 		return err
 	}
@@ -271,7 +271,7 @@ func (rpom *registerPersistenceOptionMessage) handle(al *AsyncLoader) {
 func (upom *unregisterPersistenceOptionMessage) unregister(al *AsyncLoader) error {
 	_, ok := al.alternateQueues[upom.name]
 	if !ok {
-		return errors.New("Unknown persistence option")
+		return errors.New("unknown persistence option")
 	}
 	for _, requestQueue := range al.requestQueues {
 		if upom.name == requestQueue {
@@ -294,7 +294,7 @@ func (srm *startRequestMessage) startRequest(al *AsyncLoader) error {
 	if srm.persistenceOption != "" {
 		_, ok := al.alternateQueues[srm.persistenceOption]
 		if !ok {
-			return errors.New("Unknown persistence option")
+			return errors.New("unknown persistence option")
 		}
 		al.requestQueues[srm.requestID] = srm.persistenceOption
 	}

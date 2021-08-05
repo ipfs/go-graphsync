@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -73,6 +73,11 @@ type RequestHooks interface {
 	ProcessRequestHooks(p peer.ID, request graphsync.RequestData) hooks.RequestResult
 }
 
+// RequestQueuedHooks is an interface for processing request queued hooks
+type RequestQueuedHooks interface {
+	ProcessRequestQueuedHooks(p peer.ID, request graphsync.RequestData)
+}
+
 // BlockHooks is an interface for processing block hooks
 type BlockHooks interface {
 	ProcessBlockHooks(p peer.ID, request graphsync.RequestData, blockData graphsync.BlockData) hooks.BlockResult
@@ -121,6 +126,9 @@ type ResponseManager struct {
 	cancelFn              context.CancelFunc
 	responseAssembler     ResponseAssembler
 	queryQueue            QueryQueue
+	requestHooks          RequestHooks
+	linkSystem            ipld.LinkSystem
+	requestQueuedHooks    RequestQueuedHooks
 	updateHooks           UpdateHooks
 	cancelledListeners    CancelledListeners
 	completedListeners    CompletedListeners
@@ -138,6 +146,7 @@ func New(ctx context.Context,
 	linkSystem ipld.LinkSystem,
 	responseAssembler ResponseAssembler,
 	queryQueue QueryQueue,
+	requestQueuedHooks RequestQueuedHooks,
 	requestHooks RequestHooks,
 	blockHooks BlockHooks,
 	updateHooks UpdateHooks,
@@ -151,12 +160,10 @@ func New(ctx context.Context,
 	messages := make(chan responseManagerMessage, 16)
 	workSignal := make(chan struct{}, 1)
 	qe := &queryExecutor{
-		requestHooks:       requestHooks,
 		blockHooks:         blockHooks,
 		updateHooks:        updateHooks,
 		cancelledListeners: cancelledListeners,
 		responseAssembler:  responseAssembler,
-		linkSystem:         linkSystem,
 		queryQueue:         queryQueue,
 		messages:           messages,
 		ctx:                ctx,
@@ -166,8 +173,11 @@ func New(ctx context.Context,
 	return &ResponseManager{
 		ctx:                   ctx,
 		cancelFn:              cancelFn,
+		requestHooks:          requestHooks,
+		linkSystem:            linkSystem,
 		responseAssembler:     responseAssembler,
 		queryQueue:            queryQueue,
+		requestQueuedHooks:    requestQueuedHooks,
 		updateHooks:           updateHooks,
 		cancelledListeners:    cancelledListeners,
 		completedListeners:    completedListeners,
@@ -236,12 +246,12 @@ func (rm *ResponseManager) CancelResponse(p peer.ID, requestID graphsync.Request
 func (rm *ResponseManager) sendSyncMessage(message responseManagerMessage, response chan error) error {
 	select {
 	case <-rm.ctx.Done():
-		return errors.New("Context Cancelled")
+		return errors.New("context cancelled")
 	case rm.messages <- message:
 	}
 	select {
 	case <-rm.ctx.Done():
-		return errors.New("Context Cancelled")
+		return errors.New("context cancelled")
 	case err := <-response:
 		return err
 	}
@@ -257,21 +267,15 @@ func (rm *ResponseManager) synchronize() {
 	_ = rm.sendSyncMessage(&synchronizeMessage{sync}, sync)
 }
 
-type responseDataRequest struct {
-	key          responseKey
+type startTaskRequest struct {
+	task         *peertask.Task
 	taskDataChan chan responseTaskData
 }
 
 type finishTaskRequest struct {
-	key    responseKey
+	task   *peertask.Task
 	status graphsync.ResponseStatusCode
 	err    error
-}
-
-type setResponseDataRequest struct {
-	key       responseKey
-	loader    ipld.BlockReadOpener
-	traverser ipldutil.Traverser
 }
 
 type responseUpdateRequest struct {
@@ -423,6 +427,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			rm.processUpdate(key, request)
 			continue
 		}
+		rm.requestQueuedHooks.ProcessRequestQueuedHooks(prm.p, request)
 		ctx, cancelFn := context.WithCancel(rm.ctx)
 		sub := notifications.NewTopicDataSubscriber(&subscriber{
 			p:                     key.p,
@@ -433,6 +438,7 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 			completedListeners:    rm.completedListeners,
 			networkErrorListeners: rm.networkErrorListeners,
 		})
+
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
 				ctx:        ctx,
@@ -446,7 +452,9 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 				},
 			}
 		// TODO: Use a better work estimation metric.
+
 		rm.queryQueue.PushTasks(prm.p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
+
 		select {
 		case rm.workSignal <- struct{}{}:
 		default:
@@ -454,22 +462,45 @@ func (prm *processRequestMessage) handle(rm *ResponseManager) {
 	}
 }
 
-func (rdr *responseDataRequest) handle(rm *ResponseManager) {
-	response, ok := rm.inProgressResponses[rdr.key]
-	var taskData responseTaskData
-	if ok {
-		taskData = responseTaskData{false, response.subscriber, response.ctx, response.request, response.loader, response.traverser, response.signals}
-	} else {
-		taskData = responseTaskData{empty: true}
+func (str *startTaskRequest) handle(rm *ResponseManager) {
+	key := str.task.Topic.(responseKey)
+	taskData := str.responseTaskData(rm, key)
+	if taskData.empty {
+		rm.queryQueue.TasksDone(key.p, str.task)
 	}
 	select {
 	case <-rm.ctx.Done():
-	case rdr.taskDataChan <- taskData:
+	case str.taskDataChan <- taskData:
 	}
 }
 
+func (str *startTaskRequest) responseTaskData(rm *ResponseManager, key responseKey) responseTaskData {
+	response, hasResponse := rm.inProgressResponses[key]
+	if !hasResponse {
+		return responseTaskData{empty: true}
+	}
+
+	if response.loader == nil || response.traverser == nil {
+		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.linkSystem}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
+		if err != nil {
+			response.cancelFn()
+			delete(rm.inProgressResponses, key)
+			return responseTaskData{empty: true}
+		}
+		response.loader = loader
+		response.traverser = traverser
+		if isPaused {
+			response.isPaused = true
+			return responseTaskData{empty: true}
+		}
+	}
+	return responseTaskData{false, response.subscriber, response.ctx, response.request, response.loader, response.traverser, response.signals}
+}
+
 func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
-	response, ok := rm.inProgressResponses[ftr.key]
+	key := ftr.task.Topic.(responseKey)
+	rm.queryQueue.TasksDone(key.p, ftr.task)
+	response, ok := rm.inProgressResponses[key]
 	if !ok {
 		return
 	}
@@ -480,17 +511,8 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 	if ftr.err != nil {
 		log.Infof("response failed: %w", ftr.err)
 	}
-	delete(rm.inProgressResponses, ftr.key)
+	delete(rm.inProgressResponses, key)
 	response.cancelFn()
-}
-
-func (srdr *setResponseDataRequest) handle(rm *ResponseManager) {
-	response, ok := rm.inProgressResponses[srdr.key]
-	if !ok {
-		return
-	}
-	response.loader = srdr.loader
-	response.traverser = srdr.traverser
 }
 
 func (rur *responseUpdateRequest) handle(rm *ResponseManager) {
