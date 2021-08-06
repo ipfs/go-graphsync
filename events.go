@@ -91,8 +91,7 @@ const (
 	// data has been received.
 	DataReceivedProgress
 
-	// RequestTimedOut indicates that the transport layer had a timeout trying to
-	// make a request
+	// Deprecated in favour of RequestCancelled
 	RequestTimedOut
 
 	// SendDataError indicates that the transport layer had an error trying
@@ -105,6 +104,9 @@ const (
 
 	// TransferRequestQueued indicates that a new data transfer request has been queued in the transport layer
 	TransferRequestQueued
+
+	// RequestCancelled indicates that a transport layer request was cancelled by the request opener
+	RequestCancelled
 )
 
 // Events are human readable names for data transfer events
@@ -138,6 +140,7 @@ var Events = map[EventCode]string{
 	SendDataError:               "SendDataError",
 	ReceiveDataError:            "ReceiveDataError",
 	TransferRequestQueued:       "TransferRequestQueued",
+	RequestCancelled:            "RequestCancelled",
 }
 
 // Event is a struct containing information about a data transfer event

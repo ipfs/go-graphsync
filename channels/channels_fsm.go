@@ -95,9 +95,9 @@ var ChannelEvents = fsm.Events{
 		chst.AddLog("data transfer receive error: %s", chst.Message)
 		return nil
 	}),
-	fsm.Event(datatransfer.RequestTimedOut).FromAny().ToNoChange().Action(func(chst *internal.ChannelState, err error) error {
+	fsm.Event(datatransfer.RequestCancelled).FromAny().ToNoChange().Action(func(chst *internal.ChannelState, err error) error {
 		chst.Message = err.Error()
-		chst.AddLog("data transfer request timed out: %s", chst.Message)
+		chst.AddLog("data transfer request cancelled: %s", chst.Message)
 		return nil
 	}),
 	fsm.Event(datatransfer.Error).FromAny().To(datatransfer.Failing).Action(func(chst *internal.ChannelState, err error) error {

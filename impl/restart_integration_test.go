@@ -201,7 +201,7 @@ func TestRestartPush(t *testing.T) {
 			require.EqualError(t, err, "context timed-out without completing data transfer")
 			require.True(t, len(receivedI) < totalIncrements)
 			require.NotEmpty(t, sentI)
-			t.Logf("not request was completed after disconnect")
+			t.Logf("request was not completed after disconnect")
 
 			// Connect the peers and restart
 			require.NoError(t, rh.gsData.Mn.LinkAll())

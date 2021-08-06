@@ -332,10 +332,10 @@ func (c *Channels) Disconnected(chid datatransfer.ChannelID, err error) error {
 	return c.send(chid, datatransfer.Disconnected, err)
 }
 
-// RequestTimedOut indicates that the transport layer had a timeout trying to
-// make a request
-func (c *Channels) RequestTimedOut(chid datatransfer.ChannelID, err error) error {
-	return c.send(chid, datatransfer.RequestTimedOut, err)
+// RequestCancelled indicates that a transport layer request was cancelled by the
+// request opener
+func (c *Channels) RequestCancelled(chid datatransfer.ChannelID, err error) error {
+	return c.send(chid, datatransfer.RequestCancelled, err)
 }
 
 // SendDataError indicates that the transport layer had an error trying

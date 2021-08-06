@@ -100,6 +100,7 @@ type FakeGraphSync struct {
 	pauseResponses               chan PauseResponse
 	resumeResponses              chan ResumeResponse
 	cancelResponses              chan CancelResponse
+	cancelRequests               chan graphsync.RequestID
 	persistenceOptionsLk         sync.RWMutex
 	persistenceOptions           map[string]PersistenceOption
 	leaveRequestsOpen            bool
@@ -126,6 +127,7 @@ func NewFakeGraphSync() *FakeGraphSync {
 		pauseResponses:     make(chan PauseResponse, 1),
 		resumeResponses:    make(chan ResumeResponse, 1),
 		cancelResponses:    make(chan CancelResponse, 1),
+		cancelRequests:     make(chan graphsync.RequestID, 1),
 		persistenceOptions: make(map[string]PersistenceOption),
 	}
 }
@@ -228,6 +230,17 @@ func (fgs *FakeGraphSync) AssertCancelResponseReceived(ctx context.Context, t *t
 	case cancelResponseReceived = <-fgs.cancelResponses:
 	}
 	return cancelResponseReceived
+}
+
+// AssertCancelRequestReceived asserts a request was cancelled
+func (fgs *FakeGraphSync) AssertCancelRequestReceived(ctx context.Context, t *testing.T) graphsync.RequestID {
+	select {
+	case <-ctx.Done():
+		t.Fatal("did not receive message sent")
+		return 0
+	case requestID := <-fgs.cancelRequests:
+		return requestID
+	}
 }
 
 // AssertHasPersistenceOption verifies that a persistence option was registered
@@ -364,6 +377,11 @@ func (fgs *FakeGraphSync) UnpauseRequest(requestID graphsync.RequestID, extensio
 // PauseRequest unpauses a response that was paused in a block hook based on peer ID and request ID
 func (fgs *FakeGraphSync) PauseRequest(requestID graphsync.RequestID) error {
 	fgs.pauseRequests <- PauseRequest{requestID}
+	return nil
+}
+
+func (fgs *FakeGraphSync) CancelRequest(ctx context.Context, requestID graphsync.RequestID) error {
+	fgs.cancelRequests <- requestID
 	return nil
 }
 

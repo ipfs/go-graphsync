@@ -216,9 +216,9 @@ func (m *manager) OnResponseReceived(chid datatransfer.ChannelID, response datat
 	return m.resumeOther(chid)
 }
 
-func (m *manager) OnRequestTimedOut(chid datatransfer.ChannelID, err error) error {
-	log.Warnf("channel %+v has timed out: %s", chid, err)
-	return m.channels.RequestTimedOut(chid, err)
+func (m *manager) OnRequestCancelled(chid datatransfer.ChannelID, err error) error {
+	log.Warnf("channel %+v was cancelled: %s", chid, err)
+	return m.channels.RequestCancelled(chid, err)
 }
 
 func (m *manager) OnRequestDisconnected(chid datatransfer.ChannelID, err error) error {

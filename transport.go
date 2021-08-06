@@ -56,9 +56,10 @@ type EventsHandler interface {
 	// Error returns are logged but otherwise have no effect
 	OnChannelCompleted(chid ChannelID, err error) error
 
-	// OnRequestTimedOut is called when a request we opened (with the given channel Id) to receive data times out.
+	// OnRequestCancelled is called when a request we opened (with the given channel Id) to
+	// receive data is cancelled by us.
 	// Error returns are logged but otherwise have no effect
-	OnRequestTimedOut(chid ChannelID, err error) error
+	OnRequestCancelled(chid ChannelID, err error) error
 
 	// OnRequestDisconnected is called when a network error occurs trying to send a request
 	OnRequestDisconnected(chid ChannelID, err error) error

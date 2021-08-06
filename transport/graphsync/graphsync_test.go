@@ -751,11 +751,12 @@ func TestManager(t *testing.T) {
 					gsData.outgoing)
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
-				requestReceived1 := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
-				requestReceived2 := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+				gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+				gsData.fgs.AssertRequestReceived(gsData.ctx, t)
 
-				require.Error(t, requestReceived1.Ctx.Err())
-				require.NoError(t, requestReceived2.Ctx.Err())
+				ctxt, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				gsData.fgs.AssertCancelRequestReceived(ctxt, t)
 			},
 		},
 		"OnChannelCompleted called when outgoing request completes successfully": {
@@ -835,9 +836,9 @@ func TestManager(t *testing.T) {
 				request := testutil.NewFakeRequest(graphsync.RequestID(rand.Int31()), extensions)
 				gsData.fgs.OutgoingRequestHook(gsData.other, request, gsData.outgoingRequestHookActions)
 				_ = gsData.transport.CloseChannel(gsData.ctx, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self})
-				require.Eventually(t, func() bool {
-					return requestReceived.Ctx.Err() != nil
-				}, 2*time.Second, 100*time.Millisecond)
+				ctxt, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				gsData.fgs.AssertCancelRequestReceived(ctxt, t)
 			},
 		},
 		"request times out if we get request context cancelled error": {
@@ -858,13 +859,13 @@ func TestManager(t *testing.T) {
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
 				close(requestReceived.ResponseChan)
-				requestReceived.ResponseErrChan <- graphsync.RequestContextCancelledErr{}
+				requestReceived.ResponseErrChan <- graphsync.RequestClientCancelledErr{}
 				close(requestReceived.ResponseErrChan)
 
 				require.Eventually(t, func() bool {
-					return events.OnRequestTimedOutCalled == true
+					return events.OnRequestCancelledCalled == true
 				}, 2*time.Second, 100*time.Millisecond)
-				require.Equal(t, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self}, events.OnRequestTimedOutChannelId)
+				require.Equal(t, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self}, events.OnRequestCancelledChannelId)
 			},
 		},
 		"request cancelled out if transport shuts down": {
@@ -883,12 +884,14 @@ func TestManager(t *testing.T) {
 					gsData.outgoing)
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
-				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+				gsData.fgs.AssertRequestReceived(gsData.ctx, t)
 
 				gsData.transport.Shutdown(gsData.ctx)
-				require.Eventually(t, func() bool {
-					return requestReceived.Ctx.Err() != nil
-				}, 2*time.Second, 100*time.Millisecond)
+
+				ctxt, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				gsData.fgs.AssertCancelRequestReceived(ctxt, t)
+
 				require.Nil(t, gsData.fgs.IncomingRequestHook)
 				require.Nil(t, gsData.fgs.CompletedResponseListener)
 				require.Nil(t, gsData.fgs.IncomingBlockHook)
@@ -1043,8 +1046,8 @@ type fakeEvents struct {
 	OnDataQueuedMessage         datatransfer.Message
 	OnDataQueuedError           error
 
-	OnRequestTimedOutCalled     bool
-	OnRequestTimedOutChannelId  datatransfer.ChannelID
+	OnRequestCancelledCalled    bool
+	OnRequestCancelledChannelId datatransfer.ChannelID
 	OnSendDataErrorCalled       bool
 	OnSendDataErrorChannelID    datatransfer.ChannelID
 	OnReceiveDataErrorCalled    bool
@@ -1065,9 +1068,9 @@ func (fe *fakeEvents) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, 
 	return fe.OnDataQueuedMessage, fe.OnDataQueuedError
 }
 
-func (fe *fakeEvents) OnRequestTimedOut(chid datatransfer.ChannelID, err error) error {
-	fe.OnRequestTimedOutCalled = true
-	fe.OnRequestTimedOutChannelId = chid
+func (fe *fakeEvents) OnRequestCancelled(chid datatransfer.ChannelID, err error) error {
+	fe.OnRequestCancelledCalled = true
+	fe.OnRequestCancelledChannelId = chid
 
 	return nil
 }
