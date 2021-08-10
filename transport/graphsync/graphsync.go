@@ -484,7 +484,7 @@ func (t *Transport) gsReqQueuedHook(p peer.ID, request graphsync.RequestData) {
 		chid = datatransfer.ChannelID{ID: msg.TransferID(), Initiator: t.peerID, Responder: p}
 		response := msg.(datatransfer.Response)
 		if response.IsNew() {
-			log.Infof("%s, GS pull request queued in response to our push, req=%+v", chid, request)
+			log.Infof("%s, GS pull request queued in response to our push, req_id=%d", chid, request.ID())
 			t.events.OnTransferQueued(chid)
 		}
 	}
