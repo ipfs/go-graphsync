@@ -179,7 +179,10 @@ func (t *Transport) consumeResponses(responseChan <-chan graphsync.ResponseProgr
 // Read from the graphsync response and error channels until they are closed
 // or there is an error, then call the channel completed callback
 func (t *Transport) executeGsRequest(req *gsReq) {
-	defer req.onComplete()
+	defer func() {
+		log.Infow("gs request complete for channel", "chid", req.channelID)
+		req.onComplete()
+	}()
 
 	lastError := t.consumeResponses(req.responseChan, req.errChan)
 
@@ -885,6 +888,7 @@ func (c *dtChannel) open(ctx context.Context, chid datatransfer.ChannelID, dataS
 	// completes (or is cancelled)
 	completed := make(chan struct{})
 	onComplete := func() {
+		log.Infow("closing the completion ch for data-transfer channel", "chid", chid)
 		close(completed)
 	}
 	c.completed = completed

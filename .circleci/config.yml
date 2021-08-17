@@ -25,7 +25,7 @@ commands:
       - when:
           condition: << parameters.linux >>
           steps:
-            - run: sudo apt-get update
+            - run: sudo apt-get update --allow-releaseinfo-change
             - run: sudo apt-get install ocl-icd-opencl-dev
   build-all:
 
