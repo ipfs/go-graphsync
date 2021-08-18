@@ -60,20 +60,29 @@ var ChannelEvents = fsm.Events{
 			chst.AddLog("received data")
 			return nil
 		}),
-	fsm.Event(datatransfer.DataSent).FromMany(transferringStates...).ToNoChange().Action(func(chst *internal.ChannelState) error {
-		chst.AddLog("")
-		return nil
-	}),
+
+	fsm.Event(datatransfer.DataSent).
+		FromMany(transferringStates...).ToNoChange().
+		From(datatransfer.TransferFinished).ToNoChange().
+		Action(func(chst *internal.ChannelState) error {
+			chst.AddLog("")
+			return nil
+		}),
+
 	fsm.Event(datatransfer.DataSentProgress).FromMany(transferringStates...).ToNoChange().
 		Action(func(chst *internal.ChannelState, delta uint64) error {
 			chst.Sent += delta
 			chst.AddLog("sending data")
 			return nil
 		}),
-	fsm.Event(datatransfer.DataQueued).FromMany(transferringStates...).ToNoChange().Action(func(chst *internal.ChannelState) error {
-		chst.AddLog("")
-		return nil
-	}),
+
+	fsm.Event(datatransfer.DataQueued).
+		FromMany(transferringStates...).ToNoChange().
+		From(datatransfer.TransferFinished).ToNoChange().
+		Action(func(chst *internal.ChannelState) error {
+			chst.AddLog("")
+			return nil
+		}),
 	fsm.Event(datatransfer.DataQueuedProgress).FromMany(transferringStates...).ToNoChange().
 		Action(func(chst *internal.ChannelState, delta uint64) error {
 			chst.Queued += delta

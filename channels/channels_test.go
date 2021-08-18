@@ -138,6 +138,38 @@ func TestChannels(t *testing.T) {
 		require.Equal(t, state.Status(), datatransfer.Ongoing)
 	})
 
+	t.Run("datasent/queued when transfer is already finished", func(t *testing.T) {
+		ds := dss.MutexWrap(datastore.NewMapDatastore())
+		dir := os.TempDir()
+		cidLists, err := cidlists.NewCIDLists(dir)
+		require.NoError(t, err)
+		channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
+		require.NoError(t, err)
+		err = channelList.Start(ctx)
+		require.NoError(t, err)
+
+		chid, err := channelList.CreateNew(peers[0], tid1, cids[0], selector, fv1, peers[0], peers[0], peers[1])
+		require.NoError(t, err)
+		checkEvent(ctx, t, received, datatransfer.Open)
+
+		// move the channel to `TransferFinished` state.
+		require.NoError(t, channelList.FinishTransfer(chid))
+		state := checkEvent(ctx, t, received, datatransfer.FinishTransfer)
+		require.Equal(t, datatransfer.TransferFinished, state.Status())
+
+		// send a data-sent event and ensure it's a no-op
+		_, err = channelList.DataSent(chid, cids[1], 1)
+		require.NoError(t, err)
+		state = checkEvent(ctx, t, received, datatransfer.DataSent)
+		require.Equal(t, datatransfer.TransferFinished, state.Status())
+
+		// send a data-queued event and ensure it's a no-op.
+		_, err = channelList.DataQueued(chid, cids[1], 1)
+		require.NoError(t, err)
+		state = checkEvent(ctx, t, received, datatransfer.DataQueued)
+		require.Equal(t, datatransfer.TransferFinished, state.Status())
+	})
+
 	t.Run("updating send/receive values", func(t *testing.T) {
 		ds := dss.MutexWrap(datastore.NewMapDatastore())
 		dir := os.TempDir()
