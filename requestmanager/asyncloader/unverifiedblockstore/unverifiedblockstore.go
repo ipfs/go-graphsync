@@ -3,7 +3,6 @@ package unverifiedblockstore
 import (
 	"fmt"
 	logging "github.com/ipfs/go-log/v2"
-
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
@@ -53,6 +52,7 @@ func (ubs *UnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link) bool) {
 // PruneBlock deletes an individual block from the store
 func (ubs *UnverifiedBlockStore) PruneBlock(link ipld.Link) {
 	delete(ubs.inMemoryBlocks, link)
+	ubs.dataSize = ubs.dataSize - uint64(len(ubs.inMemoryBlocks[link]))
 }
 
 // VerifyBlock verifies the data for the given link as being part of a traversal,
@@ -63,6 +63,9 @@ func (ubs *UnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
 		return nil, fmt.Errorf("Block not found")
 	}
 	delete(ubs.inMemoryBlocks, lnk)
+	ubs.dataSize = ubs.dataSize - uint64(len(data))
+
+
 	buffer, committer, err := ubs.storer(ipld.LinkContext{})
 	if err != nil {
 		return nil, err
