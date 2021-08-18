@@ -34,7 +34,7 @@ func New(storer ipld.Storer) *UnverifiedBlockStore {
 func (ubs *UnverifiedBlockStore) AddUnverifiedBlock(lnk ipld.Link, data []byte) {
 	ubs.inMemoryBlocks[lnk] = data
 	ubs.dataSize = ubs.dataSize + uint64(len(data))
-	log.Debugw("added in-memory block", "data-size", ubs.dataSize)
+	log.Debugw("added in-memory block", "total_queued_bytes", ubs.dataSize)
 }
 
 // PruneBlocks removes blocks from the unverified store without committing them,
@@ -46,7 +46,7 @@ func (ubs *UnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link) bool) {
 			ubs.dataSize = ubs.dataSize - uint64(len(data))
 		}
 	}
-	log.Debugw("finished pruning in-memory blocks", "data-size", ubs.dataSize)
+	log.Debugw("finished pruning in-memory blocks", "total_queued_bytes", ubs.dataSize)
 }
 
 // PruneBlock deletes an individual block from the store
@@ -64,7 +64,6 @@ func (ubs *UnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
 	}
 	delete(ubs.inMemoryBlocks, lnk)
 	ubs.dataSize = ubs.dataSize - uint64(len(data))
-
 
 	buffer, committer, err := ubs.storer(ipld.LinkContext{})
 	if err != nil {
