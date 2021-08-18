@@ -7,7 +7,7 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 )
 
-var log = logging.Logger("gs-unverifiedBlockStore")
+var log = logging.Logger("gs-unverifiedbs")
 
 type settableWriter interface {
 	SetBytes([]byte) error
