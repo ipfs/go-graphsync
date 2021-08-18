@@ -18,6 +18,7 @@ type settableWriter interface {
 type UnverifiedBlockStore struct {
 	inMemoryBlocks map[ipld.Link][]byte
 	storer         ipld.Storer
+	dataSize uint64
 }
 
 // New initializes a new unverified store with the given storer function for writing
@@ -33,27 +34,20 @@ func New(storer ipld.Storer) *UnverifiedBlockStore {
 // comes in as part of a traversal.
 func (ubs *UnverifiedBlockStore) AddUnverifiedBlock(lnk ipld.Link, data []byte) {
 	ubs.inMemoryBlocks[lnk] = data
-	log.Debugw("added in-memory block", "data-size", ubs.dataSize())
-}
-
-func (ubs *UnverifiedBlockStore) dataSize() uint64 {
-	size := uint64(0)
-	for _, data := range ubs.inMemoryBlocks {
-		size = size +  uint64(len(data))
-	}
-
-	return size
+	ubs.dataSize = ubs.dataSize + uint64(len(data))
+	log.Debugw("added in-memory block", "data-size", ubs.dataSize)
 }
 
 // PruneBlocks removes blocks from the unverified store without committing them,
 // if the passed in function returns true for the given link
 func (ubs *UnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link) bool) {
-	for link := range ubs.inMemoryBlocks {
+	for link,data := range ubs.inMemoryBlocks {
 		if shouldPrune(link) {
 			delete(ubs.inMemoryBlocks, link)
+			ubs.dataSize = ubs.dataSize - uint64(len(data))
 		}
 	}
-	log.Debugw("finished pruning in-memory blocks", "data-size", ubs.dataSize())
+	log.Debugw("finished pruning in-memory blocks", "data-size", ubs.dataSize)
 }
 
 // PruneBlock deletes an individual block from the store
