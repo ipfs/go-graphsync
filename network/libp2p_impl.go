@@ -18,6 +18,10 @@ import (
 
 var log = logging.Logger("graphsync_network")
 
+// TODO: This value is large cause of the do-not-send-cids extension, which we need a better replacement for
+// 16MB is enough to send >270,000 CIDS, or the number of CIDS in a 64GB piece chunked at 256KB
+var internalMessageSizeMax = 1 << 24
+
 var sendMessageTimeout = time.Minute * 10
 
 // NewFromLibp2pHost returns a GraphSyncNetwork supported by underlying Libp2p host.
@@ -131,7 +135,7 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 		return
 	}
 
-	reader := msgio.NewVarintReaderSize(s, network.MessageSizeMax)
+	reader := msgio.NewVarintReaderSize(s, internalMessageSizeMax)
 	for {
 		received, err := gsmsg.FromMsgReader(reader)
 		p := s.Conn().RemotePeer()
