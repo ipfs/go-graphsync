@@ -8,6 +8,7 @@ import (
 	"time"
 
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
@@ -20,7 +21,7 @@ func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
-	loadAttempter := func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
+	loadAttempter := func(peer.ID, graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
 		callCount++
 		return types.AsyncLoadResult{
 			Data: testutil.RandomBytes(100),
@@ -30,9 +31,10 @@ func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
 
 	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
+	p := testutil.GeneratePeers(1)[0]
 
 	resultChan := make(chan types.AsyncLoadResult, 1)
-	lr := NewLoadRequest(requestID, link, resultChan)
+	lr := NewLoadRequest(p, requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, false)
 
 	var result types.AsyncLoadResult
@@ -48,7 +50,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
-	loadAttempter := func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
+	loadAttempter := func(peer.ID, graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
 		callCount++
 		return types.AsyncLoadResult{
 			Err: fmt.Errorf("something went wrong"),
@@ -59,7 +61,9 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := make(chan types.AsyncLoadResult, 1)
-	lr := NewLoadRequest(requestID, link, resultChan)
+	p := testutil.GeneratePeers(1)[0]
+
+	lr := NewLoadRequest(p, requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, false)
 
 	var result types.AsyncLoadResult
@@ -74,7 +78,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	callCount := 0
-	loadAttempter := func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
+	loadAttempter := func(peer.ID, graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
 		var result []byte
 		if callCount > 0 {
 			result = testutil.RandomBytes(100)
@@ -89,8 +93,10 @@ func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 
 	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
+	p := testutil.GeneratePeers(1)[0]
+
 	resultChan := make(chan types.AsyncLoadResult, 1)
-	lr := NewLoadRequest(requestID, link, resultChan)
+	lr := NewLoadRequest(p, requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, false)
 
 	var result types.AsyncLoadResult
@@ -106,7 +112,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing
 	defer cancel()
 	callCount := 0
 	called := make(chan struct{}, 2)
-	loadAttempter := func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
+	loadAttempter := func(peer.ID, graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
 		var result []byte
 		called <- struct{}{}
 		if callCount > 0 {
@@ -122,7 +128,8 @@ func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing
 	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := make(chan types.AsyncLoadResult, 1)
-	lr := NewLoadRequest(requestID, link, resultChan)
+	p := testutil.GeneratePeers(1)[0]
+	lr := NewLoadRequest(p, requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, true)
 
 	testutil.AssertDoesReceiveFirst(t, called, "should attempt load with no result", resultChan, ctx.Done())
@@ -141,7 +148,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	defer cancel()
 	callCount := 0
 	called := make(chan struct{}, 2)
-	loadAttempter := func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
+	loadAttempter := func(peer.ID, graphsync.RequestID, ipld.Link) types.AsyncLoadResult {
 		var result []byte
 		called <- struct{}{}
 		if callCount > 0 {
@@ -157,7 +164,8 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	link := testutil.NewTestLink()
 	requestID := graphsync.RequestID(rand.Int31())
 	resultChan := make(chan types.AsyncLoadResult, 1)
-	lr := NewLoadRequest(requestID, link, resultChan)
+	p := testutil.GeneratePeers(1)[0]
+	lr := NewLoadRequest(p, requestID, link, resultChan)
 	loadAttemptQueue.AttemptLoad(lr, true)
 
 	testutil.AssertDoesReceiveFirst(t, called, "should attempt load with no result", resultChan, ctx.Done())

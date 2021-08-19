@@ -63,10 +63,12 @@ type GraphSync struct {
 }
 
 type graphsyncConfigOptions struct {
-	totalMaxMemory           uint64
-	maxMemoryPerPeer         uint64
-	maxInProgressRequests    uint64
-	registerDefaultValidator bool
+	totalMaxMemoryResponder   uint64
+	maxMemoryPerPeerResponder uint64
+	totalMaxMemoryRequestor   uint64
+	maxMemoryPerPeerRequestor uint64
+	maxInProgressRequests     uint64
+	registerDefaultValidator  bool
 }
 
 // Option defines the functional option type that can be used to configure
@@ -85,7 +87,7 @@ func RejectAllRequestsByDefault() Option {
 // may consume queueing up messages for a response in total
 func MaxMemoryResponder(totalMaxMemory uint64) Option {
 	return func(gs *graphsyncConfigOptions) {
-		gs.totalMaxMemory = totalMaxMemory
+		gs.totalMaxMemoryResponder = totalMaxMemory
 	}
 }
 
@@ -93,7 +95,23 @@ func MaxMemoryResponder(totalMaxMemory uint64) Option {
 // may consume queueing up messages for a response
 func MaxMemoryPerPeerResponder(maxMemoryPerPeer uint64) Option {
 	return func(gs *graphsyncConfigOptions) {
-		gs.maxMemoryPerPeer = maxMemoryPerPeer
+		gs.maxMemoryPerPeerResponder = maxMemoryPerPeer
+	}
+}
+
+// MaxMemoryRequestor defines the maximum amount of memory the responder
+// may consume queueing up messages for a response in total
+func MaxMemoryRequestor(totalMaxMemory uint64) Option {
+	return func(gs *graphsyncConfigOptions) {
+		gs.totalMaxMemoryRequestor = totalMaxMemory
+	}
+}
+
+// MaxMemoryPerPeerRequestor defines the maximum amount of memory a peer
+// may consume queueing up messages for a response
+func MaxMemoryPerPeerRequestor(maxMemoryPerPeer uint64) Option {
+	return func(gs *graphsyncConfigOptions) {
+		gs.maxMemoryPerPeerRequestor = maxMemoryPerPeer
 	}
 }
 
@@ -112,10 +130,12 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	ctx, cancel := context.WithCancel(parent)
 
 	gsConfig := &graphsyncConfigOptions{
-		totalMaxMemory:           defaultTotalMaxMemory,
-		maxMemoryPerPeer:         defaultMaxMemoryPerPeer,
-		maxInProgressRequests:    defaultMaxInProgressRequests,
-		registerDefaultValidator: true,
+		totalMaxMemoryResponder:   defaultTotalMaxMemory,
+		maxMemoryPerPeerResponder: defaultMaxMemoryPerPeer,
+		totalMaxMemoryRequestor:   defaultTotalMaxMemory,
+		maxMemoryPerPeerRequestor: defaultMaxMemoryPerPeer,
+		maxInProgressRequests:     defaultMaxInProgressRequests,
+		registerDefaultValidator:  true,
 	}
 	for _, option := range options {
 		option(gsConfig)
@@ -136,12 +156,14 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	if gsConfig.registerDefaultValidator {
 		incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	}
-	allocator := allocator.NewAllocator(gsConfig.totalMaxMemory, gsConfig.maxMemoryPerPeer)
+	responseAllocator := allocator.NewAllocator(gsConfig.totalMaxMemoryResponder, gsConfig.maxMemoryPerPeerResponder)
 	createMessageQueue := func(ctx context.Context, p peer.ID) peermanager.PeerQueue {
-		return messagequeue.New(ctx, p, network, allocator)
+		return messagequeue.New(ctx, p, network, responseAllocator)
 	}
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
-	asyncLoader := asyncloader.New(ctx, loader, storer)
+	requestAllocator := allocator.NewAllocator(gsConfig.totalMaxMemoryRequestor, gsConfig.maxMemoryPerPeerRequestor)
+
+	asyncLoader := asyncloader.New(ctx, loader, storer, requestAllocator)
 	requestManager := requestmanager.New(ctx, asyncLoader, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	peerTaskQueue := peertaskqueue.New()
@@ -171,7 +193,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		persistenceOptions:          persistenceOptions,
 		ctx:                         ctx,
 		cancel:                      cancel,
-		allocator:                   allocator,
+		allocator:                   responseAllocator,
 	}
 
 	asyncLoader.Startup()

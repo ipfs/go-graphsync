@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/ipld/go-ipld-prime"
+	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
@@ -12,6 +13,7 @@ import (
 // LoadRequest is a request to load the given link for the given request id,
 // with results returned to the given channel
 type LoadRequest struct {
+	p          peer.ID
 	requestID  graphsync.RequestID
 	link       ipld.Link
 	resultChan chan types.AsyncLoadResult
@@ -19,15 +21,17 @@ type LoadRequest struct {
 
 // NewLoadRequest returns a new LoadRequest for the given request id, link,
 // and results channel
-func NewLoadRequest(requestID graphsync.RequestID,
+func NewLoadRequest(
+	p peer.ID,
+	requestID graphsync.RequestID,
 	link ipld.Link,
 	resultChan chan types.AsyncLoadResult) LoadRequest {
-	return LoadRequest{requestID, link, resultChan}
+	return LoadRequest{p, requestID, link, resultChan}
 }
 
 // LoadAttempter attempts to load a link to an array of bytes
 // and returns an async load result
-type LoadAttempter func(graphsync.RequestID, ipld.Link) types.AsyncLoadResult
+type LoadAttempter func(peer.ID, graphsync.RequestID, ipld.Link) types.AsyncLoadResult
 
 // LoadAttemptQueue attempts to load using the load attempter, and then can
 // place requests on a retry queue
@@ -46,7 +50,7 @@ func New(loadAttempter LoadAttempter) *LoadAttemptQueue {
 // AttemptLoad attempts to loads the given load request, and if retry is true
 // it saves the loadrequest for retrying later
 func (laq *LoadAttemptQueue) AttemptLoad(lr LoadRequest, retry bool) {
-	response := laq.loadAttempter(lr.requestID, lr.link)
+	response := laq.loadAttempter(lr.p, lr.requestID, lr.link)
 	if response.Err != nil || response.Data != nil {
 		lr.resultChan <- response
 		close(lr.resultChan)
