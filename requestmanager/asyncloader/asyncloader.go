@@ -371,28 +371,20 @@ func setupAttemptQueue(loader ipld.Loader, storer ipld.Storer, allocator Allocat
 	loadAttemptQueue := loadattemptqueue.New(func(p peer.ID, requestID graphsync.RequestID, link ipld.Link) types.AsyncLoadResult {
 		// load from response cache
 		data, err := responseCache.AttemptLoad(requestID, link)
+		if err != nil {
+			return types.AsyncLoadResult{Err: err, Local: false}
+		}
 		if data != nil {
 			allocator.ReleaseBlockMemory(p, uint64(len(data)))
+			return types.AsyncLoadResult{Data: data, Local: false}
 		}
-		if data == nil && err == nil {
-			// fall back to local store
-			stream, loadErr := loader(link, ipld.LinkContext{})
-			if stream != nil && loadErr == nil {
-				localData, loadErr := ioutil.ReadAll(stream)
-				if loadErr == nil && localData != nil {
-					return types.AsyncLoadResult{
-						Data:  localData,
-						Err:   nil,
-						Local: true,
-					}
-				}
+		// fall back to local store
+		if stream, err := loader(link, ipld.LinkContext{}); stream != nil && err == nil {
+			if localData, err := ioutil.ReadAll(stream); err == nil && localData != nil {
+				return types.AsyncLoadResult{Data: localData, Local: true}
 			}
 		}
-		return types.AsyncLoadResult{
-			Data:  data,
-			Err:   err,
-			Local: false,
-		}
+		return types.AsyncLoadResult{Local: false}
 	})
 
 	return responseCache, loadAttemptQueue
