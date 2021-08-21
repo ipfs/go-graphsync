@@ -547,6 +547,7 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 			}
 
 			var bs ClosableBlockstore
+			var fileDS = bufferedDS
 			if useCarStores {
 				filestore, err := ioutil.TempFile(os.TempDir(), "fsindex-")
 				if err != nil {
@@ -560,7 +561,7 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 				bs, err = ReadWriteFilestore(n)
 				bsvc := blockservice.New(bs, offline.Exchange(bs))
 				dags := merkledag.NewDAGService(bsvc)
-				bufferedDS = format.NewBufferedDAG(ctx, dags)
+				fileDS = format.NewBufferedDAG(ctx, dags)
 			}
 			unixfsChunkSize := uint64(1) << runenv.IntParam("chunk_size")
 			unixfsLinksPerLevel := runenv.IntParam("links_per_level")
@@ -569,7 +570,7 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 				Maxlinks:   unixfsLinksPerLevel,
 				RawLeaves:  runenv.BooleanParam("raw_leaves"),
 				CidBuilder: nil,
-				Dagserv:    bufferedDS,
+				Dagserv:    fileDS,
 			}
 
 			if _, err := file.Seek(0, 0); err != nil {
@@ -603,6 +604,9 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 				loader := storeutil.LoaderForBlockstore(bs)
 				storer := storeutil.StorerForBlockstore(bs)
 				gsync.RegisterPersistenceOption(node.Cid().String(), loader, storer)
+				if err := fileDS.Commit(); err != nil {
+					return fmt.Errorf("unable to commit unix fs node: %w", err)
+				}
 			}
 			cids = append(cids, node.Cid())
 		}
