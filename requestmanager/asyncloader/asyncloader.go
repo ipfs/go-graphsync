@@ -7,6 +7,7 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipld/go-ipld-prime"
+	peer "github.com/libp2p/go-libp2p-peer"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/metadata"
@@ -25,6 +26,12 @@ type alternateQueue struct {
 	loadAttemptQueue *loadattemptqueue.LoadAttemptQueue
 }
 
+// Allocator indicates a mechanism for tracking memory used by a given peer
+type Allocator interface {
+	AllocateBlockMemory(p peer.ID, amount uint64) <-chan error
+	ReleaseBlockMemory(p peer.ID, amount uint64) error
+}
+
 // AsyncLoader manages loading links asynchronously in as new responses
 // come in from the network
 type AsyncLoader struct {
@@ -40,12 +47,13 @@ type AsyncLoader struct {
 	alternateQueues  map[string]alternateQueue
 	responseCache    *responsecache.ResponseCache
 	loadAttemptQueue *loadattemptqueue.LoadAttemptQueue
+	allocator        Allocator
 }
 
 // New initializes a new link loading manager for asynchronous loads from the given context
 // and local store loading and storing function
-func New(ctx context.Context, loader ipld.Loader, storer ipld.Storer) *AsyncLoader {
-	responseCache, loadAttemptQueue := setupAttemptQueue(loader, storer)
+func New(ctx context.Context, loader ipld.Loader, storer ipld.Storer, allocator Allocator) *AsyncLoader {
+	responseCache, loadAttemptQueue := setupAttemptQueue(loader, storer, allocator)
 	ctx, cancel := context.WithCancel(ctx)
 	return &AsyncLoader{
 		ctx:              ctx,
@@ -59,6 +67,7 @@ func New(ctx context.Context, loader ipld.Loader, storer ipld.Storer) *AsyncLoad
 		alternateQueues:  make(map[string]alternateQueue),
 		responseCache:    responseCache,
 		loadAttemptQueue: loadAttemptQueue,
+		allocator:        allocator,
 	}
 }
 
@@ -103,8 +112,16 @@ func (al *AsyncLoader) StartRequest(requestID graphsync.RequestID, persistenceOp
 
 // ProcessResponse injests new responses and completes asynchronous loads as
 // neccesary
-func (al *AsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
+func (al *AsyncLoader) ProcessResponse(p peer.ID, responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
+	totalMemoryAllocated := uint64(0)
+	for _, blk := range blks {
+		totalMemoryAllocated += uint64(len(blk.RawData()))
+	}
+	select {
+	case <-al.allocator.AllocateBlockMemory(p, totalMemoryAllocated):
+	case <-al.ctx.Done():
+	}
 	select {
 	case <-al.ctx.Done():
 	case al.incomingMessages <- &newResponsesAvailableMessage{responses, blks}:
@@ -113,10 +130,10 @@ func (al *AsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadat
 
 // AsyncLoad asynchronously loads the given link for the given request ID. It returns a channel for data and a channel
 // for errors -- only one message will be sent over either.
-func (al *AsyncLoader) AsyncLoad(requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
+func (al *AsyncLoader) AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	response := make(chan error, 1)
-	lr := loadattemptqueue.NewLoadRequest(requestID, link, resultChan)
+	lr := loadattemptqueue.NewLoadRequest(p, requestID, link, resultChan)
 	_ = al.sendSyncMessage(&loadRequestMessage{response, requestID, lr}, response)
 	return resultChan
 }
@@ -258,7 +275,7 @@ func (rpom *registerPersistenceOptionMessage) register(al *AsyncLoader) error {
 	if existing {
 		return errors.New("already registerd a persistence option with this name")
 	}
-	responseCache, loadAttemptQueue := setupAttemptQueue(rpom.loader, rpom.storer)
+	responseCache, loadAttemptQueue := setupAttemptQueue(rpom.loader, rpom.storer, al.allocator)
 	al.alternateQueues[rpom.name] = alternateQueue{responseCache, loadAttemptQueue}
 	return nil
 }
@@ -347,32 +364,27 @@ func (crm *cleanupRequestMessage) handle(al *AsyncLoader) {
 	al.responseCache.FinishRequest(crm.requestID)
 }
 
-func setupAttemptQueue(loader ipld.Loader, storer ipld.Storer) (*responsecache.ResponseCache, *loadattemptqueue.LoadAttemptQueue) {
+func setupAttemptQueue(loader ipld.Loader, storer ipld.Storer, allocator Allocator) (*responsecache.ResponseCache, *loadattemptqueue.LoadAttemptQueue) {
 
 	unverifiedBlockStore := unverifiedblockstore.New(storer)
 	responseCache := responsecache.New(unverifiedBlockStore)
-	loadAttemptQueue := loadattemptqueue.New(func(requestID graphsync.RequestID, link ipld.Link) types.AsyncLoadResult {
+	loadAttemptQueue := loadattemptqueue.New(func(p peer.ID, requestID graphsync.RequestID, link ipld.Link) types.AsyncLoadResult {
 		// load from response cache
 		data, err := responseCache.AttemptLoad(requestID, link)
-		if data == nil && err == nil {
-			// fall back to local store
-			stream, loadErr := loader(link, ipld.LinkContext{})
-			if stream != nil && loadErr == nil {
-				localData, loadErr := ioutil.ReadAll(stream)
-				if loadErr == nil && localData != nil {
-					return types.AsyncLoadResult{
-						Data:  localData,
-						Err:   nil,
-						Local: true,
-					}
-				}
+		if err != nil {
+			return types.AsyncLoadResult{Err: err, Local: false}
+		}
+		if data != nil {
+			allocator.ReleaseBlockMemory(p, uint64(len(data)))
+			return types.AsyncLoadResult{Data: data, Local: false}
+		}
+		// fall back to local store
+		if stream, err := loader(link, ipld.LinkContext{}); stream != nil && err == nil {
+			if localData, err := ioutil.ReadAll(stream); err == nil && localData != nil {
+				return types.AsyncLoadResult{Data: localData, Local: true}
 			}
 		}
-		return types.AsyncLoadResult{
-			Data:  data,
-			Err:   err,
-			Local: false,
-		}
+		return types.AsyncLoadResult{Local: false}
 	})
 
 	return responseCache, loadAttemptQueue

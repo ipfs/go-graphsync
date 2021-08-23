@@ -132,8 +132,8 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 		requestRecords[0].gsr.ID(): firstMetadata1,
 		requestRecords[1].gsr.ID(): firstMetadata2,
 	})
-	td.fal.SuccessResponseOn(requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
-	td.fal.SuccessResponseOn(requestRecords[1].gsr.ID(), blockChain2.Blocks(0, 3))
+	td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(peers[0], requestRecords[1].gsr.ID(), blockChain2.Blocks(0, 3))
 
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan1)
 	blockChain2.VerifyResponseRange(requestCtx, returnedResponseChan2, 0, 3)
@@ -155,7 +155,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 		requestRecords[1].gsr.ID(): moreMetadata,
 	})
 
-	td.fal.SuccessResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
+	td.fal.SuccessResponseOn(peers[0], requestRecords[1].gsr.ID(), moreBlocks)
 
 	blockChain2.VerifyRemainder(requestCtx, returnedResponseChan2, 3)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
@@ -186,8 +186,8 @@ func TestCancelRequestInProgress(t *testing.T) {
 
 	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
 
-	td.fal.SuccessResponseOn(requestRecords[0].gsr.ID(), firstBlocks)
-	td.fal.SuccessResponseOn(requestRecords[1].gsr.ID(), firstBlocks)
+	td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), firstBlocks)
+	td.fal.SuccessResponseOn(peers[0], requestRecords[1].gsr.ID(), firstBlocks)
 	td.blockChain.VerifyResponseRange(requestCtx1, returnedResponseChan1, 0, 3)
 	cancel1()
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
@@ -202,8 +202,8 @@ func TestCancelRequestInProgress(t *testing.T) {
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
 	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	td.fal.SuccessResponseOn(requestRecords[0].gsr.ID(), moreBlocks)
-	td.fal.SuccessResponseOn(requestRecords[1].gsr.ID(), moreBlocks)
+	td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), moreBlocks)
+	td.fal.SuccessResponseOn(peers[0], requestRecords[1].gsr.ID(), moreBlocks)
 
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan1)
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
@@ -243,7 +243,7 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 			gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.PartialResponse, firstMetadata),
 		}
 		td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-		td.fal.SuccessResponseOn(requestRecords[0].gsr.ID(), firstBlocks)
+		td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), firstBlocks)
 	}()
 
 	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, time.Second)
@@ -286,7 +286,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.PartialResponse, firstMetadata),
 	}
 	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-	td.fal.SuccessResponseOn(rr.gsr.ID(), firstBlocks)
+	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), firstBlocks)
 	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, 3)
 	managerCancel()
 
@@ -296,7 +296,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
 	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	td.fal.SuccessResponseOn(rr.gsr.ID(), moreBlocks)
+	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), moreBlocks)
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan)
 }
@@ -333,7 +333,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	// async loaded response responds immediately
-	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
@@ -364,7 +364,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	// async loaded response responds immediately
-	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
@@ -397,7 +397,7 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	}
 	td.requestManager.ProcessResponses(peers[0], firstResponses, nil)
 	for _, block := range td.blockChain.AllBlocks() {
-		td.fal.ResponseOn(rr.gsr.ID(), cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: nil, Err: fmt.Errorf("Terrible Thing")})
+		td.fal.ResponseOn(peers[0], rr.gsr.ID(), cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: nil, Err: fmt.Errorf("Terrible Thing")})
 	}
 	testutil.VerifyEmptyResponse(ctx, t, returnedResponseChan)
 	errs := testutil.CollectErrors(ctx, t, returnedErrorChan)
@@ -631,7 +631,7 @@ func TestBlockHooks(t *testing.T) {
 		td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 			rr.gsr.ID(): firstMetadata,
 		})
-		td.fal.SuccessResponseOn(rr.gsr.ID(), firstBlocks)
+		td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), firstBlocks)
 
 		ur := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 		receivedUpdateData, has := ur.gsr.Extension(td.extensionName1)
@@ -695,7 +695,7 @@ func TestBlockHooks(t *testing.T) {
 		td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
 			rr.gsr.ID(): nextMetadata,
 		})
-		td.fal.SuccessResponseOn(rr.gsr.ID(), nextBlocks)
+		td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), nextBlocks)
 
 		ur = readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 		receivedUpdateData, has = ur.gsr.Extension(td.extensionName1)
@@ -771,8 +771,8 @@ func TestOutgoingRequestHooks(t *testing.T) {
 		requestRecords[0].gsr.ID(): md,
 		requestRecords[1].gsr.ID(): md,
 	})
-	td.fal.SuccessResponseOn(requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
-	td.fal.SuccessResponseOn(requestRecords[1].gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(peers[0], requestRecords[1].gsr.ID(), td.blockChain.AllBlocks())
 
 	td.blockChain.VerifyWholeChainWithTypes(requestCtx, returnedResponseChan1)
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
@@ -824,7 +824,7 @@ func TestPauseResume(t *testing.T) {
 		}),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
-	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	// attempt to unpause while request is not paused (note: hook on second block will keep it from
 	// reaching pause point)
@@ -865,7 +865,7 @@ func TestPauseResume(t *testing.T) {
 
 	// process responses
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.RemainderBlocks(pauseAt))
-	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	// verify the correct results are returned, picking up after where there request was paused
 	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt-1)
@@ -910,7 +910,7 @@ func TestPauseResumeExternal(t *testing.T) {
 		}),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
-	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 	// verify responses sent read ONLY for blocks BEFORE the pause
 	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, pauseAt-1)
 	// wait for the pause to occur
@@ -945,7 +945,7 @@ func TestPauseResumeExternal(t *testing.T) {
 
 	// process responses
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.RemainderBlocks(pauseAt))
-	td.fal.SuccessResponseOn(rr.gsr.ID(), td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	// verify the correct results are returned, picking up after where there request was paused
 	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt-1)

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/allocator"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
@@ -24,7 +25,8 @@ func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
 	link := st.Store(t, block)
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		requestID := graphsync.RequestID(rand.Int31())
-		resultChan := asyncLoader.AsyncLoad(requestID, link)
+		p := testutil.GeneratePeers(1)[0]
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
 		assertSuccessResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 1)
 	})
@@ -46,8 +48,9 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 				},
 			},
 		}
-		asyncLoader.ProcessResponse(responses, blocks)
-		resultChan := asyncLoader.AsyncLoad(requestID, link)
+		p := testutil.GeneratePeers(1)[0]
+		asyncLoader.ProcessResponse(p, responses, blocks)
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
 
 		assertSuccessResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 0)
@@ -69,9 +72,10 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 				},
 			},
 		}
-		asyncLoader.ProcessResponse(responses, nil)
+		p := testutil.GeneratePeers(1)[0]
+		asyncLoader.ProcessResponse(p, responses, nil)
 
-		resultChan := asyncLoader.AsyncLoad(requestID, link)
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
 		assertFailResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 0)
 	})
@@ -82,7 +86,8 @@ func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T)
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		link := testutil.NewTestLink()
 		requestID := graphsync.RequestID(rand.Int31())
-		resultChan := asyncLoader.AsyncLoad(requestID, link)
+		p := testutil.GeneratePeers(1)[0]
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
 		assertFailResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 1)
 	})
@@ -99,7 +104,8 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 		requestID := graphsync.RequestID(rand.Int31())
 		err := asyncLoader.StartRequest(requestID, "")
 		require.NoError(t, err)
-		resultChan := asyncLoader.AsyncLoad(requestID, link)
+		p := testutil.GeneratePeers(1)[0]
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
 
 		st.AssertAttemptLoadWithoutResult(ctx, t, resultChan)
 
@@ -111,7 +117,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 				},
 			},
 		}
-		asyncLoader.ProcessResponse(responses, blocks)
+		asyncLoader.ProcessResponse(p, responses, blocks)
 		assertSuccessResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 1)
 		st.AssertBlockStored(t, block)
@@ -126,7 +132,8 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 		requestID := graphsync.RequestID(rand.Int31())
 		err := asyncLoader.StartRequest(requestID, "")
 		require.NoError(t, err)
-		resultChan := asyncLoader.AsyncLoad(requestID, link)
+		p := testutil.GeneratePeers(1)[0]
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
 
 		st.AssertAttemptLoadWithoutResult(ctx, t, resultChan)
 
@@ -138,7 +145,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 				},
 			},
 		}
-		asyncLoader.ProcessResponse(responses, nil)
+		asyncLoader.ProcessResponse(p, responses, nil)
 		assertFailResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 1)
 	})
@@ -151,7 +158,8 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 		requestID := graphsync.RequestID(rand.Int31())
 		err := asyncLoader.StartRequest(requestID, "")
 		require.NoError(t, err)
-		resultChan := asyncLoader.AsyncLoad(requestID, link)
+		p := testutil.GeneratePeers(1)[0]
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
 		st.AssertAttemptLoadWithoutResult(ctx, t, resultChan)
 		asyncLoader.CompleteResponsesFor(requestID)
 		assertFailResponse(ctx, t, resultChan)
@@ -174,13 +182,14 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 				},
 			},
 		}
-		asyncLoader.ProcessResponse(responses, blocks)
-		resultChan := asyncLoader.AsyncLoad(requestID, link)
+		p := testutil.GeneratePeers(1)[0]
+		asyncLoader.ProcessResponse(p, responses, blocks)
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
 
 		assertSuccessResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 0)
 
-		resultChan = asyncLoader.AsyncLoad(requestID, link)
+		resultChan = asyncLoader.AsyncLoad(p, requestID, link)
 		assertSuccessResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 1)
 
@@ -204,7 +213,8 @@ func TestRegisterUnregister(t *testing.T) {
 		requestID2 := graphsync.RequestID(rand.Int31())
 		err = asyncLoader.StartRequest(requestID2, "other")
 		require.NoError(t, err)
-		resultChan1 := asyncLoader.AsyncLoad(requestID2, link1)
+		p := testutil.GeneratePeers(1)[0]
+		resultChan1 := asyncLoader.AsyncLoad(p, requestID2, link1)
 		assertSuccessResponse(ctx, t, resultChan1)
 		err = asyncLoader.UnregisterPersistenceOption("other")
 		require.EqualError(t, err, "cannot unregister while requests are in progress")
@@ -227,11 +237,13 @@ func TestRequestSplittingLoadLocallyFromBlockstore(t *testing.T) {
 		err := asyncLoader.RegisterPersistenceOption("other", otherSt.loader, otherSt.storer)
 		require.NoError(t, err)
 		requestID1 := graphsync.RequestID(rand.Int31())
-		resultChan1 := asyncLoader.AsyncLoad(requestID1, link)
+		p := testutil.GeneratePeers(1)[0]
+
+		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link)
 		requestID2 := graphsync.RequestID(rand.Int31())
 		err = asyncLoader.StartRequest(requestID2, "other")
 		require.NoError(t, err)
-		resultChan2 := asyncLoader.AsyncLoad(requestID2, link)
+		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link)
 
 		assertFailResponse(ctx, t, resultChan1)
 		assertSuccessResponse(ctx, t, resultChan2)
@@ -254,8 +266,9 @@ func TestRequestSplittingSameBlockTwoStores(t *testing.T) {
 		require.NoError(t, err)
 		err = asyncLoader.StartRequest(requestID2, "other")
 		require.NoError(t, err)
-		resultChan1 := asyncLoader.AsyncLoad(requestID1, link)
-		resultChan2 := asyncLoader.AsyncLoad(requestID2, link)
+		p := testutil.GeneratePeers(1)[0]
+		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link)
+		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link)
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID1: metadata.Metadata{
 				metadata.Item{
@@ -270,7 +283,7 @@ func TestRequestSplittingSameBlockTwoStores(t *testing.T) {
 				},
 			},
 		}
-		asyncLoader.ProcessResponse(responses, blocks)
+		asyncLoader.ProcessResponse(p, responses, blocks)
 
 		assertSuccessResponse(ctx, t, resultChan1)
 		assertSuccessResponse(ctx, t, resultChan2)
@@ -294,8 +307,9 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 		require.NoError(t, err)
 		err = asyncLoader.StartRequest(requestID2, "other")
 		require.NoError(t, err)
-		resultChan1 := asyncLoader.AsyncLoad(requestID1, link)
-		resultChan2 := asyncLoader.AsyncLoad(requestID2, link)
+		p := testutil.GeneratePeers(1)[0]
+		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link)
+		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link)
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID2: metadata.Metadata{
 				metadata.Item{
@@ -304,7 +318,7 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 				},
 			},
 		}
-		asyncLoader.ProcessResponse(responses, blocks)
+		asyncLoader.ProcessResponse(p, responses, blocks)
 		asyncLoader.CompleteResponsesFor(requestID1)
 
 		assertFailResponse(ctx, t, resultChan1)
@@ -370,7 +384,8 @@ func withLoader(st *store, exec func(ctx context.Context, asyncLoader *AsyncLoad
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	asyncLoader := New(ctx, st.loader, st.storer)
+	allocator := allocator.NewAllocator(256*(1<<20), 16*(1<<20))
+	asyncLoader := New(ctx, st.loader, st.storer, allocator)
 	asyncLoader.Startup()
 	exec(ctx, asyncLoader)
 }
