@@ -1,5 +1,9 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.7.6
+
+Add some logging to graphsync transport
+
 # go-data-transfer 1.7.0
 
 Fire transfer queued event when transfer is queued in graphsync
