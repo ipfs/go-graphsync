@@ -233,12 +233,12 @@ func (m *manager) OnRequestDisconnected(chid datatransfer.ChannelID, err error) 
 }
 
 func (m *manager) OnSendDataError(chid datatransfer.ChannelID, err error) error {
-	log.Warnf("channel %+v had transport send error: %s", chid, err)
+	log.Debugf("channel %+v had transport send error: %s", chid, err)
 	return m.channels.SendDataError(chid, err)
 }
 
 func (m *manager) OnReceiveDataError(chid datatransfer.ChannelID, err error) error {
-	log.Warnf("channel %+v had transport receive error: %s", chid, err)
+	log.Debugf("channel %+v had transport receive error: %s", chid, err)
 	return m.channels.ReceiveDataError(chid, err)
 }
 
