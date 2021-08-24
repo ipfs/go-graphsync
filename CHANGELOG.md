@@ -1,5 +1,9 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.7.7
+
+Reduce logging in channel monitor
+
 # go-data-transfer 1.7.6
 
 Add some logging to graphsync transport
