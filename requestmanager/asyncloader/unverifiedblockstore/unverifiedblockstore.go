@@ -2,6 +2,7 @@ package unverifiedblockstore
 
 import (
 	"fmt"
+
 	logging "github.com/ipfs/go-log/v2"
 	ipld "github.com/ipld/go-ipld-prime"
 )
@@ -17,7 +18,7 @@ type settableWriter interface {
 type UnverifiedBlockStore struct {
 	inMemoryBlocks map[ipld.Link][]byte
 	storer         ipld.BlockWriteOpener
-	dataSize uint64
+	dataSize       uint64
 }
 
 // New initializes a new unverified store with the given storer function for writing
@@ -40,7 +41,7 @@ func (ubs *UnverifiedBlockStore) AddUnverifiedBlock(lnk ipld.Link, data []byte) 
 // PruneBlocks removes blocks from the unverified store without committing them,
 // if the passed in function returns true for the given link
 func (ubs *UnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link) bool) {
-	for link,data := range ubs.inMemoryBlocks {
+	for link, data := range ubs.inMemoryBlocks {
 		if shouldPrune(link) {
 			delete(ubs.inMemoryBlocks, link)
 			ubs.dataSize = ubs.dataSize - uint64(len(data))

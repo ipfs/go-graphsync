@@ -20,6 +20,23 @@ some significant breaking changes.
 | Hannah Howard | 2 | +3316/-3015 | 25 |
 | Steven Allen | 1 | +95/-227 | 5 |
 
+# go-graphsync 0.6.9
+
+This release adds additional log statements and addresses a memory performance bug on the requesting side when making lots of outgoing requests at once
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Back pressure incoming responses ([ipfs/go-graphsync#204](https://github.com/ipfs/go-graphsync/pull/204))
+  - Log unverified blockstore memory consumption ([ipfs/go-graphsync#201](https://github.com/ipfs/go-graphsync/pull/201))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| hannahhoward | 5 | +1535/-381 | 25 |
+| Aarsh Shah | 5 | +27/-17 | 5 |
+
 # go-graphsync 0.6.8
 
 ### Changelog
