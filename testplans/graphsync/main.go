@@ -134,6 +134,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 		blockDiagnostics = runenv.BooleanParam("block_diagnostics")
 		networkParams    = parseNetworkConfig(runenv)
 		memorySnapshots  = parseMemorySnapshotsParam(runenv)
+		useCarStores     = runenv.BooleanParam("use_car_stores")
 	)
 	runenv.RecordMessage("started test instance")
 	runenv.RecordMessage("network params: %v", networkParams)
@@ -183,6 +184,9 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			gs.RequestID
 		}{p, request.ID()}] = time.Now()
 		startTimesLk.Unlock()
+		if useCarStores {
+			hookActions.UsePersistenceOption(request.Root().String())
+		}
 	})
 	gsync.RegisterOutgoingRequestHook(func(p peer.ID, request gs.RequestData, hookActions gs.OutgoingRequestHookActions) {
 		startTimesLk.Lock()
@@ -191,6 +195,9 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			gs.RequestID
 		}{p, request.ID()}] = time.Now()
 		startTimesLk.Unlock()
+		if useCarStores {
+			hookActions.UsePersistenceOption(request.Root().String())
+		}
 	})
 	gsync.RegisterCompletedResponseListener(func(p peer.ID, request gs.RequestData, status gs.ResponseStatusCode) {
 		startTimesLk.RLock()
@@ -250,7 +257,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 
 		runenv.RecordMessage("we are the provider")
 		defer runenv.RecordMessage("done provider")
-		err := runProvider(ctx, runenv, initCtx, dagsrv, size, host, ip, networkParams, concurrency, memorySnapshots, recorder)
+		err := runProvider(ctx, runenv, initCtx, gsync, dagsrv, size, host, ip, networkParams, concurrency, memorySnapshots, useCarStores, recorder)
 		if err != nil {
 			runenv.RecordMessage("Error running provider: %s", err.Error())
 		}
@@ -264,7 +271,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			return err
 		}
 		runenv.RecordMessage("done dialling provider")
-		return runRequestor(ctx, runenv, initCtx, gsync, host, p, dagsrv, networkParams, concurrency, size, memorySnapshots, recorder)
+		return runRequestor(ctx, runenv, initCtx, gsync, host, p, dagsrv, networkParams, concurrency, size, memorySnapshots, useCarStores, recorder)
 
 	default:
 		panic(fmt.Sprintf("unsupported group ID: %s\n", runenv.TestGroupID))
@@ -334,7 +341,7 @@ func parseMemorySnapshotsParam(runenv *runtime.RunEnv) snapshotMode {
 	}
 }
 
-func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, gsync gs.GraphExchange, h host.Host, p *AddrInfo, dagsrv format.DAGService, networkParams []networkParams, concurrency int, size uint64, memorySnapshots snapshotMode, recorder *runRecorder) error {
+func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, gsync gs.GraphExchange, h host.Host, p *AddrInfo, dagsrv format.DAGService, networkParams []networkParams, concurrency int, size uint64, memorySnapshots snapshotMode, useCarStores bool, recorder *runRecorder) error {
 	var (
 		cids []cid.Cid
 		// create a selector for the whole UnixFS dag
@@ -353,6 +360,11 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 			client = http.DefaultClient
 		}
 	}
+	var rwBlockstores *ReadWriteBlockstores
+	if useCarStores {
+		rwBlockstores = NewReadWriteBlockstores()
+	}
+
 	for round, np := range networkParams {
 		var (
 			topicCid    = sync.NewTopic(fmt.Sprintf("cid-%d", round), []cid.Cid{})
@@ -375,6 +387,17 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 		cids = <-cidCh
 		scancel()
 
+		if useCarStores {
+			for _, c := range cids {
+				bs, err := rwBlockstores.GetOrOpen(c.String(), filepath.Join(os.TempDir(), c.String()), c)
+				if err != nil {
+					return err
+				}
+				loader := storeutil.LoaderForBlockstore(bs)
+				storer := storeutil.StorerForBlockstore(bs)
+				gsync.RegisterPersistenceOption(c.String(), loader, storer)
+			}
+		}
 		// run GC to get accurate-ish stats.
 		goruntime.GC()
 		goruntime.GC()
@@ -447,7 +470,7 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 	return nil
 }
 
-func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, dagsrv format.DAGService, size uint64, h host.Host, ip net.IP, networkParams []networkParams, concurrency int, memorySnapshots snapshotMode, recorder *runRecorder) error {
+func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, gsync gs.GraphExchange, dagsrv format.DAGService, size uint64, h host.Host, ip net.IP, networkParams []networkParams, concurrency int, memorySnapshots snapshotMode, useCarStores bool, recorder *runRecorder) error {
 	var (
 		cids       []cid.Cid
 		bufferedDS = format.NewBufferedDAG(ctx, dagsrv)
@@ -458,10 +481,7 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 	var svr *http.Server
 	if runHTTPTest {
 		if useLibP2p {
-			listener, err := gostream.Listen(h, p2phttp.DefaultP2PProtocol)
-			if err != nil {
-				return err
-			}
+			listener, _ := gostream.Listen(h, p2phttp.DefaultP2PProtocol)
 			defer listener.Close()
 			// start an http server on port 8080
 			runenv.RecordMessage("creating http server at libp2p://%s", h.ID().String())
@@ -505,15 +525,44 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 		// generate as many random files as the concurrency level.
 		for i := 0; i < concurrency; i++ {
 			// file with random data
-			data := files.NewReaderFile(io.LimitReader(rand.Reader, int64(size)))
-			file, err := ioutil.TempFile(os.TempDir(), "unixfs-")
+			data := io.LimitReader(rand.Reader, int64(size))
+			f, err := ioutil.TempFile(os.TempDir(), "unixfs-")
 			if err != nil {
 				panic(err)
 			}
-			if _, err := io.Copy(file, data); err != nil {
+			if _, err := io.Copy(f, data); err != nil {
+				panic(err)
+			}
+			_, err = f.Seek(0, 0)
+			if err != nil {
+				panic(err)
+			}
+			stat, err := f.Stat()
+			if err != nil {
+				panic(err)
+			}
+			file, err := files.NewReaderPathFile(f.Name(), f, stat)
+			if err != nil {
 				panic(err)
 			}
 
+			var bs ClosableBlockstore
+			var fileDS = bufferedDS
+			if useCarStores {
+				filestore, err := ioutil.TempFile(os.TempDir(), "fsindex-")
+				if err != nil {
+					panic(err)
+				}
+				n := filestore.Name()
+				err = filestore.Close()
+				if err != nil {
+					panic(err)
+				}
+				bs, err = ReadWriteFilestore(n)
+				bsvc := blockservice.New(bs, offline.Exchange(bs))
+				dags := merkledag.NewDAGService(bsvc)
+				fileDS = format.NewBufferedDAG(ctx, dags)
+			}
 			unixfsChunkSize := uint64(1) << runenv.IntParam("chunk_size")
 			unixfsLinksPerLevel := runenv.IntParam("links_per_level")
 
@@ -521,7 +570,7 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 				Maxlinks:   unixfsLinksPerLevel,
 				RawLeaves:  runenv.BooleanParam("raw_leaves"),
 				CidBuilder: nil,
-				Dagserv:    bufferedDS,
+				Dagserv:    fileDS,
 			}
 
 			if _, err := file.Seek(0, 0); err != nil {
@@ -540,16 +589,24 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 			if runHTTPTest {
 				// set up http server to send file
 				http.HandleFunc(fmt.Sprintf("/%s", node.Cid()), func(w http.ResponseWriter, r *http.Request) {
-					fileReader, err := os.Open(file.Name())
+					fileReader, err := os.Open(f.Name())
+					defer fileReader.Close()
 					if err != nil {
 						panic(err)
 					}
-					defer fileReader.Close()
 					_, err = io.Copy(w, fileReader)
 					if err != nil {
 						panic(err)
 					}
 				})
+			}
+			if useCarStores {
+				loader := storeutil.LoaderForBlockstore(bs)
+				storer := storeutil.StorerForBlockstore(bs)
+				gsync.RegisterPersistenceOption(node.Cid().String(), loader, storer)
+				if err := fileDS.Commit(); err != nil {
+					return fmt.Errorf("unable to commit unix fs node: %w", err)
+				}
 			}
 			cids = append(cids, node.Cid())
 		}

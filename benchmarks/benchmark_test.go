@@ -64,6 +64,9 @@ func BenchmarkRoundtripSuccess(b *testing.B) {
 	b.Run("test-p2p-stress-1-1GB-memory-pressure", func(b *testing.B) {
 		p2pStrestTest(ctx, b, 1, allFilesUniformSize(1*(1<<30), 1<<20, 1024, true), tdm, []graphsync.Option{graphsync.MaxMemoryResponder(1 << 27)}, true)
 	})
+	b.Run("test-p2p-stress-1-1GB-memory-pressure-missing-blocks", func(b *testing.B) {
+		p2pStrestTest(ctx, b, 1, allFilesMissingTopLevelBlock(1*(1<<30), 1<<20, 1024, true), tdm, []graphsync.Option{graphsync.MaxMemoryResponder(1 << 27)}, true)
+	})
 	b.Run("test-p2p-stress-1-1GB-memory-pressure-no-raw-nodes", func(b *testing.B) {
 		p2pStrestTest(ctx, b, 1, allFilesUniformSize(1*(1<<30), 1<<20, 1024, false), tdm, []graphsync.Option{graphsync.MaxMemoryResponder(1 << 27)}, true)
 	})
@@ -296,6 +299,23 @@ func allFilesUniformSize(size uint64, unixfsChunkSize uint64, unixfsLinksPerLeve
 		cids := make([]cid.Cid, 0, len(provs))
 		for _, prov := range provs {
 			c := loadRandomUnixFxFile(ctx, b, prov.BlockStore, size, unixfsChunkSize, unixfsLinksPerLevel, useRawNodes)
+			cids = append(cids, c)
+		}
+		return cids
+	}
+}
+
+func allFilesMissingTopLevelBlock(size uint64, unixfsChunkSize uint64, unixfsLinksPerLevel int, useRawNodes bool) distFunc {
+	return func(ctx context.Context, b *testing.B, provs []testinstance.Instance) []cid.Cid {
+		cids := make([]cid.Cid, 0, len(provs))
+		for _, prov := range provs {
+			c := loadRandomUnixFxFile(ctx, b, prov.BlockStore, size, unixfsChunkSize, unixfsLinksPerLevel, useRawNodes)
+			ds := merkledag.NewDAGService(blockservice.New(prov.BlockStore, offline.Exchange(prov.BlockStore)))
+			lnks, err := ds.GetLinks(ctx, c)
+			require.NoError(b, err)
+			randLink := lnks[rand.Intn(len(lnks))]
+			err = ds.Remove(ctx, randLink.Cid)
+			require.NoError(b, err)
 			cids = append(cids, c)
 		}
 		return cids

@@ -267,7 +267,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			configureLoader := data.configureLoader
 			if configureLoader == nil {
 				configureLoader = func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, fal *testloader.FakeAsyncLoader, startStop [2]int) {
-					fal.SuccessResponseOn(requestID, tbc.Blocks(startStop[0], startStop[1]))
+					fal.SuccessResponseOn(p, requestID, tbc.Blocks(startStop[0], startStop[1]))
 				}
 			}
 			requestCtx, requestCancel := context.WithCancel(ctx)

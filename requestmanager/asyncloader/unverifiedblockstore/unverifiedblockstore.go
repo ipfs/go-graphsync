@@ -54,6 +54,7 @@ func (ubs *UnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link) bool) {
 func (ubs *UnverifiedBlockStore) PruneBlock(link ipld.Link) {
 	delete(ubs.inMemoryBlocks, link)
 	ubs.dataSize = ubs.dataSize - uint64(len(ubs.inMemoryBlocks[link]))
+	log.Debugw("pruned in-memory block", "total_queued_bytes", ubs.dataSize)
 }
 
 // VerifyBlock verifies the data for the given link as being part of a traversal,
@@ -65,6 +66,7 @@ func (ubs *UnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
 	}
 	delete(ubs.inMemoryBlocks, lnk)
 	ubs.dataSize = ubs.dataSize - uint64(len(data))
+	log.Debugw("verified block", "total_queued_bytes", ubs.dataSize)
 
 	buffer, committer, err := ubs.storer(ipld.LinkContext{})
 	if err != nil {

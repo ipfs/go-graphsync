@@ -15,15 +15,19 @@ go_proxy_url="http://localhost:8081"
 registry_type="aws"
 
 [global.run.test_params]
-size      = "512MB"
-latencies = '["50ms"]'
-bandwidths = '["32MiB"]'
+size      = "1GB"
+latencies = '[]'
+bandwidths = '[]'
 concurrency = "1"
-chunk_size = "18"
+chunk_size = "20"
 links_per_level = "1024"
-raw_leaves = "false"
+raw_leaves = "true"
 disk_store = "true"
 memory_snapshots = "detailed"
+compare_http = "false"
+max_in_progress_requests = "20"
+max_memory_per_peer = "256MiB"
+max_memory_total = "1GiB"
 
 [[groups]]
 id = "providers"
