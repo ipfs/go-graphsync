@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 
 	blocks "github.com/ipfs/go-block-format"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/unverifiedblockstore"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 )
+
+var log = logging.Logger("gs-asyncloader")
 
 type loaderMessage interface {
 	handle(al *AsyncLoader)
@@ -372,7 +375,10 @@ func setupAttemptQueue(lsys ipld.LinkSystem, allocator Allocator) (*responsecach
 			return types.AsyncLoadResult{Err: err, Local: false}
 		}
 		if data != nil {
-			allocator.ReleaseBlockMemory(p, uint64(len(data)))
+			err = allocator.ReleaseBlockMemory(p, uint64(len(data)))
+			if err != nil {
+				log.Warningf("releasing block memory: %s", err.Error())
+			}
 			return types.AsyncLoadResult{Data: data, Local: false}
 		}
 		// fall back to local store
