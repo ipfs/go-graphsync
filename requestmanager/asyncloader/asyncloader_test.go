@@ -26,7 +26,7 @@ func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		requestID := graphsync.RequestID(rand.Int31())
 		p := testutil.GeneratePeers(1)[0]
-		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 		assertSuccessResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 1)
 	})
@@ -41,7 +41,7 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		requestID := graphsync.RequestID(rand.Int31())
 		responses := map[graphsync.RequestID]metadata.Metadata{
-			requestID: metadata.Metadata{
+			requestID: {
 				metadata.Item{
 					Link:         link.Cid,
 					BlockPresent: true,
@@ -50,7 +50,7 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 		}
 		p := testutil.GeneratePeers(1)[0]
 		asyncLoader.ProcessResponse(p, responses, blocks)
-		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 
 		assertSuccessResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 0)
@@ -65,7 +65,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 		requestID := graphsync.RequestID(rand.Int31())
 
 		responses := map[graphsync.RequestID]metadata.Metadata{
-			requestID: metadata.Metadata{
+			requestID: {
 				metadata.Item{
 					Link:         link.(cidlink.Link).Cid,
 					BlockPresent: false,
@@ -75,7 +75,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 		p := testutil.GeneratePeers(1)[0]
 		asyncLoader.ProcessResponse(p, responses, nil)
 
-		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 		assertFailResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 0)
 	})
@@ -87,7 +87,7 @@ func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T)
 		link := testutil.NewTestLink()
 		requestID := graphsync.RequestID(rand.Int31())
 		p := testutil.GeneratePeers(1)[0]
-		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 		assertFailResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 1)
 	})
@@ -105,12 +105,12 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 		err := asyncLoader.StartRequest(requestID, "")
 		require.NoError(t, err)
 		p := testutil.GeneratePeers(1)[0]
-		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 
 		st.AssertAttemptLoadWithoutResult(ctx, t, resultChan)
 
 		responses := map[graphsync.RequestID]metadata.Metadata{
-			requestID: metadata.Metadata{
+			requestID: {
 				metadata.Item{
 					Link:         link.Cid,
 					BlockPresent: true,
@@ -133,12 +133,12 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 		err := asyncLoader.StartRequest(requestID, "")
 		require.NoError(t, err)
 		p := testutil.GeneratePeers(1)[0]
-		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 
 		st.AssertAttemptLoadWithoutResult(ctx, t, resultChan)
 
 		responses := map[graphsync.RequestID]metadata.Metadata{
-			requestID: metadata.Metadata{
+			requestID: {
 				metadata.Item{
 					Link:         link.(cidlink.Link).Cid,
 					BlockPresent: false,
@@ -159,7 +159,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 		err := asyncLoader.StartRequest(requestID, "")
 		require.NoError(t, err)
 		p := testutil.GeneratePeers(1)[0]
-		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 		st.AssertAttemptLoadWithoutResult(ctx, t, resultChan)
 		asyncLoader.CompleteResponsesFor(requestID)
 		assertFailResponse(ctx, t, resultChan)
@@ -175,7 +175,7 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		requestID := graphsync.RequestID(rand.Int31())
 		responses := map[graphsync.RequestID]metadata.Metadata{
-			requestID: metadata.Metadata{
+			requestID: {
 				metadata.Item{
 					Link:         link.Cid,
 					BlockPresent: true,
@@ -184,12 +184,12 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 		}
 		p := testutil.GeneratePeers(1)[0]
 		asyncLoader.ProcessResponse(p, responses, blocks)
-		resultChan := asyncLoader.AsyncLoad(p, requestID, link)
+		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 
 		assertSuccessResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 0)
 
-		resultChan = asyncLoader.AsyncLoad(p, requestID, link)
+		resultChan = asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 		assertSuccessResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 1)
 
@@ -214,7 +214,7 @@ func TestRegisterUnregister(t *testing.T) {
 		err = asyncLoader.StartRequest(requestID2, "other")
 		require.NoError(t, err)
 		p := testutil.GeneratePeers(1)[0]
-		resultChan1 := asyncLoader.AsyncLoad(p, requestID2, link1)
+		resultChan1 := asyncLoader.AsyncLoad(p, requestID2, link1, ipld.LinkContext{})
 		assertSuccessResponse(ctx, t, resultChan1)
 		err = asyncLoader.UnregisterPersistenceOption("other")
 		require.EqualError(t, err, "cannot unregister while requests are in progress")
@@ -239,11 +239,11 @@ func TestRequestSplittingLoadLocallyFromBlockstore(t *testing.T) {
 		requestID1 := graphsync.RequestID(rand.Int31())
 		p := testutil.GeneratePeers(1)[0]
 
-		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link)
+		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link, ipld.LinkContext{})
 		requestID2 := graphsync.RequestID(rand.Int31())
 		err = asyncLoader.StartRequest(requestID2, "other")
 		require.NoError(t, err)
-		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link)
+		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link, ipld.LinkContext{})
 
 		assertFailResponse(ctx, t, resultChan1)
 		assertSuccessResponse(ctx, t, resultChan2)
@@ -267,16 +267,16 @@ func TestRequestSplittingSameBlockTwoStores(t *testing.T) {
 		err = asyncLoader.StartRequest(requestID2, "other")
 		require.NoError(t, err)
 		p := testutil.GeneratePeers(1)[0]
-		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link)
-		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link)
+		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link, ipld.LinkContext{})
+		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link, ipld.LinkContext{})
 		responses := map[graphsync.RequestID]metadata.Metadata{
-			requestID1: metadata.Metadata{
+			requestID1: {
 				metadata.Item{
 					Link:         link.Cid,
 					BlockPresent: true,
 				},
 			},
-			requestID2: metadata.Metadata{
+			requestID2: {
 				metadata.Item{
 					Link:         link.Cid,
 					BlockPresent: true,
@@ -308,10 +308,10 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 		err = asyncLoader.StartRequest(requestID2, "other")
 		require.NoError(t, err)
 		p := testutil.GeneratePeers(1)[0]
-		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link)
-		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link)
+		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link, ipld.LinkContext{})
+		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link, ipld.LinkContext{})
 		responses := map[graphsync.RequestID]metadata.Metadata{
-			requestID2: metadata.Metadata{
+			requestID2: {
 				metadata.Item{
 					Link:         link.Cid,
 					BlockPresent: true,

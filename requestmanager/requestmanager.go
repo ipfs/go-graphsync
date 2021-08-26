@@ -61,7 +61,7 @@ type AsyncLoader interface {
 	StartRequest(graphsync.RequestID, string) error
 	ProcessResponse(p peer.ID, responses map[graphsync.RequestID]metadata.Metadata,
 		blks []blocks.Block)
-	AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult
+	AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) <-chan types.AsyncLoadResult
 	CompleteResponsesFor(requestID graphsync.RequestID)
 	CleanupRequest(requestID graphsync.RequestID)
 }

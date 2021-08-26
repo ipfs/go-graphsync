@@ -21,7 +21,7 @@ var log = logging.Logger("graphsync")
 type UnverifiedBlockStore interface {
 	PruneBlocks(func(ipld.Link) bool)
 	PruneBlock(ipld.Link)
-	VerifyBlock(ipld.Link) ([]byte, error)
+	VerifyBlock(ipld.Link, ipld.LinkContext) ([]byte, error)
 	AddUnverifiedBlock(ipld.Link, []byte)
 }
 
@@ -55,13 +55,13 @@ func (rc *ResponseCache) FinishRequest(requestID graphsync.RequestID) {
 }
 
 // AttemptLoad attempts to laod the given block from the cache
-func (rc *ResponseCache) AttemptLoad(requestID graphsync.RequestID, link ipld.Link) ([]byte, error) {
+func (rc *ResponseCache) AttemptLoad(requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) ([]byte, error) {
 	rc.responseCacheLk.Lock()
 	defer rc.responseCacheLk.Unlock()
 	if rc.linkTracker.IsKnownMissingLink(requestID, link) {
 		return nil, fmt.Errorf("remote peer is missing block: %s", link.String())
 	}
-	data, _ := rc.unverifiedBlockStore.VerifyBlock(link)
+	data, _ := rc.unverifiedBlockStore.VerifyBlock(link, linkContext)
 	return data, nil
 }
 
