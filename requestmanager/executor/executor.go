@@ -22,7 +22,7 @@ import (
 
 // AsyncLoadFn is a function which given a request id and an ipld.Link, returns
 // a channel which will eventually return data for the link or an err
-type AsyncLoadFn func(graphsync.RequestID, ipld.Link) <-chan types.AsyncLoadResult
+type AsyncLoadFn func(peer.ID, graphsync.RequestID, ipld.Link) <-chan types.AsyncLoadResult
 
 // ExecutionEnv are request parameters that last between requests
 type ExecutionEnv struct {
@@ -113,7 +113,7 @@ func (re *requestExecutor) traverse() error {
 			return err
 		}
 		lnk, _ := traverser.CurrentRequest()
-		resultChan := re.env.Loader(re.request.ID(), lnk)
+		resultChan := re.env.Loader(re.p, re.request.ID(), lnk)
 		var result types.AsyncLoadResult
 		select {
 		case result = <-resultChan:

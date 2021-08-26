@@ -1,5 +1,31 @@
 # go-graphsync changelog
 
+# go-graphsync 0.8.0
+
+This release updates to the v0.9.0 branch of go-ipld-prime and adds a "trusted store" optimization that may produce important speed improvements.
+
+It also includes several improvements to the internal testplan & updated
+architecture docs.
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Update for LinkSystem (#161) ([ipfs/go-graphsync#161](https://github.com/ipfs/go-graphsync/pull/161))
+  - Round out diagnostic parameters (#157) ([ipfs/go-graphsync#157](https://github.com/ipfs/go-graphsync/pull/157))
+  - map response codes to names (#148) ([ipfs/go-graphsync#148](https://github.com/ipfs/go-graphsync/pull/148))
+  - Discard http output (#156) ([ipfs/go-graphsync#156](https://github.com/ipfs/go-graphsync/pull/156))
+  - Add debug logging (#121) ([ipfs/go-graphsync#121](https://github.com/ipfs/go-graphsync/pull/121))
+  - Add optional HTTP comparison (#153) ([ipfs/go-graphsync#153](https://github.com/ipfs/go-graphsync/pull/153))
+  - docs(architecture): update architecture docs (#154) ([ipfs/go-graphsync#154](https://github.com/ipfs/go-graphsync/pull/154))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 5 | +885/-598 | 55 |
+| dirkmc | 1 | +79/-50 | 2 |
+| Aarsh Shah | 1 | +2/-6 | 2 |
+
 # go-graphsync 0.7.0
 
 This is a small release to update some dependencies. Importantly, it pulls in go-ipld-prime with
@@ -19,6 +45,23 @@ some significant breaking changes.
 |-------------|---------|---------|---------------|
 | Hannah Howard | 2 | +3316/-3015 | 25 |
 | Steven Allen | 1 | +95/-227 | 5 |
+
+# go-graphsync 0.6.9
+
+This release adds additional log statements and addresses a memory performance bug on the requesting side when making lots of outgoing requests at once
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Back pressure incoming responses ([ipfs/go-graphsync#204](https://github.com/ipfs/go-graphsync/pull/204))
+  - Log unverified blockstore memory consumption ([ipfs/go-graphsync#201](https://github.com/ipfs/go-graphsync/pull/201))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| hannahhoward | 5 | +1535/-381 | 25 |
+| Aarsh Shah | 5 | +27/-17 | 5 |
 
 # go-graphsync 0.6.8
 

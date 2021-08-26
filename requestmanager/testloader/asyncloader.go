@@ -8,6 +8,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
@@ -17,6 +18,7 @@ import (
 )
 
 type requestKey struct {
+	p         peer.ID
 	requestID graphsync.RequestID
 	link      ipld.Link
 }
@@ -44,8 +46,8 @@ type FakeAsyncLoader struct {
 func NewFakeAsyncLoader() *FakeAsyncLoader {
 	return &FakeAsyncLoader{
 		responseChannels: make(map[requestKey]chan types.AsyncLoadResult),
-		responses:        make(chan map[graphsync.RequestID]metadata.Metadata, 1),
-		blks:             make(chan []blocks.Block, 1),
+		responses:        make(chan map[graphsync.RequestID]metadata.Metadata, 10),
+		blks:             make(chan []blocks.Block, 10),
 		storesRequested:  make(map[storeKey]struct{}),
 	}
 }
@@ -59,7 +61,7 @@ func (fal *FakeAsyncLoader) StartRequest(requestID graphsync.RequestID, name str
 }
 
 // ProcessResponse just records values passed to verify expectations later
-func (fal *FakeAsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
+func (fal *FakeAsyncLoader) ProcessResponse(p peer.ID, responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
 	fal.responses <- responses
 	fal.blks <- blks
@@ -100,12 +102,12 @@ func (fal *FakeAsyncLoader) VerifyStoreUsed(t *testing.T, requestID graphsync.Re
 	fal.storesRequestedLk.RUnlock()
 }
 
-func (fal *FakeAsyncLoader) asyncLoad(requestID graphsync.RequestID, link ipld.Link) chan types.AsyncLoadResult {
+func (fal *FakeAsyncLoader) asyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link) chan types.AsyncLoadResult {
 	fal.responseChannelsLk.Lock()
-	responseChannel, ok := fal.responseChannels[requestKey{requestID, link}]
+	responseChannel, ok := fal.responseChannels[requestKey{p, requestID, link}]
 	if !ok {
 		responseChannel = make(chan types.AsyncLoadResult, 1)
-		fal.responseChannels[requestKey{requestID, link}] = responseChannel
+		fal.responseChannels[requestKey{p, requestID, link}] = responseChannel
 	}
 	fal.responseChannelsLk.Unlock()
 	return responseChannel
@@ -117,8 +119,8 @@ func (fal *FakeAsyncLoader) OnAsyncLoad(cb func(graphsync.RequestID, ipld.Link, 
 }
 
 // AsyncLoad simulates an asynchronous load with responses stubbed by ResponseOn & SuccessResponseOn
-func (fal *FakeAsyncLoader) AsyncLoad(requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
-	res := fal.asyncLoad(requestID, link)
+func (fal *FakeAsyncLoader) AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
+	res := fal.asyncLoad(p, requestID, link)
 	if fal.cb != nil {
 		fal.cb(requestID, link, res)
 	}
@@ -143,16 +145,16 @@ func (fal *FakeAsyncLoader) CleanupRequest(requestID graphsync.RequestID) {
 // ResponseOn sets the value returned when the given link is loaded for the given request. Because it's an
 // "asynchronous" load, this can be called AFTER the attempt to load this link -- and the client will only get
 // the response at that point
-func (fal *FakeAsyncLoader) ResponseOn(requestID graphsync.RequestID, link ipld.Link, result types.AsyncLoadResult) {
-	responseChannel := fal.asyncLoad(requestID, link)
+func (fal *FakeAsyncLoader) ResponseOn(p peer.ID, requestID graphsync.RequestID, link ipld.Link, result types.AsyncLoadResult) {
+	responseChannel := fal.asyncLoad(p, requestID, link)
 	responseChannel <- result
 	close(responseChannel)
 }
 
 // SuccessResponseOn is convenience function for setting several asynchronous responses at once as all successes
 // and returning the given blocks
-func (fal *FakeAsyncLoader) SuccessResponseOn(requestID graphsync.RequestID, blks []blocks.Block) {
+func (fal *FakeAsyncLoader) SuccessResponseOn(p peer.ID, requestID graphsync.RequestID, blks []blocks.Block) {
 	for _, block := range blks {
-		fal.ResponseOn(requestID, cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: block.RawData(), Local: false, Err: nil})
+		fal.ResponseOn(p, requestID, cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: block.RawData(), Local: false, Err: nil})
 	}
 }
