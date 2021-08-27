@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/hannahhoward/go-pubsub"
 	"github.com/ipfs/go-cid"
@@ -25,6 +26,7 @@ import (
 )
 
 var log = logging.Logger("dt-impl")
+var cancelSendTimeout = 30 * time.Second
 
 type manager struct {
 	dataTransferNetwork  network.DataTransferNetwork
@@ -294,24 +296,22 @@ func (m *manager) CloseDataTransferChannel(ctx context.Context, chid datatransfe
 		log.Warnf("unable to close channel %s: %s", chid, err)
 	}
 
-	// Send a cancel message to the remote peer
-	log.Infof("%s: sending cancel channel to %s for channel %s", m.peerID, chst.OtherPeer(), chid)
-	err = m.dataTransferNetwork.SendMessage(ctx, chst.OtherPeer(), m.cancelMessage(chid))
-	if err != nil {
-		err = fmt.Errorf("unable to send cancel message for channel %s to peer %s: %w",
-			chid, m.peerID, err)
-		_ = m.OnRequestDisconnected(chid, err)
-		log.Warn(err)
-	}
+	// Send a cancel message to the remote peer async
+	go func() {
+		sctx, cancel := context.WithTimeout(context.Background(), cancelSendTimeout)
+		defer cancel()
+		log.Infof("%s: sending cancel channel to %s for channel %s", m.peerID, chst.OtherPeer(), chid)
+		err = m.dataTransferNetwork.SendMessage(sctx, chst.OtherPeer(), m.cancelMessage(chid))
+		if err != nil {
+			err = fmt.Errorf("unable to send cancel message for channel %s to peer %s: %w",
+				chid, m.peerID, err)
+			_ = m.OnRequestDisconnected(chid, err)
+			log.Warn(err)
+		}
+	}()
 
 	// Fire a cancel event
 	fsmerr := m.channels.Cancel(chid)
-	// If it wasn't possible to send a cancel message to the peer, return
-	// that error
-	if err != nil {
-		return err
-	}
-	// If it wasn't possible to fire a cancel event, return that error
 	if fsmerr != nil {
 		return xerrors.Errorf("unable to send cancel to channel FSM: %w", fsmerr)
 	}
