@@ -131,10 +131,10 @@ func (al *AsyncLoader) ProcessResponse(p peer.ID, responses map[graphsync.Reques
 
 // AsyncLoad asynchronously loads the given link for the given request ID. It returns a channel for data and a channel
 // for errors -- only one message will be sent over either.
-func (al *AsyncLoader) AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
+func (al *AsyncLoader) AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) <-chan types.AsyncLoadResult {
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	response := make(chan error, 1)
-	lr := loadattemptqueue.NewLoadRequest(p, requestID, link, resultChan)
+	lr := loadattemptqueue.NewLoadRequest(p, requestID, link, linkContext, resultChan)
 	_ = al.sendSyncMessage(&loadRequestMessage{response, requestID, lr}, response)
 	return resultChan
 }
@@ -368,9 +368,9 @@ func setupAttemptQueue(lsys ipld.LinkSystem, allocator Allocator) (*responsecach
 
 	unverifiedBlockStore := unverifiedblockstore.New(lsys.StorageWriteOpener)
 	responseCache := responsecache.New(unverifiedBlockStore)
-	loadAttemptQueue := loadattemptqueue.New(func(p peer.ID, requestID graphsync.RequestID, link ipld.Link) types.AsyncLoadResult {
+	loadAttemptQueue := loadattemptqueue.New(func(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) types.AsyncLoadResult {
 		// load from response cache
-		data, err := responseCache.AttemptLoad(requestID, link)
+		data, err := responseCache.AttemptLoad(requestID, link, linkContext)
 		if err != nil {
 			return types.AsyncLoadResult{Err: err, Local: false}
 		}
@@ -382,7 +382,7 @@ func setupAttemptQueue(lsys ipld.LinkSystem, allocator Allocator) (*responsecach
 			return types.AsyncLoadResult{Data: data, Local: false}
 		}
 		// fall back to local store
-		if stream, err := lsys.StorageReadOpener(ipld.LinkContext{}, link); stream != nil && err == nil {
+		if stream, err := lsys.StorageReadOpener(linkContext, link); stream != nil && err == nil {
 			if localData, err := ioutil.ReadAll(stream); err == nil && localData != nil {
 				return types.AsyncLoadResult{Data: localData, Local: true}
 			}

@@ -166,7 +166,7 @@ func (t *traverser) checkState() {
 func (t *traverser) writeDone(err error) {
 	select {
 	case <-t.ctx.Done():
-	case t.stateChan <- state{true, err, nil, ipld.LinkContext{}}:
+	case t.stateChan <- state{true, err, nil, ipld.LinkContext{Ctx: t.ctx}}:
 	}
 }
 
@@ -179,7 +179,7 @@ func (t *traverser) start() {
 	}
 	go func() {
 		defer close(t.stopped)
-		ns, err := t.chooser(t.root, ipld.LinkContext{})
+		ns, err := t.chooser(t.root, ipld.LinkContext{Ctx: t.ctx})
 		if err != nil {
 			t.writeDone(err)
 			return

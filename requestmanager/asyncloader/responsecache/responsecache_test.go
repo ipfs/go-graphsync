@@ -35,7 +35,7 @@ func (ubs *fakeUnverifiedBlockStore) PruneBlock(link ipld.Link) {
 	delete(ubs.inMemoryBlocks, link)
 }
 
-func (ubs *fakeUnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
+func (ubs *fakeUnverifiedBlockStore) VerifyBlock(lnk ipld.Link, linkCtx ipld.LinkContext) ([]byte, error) {
 	data, ok := ubs.inMemoryBlocks[lnk]
 	if !ok {
 		return nil, fmt.Errorf("Block not found")
@@ -105,8 +105,9 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 	require.Len(t, fubs.blocks(), len(blks)-1, "should prune block with no references")
 	testutil.RefuteContainsBlock(t, fubs.blocks(), blks[2])
 
+	lnkCtx := ipld.LinkContext{}
 	// should load block from unverified block store
-	data, err := responseCache.AttemptLoad(requestID2, cidlink.Link{Cid: blks[4].Cid()})
+	data, err := responseCache.AttemptLoad(requestID2, cidlink.Link{Cid: blks[4].Cid()}, lnkCtx)
 	require.NoError(t, err)
 	require.Equal(t, blks[4].RawData(), data, "did not load correct block")
 
@@ -115,12 +116,12 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 	testutil.RefuteContainsBlock(t, fubs.blocks(), blks[4])
 
 	// fails as it is a known missing block
-	data, err = responseCache.AttemptLoad(requestID1, cidlink.Link{Cid: blks[1].Cid()})
+	data, err = responseCache.AttemptLoad(requestID1, cidlink.Link{Cid: blks[1].Cid()}, lnkCtx)
 	require.Error(t, err)
 	require.Nil(t, data, "no data should be returned for missing block")
 
 	// should succeed for request 2 where it's not a missing block
-	data, err = responseCache.AttemptLoad(requestID2, cidlink.Link{Cid: blks[1].Cid()})
+	data, err = responseCache.AttemptLoad(requestID2, cidlink.Link{Cid: blks[1].Cid()}, lnkCtx)
 	require.NoError(t, err)
 	require.Equal(t, blks[1].RawData(), data)
 
@@ -129,7 +130,7 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 	testutil.RefuteContainsBlock(t, fubs.blocks(), blks[1])
 
 	// should be unknown result as block is not known missing or present in block store
-	data, err = responseCache.AttemptLoad(requestID1, cidlink.Link{Cid: blks[2].Cid()})
+	data, err = responseCache.AttemptLoad(requestID1, cidlink.Link{Cid: blks[2].Cid()}, lnkCtx)
 	require.NoError(t, err)
 	require.Nil(t, data, "no data should be returned for unknown block")
 

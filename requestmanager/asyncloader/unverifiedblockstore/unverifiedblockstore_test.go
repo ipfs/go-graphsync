@@ -21,7 +21,7 @@ func TestVerifyBlockPresent(t *testing.T) {
 	require.Nil(t, reader)
 	require.Error(t, err, "block should not be loadable till it's verified and stored")
 
-	data, err := unverifiedBlockStore.VerifyBlock(cidlink.Link{Cid: block.Cid()})
+	data, err := unverifiedBlockStore.VerifyBlock(cidlink.Link{Cid: block.Cid()}, ipld.LinkContext{})
 	require.Nil(t, data)
 	require.Error(t, err, "block should not be verifiable till it's added as an unverifiable block")
 
@@ -30,7 +30,7 @@ func TestVerifyBlockPresent(t *testing.T) {
 	require.Nil(t, reader)
 	require.Error(t, err, "block should not be loadable till it's verified")
 
-	data, err = unverifiedBlockStore.VerifyBlock(cidlink.Link{Cid: block.Cid()})
+	data, err = unverifiedBlockStore.VerifyBlock(cidlink.Link{Cid: block.Cid()}, ipld.LinkContext{})
 	require.NoError(t, err)
 	require.Equal(t, block.RawData(), data, "block should be returned on verification if added")
 
@@ -40,7 +40,7 @@ func TestVerifyBlockPresent(t *testing.T) {
 	_, err = io.Copy(&buffer, reader)
 	require.NoError(t, err)
 	require.Equal(t, block.RawData(), buffer.Bytes(), "block should be stored and loadable after verification")
-	data, err = unverifiedBlockStore.VerifyBlock(cidlink.Link{Cid: block.Cid()})
+	data, err = unverifiedBlockStore.VerifyBlock(cidlink.Link{Cid: block.Cid()}, ipld.LinkContext{})
 	require.Nil(t, data)
 	require.Error(t, err, "block cannot be verified twice")
 }

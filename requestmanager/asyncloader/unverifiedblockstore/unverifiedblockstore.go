@@ -59,7 +59,7 @@ func (ubs *UnverifiedBlockStore) PruneBlock(link ipld.Link) {
 
 // VerifyBlock verifies the data for the given link as being part of a traversal,
 // removes it from the unverified store, and writes it to permaneant storage.
-func (ubs *UnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
+func (ubs *UnverifiedBlockStore) VerifyBlock(lnk ipld.Link, linkContext ipld.LinkContext) ([]byte, error) {
 	data, ok := ubs.inMemoryBlocks[lnk]
 	if !ok {
 		return nil, fmt.Errorf("block not found")
@@ -68,7 +68,7 @@ func (ubs *UnverifiedBlockStore) VerifyBlock(lnk ipld.Link) ([]byte, error) {
 	ubs.dataSize = ubs.dataSize - uint64(len(data))
 	log.Debugw("verified block", "total_queued_bytes", ubs.dataSize)
 
-	buffer, committer, err := ubs.storer(ipld.LinkContext{})
+	buffer, committer, err := ubs.storer(linkContext)
 	if err != nil {
 		return nil, err
 	}

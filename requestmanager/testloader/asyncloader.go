@@ -102,7 +102,7 @@ func (fal *FakeAsyncLoader) VerifyStoreUsed(t *testing.T, requestID graphsync.Re
 	fal.storesRequestedLk.RUnlock()
 }
 
-func (fal *FakeAsyncLoader) asyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link) chan types.AsyncLoadResult {
+func (fal *FakeAsyncLoader) asyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) chan types.AsyncLoadResult {
 	fal.responseChannelsLk.Lock()
 	responseChannel, ok := fal.responseChannels[requestKey{p, requestID, link}]
 	if !ok {
@@ -119,8 +119,8 @@ func (fal *FakeAsyncLoader) OnAsyncLoad(cb func(graphsync.RequestID, ipld.Link, 
 }
 
 // AsyncLoad simulates an asynchronous load with responses stubbed by ResponseOn & SuccessResponseOn
-func (fal *FakeAsyncLoader) AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link) <-chan types.AsyncLoadResult {
-	res := fal.asyncLoad(p, requestID, link)
+func (fal *FakeAsyncLoader) AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) <-chan types.AsyncLoadResult {
+	res := fal.asyncLoad(p, requestID, link, linkContext)
 	if fal.cb != nil {
 		fal.cb(requestID, link, res)
 	}
@@ -146,7 +146,7 @@ func (fal *FakeAsyncLoader) CleanupRequest(requestID graphsync.RequestID) {
 // "asynchronous" load, this can be called AFTER the attempt to load this link -- and the client will only get
 // the response at that point
 func (fal *FakeAsyncLoader) ResponseOn(p peer.ID, requestID graphsync.RequestID, link ipld.Link, result types.AsyncLoadResult) {
-	responseChannel := fal.asyncLoad(p, requestID, link)
+	responseChannel := fal.asyncLoad(p, requestID, link, ipld.LinkContext{})
 	responseChannel <- result
 	close(responseChannel)
 }
