@@ -19,8 +19,8 @@ var log = logging.Logger("graphsync")
 
 const maxRetries = 10
 
-// max block size is the maximum size for batching blocks in a single payload
-const maxBlockSize uint64 = 512 * 1024
+// maxEstimatedMessageSize is the maximum estimated size of batched items in a single message payload
+const maxEstimatedMessageSize uint64 = 512 * 1024
 
 type EventName uint64
 
@@ -117,7 +117,7 @@ func shouldBeginNewResponse(builders []*gsmsg.Builder, blkSize uint64) bool {
 	if blkSize == 0 {
 		return false
 	}
-	return builders[len(builders)-1].BlockSize()+blkSize > maxBlockSize
+	return builders[len(builders)-1].EstimatedMessageSize()+blkSize > maxEstimatedMessageSize
 }
 
 // Startup starts the processing of messages, and creates an initial message
@@ -198,7 +198,7 @@ func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, *messa
 		return gsmsg.GraphSyncMessage{}, nil, errEmptyMessage
 	}
 	message, err := builder.Build()
-	return message, &messagePublisher{mq, builder.Topic(), builder.BlockSize()}, err
+	return message, &messagePublisher{mq, builder.Topic(), builder.EstimatedMessageSize()}, err
 }
 
 func (mq *MessageQueue) sendMessage() {

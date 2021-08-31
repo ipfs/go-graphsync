@@ -14,13 +14,13 @@ import (
 // requests for a given peer and then generates the corresponding
 // GraphSync message when ready to send
 type Builder struct {
-	topic              Topic
-	outgoingBlocks     map[cid.Cid]blocks.Block
-	blkSize            uint64
-	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
-	outgoingResponses  map[graphsync.RequestID]metadata.Metadata
-	extensions         map[graphsync.RequestID][]graphsync.ExtensionData
-	requests           map[graphsync.RequestID]GraphSyncRequest
+	topic                Topic
+	outgoingBlocks       map[cid.Cid]blocks.Block
+	estimatedMessageSize uint64
+	completedResponses   map[graphsync.RequestID]graphsync.ResponseStatusCode
+	outgoingResponses    map[graphsync.RequestID]metadata.Metadata
+	extensions           map[graphsync.RequestID][]graphsync.ExtensionData
+	requests             map[graphsync.RequestID]GraphSyncRequest
 }
 
 // Topic is an identifier for notifications about this response builder
@@ -45,7 +45,7 @@ func (b *Builder) AddRequest(request GraphSyncRequest) {
 
 // AddBlock adds the given block to the message.
 func (b *Builder) AddBlock(block blocks.Block) {
-	b.blkSize += uint64(len(block.RawData()))
+	b.estimatedMessageSize += uint64(len(block.RawData()))
 	b.outgoingBlocks[block.Cid()] = block
 }
 
@@ -54,15 +54,16 @@ func (b *Builder) AddExtensionData(requestID graphsync.RequestID, extension grap
 	b.extensions[requestID] = append(b.extensions[requestID], extension)
 }
 
-// BlockSize returns the total size of all blocks in this message
-func (b *Builder) BlockSize() uint64 {
-	return b.blkSize
+// EstimatedMessageSize returns the total estimate size of this message
+func (b *Builder) EstimatedMessageSize() uint64 {
+	return b.estimatedMessageSize
 }
 
 // AddLink adds the given link and whether its block is present
 // to the message for the given request ID.
 func (b *Builder) AddLink(requestID graphsync.RequestID, link ipld.Link, blockPresent bool) {
 	b.outgoingResponses[requestID] = append(b.outgoingResponses[requestID], metadata.Item{Link: link.(cidlink.Link).Cid, BlockPresent: blockPresent})
+	b.estimatedMessageSize += metadata.ItemBinarySizeWithoutCID + uint64(link.(cidlink.Link).Cid.ByteLen())
 }
 
 // AddResponseCode marks the given request as completed in the message,
