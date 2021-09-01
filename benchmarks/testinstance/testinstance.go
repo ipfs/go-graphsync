@@ -109,8 +109,7 @@ func Close(instances []Instance) error {
 // Instance is a test instance of bitswap + dependencies for integration testing
 type Instance struct {
 	Peer            peer.ID
-	Loader          ipld.Loader
-	Storer          ipld.Storer
+	LinkSystem      ipld.LinkSystem
 	BlockStore      blockstore.Blockstore
 	Graphsync       graphsync.GraphExchange
 	Manager         datatransfer.Manager
@@ -164,9 +163,8 @@ func NewInstance(ctx context.Context, net tn.Network, tempDir string, diskBasedD
 		return Instance{}, err
 	}
 
-	loader := storeutil.LoaderForBlockstore(bstore)
-	storer := storeutil.StorerForBlockstore(bstore)
-	gs := gsimpl.New(ctx, gsNet, loader, storer, gsimpl.RejectAllRequestsByDefault())
+	linkSystem := storeutil.LinkSystemForBlockstore(bstore)
+	gs := gsimpl.New(ctx, gsNet, linkSystem, gsimpl.RejectAllRequestsByDefault())
 	transport := gstransport.NewTransport(p, gs)
 	dt, err := dtimpl.NewDataTransfer(namespace.Wrap(dstore, datastore.NewKey("/data-transfers/transfers")), os.TempDir(), dtNet, transport)
 	if err != nil {
@@ -198,8 +196,7 @@ func NewInstance(ctx context.Context, net tn.Network, tempDir string, diskBasedD
 		Peer:            p,
 		Graphsync:       gs,
 		Manager:         dt,
-		Loader:          loader,
-		Storer:          storer,
+		LinkSystem:      linkSystem,
 		BlockStore:      bstore,
 		blockstoreDelay: bsdelay,
 		ds:              dstore,
