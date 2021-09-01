@@ -140,7 +140,7 @@ indent() {
 }
 
 mod_deps() {
-    go list -json -m all | jq 'select(.Version != null)'
+    go list -mod=mod -json -m all | jq 'select(.Version != null)'
 }
 
 ensure() {

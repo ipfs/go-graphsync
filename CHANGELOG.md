@@ -1,12 +1,187 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.8.0
+
+Update graphsync to v0.9.0 with new Linksystem IPLD prime
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Update  to unified go graphsync v0.9.0 (#246) ([filecoin-project/go-data-transfer#246](https://github.com/filecoin-project/go-data-transfer/pull/246))
+- github.com/ipfs/go-graphsync (v0.6.8 -> v0.9.0):
+  - docs(CHANGELOG): update change log
+  - feat(deps): update go-ipld-prime v0.12.0 (#206) ([ipfs/go-graphsync#206](https://github.com/ipfs/go-graphsync/pull/206))
+  - fix(graphsync): make sure linkcontext is passed (#207) ([ipfs/go-graphsync#207](https://github.com/ipfs/go-graphsync/pull/207))
+  - Merge final v0.6.x commit history, and 0.8.0 changelog (#205) ([ipfs/go-graphsync#205](https://github.com/ipfs/go-graphsync/pull/205))
+  - Fix broken link to IPLD selector documentation (#189) ([ipfs/go-graphsync#189](https://github.com/ipfs/go-graphsync/pull/189))
+  - fix: check errors before defering a close (#200) ([ipfs/go-graphsync#200](https://github.com/ipfs/go-graphsync/pull/200))
+  - chore: fix checks (#197) ([ipfs/go-graphsync#197](https://github.com/ipfs/go-graphsync/pull/197))
+  - Merge the v0.6.x commit history (#190) ([ipfs/go-graphsync#190](https://github.com/ipfs/go-graphsync/pull/190))
+  - Ready for universal CI (#187) ([ipfs/go-graphsync#187](https://github.com/ipfs/go-graphsync/pull/187))
+  - fix(requestmanager): pass through linksystem (#166) ([ipfs/go-graphsync#166](https://github.com/ipfs/go-graphsync/pull/166))
+  - fix missing word in section title (#179) ([ipfs/go-graphsync#179](https://github.com/ipfs/go-graphsync/pull/179))
+  - Update for LinkSystem (#161) ([ipfs/go-graphsync#161](https://github.com/ipfs/go-graphsync/pull/161))
+  - Round out diagnostic parameters (#157) ([ipfs/go-graphsync#157](https://github.com/ipfs/go-graphsync/pull/157))
+  - map response codes to names (#148) ([ipfs/go-graphsync#148](https://github.com/ipfs/go-graphsync/pull/148))
+  - Discard http output (#156) ([ipfs/go-graphsync#156](https://github.com/ipfs/go-graphsync/pull/156))
+  - Add debug logging (#121) ([ipfs/go-graphsync#121](https://github.com/ipfs/go-graphsync/pull/121))
+  - Add optional HTTP comparison (#153) ([ipfs/go-graphsync#153](https://github.com/ipfs/go-graphsync/pull/153))
+  - docs(architecture): update architecture docs (#154) ([ipfs/go-graphsync#154](https://github.com/ipfs/go-graphsync/pull/154))
+  - release v0.7.0 ([ipfs/go-graphsync#152](https://github.com/ipfs/go-graphsync/pull/152))
+  - chore: update deps (#151) ([ipfs/go-graphsync#151](https://github.com/ipfs/go-graphsync/pull/151))
+  - Automatically record heap profiles in testplans (#147) ([ipfs/go-graphsync#147](https://github.com/ipfs/go-graphsync/pull/147))
+  - feat(deps): update go-ipld-prime v0.7.0 (#145) ([ipfs/go-graphsync#145](https://github.com/ipfs/go-graphsync/pull/145))
+  - Release/v0.6.0 ([ipfs/go-graphsync#144](https://github.com/ipfs/go-graphsync/pull/144))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 14 | +6397/-4620 | 188 |
+| Steven Allen | 4 | +135/-280 | 10 |
+| dirkmc | 1 | +79/-50 | 2 |
+| hannahhoward | 1 | +32/-0 | 1 |
+| Aarsh Shah | 1 | +2/-6 | 2 |
+| Masih H. Derkani | 1 | +1/-1 | 1 |
+| Ismail Khoffi | 1 | +1/-1 | 1 |
+
+# go-data-transfer 1.7.8
+
+Send cancels async
+
+### Changelog
+- github.com/filecoin-project/go-data-transfer:
+  - send cancel async (#245) ([filecoin-project/go-data-transfer#245](https://github.com/filecoin-project/go-data-transfer/pull/245))
+  - release: v1.7.7 ([filecoin-project/go-data-transfer#242](https://github.com/filecoin-project/go-data-transfer/pull/242))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 1 | +24/-17 | 2 |
+
 # go-data-transfer 1.7.7
 
 Reduce logging in channel monitor
 
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - reduce channel monitor log verbosity (#241) ([filecoin-project/go-data-transfer#241](https://github.com/filecoin-project/go-data-transfer/pull/241))
+  - release: v1.7.6 ([filecoin-project/go-data-transfer#239](https://github.com/filecoin-project/go-data-transfer/pull/239))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 1 | +41/-16 | 2 |
+| Dirk McCormick | 1 | +4/-0 | 1 |
+
 # go-data-transfer 1.7.6
 
 Add some logging to graphsync transport
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - feat: improve graphsync transport logging (#238) ([filecoin-project/go-data-transfer#238](https://github.com/filecoin-project/go-data-transfer/pull/238))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 1 | +15/-8 | 1 |
+| Dirk McCormick | 1 | +4/-0 | 1 |
+
+# go-data-transfer 1.7.5
+
+Add logging to completion flow
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Log completion message flow (#236) ([filecoin-project/go-data-transfer#236](https://github.com/filecoin-project/go-data-transfer/pull/236))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 1 | +13/-4 | 1 |
+
+# go-data-transfer 1.7.4
+
+Various small fixes
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Handle data-sent and data-queued events in the TransferFinished state (#233) ([filecoin-project/go-data-transfer#233](https://github.com/filecoin-project/go-data-transfer/pull/233))
+  - Log closing of completion channel (#232) ([filecoin-project/go-data-transfer#232](https://github.com/filecoin-project/go-data-transfer/pull/232))
+  - fix log statement. (#230) ([filecoin-project/go-data-transfer#230](https://github.com/filecoin-project/go-data-transfer/pull/230))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 2 | +55/-10 | 4 |
+| raulk | 1 | +1/-1 | 1 |
+
+# go-data-transfer 1.7.3
+
+Update graphsync and simplify cancel logic
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Simplify graphsync cancel (#229) ([filecoin-project/go-data-transfer#229](https://github.com/filecoin-project/go-data-transfer/pull/229))
+- github.com/ipfs/go-graphsync (v0.6.4 -> v0.6.8):
+  - release: 0.6.8
+  - refactor: replace particular request not found errors with public error (#188) ([ipfs/go-graphsync#188](https://github.com/ipfs/go-graphsync/pull/188))
+  - fix(responsemanager): fix error codes (#182) ([ipfs/go-graphsync#182](https://github.com/ipfs/go-graphsync/pull/182))
+  - Add cancel request and wait function (#185) ([ipfs/go-graphsync#185](https://github.com/ipfs/go-graphsync/pull/185))
+  - feat(requestmanager): add request timing (#181) ([ipfs/go-graphsync#181](https://github.com/ipfs/go-graphsync/pull/181))
+  - Resolve 175 race condition, no change to hook timing (#178) ([ipfs/go-graphsync#178](https://github.com/ipfs/go-graphsync/pull/178))
+  - release: v0.6.4 ([ipfs/go-graphsync#174](https://github.com/ipfs/go-graphsync/pull/174))
+
+# go-data-transfer 1.7.2
+
+More logging
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - More data transfer logging (#226) ([filecoin-project/go-data-transfer#226](https://github.com/filecoin-project/go-data-transfer/pull/226))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 1 | +5/-0 | 2 |
+
+# go-data-transfer v1.7.1
+
+Improve graphsync logging
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - feat(graphsync): improve logging (#225) ([filecoin-project/go-data-transfer#225](https://github.com/filecoin-project/go-data-transfer/pull/225))
+  - release: v1.7.0 ([filecoin-project/go-data-transfer#222](https://github.com/filecoin-project/go-data-transfer/pull/222))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +4/-2 | 2 |
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 4 | +462/-256 | 26 |
+| dirkmc | 2 | +149/-113 | 13 |
+| hannahhoward | 1 | +81/-11 | 6 |
+
 
 # go-data-transfer 1.7.0
 
