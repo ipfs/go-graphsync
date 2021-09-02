@@ -5,17 +5,13 @@ package message1_1
 import (
 	"fmt"
 	"io"
-	"sort"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
-	cid "github.com/ipfs/go-cid"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	xerrors "golang.org/x/xerrors"
 )
 
 var _ = xerrors.Errorf
-var _ = cid.Undef
-var _ = sort.Sort
 
 func (t *transferRequest1_1) MarshalCBOR(w io.Writer) error {
 	if t == nil {
@@ -388,8 +384,7 @@ func (t *transferRequest1_1) UnmarshalCBOR(r io.Reader) error {
 			}
 
 		default:
-			// Field doesn't exist on this type, so ignore it
-			cbg.ScanForLinks(r, func(cid.Cid) {})
+			return fmt.Errorf("unknown struct field %d: '%s'", i, name)
 		}
 	}
 

@@ -75,8 +75,10 @@ type GraphsyncTestingData struct {
 	Bs2            bstore.Blockstore
 	DagService1    ipldformat.DAGService
 	DagService2    ipldformat.DAGService
-	LinkSystem1    ipld.LinkSystem
-	LinkSystem2    ipld.LinkSystem
+	Loader1        ipld.Loader
+	Loader2        ipld.Loader
+	Storer1        ipld.Storer
+	Storer2        ipld.Storer
 	Host1          host.Host
 	Host2          host.Host
 	GsNet1         gsnet.GraphSyncNetwork
@@ -110,10 +112,12 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T, host1Protocols [
 	gsData.DagService2 = merkledag.NewDAGService(blockservice.New(gsData.Bs2, offline.Exchange(gsData.Bs2)))
 
 	// setup an IPLD loader/storer for blockstore 1
-	gsData.LinkSystem1 = storeutil.LinkSystemForBlockstore(gsData.Bs1)
+	gsData.Loader1 = storeutil.LoaderForBlockstore(gsData.Bs1)
+	gsData.Storer1 = storeutil.StorerForBlockstore(gsData.Bs1)
 
 	// setup an IPLD loader/storer for blockstore 2
-	gsData.LinkSystem2 = storeutil.LinkSystemForBlockstore(gsData.Bs2)
+	gsData.Loader2 = storeutil.LoaderForBlockstore(gsData.Bs2)
+	gsData.Storer2 = storeutil.StorerForBlockstore(gsData.Bs2)
 
 	gsData.Mn = mocknet.New(ctx)
 
@@ -166,7 +170,7 @@ func (gsData *GraphsyncTestingData) SetupGraphsyncHost1() graphsync.GraphExchang
 	}
 	gsCtx, gsCancel := context.WithCancel(gsData.Ctx)
 	gsData.gs1Cancel = gsCancel
-	return gsimpl.New(gsCtx, gsData.GsNet1, gsData.LinkSystem1)
+	return gsimpl.New(gsCtx, gsData.GsNet1, gsData.Loader1, gsData.Storer1)
 }
 
 // SetupGSTransportHost1 sets up a new grapshync transport over real graphsync on the first host
@@ -191,7 +195,7 @@ func (gsData *GraphsyncTestingData) SetupGraphsyncHost2() graphsync.GraphExchang
 	}
 	gsCtx, gsCancel := context.WithCancel(gsData.Ctx)
 	gsData.gs2Cancel = gsCancel
-	return gsimpl.New(gsCtx, gsData.GsNet2, gsData.LinkSystem2)
+	return gsimpl.New(gsCtx, gsData.GsNet2, gsData.Loader2, gsData.Storer2)
 }
 
 // SetupGSTransportHost2 sets up a new grapshync transport over real graphsync on the second host

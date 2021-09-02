@@ -152,14 +152,15 @@ func TestRoundTrip(t *testing.T) {
 				if data.customSourceStore {
 					ds := dss.MutexWrap(datastore.NewMapDatastore())
 					bs := bstore.NewBlockstore(namespace.Wrap(ds, datastore.NewKey("blockstore")))
-					lsys := storeutil.LinkSystemForBlockstore(bs)
+					loader := storeutil.LoaderForBlockstore(bs)
+					storer := storeutil.StorerForBlockstore(bs)
 					sourceDagService = merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
 					err := dt1.RegisterTransportConfigurer(&testutil.FakeDTType{}, func(channelID datatransfer.ChannelID, testVoucher datatransfer.Voucher, transport datatransfer.Transport) {
 						fv, ok := testVoucher.(*testutil.FakeDTType)
 						if ok && fv.Data == voucher.Data {
 							gsTransport, ok := transport.(*tp.Transport)
 							if ok {
-								err := gsTransport.UseStore(channelID, lsys)
+								err := gsTransport.UseStore(channelID, loader, storer)
 								require.NoError(t, err)
 							}
 						}
@@ -175,14 +176,15 @@ func TestRoundTrip(t *testing.T) {
 				if data.customTargetStore {
 					ds := dss.MutexWrap(datastore.NewMapDatastore())
 					bs := bstore.NewBlockstore(namespace.Wrap(ds, datastore.NewKey("blockstore")))
-					lsys := storeutil.LinkSystemForBlockstore(bs)
+					loader := storeutil.LoaderForBlockstore(bs)
+					storer := storeutil.StorerForBlockstore(bs)
 					destDagService = merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
 					err := dt2.RegisterTransportConfigurer(&testutil.FakeDTType{}, func(channelID datatransfer.ChannelID, testVoucher datatransfer.Voucher, transport datatransfer.Transport) {
 						fv, ok := testVoucher.(*testutil.FakeDTType)
 						if ok && fv.Data == voucher.Data {
 							gsTransport, ok := transport.(*tp.Transport)
 							if ok {
-								err := gsTransport.UseStore(channelID, lsys)
+								err := gsTransport.UseStore(channelID, loader, storer)
 								require.NoError(t, err)
 							}
 						}
@@ -294,15 +296,18 @@ func TestMultipleRoundTripMultipleStores(t *testing.T) {
 			rootCid := root.(cidlink.Link).Cid
 
 			destDagServices := make([]ipldformat.DAGService, 0, data.requestCount)
-			linkSystems := make([]ipld.LinkSystem, 0, data.requestCount)
+			loaders := make([]ipld.Loader, 0, data.requestCount)
+			storers := make([]ipld.Storer, 0, data.requestCount)
 			for i := 0; i < data.requestCount; i++ {
 				ds := dss.MutexWrap(datastore.NewMapDatastore())
 				bs := bstore.NewBlockstore(namespace.Wrap(ds, datastore.NewKey("blockstore")))
-				lsys := storeutil.LinkSystemForBlockstore(bs)
+				loader := storeutil.LoaderForBlockstore(bs)
+				storer := storeutil.StorerForBlockstore(bs)
 				destDagService := merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
 
 				destDagServices = append(destDagServices, destDagService)
-				linkSystems = append(linkSystems, lsys)
+				loaders = append(loaders, loader)
+				storers = append(storers, storer)
 			}
 
 			err = dt2.RegisterTransportConfigurer(&testutil.FakeDTType{}, func(channelID datatransfer.ChannelID, testVoucher datatransfer.Voucher, transport datatransfer.Transport) {
@@ -312,7 +317,7 @@ func TestMultipleRoundTripMultipleStores(t *testing.T) {
 						if fv.Data == voucher.(*testutil.FakeDTType).Data {
 							gsTransport, ok := transport.(*tp.Transport)
 							if ok {
-								err := gsTransport.UseStore(channelID, linkSystems[i])
+								err := gsTransport.UseStore(channelID, loaders[i], storers[i])
 								require.NoError(t, err)
 							}
 						}
@@ -396,12 +401,14 @@ func TestManyReceiversAtOnce(t *testing.T) {
 				bs := bstore.NewBlockstore(namespace.Wrap(ds, datastore.NewKey("blockstore")))
 				altBs := bstore.NewBlockstore(namespace.Wrap(ds, datastore.NewKey("altstore")))
 
-				lsys := storeutil.LinkSystemForBlockstore(bs)
-				altLinkSystem := storeutil.LinkSystemForBlockstore(altBs)
+				loader := storeutil.LoaderForBlockstore(bs)
+				storer := storeutil.StorerForBlockstore(bs)
+				altLoader := storeutil.LoaderForBlockstore(altBs)
+				altStorer := storeutil.StorerForBlockstore(altBs)
 
 				destDagService := merkledag.NewDAGService(blockservice.New(altBs, offline.Exchange(altBs)))
 
-				gs := gsimpl.New(gsData.Ctx, gsnet, lsys)
+				gs := gsimpl.New(gsData.Ctx, gsnet, loader, storer)
 				gsTransport := tp.NewTransport(host.ID(), gs)
 
 				dtDs := namespace.Wrap(ds, datastore.NewKey("datatransfer"))
@@ -415,7 +422,7 @@ func TestManyReceiversAtOnce(t *testing.T) {
 					_, isFv := testVoucher.(*testutil.FakeDTType)
 					gsTransport, isGs := transport.(*tp.Transport)
 					if isFv && isGs {
-						err := gsTransport.UseStore(channelID, altLinkSystem)
+						err := gsTransport.UseStore(channelID, altLoader, altStorer)
 						require.NoError(t, err)
 					}
 				})

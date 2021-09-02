@@ -945,14 +945,13 @@ func TestManager(t *testing.T) {
 		},
 		"UseStore can change store used for outgoing requests": {
 			action: func(gsData *harness) {
-				lsys := cidlink.DefaultLinkSystem()
-				lsys.StorageReadOpener = func(ipld.LinkContext, ipld.Link) (io.Reader, error) {
+				loader := func(ipld.Link, ipld.LinkContext) (io.Reader, error) {
 					return nil, nil
 				}
-				lsys.StorageWriteOpener = func(ipld.LinkContext) (io.Writer, ipld.BlockWriteCommitter, error) {
+				storer := func(ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
 					return nil, nil, nil
 				}
-				_ = gsData.transport.UseStore(datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self}, lsys)
+				_ = gsData.transport.UseStore(datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self}, loader, storer)
 				gsData.outgoingRequestHook()
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
@@ -965,14 +964,13 @@ func TestManager(t *testing.T) {
 		},
 		"UseStore can change store used for incoming requests": {
 			action: func(gsData *harness) {
-				lsys := cidlink.DefaultLinkSystem()
-				lsys.StorageReadOpener = func(ipld.LinkContext, ipld.Link) (io.Reader, error) {
+				loader := func(ipld.Link, ipld.LinkContext) (io.Reader, error) {
 					return nil, nil
 				}
-				lsys.StorageWriteOpener = func(ipld.LinkContext) (io.Writer, ipld.BlockWriteCommitter, error) {
+				storer := func(ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
 					return nil, nil, nil
 				}
-				_ = gsData.transport.UseStore(datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other}, lsys)
+				_ = gsData.transport.UseStore(datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other}, loader, storer)
 				gsData.incomingRequestHook()
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {

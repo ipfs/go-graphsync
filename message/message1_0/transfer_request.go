@@ -105,7 +105,7 @@ func (trq *transferRequest) Selector() (ipld.Node, error) {
 	}
 	builder := basicnode.Prototype.Any.NewBuilder()
 	reader := bytes.NewReader(trq.Stor.Raw)
-	err := dagcbor.Decode(builder, reader)
+	err := dagcbor.Decoder(builder, reader)
 	if err != nil {
 		return nil, xerrors.Errorf("Error decoding selector: %w", err)
 	}

@@ -27,7 +27,7 @@ func Encode(value Encodable) ([]byte, error) {
 	}
 	if ipldEncodable, ok := value.(ipld.Node); ok {
 		buf := new(bytes.Buffer)
-		err := dagcbor.Encode(ipldEncodable, buf)
+		err := dagcbor.Encoder(ipldEncodable, buf)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +79,7 @@ type ipldDecoder struct {
 func (decoder *ipldDecoder) DecodeFromCbor(encoded []byte) (Encodable, error) {
 	builder := decoder.style.NewBuilder()
 	buf := bytes.NewReader(encoded)
-	err := dagcbor.Decode(builder, buf)
+	err := dagcbor.Decoder(builder, buf)
 	if err != nil {
 		return nil, err
 	}

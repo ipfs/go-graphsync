@@ -436,7 +436,7 @@ func TestMigrationsV0(t *testing.T) {
 
 	allSelector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
 	allSelectorBuf := new(bytes.Buffer)
-	err := dagcbor.Encode(allSelector, allSelectorBuf)
+	err := dagcbor.Encoder(allSelector, allSelectorBuf)
 	require.NoError(t, err)
 	allSelectorBytes := allSelectorBuf.Bytes()
 
@@ -556,7 +556,7 @@ func TestMigrationsV1(t *testing.T) {
 	receivedCids := make([][]cid.Cid, numChannels)
 	allSelector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
 	allSelectorBuf := new(bytes.Buffer)
-	err := dagcbor.Encode(allSelector, allSelectorBuf)
+	err := dagcbor.Encoder(allSelector, allSelectorBuf)
 	require.NoError(t, err)
 	allSelectorBytes := allSelectorBuf.Bytes()
 	selfPeer := testutil.GeneratePeers(1)[0]

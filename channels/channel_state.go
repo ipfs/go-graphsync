@@ -81,7 +81,7 @@ func (c channelState) BaseCID() cid.Cid { return c.baseCid }
 func (c channelState) Selector() ipld.Node {
 	builder := basicnode.Prototype.Any.NewBuilder()
 	reader := bytes.NewReader(c.selector.Raw)
-	err := dagcbor.Decode(builder, reader)
+	err := dagcbor.Decoder(builder, reader)
 	if err != nil {
 		log.Error(err)
 	}

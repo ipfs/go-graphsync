@@ -5,17 +5,13 @@ package datatransfer
 import (
 	"fmt"
 	"io"
-	"sort"
 
-	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	xerrors "golang.org/x/xerrors"
 )
 
 var _ = xerrors.Errorf
-var _ = cid.Undef
-var _ = sort.Sort
 
 var lengthBufChannelID = []byte{131}
 

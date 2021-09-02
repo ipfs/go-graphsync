@@ -5,18 +5,14 @@ package internal
 import (
 	"fmt"
 	"io"
-	"sort"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
-	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	xerrors "golang.org/x/xerrors"
 )
 
 var _ = xerrors.Errorf
-var _ = cid.Undef
-var _ = sort.Sort
 
 func (t *ChannelState) MarshalCBOR(w io.Writer) error {
 	if t == nil {
@@ -658,8 +654,7 @@ func (t *ChannelState) UnmarshalCBOR(r io.Reader) error {
 			}
 
 		default:
-			// Field doesn't exist on this type, so ignore it
-			cbg.ScanForLinks(r, func(cid.Cid) {})
+			return fmt.Errorf("unknown struct field %d: '%s'", i, name)
 		}
 	}
 
@@ -774,8 +769,7 @@ func (t *EncodedVoucher) UnmarshalCBOR(r io.Reader) error {
 			}
 
 		default:
-			// Field doesn't exist on this type, so ignore it
-			cbg.ScanForLinks(r, func(cid.Cid) {})
+			return fmt.Errorf("unknown struct field %d: '%s'", i, name)
 		}
 	}
 
@@ -890,8 +884,7 @@ func (t *EncodedVoucherResult) UnmarshalCBOR(r io.Reader) error {
 			}
 
 		default:
-			// Field doesn't exist on this type, so ignore it
-			cbg.ScanForLinks(r, func(cid.Cid) {})
+			return fmt.Errorf("unknown struct field %d: '%s'", i, name)
 		}
 	}
 
