@@ -1,5 +1,18 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.9.0
+
+Generating Changelog for github.com/filecoin-project/go-data-transfer v1.8.0..bcace47dddb9aafc9e312d72c5a4cf1d80ee93e0
+- github.com/filecoin-project/go-data-transfer:
+  - fix: ensure graphsync transport only closes complete channel once (#250) ([filecoin-project/go-data-transfer#250](https://github.com/filecoin-project/go-data-transfer/pull/250))
+  - revert integration of graphsync-v0.9.0 until we are ready to test the whole stack with it (#249) ([filecoin-project/go-data-transfer#249](https://github.com/filecoin-project/go-data-transfer/pull/249))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 2 | +144/-208 | 25 |
+
 # go-data-transfer 1.8.0
 
 Update graphsync to v0.9.0 with new Linksystem IPLD prime
