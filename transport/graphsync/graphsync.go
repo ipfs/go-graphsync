@@ -894,9 +894,13 @@ func (c *dtChannel) open(ctx context.Context, chid datatransfer.ChannelID, dataS
 	// Set up a completed channel that will be closed when the request
 	// completes (or is cancelled)
 	completed := make(chan struct{})
+	var onCompleteOnce sync.Once
 	onComplete := func() {
-		log.Infow("closing the completion ch for data-transfer channel", "chid", chid)
-		close(completed)
+		// Ensure the channel is only closed once
+		onCompleteOnce.Do(func() {
+			log.Infow("closing the completion ch for data-transfer channel", "chid", chid)
+			close(completed)
+		})
 	}
 	c.completed = completed
 
