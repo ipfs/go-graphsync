@@ -1,5 +1,9 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.10.0
+
+Reinstate update to graphsync v0.9.0 with new Linksystem IPLD prime
+
 # go-data-transfer 1.9.0
 
 Generating Changelog for github.com/filecoin-project/go-data-transfer v1.8.0..bcace47dddb9aafc9e312d72c5a4cf1d80ee93e0
