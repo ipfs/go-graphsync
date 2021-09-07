@@ -1,5 +1,27 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.10.1
+
+Critical bug fix in graphsync + testcase to demonstrate fix
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Fix parallel transfers between same two peers (#254) ([filecoin-project/go-data-transfer#254](https://github.com/filecoin-project/go-data-transfer/pull/254))
+  - release: v1.10.0 ([filecoin-project/go-data-transfer#253](https://github.com/filecoin-project/go-data-transfer/pull/253))
+- github.com/ipfs/go-graphsync (v0.9.0 -> v0.9.1):
+  - docs(CHANGELOG): update for v0.9.1 release
+  - fix(message): fix dropping of response extensions (#211) ([ipfs/go-graphsync#211](https://github.com/ipfs/go-graphsync/pull/211))
+  - docs(CHANGELOG): update change log ([ipfs/go-graphsync#208](https://github.com/ipfs/go-graphsync/pull/208))
+  - docs(README): add notice about branch rename
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 2 | +242/-14 | 5 |
+| hannahhoward | 3 | +57/-2 | 4 |
+
 # go-data-transfer 1.10.0
 
 Reinstate update to graphsync v0.9.0 with new Linksystem IPLD prime
