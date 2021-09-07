@@ -52,6 +52,11 @@ func (b *Builder) AddBlock(block blocks.Block) {
 // AddExtensionData adds the given extension data to to the message
 func (b *Builder) AddExtensionData(requestID graphsync.RequestID, extension graphsync.ExtensionData) {
 	b.extensions[requestID] = append(b.extensions[requestID], extension)
+	// make sure this extension goes out in next response even if no links are sent
+	_, ok := b.outgoingResponses[requestID]
+	if !ok {
+		b.outgoingResponses[requestID] = nil
+	}
 }
 
 // BlockSize returns the total size of all blocks in this message
