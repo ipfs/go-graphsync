@@ -1,5 +1,23 @@
 # go-graphsync changelog
 
+# go-graphsync 0.9.1
+
+Fix a critical bug in the message builder
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - fix(message): fix dropping of response extensions (#211) ([ipfs/go-graphsync#211](https://github.com/ipfs/go-graphsync/pull/211))
+  - docs(CHANGELOG): update change log ([ipfs/go-graphsync#208](https://github.com/ipfs/go-graphsync/pull/208))
+  - docs(README): add notice about branch rename
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +60/-0 | 2 |
+| hannahhoward | 2 | +39/-2 | 3 |
+
 # go-graphsync 0.9.0
 
 This release unifies the master branch with the 0.6.x branch, which contained several divergent features
