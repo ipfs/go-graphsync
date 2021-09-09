@@ -5,8 +5,11 @@ import (
 	"sync"
 
 	pq "github.com/ipfs/go-ipfs-pq"
+	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
+
+var log = logging.Logger("graphsync_allocator")
 
 type Allocator struct {
 	totalMemoryMax uint64
@@ -58,8 +61,10 @@ func (a *Allocator) AllocateBlockMemory(p peer.ID, amount uint64) <-chan error {
 	if (a.totalAllocatedAllPeers+amount <= a.totalMemoryMax) && (status.totalAllocated+amount <= a.perPeerMax) && len(status.pendingAllocations) == 0 {
 		a.totalAllocatedAllPeers += amount
 		status.totalAllocated += amount
+		log.Debugw("bytes allocated", "amount", amount, "peer", p, "peer total", status.totalAllocated, "global total", a.totalAllocatedAllPeers)
 		responseChan <- nil
 	} else {
+		log.Debugw("byte allocation deferred pending memory release", "amount", amount, "peer", p, "peer total", status.totalAllocated, "global total", a.totalAllocatedAllPeers, "max per peer", a.perPeerMax, "global max", a.totalMemoryMax)
 		pendingAllocation := pendingAllocation{p, amount, responseChan, a.nextAllocIndex}
 		a.nextAllocIndex++
 		status.pendingAllocations = append(status.pendingAllocations, pendingAllocation)
@@ -86,6 +91,7 @@ func (a *Allocator) ReleaseBlockMemory(p peer.ID, amount uint64) error {
 	} else {
 		a.totalAllocatedAllPeers = 0
 	}
+	log.Debugw("memory released", "amount", amount, "peer", p, "peer total", status.totalAllocated, "global total", a.totalAllocatedAllPeers, "max per peer", a.perPeerMax, "global max", a.totalMemoryMax)
 	a.peerStatusQueue.Update(status.Index())
 	a.processPendingAllocations()
 	return nil
@@ -104,6 +110,7 @@ func (a *Allocator) ReleasePeerMemory(p peer.ID) error {
 		pendingAllocation.response <- errors.New("peer has been deallocated")
 	}
 	a.totalAllocatedAllPeers -= status.totalAllocated
+	log.Debugw("memory released", "amount", status.totalAllocated, "peer", p, "peer total", 0, "global total", a.totalAllocatedAllPeers, "max per peer", a.perPeerMax, "global max", a.totalMemoryMax)
 	a.processPendingAllocations()
 	return nil
 }
@@ -139,6 +146,7 @@ func (a *Allocator) processNextPendingAllocationForPeer(nextPeer *peerStatus) bo
 	a.totalAllocatedAllPeers += pendingAllocation.amount
 	nextPeer.totalAllocated += pendingAllocation.amount
 	nextPeer.pendingAllocations = nextPeer.pendingAllocations[1:]
+	log.Debugw("bytes allocated", "amount", pendingAllocation.amount, "peer", nextPeer.p, "peer total", nextPeer.totalAllocated, "global total", a.totalAllocatedAllPeers)
 	pendingAllocation.response <- nil
 	return true
 }
