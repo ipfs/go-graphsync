@@ -287,7 +287,9 @@ func (rm *RequestManager) ProcessResponses(p peer.ID, responses []gsmsg.GraphSyn
 	blks []blocks.Block) {
 	response := make(chan error, 1)
 	err := rm.sendSyncMessage(&processResponseMessage{p, responses, blks, response}, response, nil)
-	log.Warningf("ProcessResponses: %s", err)
+	if err != nil {
+		log.Warnf("ProcessResponses: %s", err)
+	}
 }
 
 type unpauseRequestMessage struct {
