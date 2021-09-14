@@ -136,6 +136,61 @@ func TestMessageBuilding(t *testing.T) {
 	}
 }
 
+func TestMessageBuildingExtensionOnly(t *testing.T) {
+	rb := NewBuilder(Topic(0))
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
+
+	extensionData1 := testutil.RandomBytes(100)
+	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
+	extension1 := graphsync.ExtensionData{
+		Name: extensionName1,
+		Data: extensionData1,
+	}
+	extensionData2 := testutil.RandomBytes(100)
+	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
+	extension2 := graphsync.ExtensionData{
+		Name: extensionName2,
+		Data: extensionData2,
+	}
+	rb.AddExtensionData(requestID1, extension1)
+	rb.AddExtensionData(requestID2, extension2)
+
+	message, err := rb.Build()
+
+	require.NoError(t, err, "build responses errored")
+	responses := message.Responses()
+
+	response1, err := findResponseForRequestID(responses, requestID1)
+	require.NoError(t, err)
+	require.Equal(t, graphsync.PartialResponse, response1.Status(), "did not generate partial response")
+
+	response1MetadataRaw, found := response1.Extension(graphsync.ExtensionMetadata)
+	require.True(t, found, "Metadata should be included in response")
+	response1Metadata, err := metadata.DecodeMetadata(response1MetadataRaw)
+	require.NoError(t, err)
+	require.Nil(t, response1Metadata, "incorrect metadata included in response")
+
+	response1ReturnedExtensionData, found := response1.Extension(extensionName1)
+	require.True(t, found)
+	require.Equal(t, extensionData1, response1ReturnedExtensionData, "did not encode first extension")
+
+	response2, err := findResponseForRequestID(responses, requestID2)
+	require.NoError(t, err)
+	require.Equal(t, graphsync.PartialResponse, response2.Status(), "did not generate partial response")
+
+	response2MetadataRaw, found := response2.Extension(graphsync.ExtensionMetadata)
+	require.True(t, found, "Metadata should be included in response")
+	response2Metadata, err := metadata.DecodeMetadata(response2MetadataRaw)
+	require.NoError(t, err)
+	require.Nil(t, response2Metadata, "incorrect metadata included in response")
+
+	response2ReturnedExtensionData, found := response2.Extension(extensionName2)
+	require.True(t, found)
+	require.Equal(t, extensionData2, response2ReturnedExtensionData, "did not encode second extension")
+
+}
+
 func findResponseForRequestID(responses []GraphSyncResponse, requestID graphsync.RequestID) (GraphSyncResponse, error) {
 	for _, response := range responses {
 		if response.RequestID() == requestID {

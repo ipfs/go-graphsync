@@ -1,5 +1,55 @@
 # go-graphsync changelog
 
+# go-graphsync 0.9.1
+
+Fix a critical bug in the message builder
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - fix(message): fix dropping of response extensions (#211) ([ipfs/go-graphsync#211](https://github.com/ipfs/go-graphsync/pull/211))
+  - docs(CHANGELOG): update change log ([ipfs/go-graphsync#208](https://github.com/ipfs/go-graphsync/pull/208))
+  - docs(README): add notice about branch rename
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +60/-0 | 2 |
+| hannahhoward | 2 | +39/-2 | 3 |
+
+# go-graphsync 0.9.0
+
+This release unifies the master branch with the 0.6.x branch, which contained several divergent features
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - feat(deps): update go-ipld-prime v0.12.0 (#206) ([ipfs/go-graphsync#206](https://github.com/ipfs/go-graphsync/pull/206))
+  - fix(graphsync): make sure linkcontext is passed (#207) ([ipfs/go-graphsync#207](https://github.com/ipfs/go-graphsync/pull/207))
+  - Merge final v0.6.x commit history, and 0.8.0 changelog (#205) ([ipfs/go-graphsync#205](https://github.com/ipfs/go-graphsync/pull/205))
+  - Fix broken link to IPLD selector documentation (#189) ([ipfs/go-graphsync#189](https://github.com/ipfs/go-graphsync/pull/189))
+  - fix: check errors before defering a close (#200) ([ipfs/go-graphsync#200](https://github.com/ipfs/go-graphsync/pull/200))
+  - chore: fix checks (#197) ([ipfs/go-graphsync#197](https://github.com/ipfs/go-graphsync/pull/197))
+  - Merge the v0.6.x commit history (#190) ([ipfs/go-graphsync#190](https://github.com/ipfs/go-graphsync/pull/190))
+  - Ready for universal CI (#187) ([ipfs/go-graphsync#187](https://github.com/ipfs/go-graphsync/pull/187))
+  - fix(requestmanager): pass through linksystem (#166) ([ipfs/go-graphsync#166](https://github.com/ipfs/go-graphsync/pull/166))
+  - fix missing word in section title (#179) ([ipfs/go-graphsync#179](https://github.com/ipfs/go-graphsync/pull/179))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 10 | +2452/-1125 | 110 |
+| Aarsh Shah | 2 | +40/-177 | 6 |
+| dirkmc | 4 | +118/-11 | 8 |
+| hannahhoward | 1 | +81/-11 | 6 |
+| aarshkshah1992 | 3 | +87/-3 | 7 |
+| Steven Allen | 2 | +20/-53 | 4 |
+| Dirk McCormick | 1 | +11/-0 | 1 |
+| Masih H. Derkani | 1 | +1/-1 | 1 |
+| Ismail Khoffi | 1 | +1/-1 | 1 |
+
 # go-graphsync 0.8.0
 
 This release updates to the v0.9.0 branch of go-ipld-prime and adds a "trusted store" optimization that may produce important speed improvements.
