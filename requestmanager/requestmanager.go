@@ -59,7 +59,7 @@ type PeerHandler interface {
 // results as new responses are processed
 type AsyncLoader interface {
 	StartRequest(graphsync.RequestID, string) error
-	ProcessResponse(p peer.ID, responses map[graphsync.RequestID]metadata.Metadata,
+	ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
 		blks []blocks.Block)
 	AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) <-chan types.AsyncLoadResult
 	CompleteResponsesFor(requestID graphsync.RequestID)
@@ -278,17 +278,15 @@ type processResponseMessage struct {
 	p         peer.ID
 	responses []gsmsg.GraphSyncResponse
 	blks      []blocks.Block
-	response  chan error
 }
 
 // ProcessResponses ingests the given responses from the network and
 // and updates the in progress requests based on those responses.
 func (rm *RequestManager) ProcessResponses(p peer.ID, responses []gsmsg.GraphSyncResponse,
 	blks []blocks.Block) {
-	response := make(chan error, 1)
-	err := rm.sendSyncMessage(&processResponseMessage{p, responses, blks, response}, response, nil)
-	if err != nil {
-		log.Warnf("ProcessResponses: %s", err)
+	select {
+	case rm.messages <- &processResponseMessage{p, responses, blks}:
+	case <-rm.ctx.Done():
 	}
 }
 
@@ -485,12 +483,8 @@ func (prm *processResponseMessage) handle(rm *RequestManager) {
 	filteredResponses = rm.filterResponsesForPeer(filteredResponses, prm.p)
 	rm.updateLastResponses(filteredResponses)
 	responseMetadata := metadataForResponses(filteredResponses)
-	rm.asyncLoader.ProcessResponse(prm.p, responseMetadata, prm.blks)
+	rm.asyncLoader.ProcessResponse(responseMetadata, prm.blks)
 	rm.processTerminations(filteredResponses)
-	select {
-	case <-rm.ctx.Done():
-	case prm.response <- nil:
-	}
 }
 
 func (rm *RequestManager) filterResponsesForPeer(responses []gsmsg.GraphSyncResponse, p peer.ID) []gsmsg.GraphSyncResponse {

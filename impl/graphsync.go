@@ -58,7 +58,8 @@ type GraphSync struct {
 	persistenceOptions          *persistenceoptions.PersistenceOptions
 	ctx                         context.Context
 	cancel                      context.CancelFunc
-	allocator                   *allocator.Allocator
+	responseAllocator           *allocator.Allocator
+	requestAllocator            *allocator.Allocator
 }
 
 type graphsyncConfigOptions struct {
@@ -191,7 +192,8 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		persistenceOptions:          persistenceOptions,
 		ctx:                         ctx,
 		cancel:                      cancel,
-		allocator:                   responseAllocator,
+		responseAllocator:           responseAllocator,
+		requestAllocator:            requestAllocator,
 	}
 
 	asyncLoader.Startup()
@@ -334,6 +336,14 @@ func (gsr *graphSyncReceiver) ReceiveMessage(
 	sender peer.ID,
 	incoming gsmsg.GraphSyncMessage) {
 	gsr.graphSync().responseManager.ProcessRequests(ctx, sender, incoming.Requests())
+	totalMemoryAllocated := uint64(0)
+	for _, blk := range incoming.Blocks() {
+		totalMemoryAllocated += uint64(len(blk.RawData()))
+	}
+	select {
+	case <-gsr.graphSync().responseAllocator.AllocateBlockMemory(sender, totalMemoryAllocated):
+	case <-gsr.ctx.Done():
+	}
 	gsr.graphSync().requestManager.ProcessResponses(sender, incoming.Responses(), incoming.Blocks())
 }
 

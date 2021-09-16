@@ -31,7 +31,6 @@ type alternateQueue struct {
 
 // Allocator indicates a mechanism for tracking memory used by a given peer
 type Allocator interface {
-	AllocateBlockMemory(p peer.ID, amount uint64) <-chan error
 	ReleaseBlockMemory(p peer.ID, amount uint64) error
 }
 
@@ -113,16 +112,8 @@ func (al *AsyncLoader) StartRequest(requestID graphsync.RequestID, persistenceOp
 
 // ProcessResponse injests new responses and completes asynchronous loads as
 // neccesary
-func (al *AsyncLoader) ProcessResponse(p peer.ID, responses map[graphsync.RequestID]metadata.Metadata,
+func (al *AsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
-	totalMemoryAllocated := uint64(0)
-	for _, blk := range blks {
-		totalMemoryAllocated += uint64(len(blk.RawData()))
-	}
-	select {
-	case <-al.allocator.AllocateBlockMemory(p, totalMemoryAllocated):
-	case <-al.ctx.Done():
-	}
 	select {
 	case <-al.ctx.Done():
 	case al.incomingMessages <- &newResponsesAvailableMessage{responses, blks}:
