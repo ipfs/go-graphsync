@@ -1,5 +1,24 @@
 # go-graphsync changelog
 
+# go-graphsync 0.9.2
+
+Minor bug fix and thread unblock
+
+### Changelog
+- github.com/ipfs/go-graphsync:
+  - fix(requestmanager): remove main thread block on allocation (#216) ([ipfs/go-graphsync#216](https://github.com/ipfs/go-graphsync/pull/216))
+  - feat(allocator): add debug logging (#213) ([ipfs/go-graphsync#213](https://github.com/ipfs/go-graphsync/pull/213))
+  - fix: spurious warn log (#210) ([ipfs/go-graphsync#210](https://github.com/ipfs/go-graphsync/pull/210))
+  - docs(CHANGELOG): update for v0.9.1 release (#212) ([ipfs/go-graphsync#212](https://github.com/ipfs/go-graphsync/pull/212))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 3 | +52/-31 | 7 |
+| dirkmc | 1 | +3/-1 | 1 |
+
+
 # go-graphsync 0.9.1
 
 Fix a critical bug in the message builder
