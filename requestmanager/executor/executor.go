@@ -5,8 +5,11 @@ import (
 	"context"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-peertaskqueue"
+	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
@@ -18,183 +21,117 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
+	logging "github.com/ipfs/go-log/v2"
 )
+
+var log = logging.Logger("gs_request_executor")
 
 // AsyncLoadFn is a function which given a request id and an ipld.Link, returns
 // a channel which will eventually return data for the link or an err
 type AsyncLoadFn func(peer.ID, graphsync.RequestID, ipld.Link, ipld.LinkContext) <-chan types.AsyncLoadResult
 
-// ExecutionEnv are request parameters that last between requests
-type ExecutionEnv struct {
-	Ctx              context.Context
-	SendRequest      func(peer.ID, gsmsg.GraphSyncRequest)
-	RunBlockHooks    func(p peer.ID, response graphsync.ResponseData, blk graphsync.BlockData) error
-	TerminateRequest func(graphsync.RequestID)
-	WaitForMessages  func(ctx context.Context, resumeMessages chan graphsync.ExtensionData) ([]graphsync.ExtensionData, error)
-	Loader           AsyncLoadFn
-	LinkSystem       ipld.LinkSystem
+type Executor struct {
+	ctx             context.Context
+	sendRequest     func(peer.ID, gsmsg.GraphSyncRequest)
+	runBlockHooks   func(p peer.ID, response graphsync.ResponseData, blk graphsync.BlockData) error
+	getRequest      func(peer.ID, *peertask.Task, chan RequestExecution)
+	releaseRequest  func(peer.ID, *peertask.Task, error)
+	waitForMessages func(ctx context.Context, resumeMessages chan graphsync.ExtensionData) ([]graphsync.ExtensionData, error)
+	loader          AsyncLoadFn
+	linkSystem      ipld.LinkSystem
+	queue           *peertaskqueue.PeerTaskQueue
+	workSignal      chan struct{}
+	ticker          *time.Ticker
+}
+
+func (e *Executor) processRequestsWorker() {
+	const targetWork = 1
+	requestExecutionChan := make(chan RequestExecution)
+	var requestExecution RequestExecution
+	for {
+		pid, tasks, _ := e.queue.PopTasks(targetWork)
+		for len(tasks) == 0 {
+			select {
+			case <-e.ctx.Done():
+				return
+			case <-e.workSignal:
+				pid, tasks, _ = e.queue.PopTasks(targetWork)
+			case <-e.ticker.C:
+				e.queue.ThawRound()
+				pid, tasks, _ = e.queue.PopTasks(targetWork)
+			}
+		}
+		for _, task := range tasks {
+			e.getRequest(pid, task, requestExecutionChan)
+			select {
+			case requestExecution = <-requestExecutionChan:
+			case <-e.ctx.Done():
+				return
+			}
+			if requestExecution.Empty {
+				log.Info("Empty task on peer request stack")
+				continue
+			}
+			log.Debugw("beginning request execution", "id", requestExecution.Request.ID(), "peer", pid.String(), "root_cid", requestExecution.Request.Root().String())
+			err := e.traverse(requestExecution)
+			if err != nil && !isContextErr(err) && !isPausedErr(err) {
+				select {
+				case <-requestExecution.Ctx.Done():
+				case requestExecution.InProgressErr <- err:
+				}
+			}
+			e.releaseRequest(pid, task, err)
+			log.Debugw("finishing response execution", "id", requestExecution.Request.ID(), "peer", pid.String(), "root_cid", requestExecution.Request.Root().String())
+		}
+	}
 }
 
 // RequestExecution are parameters for a single request execution
 type RequestExecution struct {
-	Ctx                  context.Context
-	P                    peer.ID
-	TerminalError        chan error
-	Request              gsmsg.GraphSyncRequest
-	LastResponse         *atomic.Value
-	DoNotSendCids        *cid.Set
-	NodePrototypeChooser traversal.LinkTargetNodePrototypeChooser
-	ResumeMessages       chan []graphsync.ExtensionData
-	PauseMessages        chan struct{}
+	Ctx           context.Context
+	Request       gsmsg.GraphSyncRequest
+	LastResponse  *atomic.Value
+	DoNotSendCids *cid.Set
+	PauseMessages chan struct{}
+	Traverser     ipldutil.Traverser
+	P             peer.ID
+	InProgressErr chan error
+	Empty         bool
 }
 
-// Start begins execution of a request in a go routine
-func (ee ExecutionEnv) Start(re RequestExecution) (chan graphsync.ResponseProgress, chan error) {
-	executor := &requestExecutor{
-		inProgressChan:   make(chan graphsync.ResponseProgress),
-		inProgressErr:    make(chan error),
-		ctx:              re.Ctx,
-		p:                re.P,
-		terminalError:    re.TerminalError,
-		request:          re.Request,
-		lastResponse:     re.LastResponse,
-		doNotSendCids:    re.DoNotSendCids,
-		nodeStyleChooser: re.NodePrototypeChooser,
-		resumeMessages:   re.ResumeMessages,
-		pauseMessages:    re.PauseMessages,
-		env:              ee,
-	}
-	executor.sendRequest(executor.request)
-	go executor.run()
-	return executor.inProgressChan, executor.inProgressErr
-}
-
-type requestExecutor struct {
-	inProgressChan    chan graphsync.ResponseProgress
-	inProgressErr     chan error
-	ctx               context.Context
-	p                 peer.ID
-	terminalError     chan error
-	request           gsmsg.GraphSyncRequest
-	lastResponse      *atomic.Value
-	nodeStyleChooser  traversal.LinkTargetNodePrototypeChooser
-	resumeMessages    chan []graphsync.ExtensionData
-	pauseMessages     chan struct{}
-	doNotSendCids     *cid.Set
-	env               ExecutionEnv
-	restartNeeded     bool
-	pendingExtensions []graphsync.ExtensionData
-}
-
-func (re *requestExecutor) visitor(tp traversal.Progress, node ipld.Node, tr traversal.VisitReason) error {
-	select {
-	case <-re.ctx.Done():
-	case re.inProgressChan <- graphsync.ResponseProgress{
-		Node:      node,
-		Path:      tp.Path,
-		LastBlock: tp.LastBlock,
-	}:
-	}
-	return nil
-}
-
-func (re *requestExecutor) traverse() error {
-	traverser := ipldutil.TraversalBuilder{
-		Root:       cidlink.Link{Cid: re.request.Root()},
-		Selector:   re.request.Selector(),
-		Visitor:    re.visitor,
-		Chooser:    re.nodeStyleChooser,
-		LinkSystem: re.env.LinkSystem,
-	}.Start(re.ctx)
-	defer traverser.Shutdown(context.Background())
+func (e *Executor) traverse(re RequestExecution) error {
 	for {
-		isComplete, err := traverser.IsComplete()
+		isComplete, err := re.Traverser.IsComplete()
 		if isComplete {
 			return err
 		}
-		lnk, linkContext := traverser.CurrentRequest()
-		resultChan := re.env.Loader(re.p, re.request.ID(), lnk, linkContext)
+		lnk, linkContext := re.Traverser.CurrentRequest()
+		resultChan := e.loader(re.P, re.Request.ID(), lnk, linkContext)
 		var result types.AsyncLoadResult
 		select {
 		case result = <-resultChan:
 		default:
-			err := re.sendRestartAsNeeded()
-			if err != nil {
+			if err := e.startRemoteRequest(re); err != nil {
 				return err
 			}
 			select {
-			case <-re.ctx.Done():
+			case <-e.ctx.Done():
 				return ipldutil.ContextCancelError{}
 			case result = <-resultChan:
 			}
 		}
-		err = re.processResult(traverser, lnk, result)
-		if _, ok := err.(hooks.ErrPaused); ok {
-			err = re.waitForResume()
-			if err != nil {
-				return err
-			}
-			err = traverser.Advance(bytes.NewBuffer(result.Data))
-			if err != nil {
-				return err
-			}
-		} else if err != nil {
+		err = e.processResult(re, lnk, result)
+		if err != nil {
 			return err
 		}
 	}
 }
 
-func (re *requestExecutor) run() {
-	err := re.traverse()
-	if err != nil {
-		if !isContextErr(err) {
-			select {
-			case <-re.ctx.Done():
-			case re.inProgressErr <- err:
-			}
-		}
-	}
+func (e *Executor) onNewBlockWithPause(re RequestExecution, block graphsync.BlockData) error {
+	err := e.onNewBlock(re, block)
 	select {
-	case terminalError := <-re.terminalError:
-		select {
-		case re.inProgressErr <- terminalError:
-		case <-re.env.Ctx.Done():
-		}
-	default:
-	}
-	re.terminateRequest()
-	close(re.inProgressChan)
-	close(re.inProgressErr)
-}
-
-func (re *requestExecutor) sendRequest(request gsmsg.GraphSyncRequest) {
-	re.env.SendRequest(re.p, request)
-}
-
-func (re *requestExecutor) terminateRequest() {
-	re.env.TerminateRequest(re.request.ID())
-}
-
-func (re *requestExecutor) runBlockHooks(blk graphsync.BlockData) error {
-	response := re.lastResponse.Load().(gsmsg.GraphSyncResponse)
-	return re.env.RunBlockHooks(re.p, response, blk)
-}
-
-func (re *requestExecutor) waitForResume() error {
-	select {
-	case <-re.ctx.Done():
-		return ipldutil.ContextCancelError{}
-	case re.pendingExtensions = <-re.resumeMessages:
-		re.restartNeeded = true
-		return nil
-	}
-}
-
-func (re *requestExecutor) onNewBlockWithPause(block graphsync.BlockData) error {
-	err := re.onNewBlock(block)
-	select {
-	case <-re.pauseMessages:
-		re.sendRequest(gsmsg.CancelRequest(re.request.ID()))
+	case <-re.PauseMessages:
+		e.sendRequest(re.P, gsmsg.CancelRequest(re.Request.ID()))
 		if err == nil {
 			err = hooks.ErrPaused{}
 		}
@@ -203,52 +140,51 @@ func (re *requestExecutor) onNewBlockWithPause(block graphsync.BlockData) error 
 	return err
 }
 
-func (re *requestExecutor) onNewBlock(block graphsync.BlockData) error {
-	re.doNotSendCids.Add(block.Link().(cidlink.Link).Cid)
-	return re.runBlockHooks(block)
+func (e *Executor) onNewBlock(re RequestExecution, block graphsync.BlockData) error {
+	re.DoNotSendCids.Add(block.Link().(cidlink.Link).Cid)
+	response := re.LastResponse.Load().(gsmsg.GraphSyncResponse)
+	return e.runBlockHooks(re.P, response, block)
 }
 
-func (re *requestExecutor) processResult(traverser ipldutil.Traverser, link ipld.Link, result types.AsyncLoadResult) error {
+func (e *Executor) processResult(re RequestExecution, link ipld.Link, result types.AsyncLoadResult) error {
 	if result.Err != nil {
 		select {
-		case <-re.ctx.Done():
+		case <-re.Ctx.Done():
 			return ipldutil.ContextCancelError{}
-		case re.inProgressErr <- result.Err:
-			traverser.Error(traversal.SkipMe{})
+		case re.InProgressErr <- result.Err:
+			re.Traverser.Error(traversal.SkipMe{})
 			return nil
 		}
 	}
-	err := re.onNewBlockWithPause(&blockData{link, result.Local, uint64(len(result.Data))})
+	err := e.onNewBlockWithPause(re, &blockData{link, result.Local, uint64(len(result.Data))})
 	if err != nil {
 		return err
 	}
-	err = traverser.Advance(bytes.NewBuffer(result.Data))
+	err = re.Traverser.Advance(bytes.NewBuffer(result.Data))
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (re *requestExecutor) sendRestartAsNeeded() error {
-	if !re.restartNeeded {
-		return nil
-	}
-	extensions := re.pendingExtensions
-	re.pendingExtensions = nil
-	re.restartNeeded = false
-	cidsData, err := cidset.EncodeCidSet(re.doNotSendCids)
+func (e *Executor) startRemoteRequest(re RequestExecution) error {
+	cidsData, err := cidset.EncodeCidSet(re.DoNotSendCids)
 	if err != nil {
 		return err
 	}
-	extensions = append(extensions, graphsync.ExtensionData{Name: graphsync.ExtensionDoNotSendCIDs, Data: cidsData})
-	re.request = re.request.ReplaceExtensions(extensions)
-	re.sendRequest(re.request)
+	request := re.Request.ReplaceExtensions([]graphsync.ExtensionData{{Name: graphsync.ExtensionDoNotSendCIDs, Data: cidsData}})
+	e.sendRequest(re.P, request)
 	return nil
 }
 
 func isContextErr(err error) bool {
 	// TODO: Match with errors.Is when https://github.com/ipld/go-ipld-prime/issues/58 is resolved
 	return strings.Contains(err.Error(), ipldutil.ContextCancelError{}.Error())
+}
+
+func isPausedErr(err error) bool {
+	_, isPaused := err.(hooks.ErrPaused)
+	return isPaused
 }
 
 type blockData struct {

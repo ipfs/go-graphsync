@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -11,8 +12,11 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/ipfs/go-peertaskqueue"
+	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/libp2p/go-libp2p-core/peer"
 
@@ -38,16 +42,22 @@ const (
 )
 
 type inProgressRequestStatus struct {
-	ctx            context.Context
-	startTime      time.Time
-	cancelFn       func()
-	p              peer.ID
-	terminalError  chan error
-	resumeMessages chan []graphsync.ExtensionData
-	pauseMessages  chan struct{}
-	paused         bool
-	lastResponse   atomic.Value
-	onTerminated   []chan error
+	ctx              context.Context
+	startTime        time.Time
+	cancelFn         func()
+	p                peer.ID
+	terminalError    error
+	resumeMessages   chan []graphsync.ExtensionData
+	pauseMessages    chan struct{}
+	paused           bool
+	lastResponse     atomic.Value
+	onTerminated     []chan error
+	request          gsmsg.GraphSyncRequest
+	doNotSendCids    *cid.Set
+	nodeStyleChooser traversal.LinkTargetNodePrototypeChooser
+	inProgressChan   chan graphsync.ResponseProgress
+	inProgressErr    chan error
+	traverser        ipldutil.Traverser
 }
 
 // PeerHandler is an interface that can send requests to peers
@@ -85,6 +95,7 @@ type RequestManager struct {
 	responseHooks             ResponseHooks
 	blockHooks                BlockHooks
 	networkErrorListeners     *listeners.NetworkErrorListeners
+	requestQueue              *peertaskqueue.PeerTaskQueue
 }
 
 type requestManagerMessage interface {
@@ -239,7 +250,6 @@ func (rm *RequestManager) singleErrorResponse(err error) (chan graphsync.Respons
 
 type cancelRequestMessage struct {
 	requestID     graphsync.RequestID
-	isPause       bool
 	onTerminated  chan error
 	terminalError error
 }
@@ -250,7 +260,7 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID,
 	cancelMessageChannel := rm.messages
 	for cancelMessageChannel != nil || incomingResponses != nil || incomingErrors != nil {
 		select {
-		case cancelMessageChannel <- &cancelRequestMessage{requestID, false, nil, nil}:
+		case cancelMessageChannel <- &cancelRequestMessage{requestID, nil, nil}:
 			cancelMessageChannel = nil
 		// clear out any remaining responses, in case and "incoming reponse"
 		// messages get processed before our cancel message
@@ -271,7 +281,7 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID,
 // CancelRequest cancels the given request ID and waits for the request to terminate
 func (rm *RequestManager) CancelRequest(ctx context.Context, requestID graphsync.RequestID) error {
 	terminated := make(chan error, 1)
-	return rm.sendSyncMessage(&cancelRequestMessage{requestID, false, terminated, graphsync.RequestClientCancelledErr{}}, terminated, ctx.Done())
+	return rm.sendSyncMessage(&cancelRequestMessage{requestID, terminated, graphsync.RequestClientCancelledErr{}}, terminated, ctx.Done())
 }
 
 type processResponseMessage struct {
@@ -364,7 +374,9 @@ func (rm *RequestManager) cleanupInProcessRequests() {
 }
 
 type terminateRequestMessage struct {
-	requestID graphsync.RequestID
+	p    peer.ID
+	task *peertask.Task
+	err  error
 }
 
 func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *RequestManager) (gsmsg.GraphSyncRequest, chan graphsync.ResponseProgress, chan error) {
@@ -387,36 +399,24 @@ func (nrm *newRequestMessage) setupRequest(requestID graphsync.RequestID, rm *Re
 		doNotSendCids = cid.NewSet()
 	}
 	ctx, cancel := context.WithCancel(rm.ctx)
-	p := nrm.p
-	resumeMessages := make(chan []graphsync.ExtensionData, 1)
-	pauseMessages := make(chan struct{}, 1)
-	terminalError := make(chan error, 1)
 	requestStatus := &inProgressRequestStatus{
-		ctx: ctx, startTime: time.Now(), cancelFn: cancel, p: p, resumeMessages: resumeMessages, pauseMessages: pauseMessages, terminalError: terminalError,
+		ctx:              ctx,
+		startTime:        time.Now(),
+		cancelFn:         cancel,
+		p:                nrm.p,
+		resumeMessages:   make(chan []graphsync.ExtensionData, 1),
+		pauseMessages:    make(chan struct{}, 1),
+		doNotSendCids:    doNotSendCids,
+		request:          request,
+		nodeStyleChooser: hooksResult.CustomChooser,
+		inProgressChan:   make(chan graphsync.ResponseProgress),
+		inProgressErr:    make(chan error),
 	}
-	lastResponse := &requestStatus.lastResponse
-	lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
+	requestStatus.lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
 	rm.inProgressRequestStatuses[request.ID()] = requestStatus
-	incoming, incomingError := executor.ExecutionEnv{
-		Ctx:              rm.ctx,
-		SendRequest:      rm.sendRequest,
-		TerminateRequest: rm.terminateRequest,
-		RunBlockHooks:    rm.processBlockHooks,
-		Loader:           rm.asyncLoader.AsyncLoad,
-		LinkSystem:       rm.linkSystem,
-	}.Start(
-		executor.RequestExecution{
-			Ctx:                  ctx,
-			P:                    p,
-			Request:              request,
-			TerminalError:        terminalError,
-			LastResponse:         lastResponse,
-			DoNotSendCids:        doNotSendCids,
-			NodePrototypeChooser: hooksResult.CustomChooser,
-			ResumeMessages:       resumeMessages,
-			PauseMessages:        pauseMessages,
-		})
-	return request, incoming, incomingError
+
+	rm.requestQueue.PushTasks(nrm.p, peertask.Task{Topic: requestID, Priority: math.MaxInt32, Work: 1})
+	return request, requestStatus.inProgressChan, requestStatus.inProgressErr
 }
 
 func (nrm *newRequestMessage) handle(rm *RequestManager) {
@@ -431,13 +431,86 @@ func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	}
 }
 
-func (trm *terminateRequestMessage) handle(rm *RequestManager) {
-	ipr, ok := rm.inProgressRequestStatuses[trm.requestID]
-	if ok {
-		log.Infow("graphsync request complete", "request id", trm.requestID, "peer", ipr.p, "total time", time.Since(ipr.startTime))
+type initiateRequestMessage struct {
+	p                    peer.ID
+	task                 *peertask.Task
+	requestExecutionChan chan executor.RequestExecution
+}
+
+func (irm *initiateRequestMessage) requestExecution(rm *RequestManager, requestID graphsync.RequestID) executor.RequestExecution {
+	ipr, ok := rm.inProgressRequestStatuses[requestID]
+	if !ok {
+		return executor.RequestExecution{Empty: true}
 	}
-	delete(rm.inProgressRequestStatuses, trm.requestID)
-	rm.asyncLoader.CleanupRequest(trm.requestID)
+	log.Infow("graphsync request initiated", "request id", requestID, "peer", ipr.p, "total time", time.Since(ipr.startTime))
+
+	if ipr.traverser == nil {
+		ipr.traverser = ipldutil.TraversalBuilder{
+			Root:       cidlink.Link{Cid: ipr.request.Root()},
+			Selector:   ipr.request.Selector(),
+			Visitor:    makeVisitor(ipr.ctx, ipr.inProgressChan),
+			Chooser:    ipr.nodeStyleChooser,
+			LinkSystem: rm.linkSystem,
+		}.Start(ipr.ctx)
+	}
+
+	return executor.RequestExecution{
+		Ctx:           ipr.ctx,
+		Request:       ipr.request,
+		LastResponse:  &ipr.lastResponse,
+		DoNotSendCids: ipr.doNotSendCids,
+		PauseMessages: ipr.pauseMessages,
+		Traverser:     ipr.traverser,
+		P:             ipr.p,
+		InProgressErr: ipr.inProgressErr,
+		Empty:         false,
+	}
+}
+
+func (irm *initiateRequestMessage) handle(rm *RequestManager) {
+	requestID := irm.task.Topic.(graphsync.RequestID)
+	requestExecution := irm.requestExecution(rm, requestID)
+	if requestExecution.Empty {
+		rm.requestQueue.TasksDone(irm.p, irm.task)
+	}
+	select {
+	case <-rm.ctx.Done():
+	case irm.requestExecutionChan <- requestExecution:
+	}
+}
+
+func makeVisitor(ctx context.Context, inProgressChan chan graphsync.ResponseProgress) func(tp traversal.Progress, node ipld.Node, tr traversal.VisitReason) error {
+	return func(tp traversal.Progress, node ipld.Node, tr traversal.VisitReason) error {
+		select {
+		case <-ctx.Done():
+		case inProgressChan <- graphsync.ResponseProgress{
+			Node:      node,
+			Path:      tp.Path,
+			LastBlock: tp.LastBlock,
+		}:
+		}
+		return nil
+	}
+}
+
+func (trm *terminateRequestMessage) handle(rm *RequestManager) {
+	requestID := trm.task.Topic.(graphsync.RequestID)
+	rm.requestQueue.TasksDone(trm.p, trm.task)
+
+	ipr, ok := rm.inProgressRequestStatuses[requestID]
+	if !ok {
+		return
+	}
+	if _, ok := trm.err.(hooks.ErrPaused); ok {
+		rm.sendRequest(trm.p, gsmsg.CancelRequest(ipr.request.ID()))
+		ipr.paused = true
+		return
+	}
+	if 
+	log.Infow("graphsync request complete", "request id", requestID, "peer", ipr.p, "total time", time.Since(ipr.startTime))
+	
+	delete(rm.inProgressRequestStatuses, requestID)
+	rm.asyncLoader.CleanupRequest(requestID)
 	if ok {
 		for _, onTerminated := range ipr.onTerminated {
 			select {
@@ -446,6 +519,7 @@ func (trm *terminateRequestMessage) handle(rm *RequestManager) {
 			}
 		}
 	}
+
 }
 
 func (crm *cancelRequestMessage) handle(rm *RequestManager) {
@@ -459,23 +533,15 @@ func (crm *cancelRequestMessage) handle(rm *RequestManager) {
 		}
 		return
 	}
-
 	if crm.onTerminated != nil {
 		inProgressRequestStatus.onTerminated = append(inProgressRequestStatus.onTerminated, crm.onTerminated)
 	}
-	if crm.terminalError != nil {
-		select {
-		case inProgressRequestStatus.terminalError <- crm.terminalError:
-		default:
-		}
+	if inProgressRequestStatus.terminalError == nil {
+		inProgressRequestStatus.terminalError = crm.terminalError
 	}
 
 	rm.sendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(crm.requestID))
-	if crm.isPause {
-		inProgressRequestStatus.paused = true
-	} else {
-		inProgressRequestStatus.cancelFn()
-	}
+	inProgressRequestStatus.cancelFn()
 }
 
 func (prm *processResponseMessage) handle(rm *RequestManager) {
@@ -528,9 +594,8 @@ func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg
 			return false
 		}
 		responseError := rm.generateResponseErrorFromStatus(graphsync.RequestFailedUnknown)
-		select {
-		case requestStatus.terminalError <- responseError:
-		default:
+		if requestStatus.terminalError == nil {
+			requestStatus.terminalError = responseError
 		}
 		rm.sendRequest(p, gsmsg.CancelRequest(response.RequestID()))
 		requestStatus.cancelFn()
@@ -545,9 +610,8 @@ func (rm *RequestManager) processTerminations(responses []gsmsg.GraphSyncRespons
 			if gsmsg.IsTerminalFailureCode(response.Status()) {
 				requestStatus := rm.inProgressRequestStatuses[response.RequestID()]
 				responseError := rm.generateResponseErrorFromStatus(response.Status())
-				select {
-				case requestStatus.terminalError <- responseError:
-				default:
+				if requestStatus.terminalError == nil {
+					requestStatus.terminalError = responseError
 				}
 				requestStatus.cancelFn()
 			}
@@ -579,20 +643,21 @@ func (rm *RequestManager) processBlockHooks(p peer.ID, response graphsync.Respon
 		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
 		rm.sendRequest(p, updateRequest)
 	}
-	if result.Err != nil {
-		_, isPause := result.Err.(hooks.ErrPaused)
-		select {
-		case <-rm.ctx.Done():
-		case rm.messages <- &cancelRequestMessage{response.RequestID(), isPause, nil, nil}:
-		}
-	}
 	return result.Err
 }
 
-func (rm *RequestManager) terminateRequest(requestID graphsync.RequestID) {
+
+func (rm *RequestManager) getRequest(p peer.ID, task *peertask.Task, requestExecutionChan chan executor.RequestExecution) {
 	select {
 	case <-rm.ctx.Done():
-	case rm.messages <- &terminateRequestMessage{requestID}:
+	case rm.messages <- &initiateRequestMessage{p, task, requestExecutionChan}:
+	}
+}
+
+func (rm *RequestManager) releaseRequest(p peer.ID, task *peertask.Task, err error) {
+	select {
+	case <-rm.ctx.Done():
+	case rm.messages <- &terminateRequestMessage{p, task, err}:
 	}
 }
 
@@ -694,13 +759,11 @@ func (prm *pauseRequestMessage) pause(rm *RequestManager) error {
 	if inProgressRequestStatus.paused {
 		return errors.New("request is already paused")
 	}
-	inProgressRequestStatus.paused = true
 	select {
-	case <-rm.ctx.Done():
-		return errors.New("context cancelled")
 	case inProgressRequestStatus.pauseMessages <- struct{}{}:
-		return nil
+	default:
 	}
+	return nil
 }
 func (prm *pauseRequestMessage) handle(rm *RequestManager) {
 	err := prm.pause(rm)
