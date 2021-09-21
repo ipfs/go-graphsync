@@ -1,6 +1,23 @@
 # go-graphsync changelog
 
+# go-graphsync 0.9.3
+
+Hotfix for 0.9.2
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - fix(impl): use correct allocator
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| hannahhoward | 1 | +1/-1 | 1 |
+
 # go-graphsync 0.9.2
+
+DO NOT USE: Contains bug
 
 Minor bug fix and thread unblock
 
