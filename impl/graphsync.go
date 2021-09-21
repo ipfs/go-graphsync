@@ -341,7 +341,7 @@ func (gsr *graphSyncReceiver) ReceiveMessage(
 		totalMemoryAllocated += uint64(len(blk.RawData()))
 	}
 	select {
-	case <-gsr.graphSync().responseAllocator.AllocateBlockMemory(sender, totalMemoryAllocated):
+	case <-gsr.graphSync().requestAllocator.AllocateBlockMemory(sender, totalMemoryAllocated):
 	case <-gsr.ctx.Done():
 	}
 	gsr.graphSync().requestManager.ProcessResponses(sender, incoming.Responses(), incoming.Blocks())
