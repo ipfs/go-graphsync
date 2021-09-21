@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/ioutil"
+	"sync"
 
 	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log/v2"
@@ -20,10 +21,6 @@ import (
 
 var log = logging.Logger("gs-asyncloader")
 
-type loaderMessage interface {
-	handle(al *AsyncLoader)
-}
-
 type alternateQueue struct {
 	responseCache    *responsecache.ResponseCache
 	loadAttemptQueue *loadattemptqueue.LoadAttemptQueue
@@ -37,11 +34,10 @@ type Allocator interface {
 // AsyncLoader manages loading links asynchronously in as new responses
 // come in from the network
 type AsyncLoader struct {
-	ctx              context.Context
-	cancel           context.CancelFunc
-	incomingMessages chan loaderMessage
-	outgoingMessages chan loaderMessage
+	ctx    context.Context
+	cancel context.CancelFunc
 
+	stateLk           sync.Mutex
 	defaultLinkSystem ipld.LinkSystem
 	activeRequests    map[graphsync.RequestID]struct{}
 	requestQueues     map[graphsync.RequestID]string
@@ -59,8 +55,6 @@ func New(ctx context.Context, linkSystem ipld.LinkSystem, allocator Allocator) *
 	return &AsyncLoader{
 		ctx:               ctx,
 		cancel:            cancel,
-		incomingMessages:  make(chan loaderMessage),
-		outgoingMessages:  make(chan loaderMessage),
 		defaultLinkSystem: linkSystem,
 		activeRequests:    make(map[graphsync.RequestID]struct{}),
 		requestQueues:     make(map[graphsync.RequestID]string),
@@ -71,52 +65,72 @@ func New(ctx context.Context, linkSystem ipld.LinkSystem, allocator Allocator) *
 	}
 }
 
-// Startup starts processing of messages
-func (al *AsyncLoader) Startup() {
-	go al.messageQueueWorker()
-	go al.run()
-}
-
-// Shutdown finishes processing of messages
-func (al *AsyncLoader) Shutdown() {
-	al.cancel()
-}
-
 // RegisterPersistenceOption registers a new loader/storer option for processing requests
 func (al *AsyncLoader) RegisterPersistenceOption(name string, lsys ipld.LinkSystem) error {
-	if name == "" {
-		return errors.New("persistence option must have a name")
+	al.stateLk.Lock()
+	defer al.stateLk.Unlock()
+	_, existing := al.alternateQueues[name]
+	if existing {
+		return errors.New("already registerd a persistence option with this name")
 	}
-	response := make(chan error, 1)
-	err := al.sendSyncMessage(&registerPersistenceOptionMessage{name, lsys, response}, response)
-	return err
+	responseCache, loadAttemptQueue := setupAttemptQueue(lsys, al.allocator)
+	al.alternateQueues[name] = alternateQueue{responseCache, loadAttemptQueue}
+	return nil
 }
 
 // UnregisterPersistenceOption unregisters an existing loader/storer option for processing requests
 func (al *AsyncLoader) UnregisterPersistenceOption(name string) error {
-	if name == "" {
-		return errors.New("persistence option must have a name")
+	al.stateLk.Lock()
+	defer al.stateLk.Unlock()
+	_, ok := al.alternateQueues[name]
+	if !ok {
+		return errors.New("unknown persistence option")
 	}
-	response := make(chan error, 1)
-	err := al.sendSyncMessage(&unregisterPersistenceOptionMessage{name, response}, response)
-	return err
+	for _, requestQueue := range al.requestQueues {
+		if name == requestQueue {
+			return errors.New("cannot unregister while requests are in progress")
+		}
+	}
+	delete(al.alternateQueues, name)
+	return nil
 }
 
 // StartRequest indicates the given request has started and the manager should
 // continually attempt to load links for this request as new responses come in
 func (al *AsyncLoader) StartRequest(requestID graphsync.RequestID, persistenceOption string) error {
-	response := make(chan error, 1)
-	err := al.sendSyncMessage(&startRequestMessage{requestID, persistenceOption, response}, response)
-	return err
+	al.stateLk.Lock()
+	defer al.stateLk.Unlock()
+	if persistenceOption != "" {
+		_, ok := al.alternateQueues[persistenceOption]
+		if !ok {
+			return errors.New("unknown persistence option")
+		}
+		al.requestQueues[requestID] = persistenceOption
+	}
+	al.activeRequests[requestID] = struct{}{}
+	return nil
 }
 
 // ProcessResponse injests new responses and completes asynchronous loads as
 // neccesary
 func (al *AsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
-	select {
-	case <-al.ctx.Done():
-	case al.incomingMessages <- &newResponsesAvailableMessage{responses, blks}:
+	al.stateLk.Lock()
+	defer al.stateLk.Unlock()
+	byQueue := make(map[string][]graphsync.RequestID)
+	for requestID := range responses {
+		queue := al.requestQueues[requestID]
+		byQueue[queue] = append(byQueue[queue], requestID)
+	}
+	for queue, requestIDs := range byQueue {
+		loadAttemptQueue := al.getLoadAttemptQueue(queue)
+		responseCache := al.getResponseCache(queue)
+		queueResponses := make(map[graphsync.RequestID]metadata.Metadata, len(requestIDs))
+		for _, requestID := range requestIDs {
+			queueResponses[requestID] = responses[requestID]
+		}
+		responseCache.ProcessResponse(queueResponses, blks)
+		loadAttemptQueue.RetryLoads()
 	}
 }
 
@@ -124,9 +138,12 @@ func (al *AsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadat
 // for errors -- only one message will be sent over either.
 func (al *AsyncLoader) AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) <-chan types.AsyncLoadResult {
 	resultChan := make(chan types.AsyncLoadResult, 1)
-	response := make(chan error, 1)
 	lr := loadattemptqueue.NewLoadRequest(p, requestID, link, linkContext, resultChan)
-	_ = al.sendSyncMessage(&loadRequestMessage{response, requestID, lr}, response)
+	al.stateLk.Lock()
+	defer al.stateLk.Unlock()
+	_, retry := al.activeRequests[requestID]
+	loadAttemptQueue := al.getLoadAttemptQueue(al.requestQueues[requestID])
+	loadAttemptQueue.AttemptLoad(lr, retry)
 	return resultChan
 }
 
@@ -134,107 +151,26 @@ func (al *AsyncLoader) AsyncLoad(p peer.ID, requestID graphsync.RequestID, link 
 // requestID, so if no responses are in the cache or local store, a link load
 // should not retry
 func (al *AsyncLoader) CompleteResponsesFor(requestID graphsync.RequestID) {
-	select {
-	case <-al.ctx.Done():
-	case al.incomingMessages <- &finishRequestMessage{requestID}:
-	}
+	al.stateLk.Lock()
+	defer al.stateLk.Unlock()
+	delete(al.activeRequests, requestID)
+	loadAttemptQueue := al.getLoadAttemptQueue(al.requestQueues[requestID])
+	loadAttemptQueue.ClearRequest(requestID)
 }
 
 // CleanupRequest indicates the given request is complete on the client side,
 // and no further attempts will be made to load links for this request,
 // so any cached response data is invalid can be cleaned
 func (al *AsyncLoader) CleanupRequest(requestID graphsync.RequestID) {
-	select {
-	case <-al.ctx.Done():
-	case al.incomingMessages <- &cleanupRequestMessage{requestID}:
+	al.stateLk.Lock()
+	defer al.stateLk.Unlock()
+	aq, ok := al.requestQueues[requestID]
+	if ok {
+		al.alternateQueues[aq].responseCache.FinishRequest(requestID)
+		delete(al.requestQueues, requestID)
+		return
 	}
-}
-
-func (al *AsyncLoader) sendSyncMessage(message loaderMessage, response chan error) error {
-	select {
-	case <-al.ctx.Done():
-		return errors.New("context closed")
-	case al.incomingMessages <- message:
-	}
-	select {
-	case <-al.ctx.Done():
-		return errors.New("context closed")
-	case err := <-response:
-		return err
-	}
-}
-
-type loadRequestMessage struct {
-	response    chan error
-	requestID   graphsync.RequestID
-	loadRequest loadattemptqueue.LoadRequest
-}
-
-type newResponsesAvailableMessage struct {
-	responses map[graphsync.RequestID]metadata.Metadata
-	blks      []blocks.Block
-}
-
-type registerPersistenceOptionMessage struct {
-	name       string
-	linkSystem ipld.LinkSystem
-	response   chan error
-}
-
-type unregisterPersistenceOptionMessage struct {
-	name     string
-	response chan error
-}
-
-type startRequestMessage struct {
-	requestID         graphsync.RequestID
-	persistenceOption string
-	response          chan error
-}
-
-type finishRequestMessage struct {
-	requestID graphsync.RequestID
-}
-
-type cleanupRequestMessage struct {
-	requestID graphsync.RequestID
-}
-
-func (al *AsyncLoader) run() {
-	for {
-		select {
-		case <-al.ctx.Done():
-			return
-		case message := <-al.outgoingMessages:
-			message.handle(al)
-		}
-	}
-}
-
-func (al *AsyncLoader) messageQueueWorker() {
-	var messageBuffer []loaderMessage
-	nextMessage := func() loaderMessage {
-		if len(messageBuffer) == 0 {
-			return nil
-		}
-		return messageBuffer[0]
-	}
-	outgoingMessages := func() chan<- loaderMessage {
-		if len(messageBuffer) == 0 {
-			return nil
-		}
-		return al.outgoingMessages
-	}
-	for {
-		select {
-		case incomingMessage := <-al.incomingMessages:
-			messageBuffer = append(messageBuffer, incomingMessage)
-		case outgoingMessages() <- nextMessage():
-			messageBuffer = messageBuffer[1:]
-		case <-al.ctx.Done():
-			return
-		}
-	}
+	al.responseCache.FinishRequest(requestID)
 }
 
 func (al *AsyncLoader) getLoadAttemptQueue(queue string) *loadattemptqueue.LoadAttemptQueue {
@@ -249,110 +185,6 @@ func (al *AsyncLoader) getResponseCache(queue string) *responsecache.ResponseCac
 		return al.responseCache
 	}
 	return al.alternateQueues[queue].responseCache
-}
-
-func (lrm *loadRequestMessage) handle(al *AsyncLoader) {
-	_, retry := al.activeRequests[lrm.requestID]
-	loadAttemptQueue := al.getLoadAttemptQueue(al.requestQueues[lrm.requestID])
-	loadAttemptQueue.AttemptLoad(lrm.loadRequest, retry)
-	select {
-	case <-al.ctx.Done():
-	case lrm.response <- nil:
-	}
-}
-
-func (rpom *registerPersistenceOptionMessage) register(al *AsyncLoader) error {
-	_, existing := al.alternateQueues[rpom.name]
-	if existing {
-		return errors.New("already registerd a persistence option with this name")
-	}
-	responseCache, loadAttemptQueue := setupAttemptQueue(rpom.linkSystem, al.allocator)
-	al.alternateQueues[rpom.name] = alternateQueue{responseCache, loadAttemptQueue}
-	return nil
-}
-
-func (rpom *registerPersistenceOptionMessage) handle(al *AsyncLoader) {
-	err := rpom.register(al)
-	select {
-	case <-al.ctx.Done():
-	case rpom.response <- err:
-	}
-}
-
-func (upom *unregisterPersistenceOptionMessage) unregister(al *AsyncLoader) error {
-	_, ok := al.alternateQueues[upom.name]
-	if !ok {
-		return errors.New("unknown persistence option")
-	}
-	for _, requestQueue := range al.requestQueues {
-		if upom.name == requestQueue {
-			return errors.New("cannot unregister while requests are in progress")
-		}
-	}
-	delete(al.alternateQueues, upom.name)
-	return nil
-}
-
-func (upom *unregisterPersistenceOptionMessage) handle(al *AsyncLoader) {
-	err := upom.unregister(al)
-	select {
-	case <-al.ctx.Done():
-	case upom.response <- err:
-	}
-}
-
-func (srm *startRequestMessage) startRequest(al *AsyncLoader) error {
-	if srm.persistenceOption != "" {
-		_, ok := al.alternateQueues[srm.persistenceOption]
-		if !ok {
-			return errors.New("unknown persistence option")
-		}
-		al.requestQueues[srm.requestID] = srm.persistenceOption
-	}
-	al.activeRequests[srm.requestID] = struct{}{}
-	return nil
-}
-
-func (srm *startRequestMessage) handle(al *AsyncLoader) {
-	err := srm.startRequest(al)
-	select {
-	case <-al.ctx.Done():
-	case srm.response <- err:
-	}
-}
-
-func (frm *finishRequestMessage) handle(al *AsyncLoader) {
-	delete(al.activeRequests, frm.requestID)
-	loadAttemptQueue := al.getLoadAttemptQueue(al.requestQueues[frm.requestID])
-	loadAttemptQueue.ClearRequest(frm.requestID)
-}
-
-func (nram *newResponsesAvailableMessage) handle(al *AsyncLoader) {
-	byQueue := make(map[string][]graphsync.RequestID)
-	for requestID := range nram.responses {
-		queue := al.requestQueues[requestID]
-		byQueue[queue] = append(byQueue[queue], requestID)
-	}
-	for queue, requestIDs := range byQueue {
-		loadAttemptQueue := al.getLoadAttemptQueue(queue)
-		responseCache := al.getResponseCache(queue)
-		responses := make(map[graphsync.RequestID]metadata.Metadata, len(requestIDs))
-		for _, requestID := range requestIDs {
-			responses[requestID] = nram.responses[requestID]
-		}
-		responseCache.ProcessResponse(responses, nram.blks)
-		loadAttemptQueue.RetryLoads()
-	}
-}
-
-func (crm *cleanupRequestMessage) handle(al *AsyncLoader) {
-	aq, ok := al.requestQueues[crm.requestID]
-	if ok {
-		al.alternateQueues[aq].responseCache.FinishRequest(crm.requestID)
-		delete(al.requestQueues, crm.requestID)
-		return
-	}
-	al.responseCache.FinishRequest(crm.requestID)
 }
 
 func setupAttemptQueue(lsys ipld.LinkSystem, allocator Allocator) (*responsecache.ResponseCache, *loadattemptqueue.LoadAttemptQueue) {

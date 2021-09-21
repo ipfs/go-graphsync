@@ -387,7 +387,6 @@ func withLoader(st *store, exec func(ctx context.Context, asyncLoader *AsyncLoad
 	defer cancel()
 	allocator := allocator.NewAllocator(256*(1<<20), 16*(1<<20))
 	asyncLoader := New(ctx, st.lsys, allocator)
-	asyncLoader.Startup()
 	exec(ctx, asyncLoader)
 }
 

@@ -196,7 +196,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestAllocator:            requestAllocator,
 	}
 
-	asyncLoader.Startup()
 	requestManager.SetDelegate(peerManager)
 	requestManager.Startup()
 	responseManager.Startup()
