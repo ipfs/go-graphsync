@@ -16,18 +16,26 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/responsemanager/runtraversal"
+	"github.com/ipfs/go-peertaskqueue/peertask"
 )
 
 var errCancelledByCommand = errors.New("response cancelled by responder")
 
+// Manager providers an interface to the response manager
+type Manager interface {
+	StartTask(task *peertask.Task, responseTaskDataChan chan<- ResponseTaskData)
+	GetUpdates(p peer.ID, requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest)
+	FinishTask(task *peertask.Task, err error)
+}
+
 // TODO: Move this into a seperate module and fully seperate from the ResponseManager
 type queryExecutor struct {
+	manager            Manager
 	blockHooks         BlockHooks
 	updateHooks        UpdateHooks
 	cancelledListeners CancelledListeners
 	responseAssembler  ResponseAssembler
 	queryQueue         QueryQueue
-	messages           chan responseManagerMessage
 	ctx                context.Context
 	workSignal         chan struct{}
 	ticker             *time.Ticker
@@ -35,8 +43,8 @@ type queryExecutor struct {
 
 func (qe *queryExecutor) processQueriesWorker() {
 	const targetWork = 1
-	taskDataChan := make(chan responseTaskData)
-	var taskData responseTaskData
+	taskDataChan := make(chan ResponseTaskData)
+	var taskData ResponseTaskData
 	for {
 		pid, tasks, _ := qe.queryQueue.PopTasks(targetWork)
 		for len(tasks) == 0 {
@@ -51,31 +59,24 @@ func (qe *queryExecutor) processQueriesWorker() {
 			}
 		}
 		for _, task := range tasks {
-			select {
-			case qe.messages <- &startTaskRequest{task, taskDataChan}:
-			case <-qe.ctx.Done():
-				return
-			}
+			qe.manager.StartTask(task, taskDataChan)
 			select {
 			case taskData = <-taskDataChan:
 			case <-qe.ctx.Done():
 				return
 			}
-			if taskData.empty {
+			if taskData.Empty {
 				log.Info("Empty task on peer request stack")
 				continue
 			}
-			log.Debugw("beginning response execution", "id", taskData.request.ID(), "peer", pid.String(), "root_cid", taskData.request.Root().String())
-			status, err := qe.executeQuery(pid, taskData.request, taskData.loader, taskData.traverser, taskData.signals, taskData.subscriber)
+			log.Debugw("beginning response execution", "id", taskData.Request.ID(), "peer", pid.String(), "root_cid", taskData.Request.Root().String())
+			_, err := qe.executeQuery(pid, taskData.Request, taskData.Loader, taskData.Traverser, taskData.Signals, taskData.Subscriber)
 			isCancelled := err != nil && isContextErr(err)
 			if isCancelled {
-				qe.cancelledListeners.NotifyCancelledListeners(pid, taskData.request)
+				qe.cancelledListeners.NotifyCancelledListeners(pid, taskData.Request)
 			}
-			select {
-			case qe.messages <- &finishTaskRequest{task, status, err}:
-			case <-qe.ctx.Done():
-			}
-			log.Debugw("finishing response execution", "id", taskData.request.ID(), "peer", pid.String(), "root_cid", taskData.request.Root().String())
+			qe.manager.FinishTask(task, err)
+			log.Debugw("finishing response execution", "id", taskData.Request.ID(), "peer", pid.String(), "root_cid", taskData.Request.Root().String())
 		}
 	}
 }
@@ -85,7 +86,7 @@ func (qe *queryExecutor) executeQuery(
 	request gsmsg.GraphSyncRequest,
 	loader ipld.BlockReadOpener,
 	traverser ipldutil.Traverser,
-	signals signals,
+	signals ResponseSignals,
 	sub *notifications.TopicDataSubscriber) (graphsync.ResponseStatusCode, error) {
 	updateChan := make(chan []gsmsg.GraphSyncRequest)
 	err := runtraversal.RunTraversal(loader, traverser, func(link ipld.Link, data []byte) error {
@@ -151,21 +152,18 @@ func (qe *queryExecutor) executeQuery(
 func (qe *queryExecutor) checkForUpdates(
 	p peer.ID,
 	request gsmsg.GraphSyncRequest,
-	signals signals,
+	signals ResponseSignals,
 	updateChan chan []gsmsg.GraphSyncRequest,
 	rb responseassembler.ResponseBuilder) error {
 	for {
 		select {
-		case <-signals.pauseSignal:
+		case <-signals.PauseSignal:
 			rb.PauseRequest()
 			return hooks.ErrPaused{}
-		case err := <-signals.errSignal:
+		case err := <-signals.ErrSignal:
 			return err
-		case <-signals.updateSignal:
-			select {
-			case qe.messages <- &responseUpdateRequest{responseKey{p, request.ID()}, updateChan}:
-			case <-qe.ctx.Done():
-			}
+		case <-signals.UpdateSignal:
+			qe.manager.GetUpdates(p, request.ID(), updateChan)
 			select {
 			case updates := <-updateChan:
 				for _, update := range updates {

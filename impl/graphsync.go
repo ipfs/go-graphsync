@@ -335,7 +335,7 @@ func (gsr *graphSyncReceiver) ReceiveMessage(
 	ctx context.Context,
 	sender peer.ID,
 	incoming gsmsg.GraphSyncMessage) {
-	gsr.graphSync().responseManager.ProcessRequests(ctx, sender, incoming.Requests())
+	gsr.graphSync().responseManager.ProcessRequests(sender, incoming.Requests())
 	totalMemoryAllocated := uint64(0)
 	for _, blk := range incoming.Blocks() {
 		totalMemoryAllocated += uint64(len(blk.RawData()))

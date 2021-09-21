@@ -26,7 +26,7 @@ type queryPreparer struct {
 
 func (qe *queryPreparer) prepareQuery(ctx context.Context,
 	p peer.ID,
-	request gsmsg.GraphSyncRequest, signals signals, sub *notifications.TopicDataSubscriber) (ipld.BlockReadOpener, ipldutil.Traverser, bool, error) {
+	request gsmsg.GraphSyncRequest, signals ResponseSignals, sub *notifications.TopicDataSubscriber) (ipld.BlockReadOpener, ipldutil.Traverser, bool, error) {
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
 	var transactionError error
 	var isPaused bool
