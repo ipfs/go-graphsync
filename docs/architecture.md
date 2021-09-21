@@ -11,6 +11,7 @@ This document explains the basic architecture for the go implementation of the G
 - [Requestor Implementation](#requestor-implementation)
 - [Responder Implementation](#responder-implementation)
 - [Message Sending Layer](#message-sending-layer)
+- [Miscellaneous](#miscellaneous)
 
 ## Overview
 
@@ -71,9 +72,8 @@ Having outlined all the steps to execute a single roundtrip Graphsync request, t
 To do this, GraphSync maintains several independent threads of execution (i.e. goroutines). Specifically:
 - On the requestor side:
 1. We maintain an independent thread to make and track requests (RequestManager)
-2. We maintain an independent thread to feed incoming blocks to selector verifications (AsyncLoader)
-3. Each outgoing request has an independent thread performing selector verification
-4. Each outgoing request has an independent thread collecting and buffering final responses before they are returned to the caller. Graphsync returns responses to the caller through a channel. If the caller fails to immediately read the response channel, this should not block other requests from being processed.
+2. Each outgoing request has an independent thread performing selector verification
+3. Each outgoing request has an independent thread collecting and buffering final responses before they are returned to the caller. Graphsync returns responses to the caller through a channel. If the caller fails to immediately read the response channel, this should not block other requests from being processed.
 - On the responder side:
 1. We maintain an independent thread to receive incoming requests and track outgoing responses. As each incoming request is received, it's put into a prioritized queue.
 2. We maintain fixed number of threads that continuously pull the highest priority request from the queue and perform the selector query for that request. We marshal and deduplicate outgoing responses and blocks before they are sent back. This minimizes data sent on the wire and allows queries to proceed without getting blocked by the network.
@@ -172,9 +172,25 @@ The message consists of a PeerManager which tracks peers, and a message queue fo
 
 The message queue system contains a mechanism for applying backpressure to a query execution to make sure that a slow network connection doesn't cause us to load all the blocks for the query into memory while we wait for messages to go over the network. Whenever you attempt to queue data into the message queue, you provide an estimated size for the data that will be held in memory till the message goes out. Internally, the message queue uses the Allocator to track memory usage, and the call to queue data will block if there is too much data buffered in memory. When messages are sent out, memory is released, which will unblock requests to queue data for the message queue.
 
-## Hooks And Listeners
+## Miscellaneous
+
+### Hooks And Listeners
 
 go-graphsync provides a variety of points in the request/response lifecycle where one can provide a hook to inspect the current state of the request/response and potentially take action. These hooks provide the core mechanisms for authenticating requests, processing graphsync extensions, pausing and resuming, and generally enabling a higher level consumer of the graphsync to precisely control the request/response lifecycle.
 
 Graphsync also provides listeners that enable a caller to be notified when various asynchronous events happen in the request response lifecycle. Currently graphsync contains an internal pubsub notification system (see [notifications](../notifications)) to escalate low level asynchonous events back to high level modules that pass them to external listeners. A future refactor might look for a way to remove this notification system as it adds additional complexity.
 
+### Actor Pattern In RequestManager And ResponseManager
+
+To manage concurrency in a predictable way, the RequestManager and the ResponseManager are informally implemented using the [Actor model](https://en.wikipedia.org/wiki/Actor_model) employed in distributed systems languages like Erlang.
+
+Each has isolated, internal state and a semi-asynchronous message queue (just a go channel with a 16 message buffer). The internal thread takes messages off the queue and dispatches them to call methods that modify internal state. 
+
+Each implementation is spread out across three files:
+- client.go - the public interface whose methods dispatch messages to the internal thread
+- server.go - the methods run inside the thread that actually process messages and modify internal state
+- messages.go - the differnt messages that are sent through the main message box
+
+To achieve the kind of dynamic dispatch one expects from the actor pattern based on message type, we use the visitor pattern to simulate sum types. (https://making.pusher.com/alternatives-to-sum-types-in-go/) This does mean the implementation is a bit verbose to say the least.
+
+However, implementing actors provides a more predictable way to handle concurrency issues than traditional select statements and helps make the logic of complex classes like the RequestManager and ResponseManager easier to follow.
