@@ -18,6 +18,10 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 )
 
+// The code in this file implements the public interface of the response manager.
+// Functions in this file operate outside the internal thread and should
+// NOT modify the internal state of the ResponseManager.
+
 var log = logging.Logger("graphsync")
 
 const (
@@ -193,55 +197,14 @@ func New(ctx context.Context,
 }
 
 // ProcessRequests processes incoming requests for the given peer
-func (rm *ResponseManager) ProcessRequests(p peer.ID, requests []gsmsg.GraphSyncRequest) {
-	rm.cast(&processRequestMessage{p, requests})
+func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, requests []gsmsg.GraphSyncRequest) {
+	rm.send(&processRequestMessage{p, requests}, ctx.Done())
 }
 
 // UnpauseResponse unpauses a response that was previously paused
 func (rm *ResponseManager) UnpauseResponse(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	response := make(chan error, 1)
-	return rm.call(&unpauseRequestMessage{p, requestID, response, extensions}, response)
-}
-
-// PauseResponse pauses an in progress response (may take 1 or more blocks to process)
-func (rm *ResponseManager) PauseResponse(p peer.ID, requestID graphsync.RequestID) error {
-	response := make(chan error, 1)
-	return rm.call(&pauseRequestMessage{p, requestID, response}, response)
-}
-
-// CancelResponse cancels an in progress response
-func (rm *ResponseManager) CancelResponse(p peer.ID, requestID graphsync.RequestID) error {
-	response := make(chan error, 1)
-	return rm.call(&errorRequestMessage{p, requestID, errCancelledByCommand, response}, response)
-}
-
-// this is a test utility method to force all messages to get processed
-func (rm *ResponseManager) synchronize() {
-	sync := make(chan error)
-	_ = rm.call(&synchronizeMessage{sync}, sync)
-}
-
-// StartTask starts the given task from the peer task queue
-func (rm *ResponseManager) StartTask(task *peertask.Task, responseTaskDataChan chan<- ResponseTaskData) {
-	rm.cast(&startTaskRequest{task, responseTaskDataChan})
-}
-
-// GetUpdates is called to read pending updates for a task and clear them
-func (rm *ResponseManager) GetUpdates(p peer.ID, requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest) {
-	rm.cast(&responseUpdateRequest{responseKey{p, requestID}, updatesChan})
-}
-
-// FinishTask marks a task from the task queue as done
-func (rm *ResponseManager) FinishTask(task *peertask.Task, err error) {
-	rm.cast(&finishTaskRequest{task, err})
-}
-
-func (rm *ResponseManager) call(message responseManagerMessage, response chan error) error {
-	select {
-	case <-rm.ctx.Done():
-		return errors.New("context cancelled")
-	case rm.messages <- message:
-	}
+	rm.send(&unpauseRequestMessage{p, requestID, response, extensions}, nil)
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -250,9 +213,59 @@ func (rm *ResponseManager) call(message responseManagerMessage, response chan er
 	}
 }
 
-func (rm *ResponseManager) cast(message responseManagerMessage) {
+// PauseResponse pauses an in progress response (may take 1 or more blocks to process)
+func (rm *ResponseManager) PauseResponse(p peer.ID, requestID graphsync.RequestID) error {
+	response := make(chan error, 1)
+	rm.send(&pauseRequestMessage{p, requestID, response}, nil)
 	select {
 	case <-rm.ctx.Done():
+		return errors.New("context cancelled")
+	case err := <-response:
+		return err
+	}
+}
+
+// CancelResponse cancels an in progress response
+func (rm *ResponseManager) CancelResponse(p peer.ID, requestID graphsync.RequestID) error {
+	response := make(chan error, 1)
+	rm.send(&errorRequestMessage{p, requestID, errCancelledByCommand, response}, nil)
+	select {
+	case <-rm.ctx.Done():
+		return errors.New("context cancelled")
+	case err := <-response:
+		return err
+	}
+}
+
+// this is a test utility method to force all messages to get processed
+func (rm *ResponseManager) synchronize() {
+	sync := make(chan error)
+	rm.send(&synchronizeMessage{sync}, nil)
+	select {
+	case <-rm.ctx.Done():
+	case <-sync:
+	}
+}
+
+// StartTask starts the given task from the peer task queue
+func (rm *ResponseManager) StartTask(task *peertask.Task, responseTaskDataChan chan<- ResponseTaskData) {
+	rm.send(&startTaskRequest{task, responseTaskDataChan}, nil)
+}
+
+// GetUpdates is called to read pending updates for a task and clear them
+func (rm *ResponseManager) GetUpdates(p peer.ID, requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest) {
+	rm.send(&responseUpdateRequest{responseKey{p, requestID}, updatesChan}, nil)
+}
+
+// FinishTask marks a task from the task queue as done
+func (rm *ResponseManager) FinishTask(task *peertask.Task, err error) {
+	rm.send(&finishTaskRequest{task, err}, nil)
+}
+
+func (rm *ResponseManager) send(message responseManagerMessage, done <-chan struct{}) {
+	select {
+	case <-rm.ctx.Done():
+	case <-done:
 	case rm.messages <- message:
 	}
 }

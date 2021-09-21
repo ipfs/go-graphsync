@@ -53,7 +53,7 @@ func TestIncomingQuery(t *testing.T) {
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 
-	responseManager.ProcessRequests(td.p, td.requests)
+	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 	testutil.AssertDoesReceive(td.ctx, t, td.completedRequestChan, "Should have completed request but didn't")
 	for i := 0; i < len(blks); i++ {
 		td.assertSendBlock()
@@ -75,7 +75,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 		cancelledListenerCalled <- struct{}{}
 	})
 	responseManager.Startup()
-	responseManager.ProcessRequests(td.p, td.requests)
+	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 
 	// read one block
 	td.assertSendBlock()
@@ -84,7 +84,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	cancelRequests := []gsmsg.GraphSyncRequest{
 		gsmsg.CancelRequest(td.requestID),
 	}
-	responseManager.ProcessRequests(td.p, cancelRequests)
+	responseManager.ProcessRequests(td.ctx, td.p, cancelRequests)
 	responseManager.synchronize()
 
 	testutil.AssertDoesReceive(td.ctx, t, cancelledListenerCalled, "should call cancelled listener")
@@ -98,7 +98,7 @@ func TestCancellationViaCommand(t *testing.T) {
 	responseManager := td.newResponseManager()
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
-	responseManager.ProcessRequests(td.p, td.requests)
+	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 
 	// read one block
 	td.assertSendBlock()
@@ -117,13 +117,13 @@ func TestEarlyCancellation(t *testing.T) {
 	responseManager := td.newResponseManager()
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
-	responseManager.ProcessRequests(td.p, td.requests)
+	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 
 	// send a cancellation
 	cancelRequests := []gsmsg.GraphSyncRequest{
 		gsmsg.CancelRequest(td.requestID),
 	}
-	responseManager.ProcessRequests(td.p, cancelRequests)
+	responseManager.ProcessRequests(td.ctx, td.p, cancelRequests)
 
 	responseManager.synchronize()
 
@@ -143,7 +143,7 @@ func TestMissingContent(t *testing.T) {
 		})
 		// delete the root block
 		delete(td.blockStore, cidlink.Link{Cid: td.requests[0].Root()})
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestFailedContentNotFound)
 	})
 	t.Run("missing other block", func(t *testing.T) {
@@ -161,7 +161,7 @@ func TestMissingContent(t *testing.T) {
 				break
 			}
 		}
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestCompletedPartial)
 	})
 }
@@ -172,7 +172,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		defer td.cancel()
 		responseManager := td.newResponseManager()
 		responseManager.Startup()
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestRejected)
 	})
 
@@ -184,7 +184,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.SendExtensionData(td.extensionResponse)
 		})
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestRejected)
 		td.assertReceiveExtensionResponse()
 	})
@@ -198,7 +198,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			hookActions.ValidateRequest()
 			hookActions.SendExtensionData(td.extensionResponse)
 		})
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 		td.assertReceiveExtensionResponse()
 	})
@@ -215,7 +215,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			hookActions.SendExtensionData(td.extensionResponse)
 			hookActions.TerminateWithError(errors.New("everything went to crap"))
 		})
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestFailedUnknown)
 		td.assertReceiveExtensionResponse()
 	})
@@ -231,7 +231,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 		// hook validates request
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 		td.assertReceiveExtensionResponse()
 
@@ -239,7 +239,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		unregister()
 
 		// now same request should fail
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestRejected)
 	})
 
@@ -254,7 +254,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 		// request fails with base loader reading from block store that's missing data
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestFailedContentNotFound)
 
 		err := td.peristenceOptions.Register("chainstore", td.persistence)
@@ -267,7 +267,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			}
 		})
 		// hook uses different loader that should make request succeed
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 		td.assertReceiveExtensionResponse()
 	})
@@ -290,7 +290,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 		// with default chooser, customer chooser not called
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 		require.Equal(t, 0, customChooserCallCount)
 
@@ -303,7 +303,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		})
 
 		// verify now that request succeeds and uses custom chooser
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 		td.assertReceiveExtensionResponse()
 		require.Equal(t, 5, customChooserCallCount)
@@ -331,7 +331,7 @@ func TestValidationAndExtensions(t *testing.T) {
 					Data: data,
 				}),
 		}
-		responseManager.ProcessRequests(td.p, requests)
+		responseManager.ProcessRequests(td.ctx, td.p, requests)
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 		td.assertIgnoredCids(set)
 	})
@@ -352,7 +352,7 @@ func TestValidationAndExtensions(t *testing.T) {
 					Data: data,
 				}),
 		}
-		responseManager.ProcessRequests(td.p, requests)
+		responseManager.ProcessRequests(td.ctx, td.p, requests)
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 		td.assertDedupKey("applesauce")
 	})
@@ -365,7 +365,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			hookActions.ValidateRequest()
 			hookActions.PauseResponse()
 		})
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertPausedRequest()
 		td.assertRequestDoesNotCompleteWhilePaused()
 		testutil.AssertChannelEmpty(t, td.sentResponses, "should not send more blocks")
@@ -385,7 +385,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
 				hookActions.SendExtensionData(td.extensionResponse)
 			})
-			responseManager.ProcessRequests(td.p, td.requests)
+			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 			td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 			for i := 0; i < td.blockChainLength; i++ {
 				td.assertReceiveExtensionResponse()
@@ -403,7 +403,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
 				hookActions.TerminateWithError(errors.New("failed"))
 			})
-			responseManager.ProcessRequests(td.p, td.requests)
+			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 			td.assertCompleteRequestWith(graphsync.RequestFailedUnknown)
 		})
 
@@ -423,7 +423,7 @@ func TestValidationAndExtensions(t *testing.T) {
 					hookActions.PauseResponse()
 				}
 			})
-			responseManager.ProcessRequests(td.p, td.requests)
+			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 			td.assertRequestDoesNotCompleteWhilePaused()
 			td.verifyNResponses(blockCount)
 			td.assertPausedRequest()
@@ -450,7 +450,7 @@ func TestValidationAndExtensions(t *testing.T) {
 					require.NoError(t, err)
 				}
 			})
-			responseManager.ProcessRequests(td.p, td.requests)
+			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 			td.assertRequestDoesNotCompleteWhilePaused()
 			td.verifyNResponses(blockCount + 1)
 			td.assertPausedRequest()
@@ -476,7 +476,7 @@ func TestValidationAndExtensions(t *testing.T) {
 				err := responseManager.UnpauseResponse(td.p, td.requestID)
 				require.NoError(t, err)
 			}()
-			responseManager.ProcessRequests(td.p, td.requests)
+			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 			td.assertPausedRequest()
 			td.verifyNResponses(td.blockChainLength)
 			td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
@@ -506,12 +506,12 @@ func TestValidationAndExtensions(t *testing.T) {
 					hookActions.UnpauseResponse()
 				}
 			})
-			responseManager.ProcessRequests(td.p, td.requests)
+			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 			td.assertRequestDoesNotCompleteWhilePaused()
 			td.verifyNResponses(blockCount)
 			td.assertPausedRequest()
 
-			responseManager.ProcessRequests(td.p, td.updateRequests)
+			responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
 			td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 		})
 
@@ -540,9 +540,9 @@ func TestValidationAndExtensions(t *testing.T) {
 						hookActions.SendExtensionData(td.extensionResponse)
 					}
 				})
-				responseManager.ProcessRequests(td.p, td.requests)
+				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 				testutil.AssertDoesReceive(td.ctx, t, sent, "sends blocks")
-				responseManager.ProcessRequests(td.p, td.updateRequests)
+				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
 				responseManager.synchronize()
 				close(wait)
 				td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
@@ -570,12 +570,12 @@ func TestValidationAndExtensions(t *testing.T) {
 						hookActions.SendExtensionData(td.extensionResponse)
 					}
 				})
-				responseManager.ProcessRequests(td.p, td.requests)
+				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 				td.verifyNResponses(blockCount)
 				td.assertPausedRequest()
 
 				// send update
-				responseManager.ProcessRequests(td.p, td.updateRequests)
+				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
 
 				// receive data
 				td.assertReceiveExtensionResponse()
@@ -610,9 +610,9 @@ func TestValidationAndExtensions(t *testing.T) {
 						hookActions.TerminateWithError(errors.New("something went wrong"))
 					}
 				})
-				responseManager.ProcessRequests(td.p, td.requests)
+				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 				testutil.AssertDoesReceive(td.ctx, t, sent, "sends blocks")
-				responseManager.ProcessRequests(td.p, td.updateRequests)
+				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
 				responseManager.synchronize()
 				close(wait)
 				td.assertCompleteRequestWith(graphsync.RequestFailedUnknown)
@@ -639,12 +639,12 @@ func TestValidationAndExtensions(t *testing.T) {
 						hookActions.TerminateWithError(errors.New("something went wrong"))
 					}
 				})
-				responseManager.ProcessRequests(td.p, td.requests)
+				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 				td.verifyNResponses(blockCount)
 				td.assertPausedRequest()
 
 				// send update
-				responseManager.ProcessRequests(td.p, td.updateRequests)
+				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
 				td.assertCompleteRequestWith(graphsync.RequestFailedUnknown)
 
 				// cannot unpause
@@ -665,7 +665,7 @@ func TestNetworkErrors(t *testing.T) {
 		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 		})
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.verifyNResponses(td.blockChainLength)
 		td.assertOnlyCompleteProcessingWith(graphsync.RequestCompletedFull)
 		err := errors.New("something went wrong")
@@ -678,7 +678,7 @@ func TestNetworkErrors(t *testing.T) {
 		defer td.cancel()
 		responseManager := td.newResponseManager()
 		responseManager.Startup()
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertOnlyCompleteProcessingWith(graphsync.RequestRejected)
 		err := errors.New("something went wrong")
 		td.notifyStatusMessagesNetworkError(err)
@@ -693,7 +693,7 @@ func TestNetworkErrors(t *testing.T) {
 		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 		})
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertSendBlock()
 		err := errors.New("something went wrong")
 		td.notifyBlockSendsNetworkError(err)
@@ -717,7 +717,7 @@ func TestNetworkErrors(t *testing.T) {
 				hookActions.PauseResponse()
 			}
 		})
-		responseManager.ProcessRequests(td.p, td.requests)
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertRequestDoesNotCompleteWhilePaused()
 		td.verifyNResponsesOnlyProcessing(blockCount)
 		td.assertPausedRequest()

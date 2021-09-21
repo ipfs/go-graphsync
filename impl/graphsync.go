@@ -206,7 +206,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 
 // Request initiates a new GraphSync request to the given peer using the given selector spec.
 func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
-	return gs.requestManager.SendRequest(ctx, p, root, selector, extensions...)
+	return gs.requestManager.NewRequest(ctx, p, root, selector, extensions...)
 }
 
 // RegisterIncomingRequestHook adds a hook that runs when a request is received
@@ -335,7 +335,7 @@ func (gsr *graphSyncReceiver) ReceiveMessage(
 	ctx context.Context,
 	sender peer.ID,
 	incoming gsmsg.GraphSyncMessage) {
-	gsr.graphSync().responseManager.ProcessRequests(sender, incoming.Requests())
+	gsr.graphSync().responseManager.ProcessRequests(ctx, sender, incoming.Requests())
 	totalMemoryAllocated := uint64(0)
 	for _, blk := range incoming.Blocks() {
 		totalMemoryAllocated += uint64(len(blk.RawData()))

@@ -15,6 +15,9 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
+// The code in this file implements the internal thread for the response manager.
+// These functions can modify the internal state of the ResponseManager
+
 func (rm *ResponseManager) cleanupInProcessResponses() {
 	for _, response := range rm.inProgressResponses {
 		response.cancelFn()
