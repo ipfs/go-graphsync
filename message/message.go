@@ -21,26 +21,23 @@ import (
 
 // IsTerminalSuccessCode returns true if the response code indicates the
 // request terminated successfully.
+// DEPRECATED: use status.IsSuccess()
 func IsTerminalSuccessCode(status graphsync.ResponseStatusCode) bool {
-	return status == graphsync.RequestCompletedFull ||
-		status == graphsync.RequestCompletedPartial
+	return status.IsSuccess()
 }
 
 // IsTerminalFailureCode returns true if the response code indicates the
 // request terminated in failure.
+// DEPRECATED: use status.IsFailure()
 func IsTerminalFailureCode(status graphsync.ResponseStatusCode) bool {
-	return status == graphsync.RequestFailedBusy ||
-		status == graphsync.RequestFailedContentNotFound ||
-		status == graphsync.RequestFailedLegal ||
-		status == graphsync.RequestFailedUnknown ||
-		status == graphsync.RequestCancelled ||
-		status == graphsync.RequestRejected
+	return status.IsFailure()
 }
 
 // IsTerminalResponseCode returns true if the response code signals
 // the end of the request
+// DEPRECATED: use status.IsTerminal()
 func IsTerminalResponseCode(status graphsync.ResponseStatusCode) bool {
-	return IsTerminalSuccessCode(status) || IsTerminalFailureCode(status)
+	return status.IsTerminal()
 }
 
 // Exportable is an interface that can serialize to a protobuf

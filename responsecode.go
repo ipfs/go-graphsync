@@ -77,3 +77,47 @@ var ResponseCodeToName = map[ResponseStatusCode]string{
 	RequestFailedContentNotFound: "RequestFailedContentNotFound",
 	RequestCancelled:             "RequestCancelled",
 }
+
+// AsError generates an error from the status code for a failing status
+func (c ResponseStatusCode) AsError() error {
+	if c.IsSuccess() {
+		return nil
+	}
+	switch c {
+	case RequestFailedBusy:
+		return RequestFailedBusyErr{}
+	case RequestFailedContentNotFound:
+		return RequestFailedContentNotFoundErr{}
+	case RequestFailedLegal:
+		return RequestFailedLegalErr{}
+	case RequestFailedUnknown:
+		return RequestFailedUnknownErr{}
+	case RequestCancelled:
+		return RequestCancelledErr{}
+	default:
+		return fmt.Errorf("Unknown")
+	}
+}
+
+// IsSuccess returns true if the response code indicates the
+// request terminated successfully.
+func (c ResponseStatusCode) IsSuccess() bool {
+	return c == RequestCompletedFull || c == RequestCompletedPartial
+}
+
+// IsFailure returns true if the response code indicates the
+// request terminated in failure.
+func (c ResponseStatusCode) IsFailure() bool {
+	return c == RequestFailedBusy ||
+		c == RequestFailedContentNotFound ||
+		c == RequestFailedLegal ||
+		c == RequestFailedUnknown ||
+		c == RequestCancelled ||
+		c == RequestRejected
+}
+
+// IsTerminal returns true if the response code signals
+// the end of the request
+func (c ResponseStatusCode) IsTerminal() bool {
+	return c.IsSuccess() || c.IsFailure()
+}

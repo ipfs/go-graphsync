@@ -527,7 +527,7 @@ func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg
 		if !ok {
 			return false
 		}
-		responseError := rm.generateResponseErrorFromStatus(graphsync.RequestFailedUnknown)
+		responseError := graphsync.RequestFailedUnknown.AsError()
 		select {
 		case requestStatus.terminalError <- responseError:
 		default:
@@ -541,10 +541,10 @@ func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg
 
 func (rm *RequestManager) processTerminations(responses []gsmsg.GraphSyncResponse) {
 	for _, response := range responses {
-		if gsmsg.IsTerminalResponseCode(response.Status()) {
-			if gsmsg.IsTerminalFailureCode(response.Status()) {
+		if response.Status().IsTerminal() {
+			if response.Status().IsFailure() {
 				requestStatus := rm.inProgressRequestStatuses[response.RequestID()]
-				responseError := rm.generateResponseErrorFromStatus(response.Status())
+				responseError := response.Status().AsError()
 				select {
 				case requestStatus.terminalError <- responseError:
 				default:
@@ -553,23 +553,6 @@ func (rm *RequestManager) processTerminations(responses []gsmsg.GraphSyncRespons
 			}
 			rm.asyncLoader.CompleteResponsesFor(response.RequestID())
 		}
-	}
-}
-
-func (rm *RequestManager) generateResponseErrorFromStatus(status graphsync.ResponseStatusCode) error {
-	switch status {
-	case graphsync.RequestFailedBusy:
-		return graphsync.RequestFailedBusyErr{}
-	case graphsync.RequestFailedContentNotFound:
-		return graphsync.RequestFailedContentNotFoundErr{}
-	case graphsync.RequestFailedLegal:
-		return graphsync.RequestFailedLegalErr{}
-	case graphsync.RequestFailedUnknown:
-		return graphsync.RequestFailedUnknownErr{}
-	case graphsync.RequestCancelled:
-		return graphsync.RequestCancelledErr{}
-	default:
-		return fmt.Errorf("Unknown")
 	}
 }
 
