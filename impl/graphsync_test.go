@@ -416,7 +416,7 @@ func TestPauseResumeRequest(t *testing.T) {
 
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
-	blockChain.VerifyResponseRange(ctx, progressChan, 0, stopPoint-1)
+	blockChain.VerifyResponseRange(ctx, progressChan, 0, stopPoint)
 	timer := time.NewTimer(100 * time.Millisecond)
 	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
 
@@ -424,7 +424,7 @@ func TestPauseResumeRequest(t *testing.T) {
 	err := requestor.UnpauseRequest(requestID, td.extensionUpdate)
 	require.NoError(t, err)
 
-	blockChain.VerifyRemainder(ctx, progressChan, stopPoint-1)
+	blockChain.VerifyRemainder(ctx, progressChan, stopPoint)
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
 	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
 }

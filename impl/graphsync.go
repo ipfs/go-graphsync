@@ -17,12 +17,14 @@ import (
 	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/requestmanager"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
+	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	requestorhooks "github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager"
 	responderhooks "github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
+	"github.com/ipfs/go-graphsync/taskqueue"
 )
 
 var log = logging.Logger("graphsync")
@@ -40,6 +42,8 @@ type GraphSync struct {
 	requestManager              *requestmanager.RequestManager
 	responseManager             *responsemanager.ResponseManager
 	asyncLoader                 *asyncloader.AsyncLoader
+	requestQueue                *taskqueue.TaskQueue
+	requestExecutor             *executor.Executor
 	responseAssembler           *responseassembler.ResponseAssembler
 	peerTaskQueue               *peertaskqueue.PeerTaskQueue
 	peerManager                 *peermanager.PeerMessageManager
@@ -63,12 +67,13 @@ type GraphSync struct {
 }
 
 type graphsyncConfigOptions struct {
-	totalMaxMemoryResponder   uint64
-	maxMemoryPerPeerResponder uint64
-	totalMaxMemoryRequestor   uint64
-	maxMemoryPerPeerRequestor uint64
-	maxInProgressRequests     uint64
-	registerDefaultValidator  bool
+	totalMaxMemoryResponder       uint64
+	maxMemoryPerPeerResponder     uint64
+	totalMaxMemoryRequestor       uint64
+	maxMemoryPerPeerRequestor     uint64
+	maxInProgressIncomingRequests uint64
+	maxInProgressOutgoingRequests uint64
+	registerDefaultValidator      bool
 }
 
 // Option defines the functional option type that can be used to configure
@@ -115,11 +120,19 @@ func MaxMemoryPerPeerRequestor(maxMemoryPerPeer uint64) Option {
 	}
 }
 
-// MaxInProgressRequests changes the maximum number of
+// MaxInProgressIncomingRequests changes the maximum number of
 // graphsync requests that are processed in parallel (default 6)
-func MaxInProgressRequests(maxInProgressRequests uint64) Option {
+func MaxInProgressIncomingRequests(maxInProgressIncomingRequests uint64) Option {
 	return func(gs *graphsyncConfigOptions) {
-		gs.maxInProgressRequests = maxInProgressRequests
+		gs.maxInProgressIncomingRequests = maxInProgressIncomingRequests
+	}
+}
+
+// MaxInProgressOutgoingRequests changes the maximum number of
+// graphsync requests that are processed in parallel (default 6)
+func MaxInProgressOutgoingRequests(maxInProgressOutgoingRequests uint64) Option {
+	return func(gs *graphsyncConfigOptions) {
+		gs.maxInProgressOutgoingRequests = maxInProgressOutgoingRequests
 	}
 }
 
@@ -130,12 +143,13 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	ctx, cancel := context.WithCancel(parent)
 
 	gsConfig := &graphsyncConfigOptions{
-		totalMaxMemoryResponder:   defaultTotalMaxMemory,
-		maxMemoryPerPeerResponder: defaultMaxMemoryPerPeer,
-		totalMaxMemoryRequestor:   defaultTotalMaxMemory,
-		maxMemoryPerPeerRequestor: defaultMaxMemoryPerPeer,
-		maxInProgressRequests:     defaultMaxInProgressRequests,
-		registerDefaultValidator:  true,
+		totalMaxMemoryResponder:       defaultTotalMaxMemory,
+		maxMemoryPerPeerResponder:     defaultMaxMemoryPerPeer,
+		totalMaxMemoryRequestor:       defaultTotalMaxMemory,
+		maxMemoryPerPeerRequestor:     defaultMaxMemoryPerPeer,
+		maxInProgressIncomingRequests: defaultMaxInProgressRequests,
+		maxInProgressOutgoingRequests: defaultMaxInProgressRequests,
+		registerDefaultValidator:      true,
 	}
 	for _, option := range options {
 		option(gsConfig)
@@ -164,16 +178,20 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	requestAllocator := allocator.NewAllocator(gsConfig.totalMaxMemoryRequestor, gsConfig.maxMemoryPerPeerRequestor)
 
 	asyncLoader := asyncloader.New(ctx, linkSystem, requestAllocator)
-	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, incomingBlockHooks, networkErrorListeners)
+	requestQueue := taskqueue.NewTaskQueue(ctx)
+	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, requestQueue)
+	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks, asyncLoader.AsyncLoad)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	peerTaskQueue := peertaskqueue.New()
-	responseManager := responsemanager.New(ctx, linkSystem, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressRequests)
+	responseManager := responsemanager.New(ctx, linkSystem, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressIncomingRequests)
 	graphSync := &GraphSync{
 		network:                     network,
 		linkSystem:                  linkSystem,
 		requestManager:              requestManager,
 		responseManager:             responseManager,
 		asyncLoader:                 asyncLoader,
+		requestQueue:                requestQueue,
+		requestExecutor:             requestExecutor,
 		responseAssembler:           responseAssembler,
 		peerTaskQueue:               peerTaskQueue,
 		peerManager:                 peerManager,
@@ -198,6 +216,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 
 	requestManager.SetDelegate(peerManager)
 	requestManager.Startup()
+	requestQueue.Startup(gsConfig.maxInProgressOutgoingRequests, requestExecutor)
 	responseManager.Startup()
 	network.SetDelegate((*graphSyncReceiver)(graphSync))
 	return graphSync

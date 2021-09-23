@@ -125,7 +125,7 @@ func CollectResponses(ctx context.Context, t TestingT, responseChan <-chan graph
 			}
 			collectedBlocks = append(collectedBlocks, blk)
 		case <-ctx.Done():
-			t.Fatal("response channel never closed")
+			require.FailNow(t, "response channel never closed")
 		}
 	}
 }
