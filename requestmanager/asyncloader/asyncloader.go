@@ -3,6 +3,7 @@ package asyncloader
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"sync"
 
@@ -34,17 +35,17 @@ type Allocator interface {
 // AsyncLoader manages loading links asynchronously in as new responses
 // come in from the network
 type AsyncLoader struct {
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx       context.Context
+	cancel    context.CancelFunc
+	allocator Allocator
 
-	stateLk           sync.Mutex
-	defaultLinkSystem ipld.LinkSystem
-	activeRequests    map[graphsync.RequestID]struct{}
-	requestQueues     map[graphsync.RequestID]string
-	alternateQueues   map[string]alternateQueue
-	responseCache     *responsecache.ResponseCache
-	loadAttemptQueue  *loadattemptqueue.LoadAttemptQueue
-	allocator         Allocator
+	// this mutex protects access to the state of the async loader, which covers all data fields below below
+	stateLk          sync.Mutex
+	activeRequests   map[graphsync.RequestID]struct{}
+	requestQueues    map[graphsync.RequestID]string
+	alternateQueues  map[string]alternateQueue
+	responseCache    *responsecache.ResponseCache
+	loadAttemptQueue *loadattemptqueue.LoadAttemptQueue
 }
 
 // New initializes a new link loading manager for asynchronous loads from the given context
@@ -53,15 +54,14 @@ func New(ctx context.Context, linkSystem ipld.LinkSystem, allocator Allocator) *
 	responseCache, loadAttemptQueue := setupAttemptQueue(linkSystem, allocator)
 	ctx, cancel := context.WithCancel(ctx)
 	return &AsyncLoader{
-		ctx:               ctx,
-		cancel:            cancel,
-		defaultLinkSystem: linkSystem,
-		activeRequests:    make(map[graphsync.RequestID]struct{}),
-		requestQueues:     make(map[graphsync.RequestID]string),
-		alternateQueues:   make(map[string]alternateQueue),
-		responseCache:     responseCache,
-		loadAttemptQueue:  loadAttemptQueue,
-		allocator:         allocator,
+		ctx:              ctx,
+		cancel:           cancel,
+		activeRequests:   make(map[graphsync.RequestID]struct{}),
+		requestQueues:    make(map[graphsync.RequestID]string),
+		alternateQueues:  make(map[string]alternateQueue),
+		responseCache:    responseCache,
+		loadAttemptQueue: loadAttemptQueue,
+		allocator:        allocator,
 	}
 }
 
@@ -84,7 +84,7 @@ func (al *AsyncLoader) UnregisterPersistenceOption(name string) error {
 	defer al.stateLk.Unlock()
 	_, ok := al.alternateQueues[name]
 	if !ok {
-		return errors.New("unknown persistence option")
+		return fmt.Errorf("unknown persistence option: %s", name)
 	}
 	for _, requestQueue := range al.requestQueues {
 		if name == requestQueue {

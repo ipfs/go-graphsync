@@ -95,7 +95,7 @@ func (c ResponseStatusCode) AsError() error {
 	case RequestCancelled:
 		return RequestCancelledErr{}
 	default:
-		return fmt.Errorf("Unknown")
+		return fmt.Errorf("unknown response status code: %d", c)
 	}
 }
 
