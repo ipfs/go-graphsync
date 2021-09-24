@@ -16,9 +16,14 @@ type Executor interface {
 	ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.Task) bool
 }
 
+type TaskQueue interface {
+	PushTask(p peer.ID, task peertask.Task)
+	TaskDone(p peer.ID, task *peertask.Task)
+}
+
 // TaskQueue is a wrapper around peertaskqueue.PeerTaskQueue that manages running workers
 // that pop tasks and execute them
-type TaskQueue struct {
+type WorkerTaskQueue struct {
 	ctx           context.Context
 	cancelFn      func()
 	peerTaskQueue *peertaskqueue.PeerTaskQueue
@@ -27,9 +32,9 @@ type TaskQueue struct {
 }
 
 // NewTaskQueue initializes a new queue
-func NewTaskQueue(ctx context.Context) *TaskQueue {
+func NewTaskQueue(ctx context.Context) *WorkerTaskQueue {
 	ctx, cancelFn := context.WithCancel(ctx)
-	return &TaskQueue{
+	return &WorkerTaskQueue{
 		ctx:           ctx,
 		cancelFn:      cancelFn,
 		peerTaskQueue: peertaskqueue.New(),
@@ -39,7 +44,7 @@ func NewTaskQueue(ctx context.Context) *TaskQueue {
 }
 
 // PushTask pushes a new task on to the queue
-func (tq *TaskQueue) PushTask(p peer.ID, task peertask.Task) {
+func (tq *WorkerTaskQueue) PushTask(p peer.ID, task peertask.Task) {
 	tq.peerTaskQueue.PushTasks(p, task)
 	select {
 	case tq.workSignal <- struct{}{}:
@@ -48,23 +53,23 @@ func (tq *TaskQueue) PushTask(p peer.ID, task peertask.Task) {
 }
 
 // TaskDone marks a task as completed so further tasks can be executed
-func (tq *TaskQueue) TaskDone(p peer.ID, task *peertask.Task) {
+func (tq *WorkerTaskQueue) TaskDone(p peer.ID, task *peertask.Task) {
 	tq.peerTaskQueue.TasksDone(p, task)
 }
 
 // Startup runs the given number of task workers with the given executor
-func (tq *TaskQueue) Startup(workerCount uint64, executor Executor) {
+func (tq *WorkerTaskQueue) Startup(workerCount uint64, executor Executor) {
 	for i := uint64(0); i < workerCount; i++ {
 		go tq.worker(executor)
 	}
 }
 
 // Shutdown shuts down all running workers
-func (tq *TaskQueue) Shutdown() {
+func (tq *WorkerTaskQueue) Shutdown() {
 	tq.cancelFn()
 }
 
-func (tq *TaskQueue) worker(executor Executor) {
+func (tq *WorkerTaskQueue) worker(executor Executor) {
 	targetWork := 1
 	for {
 		pid, tasks, _ := tq.peerTaskQueue.PopTasks(targetWork)

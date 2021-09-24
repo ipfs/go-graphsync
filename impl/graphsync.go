@@ -42,7 +42,7 @@ type GraphSync struct {
 	requestManager              *requestmanager.RequestManager
 	responseManager             *responsemanager.ResponseManager
 	asyncLoader                 *asyncloader.AsyncLoader
-	requestQueue                *taskqueue.TaskQueue
+	requestQueue                taskqueue.TaskQueue
 	requestExecutor             *executor.Executor
 	responseAssembler           *responseassembler.ResponseAssembler
 	peerTaskQueue               *peertaskqueue.PeerTaskQueue

@@ -980,7 +980,7 @@ type testData struct {
 	extensionData2        []byte
 	extension2            graphsync.ExtensionData
 	networkErrorListeners *listeners.NetworkErrorListeners
-	taskqueue             *taskqueue.TaskQueue
+	taskqueue             *taskqueue.WorkerTaskQueue
 	executor              *executor.Executor
 }
 

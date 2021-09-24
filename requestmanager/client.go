@@ -93,7 +93,7 @@ type RequestManager struct {
 	requestHooks              RequestHooks
 	responseHooks             ResponseHooks
 	networkErrorListeners     *listeners.NetworkErrorListeners
-	requestQueue              *taskqueue.TaskQueue
+	requestQueue              taskqueue.TaskQueue
 }
 
 type requestManagerMessage interface {
@@ -117,7 +117,7 @@ func New(ctx context.Context,
 	requestHooks RequestHooks,
 	responseHooks ResponseHooks,
 	networkErrorListeners *listeners.NetworkErrorListeners,
-	requestQueue *taskqueue.TaskQueue,
+	requestQueue taskqueue.TaskQueue,
 ) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
