@@ -66,9 +66,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyResponseRangeSync(responses, 0, 6)
 				require.Empty(t, receivedErrors)
-				require.Len(t, ree.requestsSent, 2)
-				require.Equal(t, ree.request, ree.requestsSent[0].request)
-				require.True(t, ree.requestsSent[1].request.IsCancel())
+				require.Equal(t, []requestSent{{ree.p, ree.request}}, ree.requestsSent)
 				require.Len(t, ree.blookHooksCalled, 6)
 				require.EqualError(t, ree.terminalError, ipldutil.ContextCancelError{}.Error())
 			},
@@ -265,7 +263,6 @@ type pauseKey struct {
 type requestExecutionEnv struct {
 	// params
 	ctx              context.Context
-	cancelFn         func()
 	request          gsmsg.GraphSyncRequest
 	p                peer.ID
 	blockHookResults map[blockHookKey]hooks.UpdateResult
@@ -276,7 +273,6 @@ type requestExecutionEnv struct {
 	traverser        ipldutil.Traverser
 	inProgressErr    chan error
 	initialRequest   bool
-	empty            bool
 
 	// results
 	requestsSent     []requestSent
@@ -307,7 +303,7 @@ func (ree *requestExecutionEnv) GetRequestTask(_ peer.ID, _ *peertask.Task, requ
 		Traverser:      ree.traverser,
 		P:              ree.p,
 		InProgressErr:  ree.inProgressErr,
-		Empty:          ree.empty,
+		Empty:          false,
 		InitialRequest: ree.initialRequest,
 	}
 	go func() {

@@ -73,7 +73,9 @@ func (e *Executor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.
 	log.Debugw("beginning request execution", "id", requestTask.Request.ID(), "peer", pid.String(), "root_cid", requestTask.Request.Root().String())
 	err := e.traverse(requestTask)
 	if err != nil {
-		e.manager.SendRequest(requestTask.P, gsmsg.CancelRequest(requestTask.Request.ID()))
+		if !isContextErr(err) {
+			e.manager.SendRequest(requestTask.P, gsmsg.CancelRequest(requestTask.Request.ID()))
+		}
 		if !isContextErr(err) && !isPausedErr(err) {
 			select {
 			case <-requestTask.Ctx.Done():

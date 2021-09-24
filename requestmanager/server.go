@@ -198,6 +198,7 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID, onTermina
 	if onTerminated != nil {
 		inProgressRequestStatus.onTerminated = append(inProgressRequestStatus.onTerminated, onTerminated)
 	}
+	rm.SendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(requestID))
 	rm.cancelOnError(requestID, inProgressRequestStatus, terminalError)
 }
 
@@ -263,6 +264,7 @@ func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg
 		if !ok {
 			return false
 		}
+		rm.SendRequest(requestStatus.p, gsmsg.CancelRequest(response.RequestID()))
 		rm.cancelOnError(response.RequestID(), requestStatus, result.Err)
 		return false
 	}
@@ -333,7 +335,7 @@ func (rm *RequestManager) pause(id graphsync.RequestID) error {
 	if !ok {
 		return graphsync.RequestNotFoundErr{}
 	}
-	if inProgressRequestStatus.state != running {
+	if inProgressRequestStatus.state == paused {
 		return errors.New("request is already paused")
 	}
 	select {
