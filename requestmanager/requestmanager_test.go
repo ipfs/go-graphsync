@@ -93,8 +93,8 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 
 	blockChain2 := testutil.SetupBlockChain(ctx, t, td.persistence, 100, 5)
 
-	returnedResponseChan1, returnedErrorChan1 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
-	returnedResponseChan2, returnedErrorChan2 := td.requestManager.SendRequest(requestCtx, peers[0], blockChain2.TipLink, blockChain2.Selector())
+	returnedResponseChan1, returnedErrorChan1 := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan2, returnedErrorChan2 := td.requestManager.NewRequest(requestCtx, peers[0], blockChain2.TipLink, blockChain2.Selector())
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
 
@@ -172,8 +172,8 @@ func TestCancelRequestInProgress(t *testing.T) {
 	defer cancel2()
 	peers := testutil.GeneratePeers(1)
 
-	returnedResponseChan1, returnedErrorChan1 := td.requestManager.SendRequest(requestCtx1, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
-	returnedResponseChan2, returnedErrorChan2 := td.requestManager.SendRequest(requestCtx2, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan1, returnedErrorChan1 := td.requestManager.NewRequest(requestCtx1, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan2, returnedErrorChan2 := td.requestManager.NewRequest(requestCtx2, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
 
@@ -232,7 +232,7 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 		}
 	})
 
-	_, returnedErrorChan1 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	_, returnedErrorChan1 := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)
 
@@ -276,7 +276,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
@@ -308,7 +308,7 @@ func TestFailedRequest(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 	failedResponses := []gsmsg.GraphSyncResponse{
@@ -328,7 +328,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
@@ -359,7 +359,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	td.responseHooks.Register(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
 		close(called)
 	})
-	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
@@ -387,7 +387,7 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
@@ -419,7 +419,7 @@ func TestDisconnectNotification(t *testing.T) {
 
 	// Send a request to the target peer
 	targetPeer := peers[0]
-	td.requestManager.SendRequest(requestCtx, targetPeer, td.blockChain.TipLink, td.blockChain.Selector())
+	td.requestManager.NewRequest(requestCtx, targetPeer, td.blockChain.TipLink, td.blockChain.Selector())
 
 	// Disconnect a random peer, should not fire any events
 	randomPeer := peers[1]
@@ -465,7 +465,7 @@ func TestEncodingExtensions(t *testing.T) {
 		}
 	}
 	td.responseHooks.Register(hook)
-	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1, td.extension2)
+	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1, td.extension2)
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
@@ -579,7 +579,7 @@ func TestBlockHooks(t *testing.T) {
 		}
 	}
 	td.blockHooks.Register(hook)
-	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1, td.extension2)
+	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1, td.extension2)
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
@@ -743,8 +743,8 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	}
 	td.requestHooks.Register(hook)
 
-	returnedResponseChan1, returnedErrorChan1 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1)
-	returnedResponseChan2, returnedErrorChan2 := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan1, returnedErrorChan1 := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1)
+	returnedResponseChan2, returnedErrorChan2 := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
 
@@ -809,7 +809,7 @@ func TestPauseResume(t *testing.T) {
 	td.blockHooks.Register(hook)
 
 	// Start request
-	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
@@ -895,7 +895,7 @@ func TestPauseResumeExternal(t *testing.T) {
 	td.blockHooks.Register(hook)
 
 	// Start request
-	returnedResponseChan, returnedErrorChan := td.requestManager.SendRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 

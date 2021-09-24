@@ -13,7 +13,6 @@ if (operation type) then (outgoing request or incoming response)
 partition "Graphsync Requestor Implementation" {
 :RequestManager;
 if (operation type) then (incoming response)
-:AsyncLoader;
 partition "Verifying Queries" {
 fork
 :ipld.Traverse;

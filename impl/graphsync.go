@@ -196,7 +196,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestAllocator:            requestAllocator,
 	}
 
-	asyncLoader.Startup()
 	requestManager.SetDelegate(peerManager)
 	requestManager.Startup()
 	responseManager.Startup()
@@ -206,7 +205,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 
 // Request initiates a new GraphSync request to the given peer using the given selector spec.
 func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
-	return gs.requestManager.SendRequest(ctx, p, root, selector, extensions...)
+	return gs.requestManager.NewRequest(ctx, p, root, selector, extensions...)
 }
 
 // RegisterIncomingRequestHook adds a hook that runs when a request is received

@@ -43,7 +43,7 @@ If your existing library (i.e. `go-ipfs` or `go-filecoin`) uses these other olde
 
 ## Install
 
-`go-graphsync` requires Go >= 1.11 and can be installed using Go modules
+`go-graphsync` requires Go >= 1.13 and can be installed using Go modules
 
 ## Usage
 
@@ -58,11 +58,10 @@ import (
 
 var ctx context.Context
 var host libp2p.Host
-var loader ipld.Loader
-var storer ipld.Storer
+var lsys ipld.LinkSystem
 
 network := gsnet.NewFromLibp2pHost(host)
-exchange := graphsync.New(ctx, network, loader, storer)
+exchange := graphsync.New(ctx, network, lsys)
 ```
 
 Parameter Notes:
@@ -70,12 +69,11 @@ Parameter Notes:
 1. `context` is just the parent context for all of GraphSync
 2. `network` is a network abstraction provided to Graphsync on top
 of libp2p. This allows graphsync to be tested without the actual network
-3. `loader` is used to load blocks from content ids from the local block store. It's used when RESPONDING to requests from other clients. It should conform to the IPLD loader interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
-4. `storer` is used to store incoming blocks to the local block store. It's used when REQUESTING a graphsync query, to store blocks locally once they are validated as part of the correct response. It should conform to the IPLD storer interface: https://github.com/ipld/go-ipld-prime/blob/master/linking.go
+3. `lsys` is an go-ipld-prime LinkSystem, which provides mechanisms loading and constructing go-ipld-prime nodes from a link, and saving ipld prime nodes to serialized data
 
 ### Using GraphSync With An IPFS BlockStore
 
-GraphSync provides two convenience functions in the `storeutil` package for
+GraphSync provides a convenience function in the `storeutil` package for
 integrating with BlockStore's from IPFS.
 
 ```golang
@@ -92,103 +90,9 @@ var host libp2p.Host
 var bs blockstore.Blockstore
 
 network := gsnet.NewFromLibp2pHost(host)
-loader := storeutil.LoaderForBlockstore(bs)
-storer := storeutil.StorerForBlockstore(bs)
+lsys := storeutil.LinkSystemForBlockstore(bs)
 
-exchange := graphsync.New(ctx, network, loader, storer)
-```
-
-### Write A Loader For An IPFS BlockStore
-
-If you are using a traditional go-ipfs-blockstore, your link loading function looks like this:
-
-```golang
-type BlockStore interface {
-	Get(lnk cid.Cid) (blocks.Block, error)
-}
-```
-
-or, more generally:
-
-```golang
-type Cid2BlockFn func (lnk cid.Cid) (blocks.Block, error)
-```
-
-in `go-ipld-prime`, the signature for a link loader is as follows:
-
-```golang
-type Loader func(lnk Link, lnkCtx LinkContext) (io.Reader, error)
-```
-
-`go-ipld-prime` intentionally keeps its interfaces as abstract as possible to limit dependencies on other ipfs/filecoin specific packages. An IPLD Link is an abstraction for a CID, and IPLD expects io.Reader's rather than an actual block. IPLD provides a `cidLink` package for working with Links that use CIDs as the underlying data, and it's safe to assume that's the type in use if your code deals only with CIDs. A conversion would look something like this:
-
-```golang
-import (
-   ipld "github.com/ipld/go-ipld-prime"
-   cidLink "github.com/ipld/go-ipld-prime/linking/cid"
-)
-
-func LoaderFromCid2BlockFn(cid2BlockFn Cid2BlockFn) ipld.Loader {
-	return func(lnk ipld.Link, lnkCtx ipld.LinkContext) (io.Reader, error) {
-		asCidLink, ok := lnk.(cidlink.Link)
-		if !ok {
-			return nil, fmt.Errorf("Unsupported Link Type")
-		}
-		block, err := cid2BlockFn(asCidLink.Cid)
-		if err != nil {
-			return nil, err
-		}
-		return bytes.NewReader(block.RawData()), nil
-	}
-}
-```
-
-### Write A Storer From An IPFS BlockStore
-
-If you are using a traditional go-ipfs-blockstore, your storage function looks like this:
-
-```golang
-type BlockStore interface {
-	Put(blocks.Block) error
-}
-```
-
-or, more generally:
-
-```golang
-type BlockStoreFn func (blocks.Block) (error)
-```
-
-in `go-ipld-prime`, the signature for a link storer is a bit different:
-
-```golang
-type StoreCommitter func(Link) error
-type Storer func(lnkCtx LinkContext) (io.Writer, StoreCommitter, error)
-```
-
-`go-ipld-prime` stores in two parts to support streaming -- the storer is called and returns an IO.Writer and a function to commit changes when finished. Here's how you can write a storer from a traditional block storing signature.
-
-```golang
-import (
-	blocks "github.com/ipfs/go-block-format"
-  ipld "github.com/ipld/go-ipld-prime"
-  cidLink "github.com/ipld/go-ipld-prime/linking/cid"
-)
-
-func StorerFromBlockStoreFn(blockStoreFn BlockStoreFn) ipld.Storer {
-	return func(lnkCtx ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
-		var buffer bytes.Buffer
-		committer := func(lnk ipld.Link) error {
-			asCidLink, ok := lnk.(cidlink.Link)
-			if !ok {
-				return fmt.Errorf("Unsupported Link Type")
-			}
-			block := blocks.NewBlockWithCid(buffer.Bytes(), asCidLink.Cid)
-			return blockStoreFn(block)
-		}
-		return &buffer, committer, nil
-	}
-}
+exchange := graphsync.New(ctx, network, lsys)
 ```
 
 ### Calling Graphsync

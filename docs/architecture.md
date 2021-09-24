@@ -11,6 +11,7 @@ This document explains the basic architecture for the go implementation of the G
 - [Requestor Implementation](#requestor-implementation)
 - [Responder Implementation](#responder-implementation)
 - [Message Sending Layer](#message-sending-layer)
+- [Miscellaneous](#miscellaneous)
 
 ## Overview
 
@@ -28,7 +29,7 @@ go-graphsync also depends on the following external dependencies:
 
 1. A network implementation, which provides basic functions for sending and receiving messages on a network.
 
-2. A local blockstore implementation, expressed by a `loader` function and a `storer` function. 
+2. A local blockstore implementation, expressed by an IPLD `LinkSystem`. 
 
 ## Request Lifecycle
 
@@ -47,13 +48,13 @@ This order of these requirements corresponds roughly with the sequence they're e
 
 However, if you reverse the order of these requirements, it becomes clear that a GraphSync request is really an IPLD Selector Query performed locally that happens to be backed by another remote peer performing the same query on its machine and feeding the results to the requestor.
 
-Selector queries, as implemented in the `go-ipld-prime` library, rely on a loader function to load data any time a link boundary is crossed during a query. The loader can be configured each time a selector query is performed. We use this to support network communication on both sides of a GraphSync query.
+Selector queries, as implemented in the `go-ipld-prime` library, rely on a function to load data any time a link boundary is crossed during a query. The loader can be configured each time a selector query is performed. We use this to support network communication on both sides of a GraphSync query.
 
-On the requestor side, instead of supplying the local storage loader, we supply it with a different loader that waits for responses from the network -- and also simultaneously stores them in local storage as they are loaded. Blocks that come back on the network that are never loaded as part of the local Selector traversal are simply dropped. Moreover, we can take advantage of the fact that blocks get stored locally as they are traversed to limit network traffic -- there's no need to send back a block twice because we can safely assume in a single query, once a block is traversed once, it's in the requestors local storage.
+On the requestor side, instead of supplying a function to read from local storage, we supply a function that waits for responses from the network -- and also simultaneously stores them in local storage as they are loaded. Blocks that come back on the network that are never loaded as part of the local Selector traversal are simply dropped. Moreover, we can take advantage of the fact that blocks get stored locally as they are traversed to limit network traffic -- there's no need to send back a block twice because we can safely assume in a single query, once a block is traversed once, it's in the requestors local storage.
 
-On the responder side, we employ a similar method -- while an IPLD Selector query operates at the finer grain of traversing IPLD Nodes, what we really care about is when it crosses a link boundary. At this point, IPLD asks the Loader to load the link, and here, we provide IPLD with a loader that wraps the local storage loader but also transmits every block loaded across the network.
+On the responder side, we employ a similar method -- while an IPLD Selector query operates at the finer grain of traversing IPLD Nodes, what we really care about is when it crosses a link boundary. At this point, IPLD calls out to a function to load the link, and here, we provide IPLD with a function that loads from local storage but also transmits every block loaded across the network.
 
-So, effectively what we are doing is using intercepted loaders on both sides to handle the transmitting and receiving of data across the network.
+So, effectively what we are doing is using intercepted block loaders on both sides to handle the transmitting and receiving of data across the network.
 
 While the actual code operates in a way that is slightly more complicated, the basic sequence of a single GraphSync request is as follows:
 
@@ -71,9 +72,8 @@ Having outlined all the steps to execute a single roundtrip Graphsync request, t
 To do this, GraphSync maintains several independent threads of execution (i.e. goroutines). Specifically:
 - On the requestor side:
 1. We maintain an independent thread to make and track requests (RequestManager)
-2. We maintain an independent thread to feed incoming blocks to selector verifications (AsyncLoader)
-3. Each outgoing request has an independent thread performing selector verification
-4. Each outgoing request has an independent thread collecting and buffering final responses before they are returned to the caller. Graphsync returns responses to the caller through a channel. If the caller fails to immediately read the response channel, this should not block other requests from being processed.
+2. Each outgoing request has an independent thread performing selector verification
+3. Each outgoing request has an independent thread collecting and buffering final responses before they are returned to the caller. Graphsync returns responses to the caller through a channel. If the caller fails to immediately read the response channel, this should not block other requests from being processed.
 - On the responder side:
 1. We maintain an independent thread to receive incoming requests and track outgoing responses. As each incoming request is received, it's put into a prioritized queue.
 2. We maintain fixed number of threads that continuously pull the highest priority request from the queue and perform the selector query for that request. We marshal and deduplicate outgoing responses and blocks before they are sent back. This minimizes data sent on the wire and allows queries to proceed without getting blocked by the network.
@@ -93,7 +93,7 @@ The network implementation needs to provide basic lower level utilities for send
 
 ### Local Blockstore Implementation
 
-Interacting with a local blockstore is expressed by a `loader` function and a `storer` function. The `loader` function takes an IPLD Link and returns an `io.Reader` for corresponding block data, while the `storer` takes a Link and returns a `io.Writer` to write corresponding block data, plus a commit function to call when the data is ready to transfer to permanent storage.
+Interacting with a local blockstore is expressed via an IPLD `LinkSystem`. The block loading function in an IPLD `LinkSystem` takes an IPLD Link and returns an `io.Reader` for corresponding block data, while the block storing function takes a Link and returns a `io.Writer` to write corresponding block data, plus a commit function to call when the data is ready to transfer to permanent storage.
 
 ## Requestor Implementation
 
@@ -172,9 +172,25 @@ The message consists of a PeerManager which tracks peers, and a message queue fo
 
 The message queue system contains a mechanism for applying backpressure to a query execution to make sure that a slow network connection doesn't cause us to load all the blocks for the query into memory while we wait for messages to go over the network. Whenever you attempt to queue data into the message queue, you provide an estimated size for the data that will be held in memory till the message goes out. Internally, the message queue uses the Allocator to track memory usage, and the call to queue data will block if there is too much data buffered in memory. When messages are sent out, memory is released, which will unblock requests to queue data for the message queue.
 
-## Hooks And Listeners
+## Miscellaneous
+
+### Hooks And Listeners
 
 go-graphsync provides a variety of points in the request/response lifecycle where one can provide a hook to inspect the current state of the request/response and potentially take action. These hooks provide the core mechanisms for authenticating requests, processing graphsync extensions, pausing and resuming, and generally enabling a higher level consumer of the graphsync to precisely control the request/response lifecycle.
 
 Graphsync also provides listeners that enable a caller to be notified when various asynchronous events happen in the request response lifecycle. Currently graphsync contains an internal pubsub notification system (see [notifications](../notifications)) to escalate low level asynchonous events back to high level modules that pass them to external listeners. A future refactor might look for a way to remove this notification system as it adds additional complexity.
 
+### Actor Pattern In RequestManager And ResponseManager
+
+To manage concurrency in a predictable way, the RequestManager and the ResponseManager are informally implemented using the [Actor model](https://en.wikipedia.org/wiki/Actor_model) employed in distributed systems languages like Erlang.
+
+Each has isolated, internal state and a semi-asynchronous message queue (just a go channel with a 16 message buffer). The internal thread takes messages off the queue and dispatches them to call methods that modify internal state. 
+
+Each implementation is spread out across three files:
+- client.go - the public interface whose methods dispatch messages to the internal thread
+- server.go - the methods run inside the thread that actually process messages and modify internal state
+- messages.go - the differnt messages that are sent through the main message box
+
+To achieve the kind of dynamic dispatch one expects from the actor pattern based on message type, we use the visitor pattern to simulate sum types. (https://making.pusher.com/alternatives-to-sum-types-in-go/) This does mean the implementation is a bit verbose to say the least.
+
+However, implementing actors provides a more predictable way to handle concurrency issues than traditional select statements and helps make the logic of complex classes like the RequestManager and ResponseManager easier to follow.
