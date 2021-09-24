@@ -41,6 +41,14 @@ const (
 	defaultPriority = graphsync.Priority(0)
 )
 
+type state uint64
+
+const (
+	queued state = iota
+	running
+	paused
+)
+
 type inProgressRequestStatus struct {
 	ctx              context.Context
 	startTime        time.Time
@@ -48,7 +56,7 @@ type inProgressRequestStatus struct {
 	p                peer.ID
 	terminalError    error
 	pauseMessages    chan struct{}
-	paused           bool
+	state            state
 	lastResponse     atomic.Value
 	onTerminated     []chan<- error
 	request          gsmsg.GraphSyncRequest

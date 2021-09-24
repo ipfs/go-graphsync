@@ -79,6 +79,7 @@ func (rm *RequestManager) newRequest(p peer.ID, root ipld.Link, selector ipld.No
 		pauseMessages:    make(chan struct{}, 1),
 		doNotSendCids:    doNotSendCids,
 		request:          request,
+		state:            queued,
 		nodeStyleChooser: hooksResult.CustomChooser,
 		inProgressChan:   make(chan graphsync.ResponseProgress),
 		inProgressErr:    make(chan error),
@@ -119,6 +120,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 		}.Start(ipr.ctx)
 	}
 
+	ipr.state = running
 	return executor.RequestTask{
 		Ctx:            ipr.ctx,
 		Request:        ipr.request,
@@ -174,7 +176,7 @@ func (rm *RequestManager) releaseRequestTask(p peer.ID, task *peertask.Task, err
 		return
 	}
 	if _, ok := err.(hooks.ErrPaused); ok {
-		ipr.paused = true
+		ipr.state = paused
 		return
 	}
 	log.Infow("graphsync request complete", "request id", requestID, "peer", ipr.p, "total time", time.Since(ipr.startTime))
@@ -203,7 +205,7 @@ func (rm *RequestManager) cancelOnError(requestID graphsync.RequestID, ipr *inPr
 	if ipr.terminalError == nil {
 		ipr.terminalError = terminalError
 	}
-	if ipr.paused {
+	if ipr.state != running {
 		rm.terminateRequest(requestID, ipr)
 	} else {
 		ipr.cancelFn()
@@ -317,10 +319,10 @@ func (rm *RequestManager) unpause(id graphsync.RequestID, extensions []graphsync
 	if !ok {
 		return graphsync.RequestNotFoundErr{}
 	}
-	if !inProgressRequestStatus.paused {
+	if inProgressRequestStatus.state != paused {
 		return errors.New("request is not paused")
 	}
-	inProgressRequestStatus.paused = false
+	inProgressRequestStatus.state = queued
 	inProgressRequestStatus.request = inProgressRequestStatus.request.ReplaceExtensions(extensions)
 	rm.requestQueue.PushTask(inProgressRequestStatus.p, peertask.Task{Topic: id, Priority: math.MaxInt32, Work: 1})
 	return nil
@@ -331,7 +333,7 @@ func (rm *RequestManager) pause(id graphsync.RequestID) error {
 	if !ok {
 		return graphsync.RequestNotFoundErr{}
 	}
-	if inProgressRequestStatus.paused {
+	if inProgressRequestStatus.state != running {
 		return errors.New("request is already paused")
 	}
 	select {
