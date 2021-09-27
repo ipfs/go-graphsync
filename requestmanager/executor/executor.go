@@ -24,7 +24,7 @@ import (
 
 var log = logging.Logger("gs_request_executor")
 
-// Manager are the Executor uses to interact with the request manager
+// Manager is an interface the Executor uses to interact with the request manager
 type Manager interface {
 	SendRequest(peer.ID, gsmsg.GraphSyncRequest)
 	GetRequestTask(peer.ID, *peertask.Task, chan RequestTask)
@@ -40,12 +40,16 @@ type BlockHooks interface {
 // a channel which will eventually return data for the link or an err
 type AsyncLoadFn func(peer.ID, graphsync.RequestID, ipld.Link, ipld.LinkContext) <-chan types.AsyncLoadResult
 
+// Executor handles actually executing graphsync requests and verifying them.
+// It has control of requests when they are in the "running" state, while
+// the manager is in charge when requests are queued or paused
 type Executor struct {
 	manager    Manager
 	blockHooks BlockHooks
 	loader     AsyncLoadFn
 }
 
+// NewExecutor returns a new executor
 func NewExecutor(
 	manager Manager,
 	blockHooks BlockHooks,
@@ -72,11 +76,9 @@ func (e *Executor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.
 	}
 	log.Debugw("beginning request execution", "id", requestTask.Request.ID(), "peer", pid.String(), "root_cid", requestTask.Request.Root().String())
 	err := e.traverse(requestTask)
-	if err != nil {
-		if !isContextErr(err) {
-			e.manager.SendRequest(requestTask.P, gsmsg.CancelRequest(requestTask.Request.ID()))
-		}
-		if !isContextErr(err) && !isPausedErr(err) {
+	if err != nil && !isContextErr(err) {
+		e.manager.SendRequest(requestTask.P, gsmsg.CancelRequest(requestTask.Request.ID()))
+		if !isPausedErr(err) {
 			select {
 			case <-requestTask.Ctx.Done():
 			case requestTask.InProgressErr <- err:
