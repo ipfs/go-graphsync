@@ -3,6 +3,7 @@ package graphsync
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -92,6 +93,17 @@ type RequestNotFoundErr struct{}
 
 func (e RequestNotFoundErr) Error() string {
 	return "request not found"
+}
+
+// RemoteMissingBlockErr indicates that the remote peer was missing a block
+// in the selector requested. It is a non-terminal error in the error stream
+// for a request and does NOT cause a request to fail completely
+type RemoteMissingBlockErr struct {
+	Link ipld.Link
+}
+
+func (e RemoteMissingBlockErr) Error() string {
+	return fmt.Sprintf("remote peer is missing block: %s", e.Link.String())
 }
 
 var (
