@@ -62,7 +62,7 @@ func readNNetworkRequests(ctx context.Context,
 		testutil.AssertReceive(ctx, t, requestRecordChan, &rr, fmt.Sprintf("did not receive request %d", i))
 		requestRecords = append(requestRecords, rr)
 	}
-	// because or the simultaneous request queues it's possible for the requests to go to the network layer out of order
+	// because of the simultaneous request queues it's possible for the requests to go to the network layer out of order
 	// if the requests are queued at a near identical time
 	sort.Slice(requestRecords, func(i, j int) bool {
 		return requestRecords[i].gsr.ID() < requestRecords[j].gsr.ID()
