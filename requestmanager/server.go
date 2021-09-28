@@ -157,6 +157,13 @@ func (rm *RequestManager) terminateRequest(requestID graphsync.RequestID, ipr *i
 	if ipr.traverser != nil {
 		ipr.traverser.Shutdown(rm.ctx)
 	}
+	// make sure context is not closed before closing channels (could cause send
+	// on close channel otherwise)
+	select {
+	case <-rm.ctx.Done():
+		return
+	default:
+	}
 	close(ipr.inProgressChan)
 	close(ipr.inProgressErr)
 	for _, onTerminated := range ipr.onTerminated {
