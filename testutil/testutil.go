@@ -167,8 +167,8 @@ func VerifySingleTerminalError(ctx context.Context, t TestingT, errChan <-chan e
 	var err error
 	AssertReceive(ctx, t, errChan, &err, "should receive an error")
 	select {
-	case _, ok := <-errChan:
-		require.False(t, ok, "shouldn't have sent second error but did")
+	case secondErr, ok := <-errChan:
+		require.Falsef(t, ok, "shouldn't have sent second error but sent: %s, %s", err, secondErr)
 	case <-ctx.Done():
 		t.Fatal("errors not closed")
 	}

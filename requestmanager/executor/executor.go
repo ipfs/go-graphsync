@@ -172,6 +172,12 @@ func (e *Executor) onNewBlock(rt RequestTask, block graphsync.BlockData) error {
 
 func (e *Executor) advanceTraversal(rt RequestTask, result types.AsyncLoadResult) error {
 	if result.Err != nil {
+		// before processing result check for context cancel to avoid sending an additional error
+		select {
+		case <-rt.Ctx.Done():
+			return ipldutil.ContextCancelError{}
+		default:
+		}
 		select {
 		case <-rt.Ctx.Done():
 			return ipldutil.ContextCancelError{}
