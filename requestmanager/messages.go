@@ -4,6 +4,8 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/requestmanager/executor"
+	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
@@ -47,21 +49,36 @@ func (prm *processResponseMessage) handle(rm *RequestManager) {
 
 type cancelRequestMessage struct {
 	requestID     graphsync.RequestID
-	isPause       bool
 	onTerminated  chan error
 	terminalError error
 }
 
 func (crm *cancelRequestMessage) handle(rm *RequestManager) {
-	rm.cancelRequest(crm.requestID, crm.isPause, crm.onTerminated, crm.terminalError)
+	rm.cancelRequest(crm.requestID, crm.onTerminated, crm.terminalError)
 }
 
-type terminateRequestMessage struct {
-	requestID graphsync.RequestID
+type getRequestTaskMessage struct {
+	p                    peer.ID
+	task                 *peertask.Task
+	requestExecutionChan chan executor.RequestTask
 }
 
-func (trm *terminateRequestMessage) handle(rm *RequestManager) {
-	rm.terminateRequest(trm.requestID)
+func (irm *getRequestTaskMessage) handle(rm *RequestManager) {
+	requestExecution := rm.getRequestTask(irm.p, irm.task)
+	select {
+	case <-rm.ctx.Done():
+	case irm.requestExecutionChan <- requestExecution:
+	}
+}
+
+type releaseRequestTaskMessage struct {
+	p    peer.ID
+	task *peertask.Task
+	err  error
+}
+
+func (trm *releaseRequestTaskMessage) handle(rm *RequestManager) {
+	rm.releaseRequestTask(trm.p, trm.task, trm.err)
 }
 
 type newRequestMessage struct {
@@ -75,7 +92,7 @@ type newRequestMessage struct {
 func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	var ipr inProgressRequest
 
-	ipr.request, ipr.incoming, ipr.incomingError = rm.setupRequest(nrm.p, nrm.root, nrm.selector, nrm.extensions)
+	ipr.request, ipr.incoming, ipr.incomingError = rm.newRequest(nrm.p, nrm.root, nrm.selector, nrm.extensions)
 	ipr.requestID = ipr.request.ID()
 
 	select {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -20,9 +21,11 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/testloader"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
+	"github.com/ipfs/go-graphsync/taskqueue"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -59,6 +62,11 @@ func readNNetworkRequests(ctx context.Context,
 		testutil.AssertReceive(ctx, t, requestRecordChan, &rr, fmt.Sprintf("did not receive request %d", i))
 		requestRecords = append(requestRecords, rr)
 	}
+	// because of the simultaneous request queues it's possible for the requests to go to the network layer out of order
+	// if the requests are queued at a near identical time
+	sort.Slice(requestRecords, func(i, j int) bool {
+		return requestRecords[i].gsr.ID() < requestRecords[j].gsr.ID()
+	})
 	return requestRecords
 }
 
@@ -105,7 +113,9 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	require.Equal(t, defaultPriority, requestRecords[0].gsr.Priority())
 	require.Equal(t, defaultPriority, requestRecords[1].gsr.Priority())
 
+	require.Equal(t, td.blockChain.TipLink.String(), requestRecords[0].gsr.Root().String())
 	require.Equal(t, td.blockChain.Selector(), requestRecords[0].gsr.Selector(), "did not encode selector properly")
+	require.Equal(t, blockChain2.TipLink.String(), requestRecords[1].gsr.Root().String())
 	require.Equal(t, blockChain2.Selector(), requestRecords[1].gsr.Selector(), "did not encode selector properly")
 
 	firstBlocks := append(td.blockChain.AllBlocks(), blockChain2.Blocks(0, 3)...)
@@ -165,7 +175,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 func TestCancelRequestInProgress(t *testing.T) {
 	ctx := context.Background()
 	td := newTestData(ctx, t)
-	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	requestCtx1, cancel1 := context.WithCancel(requestCtx)
 	requestCtx2, cancel2 := context.WithCancel(requestCtx)
@@ -832,7 +842,7 @@ func TestPauseResume(t *testing.T) {
 	require.EqualError(t, err, "request is not paused")
 	close(holdForResumeAttempt)
 	// verify responses sent read ONLY for blocks BEFORE the pause
-	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, pauseAt-1)
+	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, pauseAt)
 	// wait for the pause to occur
 	<-holdForPause
 
@@ -868,7 +878,7 @@ func TestPauseResume(t *testing.T) {
 	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	// verify the correct results are returned, picking up after where there request was paused
-	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt-1)
+	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 }
 func TestPauseResumeExternal(t *testing.T) {
@@ -912,7 +922,7 @@ func TestPauseResumeExternal(t *testing.T) {
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
 	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 	// verify responses sent read ONLY for blocks BEFORE the pause
-	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, pauseAt-1)
+	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, pauseAt)
 	// wait for the pause to occur
 	<-holdForPause
 
@@ -948,7 +958,7 @@ func TestPauseResumeExternal(t *testing.T) {
 	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	// verify the correct results are returned, picking up after where there request was paused
-	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt-1)
+	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 }
 
@@ -970,6 +980,8 @@ type testData struct {
 	extensionData2        []byte
 	extension2            graphsync.ExtensionData
 	networkErrorListeners *listeners.NetworkErrorListeners
+	taskqueue             *taskqueue.WorkerTaskQueue
+	executor              *executor.Executor
 }
 
 func newTestData(ctx context.Context, t *testing.T) *testData {
@@ -981,9 +993,13 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.responseHooks = hooks.NewResponseHooks()
 	td.blockHooks = hooks.NewBlockHooks()
 	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
-	td.requestManager = New(ctx, td.fal, cidlink.DefaultLinkSystem(), td.requestHooks, td.responseHooks, td.blockHooks, td.networkErrorListeners)
+	td.taskqueue = taskqueue.NewTaskQueue(ctx)
+	lsys := cidlink.DefaultLinkSystem()
+	td.requestManager = New(ctx, td.fal, lsys, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.taskqueue)
+	td.executor = executor.NewExecutor(td.requestManager, td.blockHooks, td.fal.AsyncLoad)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()
+	td.taskqueue.Startup(6, td.executor)
 	td.blockStore = make(map[ipld.Link][]byte)
 	td.persistence = testutil.NewTestStore(td.blockStore)
 	td.blockChain = testutil.SetupBlockChain(ctx, t, td.persistence, 100, 5)
