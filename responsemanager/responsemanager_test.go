@@ -45,7 +45,7 @@ func TestIncomingQuery(t *testing.T) {
 
 	qhc := make(chan *queuedHook, 1)
 	td.requestQueuedHooks.Register(func(p peer.ID, request graphsync.RequestData) {
-		td.connManager.AssertProtectedWithTags(t, p, request.ID().String())
+		td.connManager.AssertProtectedWithTags(t, p, request.ID().Tag())
 		qhc <- &queuedHook{
 			p:       p,
 			request: request,
@@ -124,7 +124,7 @@ func TestEarlyCancellation(t *testing.T) {
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 	responseManager.synchronize()
 
-	td.connManager.AssertProtectedWithTags(t, td.p, td.requests[0].ID().String())
+	td.connManager.AssertProtectedWithTags(t, td.p, td.requests[0].ID().Tag())
 
 	// send a cancellation
 	cancelRequests := []gsmsg.GraphSyncRequest{
@@ -191,7 +191,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		responseManager := td.newResponseManager()
 		responseManager.Startup()
 		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
-			td.connManager.AssertProtectedWithTags(t, td.p, td.requests[0].ID().String())
+			td.connManager.AssertProtectedWithTags(t, td.p, td.requests[0].ID().Tag())
 			hookActions.SendExtensionData(td.extensionResponse)
 		})
 		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
@@ -206,7 +206,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		responseManager := td.newResponseManager()
 		responseManager.Startup()
 		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
-			td.connManager.AssertProtectedWithTags(t, td.p, td.requests[0].ID().String())
+			td.connManager.AssertProtectedWithTags(t, td.p, td.requests[0].ID().Tag())
 			hookActions.ValidateRequest()
 			hookActions.SendExtensionData(td.extensionResponse)
 		})

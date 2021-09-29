@@ -45,7 +45,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
 
 	td.tcm.AssertProtected(t, peers[0])
-	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().String(), requestRecords[1].gsr.ID().String())
+	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().Tag(), requestRecords[1].gsr.ID().Tag())
 	require.Equal(t, peers[0], requestRecords[0].p)
 	require.Equal(t, peers[0], requestRecords[1].p)
 	require.False(t, requestRecords[0].gsr.IsCancel())
@@ -89,8 +89,8 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	blockChain2.VerifyResponseRange(requestCtx, returnedResponseChan2, 0, 3)
 
 	td.tcm.AssertProtected(t, peers[0])
-	td.tcm.RefuteProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().String())
-	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[1].gsr.ID().String())
+	td.tcm.RefuteProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().Tag())
+	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[1].gsr.ID().Tag())
 
 	moreBlocks := blockChain2.RemainderBlocks(3)
 	moreMetadata := metadataForBlocks(moreBlocks, true)
@@ -134,7 +134,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
 
 	td.tcm.AssertProtected(t, peers[0])
-	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().String(), requestRecords[1].gsr.ID().String())
+	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().Tag(), requestRecords[1].gsr.ID().Tag())
 
 	firstBlocks := td.blockChain.Blocks(0, 3)
 	firstMetadata := encodedMetadataForBlocks(t, firstBlocks, true)
@@ -198,7 +198,7 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)
 
 	td.tcm.AssertProtected(t, peers[0])
-	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().String())
+	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().Tag())
 
 	go func() {
 		firstBlocks := td.blockChain.Blocks(0, 3)
@@ -278,7 +278,7 @@ func TestFailedRequest(t *testing.T) {
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 	td.tcm.AssertProtected(t, peers[0])
-	td.tcm.AssertProtectedWithTags(t, peers[0], rr.gsr.ID().String())
+	td.tcm.AssertProtectedWithTags(t, peers[0], rr.gsr.ID().Tag())
 
 	failedResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound),

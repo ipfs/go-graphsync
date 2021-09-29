@@ -119,7 +119,7 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 	if response.state != running {
 		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
 			if isContextErr(err) {
-				rm.connManager.Unprotect(p, requestID.String())
+				rm.connManager.Unprotect(p, requestID.Tag())
 				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
 				rb.ClearRequest()
 			} else if err == errNetworkError {
@@ -152,7 +152,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			rm.processUpdate(key, request)
 			continue
 		}
-		rm.connManager.Protect(p, request.ID().String())
+		rm.connManager.Protect(p, request.ID().Tag())
 		rm.requestQueuedHooks.ProcessRequestQueuedHooks(p, request)
 		ctx, cancelFn := context.WithCancel(rm.ctx)
 		sub := notifications.NewTopicDataSubscriber(&subscriber{

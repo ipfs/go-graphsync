@@ -87,7 +87,7 @@ func (rm *RequestManager) newRequest(p peer.ID, root ipld.Link, selector ipld.No
 	requestStatus.lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
 	rm.inProgressRequestStatuses[request.ID()] = requestStatus
 
-	rm.connManager.Protect(p, requestID.String())
+	rm.connManager.Protect(p, requestID.Tag())
 	rm.requestQueue.PushTask(p, peertask.Task{Topic: requestID, Priority: math.MaxInt32, Work: 1})
 	return request, requestStatus.inProgressChan, requestStatus.inProgressErr
 }
@@ -152,7 +152,7 @@ func (rm *RequestManager) terminateRequest(requestID graphsync.RequestID, ipr *i
 		case <-rm.ctx.Done():
 		}
 	}
-	rm.connManager.Unprotect(ipr.p, requestID.String())
+	rm.connManager.Unprotect(ipr.p, requestID.Tag())
 	delete(rm.inProgressRequestStatuses, requestID)
 	ipr.cancelFn()
 	rm.asyncLoader.CleanupRequest(requestID)

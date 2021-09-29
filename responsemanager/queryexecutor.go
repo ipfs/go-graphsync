@@ -75,7 +75,7 @@ func (qe *queryExecutor) processQueriesWorker() {
 			_, err := qe.executeQuery(pid, taskData.Request, taskData.Loader, taskData.Traverser, taskData.Signals, taskData.Subscriber)
 			isCancelled := err != nil && isContextErr(err)
 			if isCancelled {
-				qe.connManager.Unprotect(pid, taskData.Request.ID().String())
+				qe.connManager.Unprotect(pid, taskData.Request.ID().Tag())
 				qe.cancelledListeners.NotifyCancelledListeners(pid, taskData.Request)
 			}
 			qe.manager.FinishTask(task, err)
