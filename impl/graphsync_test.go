@@ -334,8 +334,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 
 func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 	// create network
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
