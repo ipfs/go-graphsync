@@ -9,12 +9,7 @@ import (
 // EncodeDoNotSendFirstBlocks returns encoded cbor data for the given number
 // of blocks to skip
 func EncodeDoNotSendFirstBlocks(skipBlockCount int64) ([]byte, error) {
-	nb := basicnode.Prototype.Int.NewBuilder()
-	err := nb.AssignInt(skipBlockCount)
-	if err != nil {
-		return nil, err
-	}
-	nd := nb.Build()
+	nd := basicnode.NewInt(skipBlockCount)
 	return ipldutil.EncodeNode(nd)
 }
 
