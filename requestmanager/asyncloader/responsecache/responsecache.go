@@ -1,7 +1,6 @@
 package responsecache
 
 import (
-	"fmt"
 	"sync"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -59,7 +58,7 @@ func (rc *ResponseCache) AttemptLoad(requestID graphsync.RequestID, link ipld.Li
 	rc.responseCacheLk.Lock()
 	defer rc.responseCacheLk.Unlock()
 	if rc.linkTracker.IsKnownMissingLink(requestID, link) {
-		return nil, fmt.Errorf("remote peer is missing block: %s", link.String())
+		return nil, graphsync.RemoteMissingBlockErr{Link: link}
 	}
 	data, _ := rc.unverifiedBlockStore.VerifyBlock(link, linkContext)
 	return data, nil
