@@ -10,17 +10,21 @@ import (
 )
 
 type peerLinkTracker struct {
-	linkTrackerLk sync.RWMutex
-	linkTracker   *linktracker.LinkTracker
-	altTrackers   map[string]*linktracker.LinkTracker
-	dedupKeys     map[graphsync.RequestID]string
+	linkTrackerLk   sync.RWMutex
+	linkTracker     *linktracker.LinkTracker
+	altTrackers     map[string]*linktracker.LinkTracker
+	dedupKeys       map[graphsync.RequestID]string
+	blockSentCount  map[graphsync.RequestID]int64
+	skipFirstBlocks map[graphsync.RequestID]int64
 }
 
 func newTracker() *peerLinkTracker {
 	return &peerLinkTracker{
-		linkTracker: linktracker.New(),
-		dedupKeys:   make(map[graphsync.RequestID]string),
-		altTrackers: make(map[string]*linktracker.LinkTracker),
+		linkTracker:     linktracker.New(),
+		dedupKeys:       make(map[graphsync.RequestID]string),
+		altTrackers:     make(map[string]*linktracker.LinkTracker),
+		blockSentCount:  make(map[graphsync.RequestID]int64),
+		skipFirstBlocks: make(map[graphsync.RequestID]int64),
 	}
 }
 
@@ -54,6 +58,12 @@ func (prs *peerLinkTracker) IgnoreBlocks(requestID graphsync.RequestID, links []
 	prs.linkTrackerLk.Unlock()
 }
 
+func (prs *peerLinkTracker) SkipFirstBlocks(requestID graphsync.RequestID, blocksToSkip int64) {
+	prs.linkTrackerLk.Lock()
+	prs.skipFirstBlocks[requestID] = blocksToSkip
+	prs.linkTrackerLk.Unlock()
+}
+
 // FinishTracking clears link tracking data for the request.
 func (prs *peerLinkTracker) FinishTracking(requestID graphsync.RequestID) bool {
 	prs.linkTrackerLk.Lock()
@@ -74,16 +84,20 @@ func (prs *peerLinkTracker) FinishTracking(requestID graphsync.RequestID) bool {
 			delete(prs.altTrackers, key)
 		}
 	}
+	delete(prs.blockSentCount, requestID)
+	delete(prs.skipFirstBlocks, requestID)
 	return allBlocks
 }
 
 // RecordLinkTraversal records whether a link is found for a request.
 func (prs *peerLinkTracker) RecordLinkTraversal(requestID graphsync.RequestID,
-	link ipld.Link, hasBlock bool) (isUnique bool) {
+	link ipld.Link, hasBlock bool) bool {
 	prs.linkTrackerLk.Lock()
+	defer prs.linkTrackerLk.Unlock()
+	prs.blockSentCount[requestID]++
+	notSkipped := prs.skipFirstBlocks[requestID] < prs.blockSentCount[requestID]
 	linkTracker := prs.getLinkTracker(requestID)
-	isUnique = linkTracker.BlockRefCount(link) == 0
+	isUnique := linkTracker.BlockRefCount(link) == 0
 	linkTracker.RecordLinkTraversal(requestID, link, hasBlock)
-	prs.linkTrackerLk.Unlock()
-	return
+	return hasBlock && notSkipped && isUnique
 }

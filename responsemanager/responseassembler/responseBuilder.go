@@ -60,9 +60,9 @@ func (rb *responseBuilder) AddNotifee(notifee notifications.Notifee) {
 func (rb *responseBuilder) setupBlockOperation(
 	link ipld.Link, data []byte) blockOperation {
 	hasBlock := data != nil
-	isUnique := rb.linkTracker.RecordLinkTraversal(rb.requestID, link, hasBlock)
+	send := rb.linkTracker.RecordLinkTraversal(rb.requestID, link, hasBlock)
 	return blockOperation{
-		data, hasBlock && isUnique, link, rb.requestID,
+		data, send, link, rb.requestID,
 	}
 }
 

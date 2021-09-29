@@ -45,6 +45,10 @@ const (
 	// https://github.com/ipld/specs/blob/master/block-layer/graphsync/known_extensions.md
 	ExtensionDoNotSendCIDs = ExtensionName("graphsync/do-not-send-cids")
 
+	// ExtensionsDoNotSendFirstBlocks tells the responding peer not to wait till the given
+	// number of blocks have been traversed before it begins to send blocks over the wire
+	ExtensionsDoNotSendFirstBlocks = ExtensionName("graphsync/do-not-send-first-blocks")
+
 	// ExtensionDeDupByKey tells the responding peer to only deduplicate block sending
 	// for requests that have the same key. The data for the extension is a string key
 	ExtensionDeDupByKey = ExtensionName("graphsync/dedup-by-key")

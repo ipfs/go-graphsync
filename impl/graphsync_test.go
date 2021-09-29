@@ -40,6 +40,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/storeutil"
@@ -329,6 +330,54 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 
 	require.Equal(t, blockChainLength, totalSent)
 	require.Equal(t, blockChainLength-set.Len(), totalSentOnWire)
+}
+
+func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
+	// create network
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
+
+	// store blocks locally
+	firstHalf := blockChain.Blocks(0, 50)
+	for _, blk := range firstHalf {
+		td.blockStore1[cidlink.Link{Cid: blk.Cid()}] = blk.RawData()
+	}
+
+	doNotSendFirstBlocksData, err := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(50)
+	require.NoError(t, err)
+	extension := graphsync.ExtensionData{
+		Name: graphsync.ExtensionsDoNotSendFirstBlocks,
+		Data: doNotSendFirstBlocksData,
+	}
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	totalSent := 0
+	totalSentOnWire := 0
+	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+		totalSent++
+		if blockData.BlockSizeOnWire() > 0 {
+			totalSentOnWire++
+		}
+	})
+
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), extension)
+
+	blockChain.VerifyWholeChain(ctx, progressChan)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
+
+	require.Equal(t, blockChainLength, totalSent)
+	require.Equal(t, blockChainLength-50, totalSentOnWire)
 }
 
 func TestPauseResume(t *testing.T) {

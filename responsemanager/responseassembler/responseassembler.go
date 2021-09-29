@@ -86,6 +86,11 @@ func (ra *ResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.Request
 	ra.GetProcess(p).(*peerLinkTracker).IgnoreBlocks(requestID, links)
 }
 
+// SkipFirstBlocks tells the assembler for the given request to not send the first N blocks
+func (ra *ResponseAssembler) SkipFirstBlocks(p peer.ID, requestID graphsync.RequestID, skipFirstBlocks int64) {
+	ra.GetProcess(p).(*peerLinkTracker).SkipFirstBlocks(requestID, skipFirstBlocks)
+}
+
 // Transaction builds a response, and queues it for sending in the next outgoing message
 func (ra *ResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction Transaction) error {
 	rb := &responseBuilder{

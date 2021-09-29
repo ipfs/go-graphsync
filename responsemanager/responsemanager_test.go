@@ -20,6 +20,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/dedupkey"
+	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
@@ -348,6 +349,29 @@ func TestValidationAndExtensions(t *testing.T) {
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 		td.assertIgnoredCids(set)
 	})
+
+	t.Run("do-not-send-first-blocks extension", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := td.newResponseManager()
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+		})
+		data, err := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(4)
+		require.NoError(t, err)
+		requests := []gsmsg.GraphSyncRequest{
+			gsmsg.NewRequest(td.requestID, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0),
+				graphsync.ExtensionData{
+					Name: graphsync.ExtensionsDoNotSendFirstBlocks,
+					Data: data,
+				}),
+		}
+		responseManager.ProcessRequests(td.ctx, td.p, requests)
+		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
+		td.assertSkippedFirstBlocks(4)
+	})
+
 	t.Run("dedup-by-key extension", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -797,6 +821,7 @@ type fakeResponseAssembler struct {
 	pausedRequests       chan pausedRequest
 	clearedRequests      chan clearedRequest
 	ignoredLinks         chan []ipld.Link
+	skippedFirstBlocks   chan int64
 	notifeePublisher     *testutil.MockPublisher
 	dedupKeys            chan string
 	missingBlock         bool
@@ -812,6 +837,9 @@ func (fra *fakeResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.Re
 	fra.ignoredLinks <- links
 }
 
+func (fra *fakeResponseAssembler) SkipFirstBlocks(p peer.ID, requestID graphsync.RequestID, skipCount int64) {
+	fra.skippedFirstBlocks <- skipCount
+}
 func (fra *fakeResponseAssembler) DedupKey(p peer.ID, requestID graphsync.RequestID, key string) {
 	fra.dedupKeys <- key
 }
@@ -947,6 +975,7 @@ type testData struct {
 	pausedRequests            chan pausedRequest
 	clearedRequests           chan clearedRequest
 	ignoredLinks              chan []ipld.Link
+	skippedFirstBlocks        chan int64
 	dedupKeys                 chan string
 	responseAssembler         *fakeResponseAssembler
 	queryQueue                *fakeQueryQueue
@@ -995,6 +1024,7 @@ func newTestData(t *testing.T) testData {
 	td.pausedRequests = make(chan pausedRequest, 1)
 	td.clearedRequests = make(chan clearedRequest, 1)
 	td.ignoredLinks = make(chan []ipld.Link, 1)
+	td.skippedFirstBlocks = make(chan int64, 1)
 	td.dedupKeys = make(chan string, 1)
 	td.blockSends = make(chan graphsync.BlockData, td.blockChainLength*2)
 	td.completedResponseStatuses = make(chan graphsync.ResponseStatusCode, 1)
@@ -1007,6 +1037,7 @@ func newTestData(t *testing.T) testData {
 		pausedRequests:       td.pausedRequests,
 		clearedRequests:      td.clearedRequests,
 		ignoredLinks:         td.ignoredLinks,
+		skippedFirstBlocks:   td.skippedFirstBlocks,
 		dedupKeys:            td.dedupKeys,
 		notifeePublisher:     td.notifeePublisher,
 	}
@@ -1168,6 +1199,12 @@ func (td *testData) assertIgnoredCids(set *cid.Set) {
 	for _, link := range lastLinks {
 		require.True(td.t, set.Has(link.(cidlink.Link).Cid))
 	}
+}
+
+func (td *testData) assertSkippedFirstBlocks(expectedSkipCount int64) {
+	var skippedFirstBlocks int64
+	testutil.AssertReceive(td.ctx, td.t, td.skippedFirstBlocks, &skippedFirstBlocks, "should skip blocks")
+	require.Equal(td.t, expectedSkipCount, skippedFirstBlocks)
 }
 
 func (td *testData) notifyStatusMessagesSent() {
