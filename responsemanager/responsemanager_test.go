@@ -699,7 +699,6 @@ func TestNetworkErrors(t *testing.T) {
 		td.notifyBlockSendsNetworkError(err)
 		td.assertHasNetworkErrors(err)
 		td.assertNoCompletedResponseStatuses()
-		td.assertRequestCleared()
 	})
 	t.Run("network error while paused", func(t *testing.T) {
 		td := newTestData(t)
