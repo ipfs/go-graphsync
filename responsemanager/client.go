@@ -126,6 +126,7 @@ type NetworkErrorListeners interface {
 type ResponseAssembler interface {
 	DedupKey(p peer.ID, requestID graphsync.RequestID, key string)
 	IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link)
+	SkipFirstBlocks(p peer.ID, requestID graphsync.RequestID, skipCount int64)
 	Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error
 }
 

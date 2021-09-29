@@ -12,6 +12,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/dedupkey"
+	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
@@ -60,6 +61,9 @@ func (qe *queryPreparer) prepareQuery(ctx context.Context,
 		return nil, nil, false, err
 	}
 	if err := qe.processDoNoSendCids(request, p, failNotifee); err != nil {
+		return nil, nil, false, err
+	}
+	if err := qe.processDoNotSendFirstBlocks(request, p, failNotifee); err != nil {
 		return nil, nil, false, err
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
@@ -118,5 +122,23 @@ func (qe *queryPreparer) processDoNoSendCids(request gsmsg.GraphSyncRequest, p p
 		return err
 	}
 	qe.responseAssembler.IgnoreBlocks(p, request.ID(), links)
+	return nil
+}
+
+func (qe *queryPreparer) processDoNotSendFirstBlocks(request gsmsg.GraphSyncRequest, p peer.ID, failNotifee notifications.Notifee) error {
+	doNotSendFirstBlocksData, has := request.Extension(graphsync.ExtensionsDoNotSendFirstBlocks)
+	if !has {
+		return nil
+	}
+	skipCount, err := donotsendfirstblocks.DecodeDoNotSendFirstBlocks(doNotSendFirstBlocksData)
+	if err != nil {
+		_ = qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
+			rb.FinishWithError(graphsync.RequestFailedUnknown)
+			rb.AddNotifee(failNotifee)
+			return nil
+		})
+		return err
+	}
+	qe.responseAssembler.SkipFirstBlocks(p, request.ID(), skipCount)
 	return nil
 }
