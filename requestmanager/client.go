@@ -23,6 +23,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
@@ -94,6 +95,7 @@ type RequestManager struct {
 	asyncLoader     AsyncLoader
 	disconnectNotif *pubsub.PubSub
 	linkSystem      ipld.LinkSystem
+	connManager     network.ConnManager
 
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
@@ -126,6 +128,7 @@ func New(ctx context.Context,
 	responseHooks ResponseHooks,
 	networkErrorListeners *listeners.NetworkErrorListeners,
 	requestQueue taskqueue.TaskQueue,
+	connManager network.ConnManager,
 ) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
@@ -141,6 +144,7 @@ func New(ctx context.Context,
 		responseHooks:             responseHooks,
 		networkErrorListeners:     networkErrorListeners,
 		requestQueue:              requestQueue,
+		connManager:               connManager,
 	}
 }
 

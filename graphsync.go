@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -13,6 +14,10 @@ import (
 
 // RequestID is a unique identifier for a GraphSync request.
 type RequestID int32
+
+func (r RequestID) String() string {
+	return strconv.Itoa(int(r))
+}
 
 // Priority a priority for a GraphSync request.
 type Priority int32
