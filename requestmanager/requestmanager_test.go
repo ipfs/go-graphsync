@@ -29,68 +29,6 @@ import (
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
-type requestRecord struct {
-	gsr gsmsg.GraphSyncRequest
-	p   peer.ID
-}
-
-type fakePeerHandler struct {
-	requestRecordChan chan requestRecord
-}
-
-func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64,
-	requestBuilder func(b *gsmsg.Builder), notifees []notifications.Notifee) {
-	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
-	requestBuilder(builder)
-	message, err := builder.Build()
-	if err != nil {
-		panic(err)
-	}
-	fph.requestRecordChan <- requestRecord{
-		gsr: message.Requests()[0],
-		p:   p,
-	}
-}
-
-func readNNetworkRequests(ctx context.Context,
-	t *testing.T,
-	requestRecordChan <-chan requestRecord,
-	count int) []requestRecord {
-	requestRecords := make([]requestRecord, 0, count)
-	for i := 0; i < count; i++ {
-		var rr requestRecord
-		testutil.AssertReceive(ctx, t, requestRecordChan, &rr, fmt.Sprintf("did not receive request %d", i))
-		requestRecords = append(requestRecords, rr)
-	}
-	// because of the simultaneous request queues it's possible for the requests to go to the network layer out of order
-	// if the requests are queued at a near identical time
-	sort.Slice(requestRecords, func(i, j int) bool {
-		return requestRecords[i].gsr.ID() < requestRecords[j].gsr.ID()
-	})
-	return requestRecords
-}
-
-func metadataForBlocks(blks []blocks.Block, present bool) metadata.Metadata {
-	md := make(metadata.Metadata, 0, len(blks))
-	for _, block := range blks {
-		md = append(md, metadata.Item{
-			Link:         block.Cid(),
-			BlockPresent: present,
-		})
-	}
-	return md
-}
-
-func encodedMetadataForBlocks(t *testing.T, blks []blocks.Block, present bool) graphsync.ExtensionData {
-	md := metadataForBlocks(blks, present)
-	metadataEncoded, err := metadata.EncodeMetadata(md)
-	require.NoError(t, err, "did not encode metadata")
-	return graphsync.ExtensionData{
-		Name: graphsync.ExtensionMetadata,
-		Data: metadataEncoded,
-	}
-}
-
 func TestNormalSimultaneousFetch(t *testing.T) {
 	ctx := context.Background()
 	td := newTestData(ctx, t)
@@ -106,6 +44,8 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
 
+	td.tcm.AssertProtected(t, peers[0])
+	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().Tag(), requestRecords[1].gsr.ID().Tag())
 	require.Equal(t, peers[0], requestRecords[0].p)
 	require.Equal(t, peers[0], requestRecords[1].p)
 	require.False(t, requestRecords[0].gsr.IsCancel())
@@ -148,6 +88,10 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan1)
 	blockChain2.VerifyResponseRange(requestCtx, returnedResponseChan2, 0, 3)
 
+	td.tcm.AssertProtected(t, peers[0])
+	td.tcm.RefuteProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().Tag())
+	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[1].gsr.ID().Tag())
+
 	moreBlocks := blockChain2.RemainderBlocks(3)
 	moreMetadata := metadataForBlocks(moreBlocks, true)
 	moreMetadataEncoded, err := metadata.EncodeMetadata(moreMetadata)
@@ -170,6 +114,8 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	blockChain2.VerifyRemainder(requestCtx, returnedResponseChan2, 3)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan2)
+
+	td.tcm.RefuteProtected(t, peers[0])
 }
 
 func TestCancelRequestInProgress(t *testing.T) {
@@ -186,6 +132,9 @@ func TestCancelRequestInProgress(t *testing.T) {
 	returnedResponseChan2, returnedErrorChan2 := td.requestManager.NewRequest(requestCtx2, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 2)
+
+	td.tcm.AssertProtected(t, peers[0])
+	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().Tag(), requestRecords[1].gsr.ID().Tag())
 
 	firstBlocks := td.blockChain.Blocks(0, 3)
 	firstMetadata := encodedMetadataForBlocks(t, firstBlocks, true)
@@ -224,6 +173,8 @@ func TestCancelRequestInProgress(t *testing.T) {
 	require.Len(t, errors, 1)
 	_, ok := errors[0].(graphsync.RequestClientCancelledErr)
 	require.True(t, ok)
+
+	td.tcm.RefuteProtected(t, peers[0])
 }
 func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 	ctx := context.Background()
@@ -246,6 +197,9 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)
 
+	td.tcm.AssertProtected(t, peers[0])
+	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().Tag())
+
 	go func() {
 		firstBlocks := td.blockChain.Blocks(0, 3)
 		firstMetadata := encodedMetadataForBlocks(t, firstBlocks, true)
@@ -266,6 +220,8 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 
 	require.True(t, rr.gsr.IsCancel())
 	require.Equal(t, requestRecords[0].gsr.ID(), rr.gsr.ID())
+
+	td.tcm.RefuteProtected(t, peers[0])
 
 	errors := testutil.CollectErrors(requestCtx, t, returnedErrorChan1)
 	require.Len(t, errors, 1)
@@ -321,6 +277,9 @@ func TestFailedRequest(t *testing.T) {
 	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
+	td.tcm.AssertProtected(t, peers[0])
+	td.tcm.AssertProtectedWithTags(t, peers[0], rr.gsr.ID().Tag())
+
 	failedResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound),
 	}
@@ -328,6 +287,7 @@ func TestFailedRequest(t *testing.T) {
 
 	testutil.VerifySingleTerminalError(requestCtx, t, returnedErrorChan)
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
+	td.tcm.RefuteProtected(t, peers[0])
 }
 
 func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
@@ -962,10 +922,73 @@ func TestPauseResumeExternal(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 }
 
+type requestRecord struct {
+	gsr gsmsg.GraphSyncRequest
+	p   peer.ID
+}
+
+type fakePeerHandler struct {
+	requestRecordChan chan requestRecord
+}
+
+func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64,
+	requestBuilder func(b *gsmsg.Builder), notifees []notifications.Notifee) {
+	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	requestBuilder(builder)
+	message, err := builder.Build()
+	if err != nil {
+		panic(err)
+	}
+	fph.requestRecordChan <- requestRecord{
+		gsr: message.Requests()[0],
+		p:   p,
+	}
+}
+
+func readNNetworkRequests(ctx context.Context,
+	t *testing.T,
+	requestRecordChan <-chan requestRecord,
+	count int) []requestRecord {
+	requestRecords := make([]requestRecord, 0, count)
+	for i := 0; i < count; i++ {
+		var rr requestRecord
+		testutil.AssertReceive(ctx, t, requestRecordChan, &rr, fmt.Sprintf("did not receive request %d", i))
+		requestRecords = append(requestRecords, rr)
+	}
+	// because of the simultaneous request queues it's possible for the requests to go to the network layer out of order
+	// if the requests are queued at a near identical time
+	sort.Slice(requestRecords, func(i, j int) bool {
+		return requestRecords[i].gsr.ID() < requestRecords[j].gsr.ID()
+	})
+	return requestRecords
+}
+
+func metadataForBlocks(blks []blocks.Block, present bool) metadata.Metadata {
+	md := make(metadata.Metadata, 0, len(blks))
+	for _, block := range blks {
+		md = append(md, metadata.Item{
+			Link:         block.Cid(),
+			BlockPresent: present,
+		})
+	}
+	return md
+}
+
+func encodedMetadataForBlocks(t *testing.T, blks []blocks.Block, present bool) graphsync.ExtensionData {
+	md := metadataForBlocks(blks, present)
+	metadataEncoded, err := metadata.EncodeMetadata(md)
+	require.NoError(t, err, "did not encode metadata")
+	return graphsync.ExtensionData{
+		Name: graphsync.ExtensionMetadata,
+		Data: metadataEncoded,
+	}
+}
+
 type testData struct {
 	requestRecordChan     chan requestRecord
 	fph                   *fakePeerHandler
 	fal                   *testloader.FakeAsyncLoader
+	tcm                   *testutil.TestConnManager
 	requestHooks          *hooks.OutgoingRequestHooks
 	responseHooks         *hooks.IncomingResponseHooks
 	blockHooks            *hooks.IncomingBlockHooks
@@ -989,13 +1012,14 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.requestRecordChan = make(chan requestRecord, 3)
 	td.fph = &fakePeerHandler{td.requestRecordChan}
 	td.fal = testloader.NewFakeAsyncLoader()
+	td.tcm = testutil.NewTestConnManager()
 	td.requestHooks = hooks.NewRequestHooks()
 	td.responseHooks = hooks.NewResponseHooks()
 	td.blockHooks = hooks.NewBlockHooks()
 	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
 	td.taskqueue = taskqueue.NewTaskQueue(ctx)
 	lsys := cidlink.DefaultLinkSystem()
-	td.requestManager = New(ctx, td.fal, lsys, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.taskqueue)
+	td.requestManager = New(ctx, td.fal, lsys, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.taskqueue, td.tcm)
 	td.executor = executor.NewExecutor(td.requestManager, td.blockHooks, td.fal.AsyncLoad)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()

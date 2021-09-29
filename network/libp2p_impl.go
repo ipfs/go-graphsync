@@ -151,6 +151,10 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 	}
 }
 
+func (gsnet *libp2pGraphSyncNetwork) ConnectionManager() ConnManager {
+	return gsnet.host.ConnManager()
+}
+
 type libp2pGraphSyncNotifee libp2pGraphSyncNetwork
 
 func (nn *libp2pGraphSyncNotifee) libp2pGraphSyncNetwork() *libp2pGraphSyncNetwork {

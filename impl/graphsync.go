@@ -179,11 +179,11 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 
 	asyncLoader := asyncloader.New(ctx, linkSystem, requestAllocator)
 	requestQueue := taskqueue.NewTaskQueue(ctx)
-	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, requestQueue)
+	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, requestQueue, network.ConnectionManager())
 	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks, asyncLoader.AsyncLoad)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	peerTaskQueue := peertaskqueue.New()
-	responseManager := responsemanager.New(ctx, linkSystem, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressIncomingRequests)
+	responseManager := responsemanager.New(ctx, linkSystem, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressIncomingRequests, network.ConnectionManager())
 	graphSync := &GraphSync{
 		network:                     network,
 		linkSystem:                  linkSystem,

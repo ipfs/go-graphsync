@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
@@ -28,6 +29,14 @@ const (
 	thawSpeed = time.Millisecond * 100
 )
 
+type state uint64
+
+const (
+	queued state = iota
+	running
+	paused
+)
+
 type inProgressResponseStatus struct {
 	ctx        context.Context
 	cancelFn   func()
@@ -36,7 +45,7 @@ type inProgressResponseStatus struct {
 	traverser  ipldutil.Traverser
 	signals    ResponseSignals
 	updates    []gsmsg.GraphSyncRequest
-	isPaused   bool
+	state      state
 	subscriber *notifications.TopicDataSubscriber
 }
 
@@ -144,6 +153,7 @@ type ResponseManager struct {
 	qe                    *queryExecutor
 	inProgressResponses   map[responseKey]*inProgressResponseStatus
 	maxInProcessRequests  uint64
+	connManager           network.ConnManager
 }
 
 // New creates a new response manager for responding to requests
@@ -160,6 +170,7 @@ func New(ctx context.Context,
 	blockSentListeners BlockSentListeners,
 	networkErrorListeners NetworkErrorListeners,
 	maxInProcessRequests uint64,
+	connManager network.ConnManager,
 ) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
 	messages := make(chan responseManagerMessage, 16)
@@ -181,6 +192,7 @@ func New(ctx context.Context,
 		workSignal:            workSignal,
 		inProgressResponses:   make(map[responseKey]*inProgressResponseStatus),
 		maxInProcessRequests:  maxInProcessRequests,
+		connManager:           connManager,
 	}
 	rm.qe = &queryExecutor{
 		blockHooks:         blockHooks,
@@ -192,6 +204,7 @@ func New(ctx context.Context,
 		ctx:                ctx,
 		workSignal:         workSignal,
 		ticker:             time.NewTicker(thawSpeed),
+		connManager:        connManager,
 	}
 	return rm
 }

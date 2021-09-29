@@ -14,6 +14,11 @@ import (
 // RequestID is a unique identifier for a GraphSync request.
 type RequestID int32
 
+// Tag returns an easy way to identify this request id as a graphsync request (for libp2p connections)
+func (r RequestID) Tag() string {
+	return fmt.Sprintf("graphsync-request-%d", r)
+}
+
 // Priority a priority for a GraphSync request.
 type Priority int32
 

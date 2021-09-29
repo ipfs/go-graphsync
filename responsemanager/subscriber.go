@@ -9,6 +9,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
+	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
 )
 
@@ -22,6 +23,7 @@ type subscriber struct {
 	blockSentListeners    BlockSentListeners
 	networkErrorListeners NetworkErrorListeners
 	completedListeners    CompletedListeners
+	connManager           network.ConnManager
 }
 
 func (s *subscriber) OnNext(topic notifications.Topic, event notifications.Event) {
@@ -45,6 +47,7 @@ func (s *subscriber) OnNext(topic notifications.Topic, event notifications.Event
 	}
 	status, isStatus := topic.(graphsync.ResponseStatusCode)
 	if isStatus {
+		s.connManager.Unprotect(s.p, s.request.ID().Tag())
 		switch responseEvent.Name {
 		case messagequeue.Error:
 			s.networkErrorListeners.NotifyNetworkErrorListeners(s.p, s.request, responseEvent.Err)

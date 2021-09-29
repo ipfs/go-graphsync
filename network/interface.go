@@ -31,6 +31,14 @@ type GraphSyncNetwork interface {
 	ConnectTo(context.Context, peer.ID) error
 
 	NewMessageSender(context.Context, peer.ID) (MessageSender, error)
+
+	ConnectionManager() ConnManager
+}
+
+// ConnManager provides the methods needed to protect and unprotect connections
+type ConnManager interface {
+	Protect(peer.ID, string)
+	Unprotect(peer.ID, string) bool
 }
 
 // MessageSender is an interface to send messages to a peer

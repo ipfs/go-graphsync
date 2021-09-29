@@ -46,7 +46,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		log.Warnf("received update for non existent request, peer %s, request ID %d", key.p.Pretty(), key.requestID)
 		return
 	}
-	if !response.isPaused {
+	if response.state != paused {
 		response.updates = append(response.updates, update)
 		select {
 		case response.signals.UpdateSignal <- struct{}{}:
@@ -88,10 +88,10 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	if !ok {
 		return errors.New("could not find request")
 	}
-	if !inProgressResponse.isPaused {
+	if inProgressResponse.state != paused {
 		return errors.New("request is not paused")
 	}
-	inProgressResponse.isPaused = false
+	inProgressResponse.state = queued
 	if len(extensions) > 0 {
 		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
 			for _, extension := range extensions {
@@ -116,10 +116,10 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 		return errors.New("could not find request")
 	}
 
-	if response.isPaused {
+	if response.state != running {
 		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
 			if isContextErr(err) {
-
+				rm.connManager.Unprotect(p, requestID.Tag())
 				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
 				rb.ClearRequest()
 			} else if err == errNetworkError {
@@ -152,6 +152,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			rm.processUpdate(key, request)
 			continue
 		}
+		rm.connManager.Protect(p, request.ID().Tag())
 		rm.requestQueuedHooks.ProcessRequestQueuedHooks(p, request)
 		ctx, cancelFn := context.WithCancel(rm.ctx)
 		sub := notifications.NewTopicDataSubscriber(&subscriber{
@@ -162,6 +163,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			blockSentListeners:    rm.blockSentListeners,
 			completedListeners:    rm.completedListeners,
 			networkErrorListeners: rm.networkErrorListeners,
+			connManager:           rm.connManager,
 		})
 
 		rm.inProgressResponses[key] =
@@ -175,6 +177,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 					UpdateSignal: make(chan struct{}, 1),
 					ErrSignal:    make(chan error, 1),
 				},
+				state: queued,
 			}
 		// TODO: Use a better work estimation metric.
 
@@ -202,10 +205,11 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) ResponseTaskData {
 		response.loader = loader
 		response.traverser = traverser
 		if isPaused {
-			response.isPaused = true
+			response.state = paused
 			return ResponseTaskData{Empty: true}
 		}
 	}
+	response.state = running
 	return ResponseTaskData{false, response.subscriber, response.ctx, response.request, response.loader, response.traverser, response.signals}
 }
 
@@ -226,7 +230,7 @@ func (rm *ResponseManager) finishTask(task *peertask.Task, err error) {
 		return
 	}
 	if _, ok := err.(hooks.ErrPaused); ok {
-		response.isPaused = true
+		response.state = paused
 		return
 	}
 	if err != nil {
@@ -252,7 +256,7 @@ func (rm *ResponseManager) pauseRequest(p peer.ID, requestID graphsync.RequestID
 	if !ok {
 		return errors.New("could not find request")
 	}
-	if inProgressResponse.isPaused {
+	if inProgressResponse.state == paused {
 		return errors.New("request is already paused")
 	}
 	select {

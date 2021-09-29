@@ -12,6 +12,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
@@ -39,6 +40,7 @@ type queryExecutor struct {
 	ctx                context.Context
 	workSignal         chan struct{}
 	ticker             *time.Ticker
+	connManager        network.ConnManager
 }
 
 func (qe *queryExecutor) processQueriesWorker() {
@@ -73,6 +75,7 @@ func (qe *queryExecutor) processQueriesWorker() {
 			_, err := qe.executeQuery(pid, taskData.Request, taskData.Loader, taskData.Traverser, taskData.Signals, taskData.Subscriber)
 			isCancelled := err != nil && isContextErr(err)
 			if isCancelled {
+				qe.connManager.Unprotect(pid, taskData.Request.ID().Tag())
 				qe.cancelledListeners.NotifyCancelledListeners(pid, taskData.Request)
 			}
 			qe.manager.FinishTask(task, err)
