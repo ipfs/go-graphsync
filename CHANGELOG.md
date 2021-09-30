@@ -1,5 +1,27 @@
 # go-graphsync changelog
 
+# go-graphsync 0.10.0
+
+Includes several refactors and limits outgoing simultaneous requests
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Do not send first blocks extension (#230) ([ipfs/go-graphsync#230](https://github.com/ipfs/go-graphsync/pull/230))
+  - Protect Libp2p Connections (#229) ([ipfs/go-graphsync#229](https://github.com/ipfs/go-graphsync/pull/229))
+  - test(responsemanager): remove check (#228) ([ipfs/go-graphsync#228](https://github.com/ipfs/go-graphsync/pull/228))
+  - feat(graphsync): give missing blocks a named error (#227) ([ipfs/go-graphsync#227](https://github.com/ipfs/go-graphsync/pull/227))
+  - Add request limits (#224) ([ipfs/go-graphsync#224](https://github.com/ipfs/go-graphsync/pull/224))
+  - Tech Debt Cleanup and Docs Update (#219) ([ipfs/go-graphsync#219](https://github.com/ipfs/go-graphsync/pull/219))
+  - Release/v0.9.3 ([ipfs/go-graphsync#218](https://github.com/ipfs/go-graphsync/pull/218))
+  - 0.9.2 release ([ipfs/go-graphsync#217](https://github.com/ipfs/go-graphsync/pull/217))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 6 | +2761/-2369 | 58 |
+
 # go-graphsync 0.9.3
 
 Hotfix for 0.9.2
