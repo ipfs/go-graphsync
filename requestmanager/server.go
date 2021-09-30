@@ -102,6 +102,13 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 	var initialRequest bool
 	if ipr.traverser == nil {
 		initialRequest = true
+		var budget *traversal.Budget
+		if rm.maxLinksPerRequest > 0 {
+			budget = &traversal.Budget{
+				NodeBudget: math.MaxInt64,
+				LinkBudget: int64(rm.maxLinksPerRequest),
+			}
+		}
 		ipr.traverser = ipldutil.TraversalBuilder{
 			Root:     cidlink.Link{Cid: ipr.request.Root()},
 			Selector: ipr.request.Selector(),
@@ -118,6 +125,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 			},
 			Chooser:    ipr.nodeStyleChooser,
 			LinkSystem: rm.linkSystem,
+			Budget:     budget,
 		}.Start(ipr.ctx)
 	}
 

@@ -3,6 +3,7 @@ package ipldutil
 import (
 	"bytes"
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -56,7 +57,7 @@ func TestTraverser(t *testing.T) {
 			testdata.MiddleMapBlock,
 			testdata.LeafAlphaBlock,
 			testdata.LeafAlphaBlock,
-		})
+		}, nil)
 	})
 
 	t.Run("traverses correctly, blockchain", func(t *testing.T) {
@@ -86,13 +87,58 @@ func TestTraverser(t *testing.T) {
 			blockChain.VerifyWholeChainWithTypes(ctx, inProgressChan)
 			close(done)
 		}()
-		checkTraverseSequence(ctx, t, traverser, blockChain.AllBlocks())
+		checkTraverseSequence(ctx, t, traverser, blockChain.AllBlocks(), nil)
 		close(inProgressChan)
 		testutil.AssertDoesReceive(ctx, t, done, "should have completed verification but did not")
 	})
+
+	t.Run("errors correctly, with budget", func(t *testing.T) {
+		store := make(map[ipld.Link][]byte)
+		persistence := testutil.NewTestStore(store)
+		blockChain := testutil.SetupBlockChain(ctx, t, persistence, 100, 10)
+		traverser := TraversalBuilder{
+			Root:       blockChain.TipLink,
+			Selector:   blockChain.Selector(),
+			Chooser:    blockChain.Chooser,
+			LinkSystem: persistence,
+			Visitor: func(tp traversal.Progress, node ipld.Node, r traversal.VisitReason) error {
+				return nil
+			},
+			Budget: &traversal.Budget{
+				NodeBudget: math.MaxInt64,
+				LinkBudget: 6,
+			},
+		}.Start(ctx)
+		var path ipld.Path
+		for i := 0; i < 6; i++ {
+			path = path.AppendSegment(ipld.PathSegmentOfString("Parents"))
+			path = path.AppendSegment(ipld.PathSegmentOfInt(0))
+		}
+		checkTraverseSequence(ctx, t, traverser, blockChain.Blocks(0, 6), &traversal.ErrBudgetExceeded{BudgetKind: "link", Path: path, Link: blockChain.LinkTipIndex(6)})
+	})
+
+	t.Run("errors correctly, no budget", func(t *testing.T) {
+		store := make(map[ipld.Link][]byte)
+		persistence := testutil.NewTestStore(store)
+		blockChain := testutil.SetupBlockChain(ctx, t, persistence, 100, 10)
+		traverser := TraversalBuilder{
+			Root:       blockChain.TipLink,
+			Selector:   blockChain.Selector(),
+			Chooser:    blockChain.Chooser,
+			LinkSystem: persistence,
+			Visitor: func(tp traversal.Progress, node ipld.Node, r traversal.VisitReason) error {
+				return nil
+			},
+			Budget: &traversal.Budget{
+				NodeBudget: math.MaxInt64,
+				LinkBudget: 0,
+			},
+		}.Start(ctx)
+		checkTraverseSequence(ctx, t, traverser, []blocks.Block{}, &traversal.ErrBudgetExceeded{BudgetKind: "link", Link: blockChain.TipLink})
+	})
 }
 
-func checkTraverseSequence(ctx context.Context, t *testing.T, traverser Traverser, expectedBlks []blocks.Block) {
+func checkTraverseSequence(ctx context.Context, t *testing.T, traverser Traverser, expectedBlks []blocks.Block, finalErr error) {
 	for _, blk := range expectedBlks {
 		isComplete, err := traverser.IsComplete()
 		require.False(t, isComplete)
@@ -104,5 +150,9 @@ func checkTraverseSequence(ctx context.Context, t *testing.T, traverser Traverse
 	}
 	isComplete, err := traverser.IsComplete()
 	require.True(t, isComplete)
-	require.NoError(t, err)
+	if finalErr == nil {
+		require.NoError(t, err)
+	} else {
+		require.EqualError(t, err, finalErr.Error())
+	}
 }

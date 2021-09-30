@@ -1019,7 +1019,7 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
 	td.taskqueue = taskqueue.NewTaskQueue(ctx)
 	lsys := cidlink.DefaultLinkSystem()
-	td.requestManager = New(ctx, td.fal, lsys, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.taskqueue, td.tcm)
+	td.requestManager = New(ctx, td.fal, lsys, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.taskqueue, td.tcm, 0)
 	td.executor = executor.NewExecutor(td.requestManager, td.blockHooks, td.fal.AsyncLoad)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()

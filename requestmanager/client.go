@@ -87,15 +87,16 @@ type AsyncLoader interface {
 // RequestManager tracks outgoing requests and processes incoming reponses
 // to them.
 type RequestManager struct {
-	ctx             context.Context
-	cancel          func()
-	messages        chan requestManagerMessage
-	peerHandler     PeerHandler
-	rc              *responseCollector
-	asyncLoader     AsyncLoader
-	disconnectNotif *pubsub.PubSub
-	linkSystem      ipld.LinkSystem
-	connManager     network.ConnManager
+	ctx                context.Context
+	cancel             func()
+	messages           chan requestManagerMessage
+	peerHandler        PeerHandler
+	rc                 *responseCollector
+	asyncLoader        AsyncLoader
+	disconnectNotif    *pubsub.PubSub
+	linkSystem         ipld.LinkSystem
+	connManager        network.ConnManager
+	maxLinksPerRequest uint64
 
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
@@ -129,6 +130,7 @@ func New(ctx context.Context,
 	networkErrorListeners *listeners.NetworkErrorListeners,
 	requestQueue taskqueue.TaskQueue,
 	connManager network.ConnManager,
+	maxLinksPerRequest uint64,
 ) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
@@ -145,6 +147,7 @@ func New(ctx context.Context,
 		networkErrorListeners:     networkErrorListeners,
 		requestQueue:              requestQueue,
 		connManager:               connManager,
+		maxLinksPerRequest:        maxLinksPerRequest,
 	}
 }
 
