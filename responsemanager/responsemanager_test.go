@@ -884,6 +884,10 @@ func (fbd fakeBlkData) BlockSizeOnWire() uint64 {
 	return fbd.size
 }
 
+func (fbd fakeBlkData) Index() int64 {
+	return 0
+}
+
 func (fra *fakeResponseAssembler) sendResponse(
 	requestID graphsync.RequestID,
 	link ipld.Link,

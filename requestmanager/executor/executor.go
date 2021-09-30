@@ -190,7 +190,7 @@ func (e *Executor) advanceTraversal(rt RequestTask, result types.AsyncLoadResult
 }
 
 func (e *Executor) processResult(rt RequestTask, link ipld.Link, result types.AsyncLoadResult) error {
-	err := e.onNewBlock(rt, &blockData{link, result.Local, uint64(len(result.Data))})
+	err := e.onNewBlock(rt, &blockData{link, result.Local, uint64(len(result.Data)), int64(rt.Traverser.NBlocksTraversed())})
 	select {
 	case <-rt.PauseMessages:
 		if err == nil {
@@ -243,6 +243,7 @@ type blockData struct {
 	link  ipld.Link
 	local bool
 	size  uint64
+	index int64
 }
 
 // Link is the link/cid for the block
@@ -261,4 +262,8 @@ func (bd *blockData) BlockSizeOnWire() uint64 {
 		return 0
 	}
 	return bd.size
+}
+
+func (bd *blockData) Index() int64 {
+	return bd.index
 }

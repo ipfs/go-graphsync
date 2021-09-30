@@ -175,6 +175,9 @@ type BlockData interface {
 
 	// BlockSize specifies the amount of data actually transmitted over the network
 	BlockSizeOnWire() uint64
+
+	// The index of this block in the selector traversal
+	Index() int64
 }
 
 // IncomingRequestHookActions are actions that a request hook can take to change

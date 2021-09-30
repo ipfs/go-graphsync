@@ -316,7 +316,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 	totalSent := 0
 	totalSentOnWire := 0
 	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-		totalSent++
+		totalSent = int(blockData.Index())
 		if blockData.BlockSizeOnWire() > 0 {
 			totalSentOnWire++
 		}
@@ -364,8 +364,11 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 	totalSent := 0
 	totalSentOnWire := 0
 	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-		totalSent++
-		if blockData.BlockSizeOnWire() > 0 {
+		totalSent = int(blockData.Index())
+		if blockData.Index() <= 50 {
+			require.True(t, blockData.BlockSizeOnWire() == 0)
+		} else {
+			require.True(t, blockData.BlockSizeOnWire() > 0)
 			totalSentOnWire++
 		}
 	})
