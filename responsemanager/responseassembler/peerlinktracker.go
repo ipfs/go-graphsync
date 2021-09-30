@@ -91,7 +91,7 @@ func (prs *peerLinkTracker) FinishTracking(requestID graphsync.RequestID) bool {
 
 // RecordLinkTraversal records whether a link is found for a request.
 func (prs *peerLinkTracker) RecordLinkTraversal(requestID graphsync.RequestID,
-	link ipld.Link, hasBlock bool) bool {
+	link ipld.Link, hasBlock bool) (bool, int64) {
 	prs.linkTrackerLk.Lock()
 	defer prs.linkTrackerLk.Unlock()
 	prs.blockSentCount[requestID]++
@@ -99,5 +99,5 @@ func (prs *peerLinkTracker) RecordLinkTraversal(requestID graphsync.RequestID,
 	linkTracker := prs.getLinkTracker(requestID)
 	isUnique := linkTracker.BlockRefCount(link) == 0
 	linkTracker.RecordLinkTraversal(requestID, link, hasBlock)
-	return hasBlock && notSkipped && isUnique
+	return hasBlock && notSkipped && isUnique, prs.blockSentCount[requestID]
 }
