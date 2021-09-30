@@ -60,9 +60,9 @@ func (rb *responseBuilder) AddNotifee(notifee notifications.Notifee) {
 func (rb *responseBuilder) setupBlockOperation(
 	link ipld.Link, data []byte) blockOperation {
 	hasBlock := data != nil
-	send := rb.linkTracker.RecordLinkTraversal(rb.requestID, link, hasBlock)
+	send, index := rb.linkTracker.RecordLinkTraversal(rb.requestID, link, hasBlock)
 	return blockOperation{
-		data, send, link, rb.requestID,
+		data, send, link, rb.requestID, index,
 	}
 }
 
@@ -113,6 +113,7 @@ type blockOperation struct {
 	sendBlock bool
 	link      ipld.Link
 	requestID graphsync.RequestID
+	index     int64
 }
 
 func (bo blockOperation) build(builder *gsmsg.Builder) {
@@ -140,6 +141,10 @@ func (bo blockOperation) BlockSizeOnWire() uint64 {
 		return 0
 	}
 	return bo.BlockSize()
+}
+
+func (bo blockOperation) Index() int64 {
+	return bo.index
 }
 
 func (bo blockOperation) size() uint64 {
