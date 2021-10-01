@@ -102,12 +102,24 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 	var initialRequest bool
 	if ipr.traverser == nil {
 		initialRequest = true
+		var budget *traversal.Budget
+		if rm.maxLinksPerRequest > 0 {
+			budget = &traversal.Budget{
+				NodeBudget: math.MaxInt64,
+				LinkBudget: int64(rm.maxLinksPerRequest),
+			}
+		}
+		// the traverser has its own context because we want to fail on block boundaries, in the executor,
+		// and make sure all blocks included up to the termination message
+		// are processed and passed in the response channel
+		ctx, cancel := context.WithCancel(rm.ctx)
+		ipr.traverserCancel = cancel
 		ipr.traverser = ipldutil.TraversalBuilder{
 			Root:     cidlink.Link{Cid: ipr.request.Root()},
 			Selector: ipr.request.Selector(),
 			Visitor: func(tp traversal.Progress, node ipld.Node, tr traversal.VisitReason) error {
 				select {
-				case <-ipr.ctx.Done():
+				case <-ctx.Done():
 				case ipr.inProgressChan <- graphsync.ResponseProgress{
 					Node:      node,
 					Path:      tp.Path,
@@ -118,7 +130,8 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 			},
 			Chooser:    ipr.nodeStyleChooser,
 			LinkSystem: rm.linkSystem,
-		}.Start(ipr.ctx)
+			Budget:     budget,
+		}.Start(ctx)
 	}
 
 	ipr.state = running
@@ -157,6 +170,7 @@ func (rm *RequestManager) terminateRequest(requestID graphsync.RequestID, ipr *i
 	ipr.cancelFn()
 	rm.asyncLoader.CleanupRequest(requestID)
 	if ipr.traverser != nil {
+		ipr.traverserCancel()
 		ipr.traverser.Shutdown(rm.ctx)
 	}
 	// make sure context is not closed before closing channels (could cause send

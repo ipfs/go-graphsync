@@ -152,10 +152,13 @@ func ReadNResponses(ctx context.Context, t TestingT, responseChan <-chan graphsy
 	var returnedBlocks []graphsync.ResponseProgress
 	for i := 0; i < count; i++ {
 		select {
-		case blk := <-responseChan:
+		case blk, ok := <-responseChan:
+			if !ok {
+				require.FailNowf(t, "Channel closed early", "expected %d messages, got %d", count, len(returnedBlocks))
+			}
 			returnedBlocks = append(returnedBlocks, blk)
 		case <-ctx.Done():
-			t.Fatal("Unable to read enough responses")
+			require.FailNow(t, "Unable to read enough responses")
 		}
 	}
 	return returnedBlocks

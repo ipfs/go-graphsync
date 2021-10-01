@@ -3,10 +3,12 @@ package responsemanager
 import (
 	"context"
 	"errors"
+	"math"
 
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
@@ -23,6 +25,8 @@ type queryPreparer struct {
 	requestHooks      RequestHooks
 	responseAssembler ResponseAssembler
 	linkSystem        ipld.LinkSystem
+	// maximum number of links to traverse per request. A value of zero = infinity, or no limit=
+	maxLinksPerRequest uint64
 }
 
 func (qe *queryPreparer) prepareQuery(ctx context.Context,
@@ -71,11 +75,19 @@ func (qe *queryPreparer) prepareQuery(ctx context.Context,
 	if linkSystem.StorageReadOpener == nil {
 		linkSystem = qe.linkSystem
 	}
+	var budget *traversal.Budget
+	if qe.maxLinksPerRequest > 0 {
+		budget = &traversal.Budget{
+			NodeBudget: math.MaxInt64,
+			LinkBudget: int64(qe.maxLinksPerRequest),
+		}
+	}
 	traverser := ipldutil.TraversalBuilder{
 		Root:       rootLink,
 		Selector:   request.Selector(),
 		LinkSystem: linkSystem,
 		Chooser:    result.CustomChooser,
+		Budget:     budget,
 	}.Start(ctx)
 
 	return linkSystem.StorageReadOpener, traverser, isPaused, nil
