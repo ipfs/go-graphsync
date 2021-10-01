@@ -66,6 +66,7 @@ type inProgressRequestStatus struct {
 	inProgressChan   chan graphsync.ResponseProgress
 	inProgressErr    chan error
 	traverser        ipldutil.Traverser
+	traverserCancel  context.CancelFunc
 }
 
 // PeerHandler is an interface that can send requests to peers
