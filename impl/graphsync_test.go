@@ -173,6 +173,58 @@ func TestRejectRequestsByDefault(t *testing.T) {
 	testutil.VerifySingleTerminalError(ctx, t, errChan)
 }
 
+func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	var linksToTraverse uint64 = 5
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1(MaxLinksPerOutgoingRequests(linksToTraverse))
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	td.GraphSyncHost2()
+
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	// response budgets don't include the root block, so total links traverse with be one more than expected
+	blockChain.VerifyResponseRange(ctx, progressChan, 0, int(linksToTraverse))
+	testutil.VerifySingleTerminalError(ctx, t, errChan)
+	require.Len(t, td.blockStore1, int(linksToTraverse), "did not store all blocks")
+}
+
+func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	var linksToTraverse uint64 = 5
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	td.GraphSyncHost2(MaxLinksPerIncomingRequests(linksToTraverse))
+
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	// response budgets don't include the root block, so total links traverse with be one more than expected
+	blockChain.VerifyResponseRange(ctx, progressChan, 0, int(linksToTraverse))
+	testutil.VerifySingleTerminalError(ctx, t, errChan)
+	require.Len(t, td.blockStore1, int(linksToTraverse), "did not store all blocks")
+}
+
 func TestGraphsyncRoundTrip(t *testing.T) {
 	// create network
 	ctx := context.Background()

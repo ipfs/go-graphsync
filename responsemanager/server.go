@@ -196,7 +196,7 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) ResponseTaskData {
 		return ResponseTaskData{Empty: true}
 	}
 	if response.loader == nil || response.traverser == nil {
-		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.linkSystem}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
+		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.linkSystem, rm.maxLinksPerRequest}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
 		if err != nil {
 			response.cancelFn()
 			delete(rm.inProgressResponses, key)

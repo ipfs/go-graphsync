@@ -74,6 +74,8 @@ type graphsyncConfigOptions struct {
 	maxInProgressIncomingRequests uint64
 	maxInProgressOutgoingRequests uint64
 	registerDefaultValidator      bool
+	maxLinksPerOutgoingRequest    uint64
+	maxLinksPerIncomingRequest    uint64
 }
 
 // Option defines the functional option type that can be used to configure
@@ -136,6 +138,24 @@ func MaxInProgressOutgoingRequests(maxInProgressOutgoingRequests uint64) Option 
 	}
 }
 
+// MaxLinksPerOutgoingRequests changes the allowed number of links an outgoing
+// request can traverse before failing
+// A value of 0 = infinity, or no limit
+func MaxLinksPerOutgoingRequests(maxLinksPerOutgoingRequest uint64) Option {
+	return func(gs *graphsyncConfigOptions) {
+		gs.maxLinksPerOutgoingRequest = maxLinksPerOutgoingRequest
+	}
+}
+
+// MaxLinksPerIncomingRequests changes the allowed number of links an incoming
+// request can traverse before failing
+// A value of 0 = infinity, or no limit
+func MaxLinksPerIncomingRequests(maxLinksPerIncomingRequest uint64) Option {
+	return func(gs *graphsyncConfigOptions) {
+		gs.maxLinksPerIncomingRequest = maxLinksPerIncomingRequest
+	}
+}
+
 // New creates a new GraphSync Exchange on the given network,
 // and the given link loader+storer.
 func New(parent context.Context, network gsnet.GraphSyncNetwork,
@@ -179,11 +199,11 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 
 	asyncLoader := asyncloader.New(ctx, linkSystem, requestAllocator)
 	requestQueue := taskqueue.NewTaskQueue(ctx)
-	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, requestQueue, network.ConnectionManager())
+	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest)
 	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks, asyncLoader.AsyncLoad)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	peerTaskQueue := peertaskqueue.New()
-	responseManager := responsemanager.New(ctx, linkSystem, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressIncomingRequests, network.ConnectionManager())
+	responseManager := responsemanager.New(ctx, linkSystem, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressIncomingRequests, network.ConnectionManager(), gsConfig.maxLinksPerIncomingRequest)
 	graphSync := &GraphSync{
 		network:                     network,
 		linkSystem:                  linkSystem,

@@ -36,6 +36,7 @@ type TraversalBuilder struct {
 	Visitor    traversal.AdvVisitFn
 	LinkSystem ipld.LinkSystem
 	Chooser    traversal.LinkTargetNodePrototypeChooser
+	Budget     *traversal.Budget
 }
 
 // Traverser is an interface for performing a selector traversal that operates iteratively --
@@ -81,6 +82,7 @@ func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 		visitor:      defaultVisitor,
 		chooser:      defaultChooser,
 		linkSystem:   tb.LinkSystem,
+		budget:       tb.Budget,
 		awaitRequest: make(chan struct{}, 1),
 		stateChan:    make(chan state, 1),
 		responses:    make(chan nextResponse),
@@ -120,6 +122,7 @@ type traverser struct {
 	chooser        traversal.LinkTargetNodePrototypeChooser
 	currentLink    ipld.Link
 	currentContext ipld.LinkContext
+	budget         *traversal.Budget
 	isDone         bool
 	completionErr  error
 	awaitRequest   chan struct{}
@@ -184,6 +187,12 @@ func (t *traverser) start() {
 			t.writeDone(err)
 			return
 		}
+		if t.budget != nil {
+			t.budget.LinkBudget--
+			if t.budget.LinkBudget <= 0 {
+				t.writeDone(&traversal.ErrBudgetExceeded{BudgetKind: "link", Link: t.root})
+			}
+		}
 		nd, err := t.linkSystem.Load(ipld.LinkContext{Ctx: t.ctx}, t.root, ns)
 		if err != nil {
 			t.writeDone(err)
@@ -201,6 +210,7 @@ func (t *traverser) start() {
 				LinkSystem:                     t.linkSystem,
 				LinkTargetNodePrototypeChooser: t.chooser,
 			},
+			Budget: t.budget,
 		}.WalkAdv(nd, sel, t.visitor)
 		t.writeDone(err)
 	}()

@@ -66,6 +66,7 @@ type inProgressRequestStatus struct {
 	inProgressChan   chan graphsync.ResponseProgress
 	inProgressErr    chan error
 	traverser        ipldutil.Traverser
+	traverserCancel  context.CancelFunc
 }
 
 // PeerHandler is an interface that can send requests to peers
@@ -96,6 +97,8 @@ type RequestManager struct {
 	disconnectNotif *pubsub.PubSub
 	linkSystem      ipld.LinkSystem
 	connManager     network.ConnManager
+	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
+	maxLinksPerRequest uint64
 
 	// dont touch out side of run loop
 	nextRequestID             graphsync.RequestID
@@ -129,6 +132,7 @@ func New(ctx context.Context,
 	networkErrorListeners *listeners.NetworkErrorListeners,
 	requestQueue taskqueue.TaskQueue,
 	connManager network.ConnManager,
+	maxLinksPerRequest uint64,
 ) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
@@ -145,6 +149,7 @@ func New(ctx context.Context,
 		networkErrorListeners:     networkErrorListeners,
 		requestQueue:              requestQueue,
 		connManager:               connManager,
+		maxLinksPerRequest:        maxLinksPerRequest,
 	}
 }
 

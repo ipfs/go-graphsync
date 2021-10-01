@@ -155,6 +155,8 @@ type ResponseManager struct {
 	inProgressResponses   map[responseKey]*inProgressResponseStatus
 	maxInProcessRequests  uint64
 	connManager           network.ConnManager
+	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
+	maxLinksPerRequest uint64
 }
 
 // New creates a new response manager for responding to requests
@@ -172,6 +174,7 @@ func New(ctx context.Context,
 	networkErrorListeners NetworkErrorListeners,
 	maxInProcessRequests uint64,
 	connManager network.ConnManager,
+	maxLinksPerRequest uint64,
 ) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
 	messages := make(chan responseManagerMessage, 16)
@@ -194,6 +197,7 @@ func New(ctx context.Context,
 		inProgressResponses:   make(map[responseKey]*inProgressResponseStatus),
 		maxInProcessRequests:  maxInProcessRequests,
 		connManager:           connManager,
+		maxLinksPerRequest:    maxLinksPerRequest,
 	}
 	rm.qe = &queryExecutor{
 		blockHooks:         blockHooks,
