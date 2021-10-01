@@ -140,6 +140,7 @@ func MaxInProgressOutgoingRequests(maxInProgressOutgoingRequests uint64) Option 
 
 // MaxLinksPerOutgoingRequests changes the allowed number of links an outgoing
 // request can traverse before failing
+// A value of 0 = infinity, or no limit
 func MaxLinksPerOutgoingRequests(maxLinksPerOutgoingRequest uint64) Option {
 	return func(gs *graphsyncConfigOptions) {
 		gs.maxLinksPerOutgoingRequest = maxLinksPerOutgoingRequest
@@ -148,6 +149,7 @@ func MaxLinksPerOutgoingRequests(maxLinksPerOutgoingRequest uint64) Option {
 
 // MaxLinksPerIncomingRequests changes the allowed number of links an incoming
 // request can traverse before failing
+// A value of 0 = infinity, or no limit
 func MaxLinksPerIncomingRequests(maxLinksPerIncomingRequest uint64) Option {
 	return func(gs *graphsyncConfigOptions) {
 		gs.maxLinksPerIncomingRequest = maxLinksPerIncomingRequest

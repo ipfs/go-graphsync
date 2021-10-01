@@ -88,15 +88,16 @@ type AsyncLoader interface {
 // RequestManager tracks outgoing requests and processes incoming reponses
 // to them.
 type RequestManager struct {
-	ctx                context.Context
-	cancel             func()
-	messages           chan requestManagerMessage
-	peerHandler        PeerHandler
-	rc                 *responseCollector
-	asyncLoader        AsyncLoader
-	disconnectNotif    *pubsub.PubSub
-	linkSystem         ipld.LinkSystem
-	connManager        network.ConnManager
+	ctx             context.Context
+	cancel          func()
+	messages        chan requestManagerMessage
+	peerHandler     PeerHandler
+	rc              *responseCollector
+	asyncLoader     AsyncLoader
+	disconnectNotif *pubsub.PubSub
+	linkSystem      ipld.LinkSystem
+	connManager     network.ConnManager
+	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
 	maxLinksPerRequest uint64
 
 	// dont touch out side of run loop

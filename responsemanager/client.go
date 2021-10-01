@@ -155,7 +155,8 @@ type ResponseManager struct {
 	inProgressResponses   map[responseKey]*inProgressResponseStatus
 	maxInProcessRequests  uint64
 	connManager           network.ConnManager
-	maxLinksPerRequest    uint64
+	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
+	maxLinksPerRequest uint64
 }
 
 // New creates a new response manager for responding to requests
