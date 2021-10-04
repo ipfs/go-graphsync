@@ -16,7 +16,7 @@ var (
 	// version of data-transfer (supports do-not-send-first-blocks extension)
 	ProtocolDataTransfer1_2 protocol.ID = "/fil/datatransfer/1.2.0"
 
-	// ProtocolDataTransfer1_2 is the protocol identifier for the version
+	// ProtocolDataTransfer1_1 is the protocol identifier for the version
 	// of data-transfer that supports the do-not-send-cids extension
 	// (but not the do-not-send-first-blocks extension)
 	ProtocolDataTransfer1_1 protocol.ID = "/fil/datatransfer/1.1.0"

@@ -31,7 +31,6 @@ require (
 	github.com/libp2p/go-libp2p v0.13.0
 	github.com/libp2p/go-libp2p-core v0.8.5
 	github.com/libp2p/go-libp2p-record v0.1.1 // indirect
-	github.com/multiformats/go-multiaddr v0.3.1
 	github.com/stretchr/testify v1.6.1
 	github.com/whyrusleeping/cbor-gen v0.0.0-20210219115102-f37d292932f2
 	go.uber.org/atomic v1.6.0

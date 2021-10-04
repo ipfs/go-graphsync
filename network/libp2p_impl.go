@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -13,7 +12,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
-	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
@@ -53,8 +51,7 @@ type Option func(*libp2pDataTransferNetwork)
 // DataTransferProtocols OVERWRITES the default libp2p protocols we use for data transfer with the given protocols.
 func DataTransferProtocols(protocols []protocol.ID) Option {
 	return func(impl *libp2pDataTransferNetwork) {
-		impl.dtProtocols = nil
-		impl.dtProtocols = append(impl.dtProtocols, protocols...)
+		impl.setDataTransferProtocols(protocols)
 	}
 }
 
@@ -87,16 +84,12 @@ func NewFromLibp2pHost(host host.Host, options ...Option) DataTransferNetwork {
 		minAttemptDuration:    defaultMinAttemptDuration,
 		maxAttemptDuration:    defaultMaxAttemptDuration,
 		backoffFactor:         defaultBackoffFactor,
-		dtProtocols:           defaultDataTransferProtocols,
-		peerProtocols:         make(map[peer.ID]protocol.ID),
 	}
+	dataTransferNetwork.setDataTransferProtocols(defaultDataTransferProtocols)
 
 	for _, option := range options {
 		option(&dataTransferNetwork)
 	}
-
-	// Listen to network notifications
-	host.Network().Notify(&dataTransferNetwork)
 
 	return &dataTransferNetwork
 }
@@ -114,10 +107,8 @@ type libp2pDataTransferNetwork struct {
 	minAttemptDuration    time.Duration
 	maxAttemptDuration    time.Duration
 	dtProtocols           []protocol.ID
+	dtProtocolStrings     []string
 	backoffFactor         float64
-
-	pplk          sync.RWMutex
-	peerProtocols map[peer.ID]protocol.ID
 }
 
 func (impl *libp2pDataTransferNetwork) openStream(ctx context.Context, id peer.ID, protocols ...protocol.ID) (network.Stream, error) {
@@ -142,9 +133,6 @@ func (impl *libp2pDataTransferNetwork) openStream(ctx context.Context, id peer.I
 				log.Debugf("opened stream to %s on attempt %g of %g after %s",
 					id, nAttempts, impl.maxStreamOpenAttempts, time.Since(start))
 			}
-
-			// Cache the peer's protocol version
-			impl.setPeerProtocol(id, s.Protocol())
 
 			return s, err
 		}
@@ -229,10 +217,7 @@ func (dtnet *libp2pDataTransferNetwork) handleNewStream(s network.Stream) {
 		return
 	}
 
-	// Cache the peer's protocol version
 	p := s.Conn().RemotePeer()
-	dtnet.setPeerProtocol(p, s.Protocol())
-
 	for {
 		var received datatransfer.Message
 		var err error
@@ -321,12 +306,13 @@ func (dtnet *libp2pDataTransferNetwork) msgToStream(ctx context.Context, s netwo
 
 func (impl *libp2pDataTransferNetwork) Protocol(ctx context.Context, id peer.ID) (protocol.ID, error) {
 	// Check the cache for the peer's protocol version
-	impl.pplk.RLock()
-	proto, ok := impl.peerProtocols[id]
-	impl.pplk.RUnlock()
+	firstProto, err := impl.host.Peerstore().FirstSupportedProtocol(id, impl.dtProtocolStrings...)
+	if err != nil {
+		return "", err
+	}
 
-	if ok {
-		return proto, nil
+	if firstProto != "" {
+		return protocol.ID(firstProto), nil
 	}
 
 	// The peer's protocol version is not in the cache, so connect to the peer.
@@ -341,27 +327,12 @@ func (impl *libp2pDataTransferNetwork) Protocol(ctx context.Context, id peer.ID)
 	return s.Protocol(), nil
 }
 
-func (impl *libp2pDataTransferNetwork) setPeerProtocol(p peer.ID, proto protocol.ID) {
-	impl.pplk.Lock()
-	defer impl.pplk.Unlock()
+func (impl *libp2pDataTransferNetwork) setDataTransferProtocols(protocols []protocol.ID) {
+	impl.dtProtocols = append([]protocol.ID{}, protocols...)
 
-	impl.peerProtocols[p] = proto
+	// Keep a string version of the protocols for performance reasons
+	impl.dtProtocolStrings = make([]string, 0, len(impl.dtProtocols))
+	for _, proto := range impl.dtProtocols {
+		impl.dtProtocolStrings = append(impl.dtProtocolStrings, string(proto))
+	}
 }
-
-func (impl *libp2pDataTransferNetwork) clearPeerProtocol(p peer.ID) {
-	impl.pplk.Lock()
-	defer impl.pplk.Unlock()
-
-	delete(impl.peerProtocols, p)
-}
-
-// Clear the peer protocol version cache for the peer when the peer disconnects
-func (impl *libp2pDataTransferNetwork) Disconnected(n network.Network, conn network.Conn) {
-	impl.clearPeerProtocol(conn.RemotePeer())
-}
-
-func (impl *libp2pDataTransferNetwork) Listen(n network.Network, multiaddr ma.Multiaddr)      {}
-func (impl *libp2pDataTransferNetwork) ListenClose(n network.Network, multiaddr ma.Multiaddr) {}
-func (impl *libp2pDataTransferNetwork) Connected(n network.Network, conn network.Conn)        {}
-func (impl *libp2pDataTransferNetwork) OpenedStream(n network.Network, stream network.Stream) {}
-func (impl *libp2pDataTransferNetwork) ClosedStream(n network.Network, stream network.Stream) {}
