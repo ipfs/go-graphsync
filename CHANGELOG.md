@@ -1,5 +1,27 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.11.0-rc1
+
+- github.com/ipfs/go-graphsync (v0.9.1 -> v0.10.0-rc3):
+  - refactor: remove libp2p protocol cache (#259) ([filecoin-project/go-data-transfer#259](https://github.com/filecoin-project/go-data-transfer/pull/259))
+  - Do not send first blocks extension (#230) ([ipfs/go-graphsync#230](https://github.com/ipfs/go-graphsync/pull/230))
+  - Protect Libp2p Connections (#229) ([ipfs/go-graphsync#229](https://github.com/ipfs/go-graphsync/pull/229))
+  - test(responsemanager): remove check (#228) ([ipfs/go-graphsync#228](https://github.com/ipfs/go-graphsync/pull/228))
+  - feat(graphsync): give missing blocks a named error (#227) ([ipfs/go-graphsync#227](https://github.com/ipfs/go-graphsync/pull/227))
+  - Add request limits (#224) ([ipfs/go-graphsync#224](https://github.com/ipfs/go-graphsync/pull/224))
+  - Tech Debt Cleanup and Docs Update (#219) ([ipfs/go-graphsync#219](https://github.com/ipfs/go-graphsync/pull/219))
+  - fix(requestmanager): remove main thread block on allocation (#216) ([ipfs/go-graphsync#216](https://github.com/ipfs/go-graphsync/pull/216))
+  - feat(allocator): add debug logging (#213) ([ipfs/go-graphsync#213](https://github.com/ipfs/go-graphsync/pull/213))
+  - fix: spurious warn log (#210) ([ipfs/go-graphsync#210](https://github.com/ipfs/go-graphsync/pull/210))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 11 | +3040/-2429 | 86 |
+| dirkmc | 3 | +768/-292 | 36 |
+| hannahhoward | 4 | +59/-1 | 4 |
+
 # go-data-transfer 1.10.1
 
 Critical bug fix in graphsync + testcase to demonstrate fix
