@@ -50,10 +50,14 @@ var ChannelEvents = fsm.Events{
 		chst.AddLog("")
 		return nil
 	}),
-	fsm.Event(datatransfer.DataReceived).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
-		chst.AddLog("")
-		return nil
-	}),
+	fsm.Event(datatransfer.DataReceived).FromAny().ToNoChange().
+		Action(func(chst *internal.ChannelState, rcvdBlocksTotal int64) error {
+			if rcvdBlocksTotal > chst.ReceivedBlocksTotal {
+				chst.ReceivedBlocksTotal = rcvdBlocksTotal
+			}
+			chst.AddLog("")
+			return nil
+		}),
 	fsm.Event(datatransfer.DataReceivedProgress).FromMany(transferringStates...).ToNoChange().
 		Action(func(chst *internal.ChannelState, delta uint64) error {
 			chst.Received += delta

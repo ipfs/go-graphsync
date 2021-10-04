@@ -16,7 +16,7 @@ import (
 //go:generate cbor-gen-for --map-encoding transferResponse1_1
 
 // transferResponse1_1 is a private struct that satisfies the datatransfer.Response interface
-// It is the response message for the Data Transfer 1.1 Protocol.
+// It is the response message for the Data Transfer 1.1 and 1.2 Protocol.
 type transferResponse1_1 struct {
 	Type   uint64
 	Acpt   bool
@@ -91,7 +91,7 @@ func (trsp *transferResponse1_1) EmptyVoucherResult() bool {
 
 func (trsp *transferResponse1_1) MessageForProtocol(targetProtocol protocol.ID) (datatransfer.Message, error) {
 	switch targetProtocol {
-	case datatransfer.ProtocolDataTransfer1_1:
+	case datatransfer.ProtocolDataTransfer1_2, datatransfer.ProtocolDataTransfer1_1:
 		return trsp, nil
 	case datatransfer.ProtocolDataTransfer1_0:
 		// this should never happen but dosen't hurt to have this here for sanity

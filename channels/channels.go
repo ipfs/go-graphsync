@@ -241,8 +241,27 @@ func (c *Channels) DataQueued(chid datatransfer.ChannelID, k cid.Cid, delta uint
 }
 
 // Returns true if this is the first time the block has been received
-func (c *Channels) DataReceived(chid datatransfer.ChannelID, k cid.Cid, delta uint64) (bool, error) {
-	return c.fireProgressEvent(chid, datatransfer.DataReceived, datatransfer.DataReceivedProgress, k, delta)
+func (c *Channels) DataReceived(chid datatransfer.ChannelID, k cid.Cid, delta uint64, index int64) (bool, error) {
+	if err := c.checkChannelExists(chid, datatransfer.DataReceived); err != nil {
+		return false, err
+	}
+
+	// Check if the block has already been seen
+	sid := seenCidsSetID(chid, datatransfer.DataReceived)
+	seen, err := c.seenCIDs.InsertSetCID(sid, k)
+	if err != nil {
+		return false, err
+	}
+
+	// If the block has not been seen before, fire the progress event
+	if !seen {
+		if err := c.stateMachines.Send(chid, datatransfer.DataReceivedProgress, delta); err != nil {
+			return false, err
+		}
+	}
+
+	// Fire the regular event
+	return !seen, c.stateMachines.Send(chid, datatransfer.DataReceived, index)
 }
 
 // PauseInitiator pauses the initator of this channel
@@ -358,6 +377,7 @@ func (c *Channels) HasChannel(chid datatransfer.ChannelID) (bool, error) {
 // removeSeenCIDCaches cleans up the caches of "seen" blocks, ie
 // blocks that have already been queued / sent / received
 func (c *Channels) removeSeenCIDCaches(chid datatransfer.ChannelID) error {
+	// Clean up seen block caches
 	progressStates := []datatransfer.EventCode{
 		datatransfer.DataQueued,
 		datatransfer.DataSent,
@@ -432,9 +452,7 @@ func seenCidsSetID(chid datatransfer.ChannelID, evt datatransfer.EventCode) cids
 
 // Convert from the internally used channel state format to the externally exposed ChannelState
 func (c *Channels) fromInternalChannelState(ch internal.ChannelState) datatransfer.ChannelState {
-	rcr := &receivedCidsReader{
-		seenCIDs: c.seenCIDs,
-	}
+	rcr := &receivedCidsReader{seenCIDs: c.seenCIDs}
 	return fromInternalChannelState(ch, c.voucherDecoder, c.voucherResultDecoder, rcr)
 }
 

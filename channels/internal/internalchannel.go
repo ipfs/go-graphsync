@@ -60,6 +60,9 @@ type ChannelState struct {
 	Message        string
 	Vouchers       []EncodedVoucher
 	VoucherResults []EncodedVoucherResult
+	// Number of blocks that have been received, including blocks that are
+	// present in more than one place in the DAG
+	ReceivedBlocksTotal int64
 
 	// Stages traces the execution fo a data transfer.
 	//

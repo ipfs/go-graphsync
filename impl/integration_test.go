@@ -57,9 +57,21 @@ var protocolsForTest = map[string]struct {
 	host1Protocols []protocol.ID
 	host2Protocols []protocol.ID
 }{
-	"(new -> new)":      {nil, nil},
-	"(old -> new, old)": {[]protocol.ID{datatransfer.ProtocolDataTransfer1_0}, nil},
-	"(new, old -> old)": {nil, []protocol.ID{datatransfer.ProtocolDataTransfer1_0}},
+	"(v1.2 -> v1.2)": {nil, nil},
+	"(v1.0 -> v1.2)": {[]protocol.ID{datatransfer.ProtocolDataTransfer1_0}, nil},
+	"(v1.2 -> v1.0)": {nil, []protocol.ID{datatransfer.ProtocolDataTransfer1_0}},
+	"(v1.1 -> v1.2)": {[]protocol.ID{datatransfer.ProtocolDataTransfer1_1}, nil},
+	"(v1.2 -> v1.1)": {nil, []protocol.ID{datatransfer.ProtocolDataTransfer1_1}},
+}
+
+// tests data transfer for the protocol combinations that support restart messages
+var protocolsForRestartTest = map[string]struct {
+	host1Protocols []protocol.ID
+	host2Protocols []protocol.ID
+}{
+	"(v1.2 -> v1.2)": {nil, nil},
+	"(v1.1 -> v1.2)": {[]protocol.ID{datatransfer.ProtocolDataTransfer1_1}, nil},
+	"(v1.2 -> v1.1)": {nil, []protocol.ID{datatransfer.ProtocolDataTransfer1_1}},
 }
 
 func TestRoundTrip(t *testing.T) {
@@ -404,7 +416,7 @@ func TestManyReceiversAtOnce(t *testing.T) {
 				destDagService := merkledag.NewDAGService(blockservice.New(altBs, offline.Exchange(altBs)))
 
 				gs := gsimpl.New(gsData.Ctx, gsnet, lsys)
-				gsTransport := tp.NewTransport(host.ID(), gs)
+				gsTransport := tp.NewTransport(host.ID(), gs, dtnet)
 
 				dtDs := namespace.Wrap(ds, datastore.NewKey("datatransfer"))
 
@@ -683,188 +695,193 @@ func TestAutoRestart(t *testing.T) {
 		if tc.expectInitiatorDTFail {
 			expectFailMsg = " (expect failure)"
 		}
-		t.Run(tc.name+expectFailMsg, func(t *testing.T) {
-			ctx := context.Background()
-			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
 
-			// Create an object to coordinate disconnect events
-			dc := newDisconnectCoordinator()
+		// Test for different combinations of protocol versions on client
+		// and provider
+		for pname, ps := range protocolsForRestartTest {
+			t.Run(tc.name+pname+expectFailMsg, func(t *testing.T) {
+				ctx := context.Background()
+				ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				defer cancel()
 
-			// If the test should disconnect just before the responder sends
-			// the Complete message, add a hook to do so
-			var responderTransportOpts []tp.Option
-			if tc.disconnectOnRequestComplete {
-				if tc.isPush {
-					responderTransportOpts = []tp.Option{
-						tp.RegisterCompletedRequestListener(func(chid datatransfer.ChannelID) {
-							dc.signalReadyForDisconnect(true)
-						}),
-					}
-				} else {
-					responderTransportOpts = []tp.Option{
-						tp.RegisterCompletedResponseListener(func(chid datatransfer.ChannelID) {
-							dc.signalReadyForDisconnect(true)
-						}),
-					}
-				}
-			}
+				// Create an object to coordinate disconnect events
+				dc := newDisconnectCoordinator()
 
-			// The retry config for the network layer: make 5 attempts, backing off by 1s each time
-			netRetry := network.RetryParameters(time.Second, time.Second, 5, 1)
-			gsData := testutil.NewGraphsyncTestingData(ctx, t, nil, nil)
-			gsData.DtNet1 = network.NewFromLibp2pHost(gsData.Host1, netRetry)
-			initiatorHost := gsData.Host1 // initiator, data sender
-			responderHost := gsData.Host2 // data recipient
-
-			initiatorGSTspt := gsData.SetupGSTransportHost1()
-			responderGSTspt := gsData.SetupGSTransportHost2(responderTransportOpts...)
-
-			// Set up
-			restartConf := ChannelRestartConfig(channelmonitor.Config{
-				AcceptTimeout:          100 * time.Millisecond,
-				RestartDebounce:        500 * time.Millisecond,
-				RestartBackoff:         500 * time.Millisecond,
-				MaxConsecutiveRestarts: 10,
-				CompleteTimeout:        100 * time.Millisecond,
-			})
-			initiator, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, initiatorGSTspt, restartConf)
-			require.NoError(t, err)
-			testutil.StartAndWaitForReady(ctx, t, initiator)
-			defer initiator.Stop(ctx)
-
-			responder, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, responderGSTspt)
-			require.NoError(t, err)
-			testutil.StartAndWaitForReady(ctx, t, responder)
-			defer responder.Stop(ctx)
-
-			//initiator.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-			//	t.Logf("clnt: evt %s / status %s", datatransfer.Events[event.Code], datatransfer.Statuses[channelState.Status()])
-			//})
-
-			// Watch for successful completion
-			finished := make(chan struct{}, 2)
-			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-				if channelState.Status() == datatransfer.Completed {
-					finished <- struct{}{}
-				}
-			}
-			initiator.SubscribeToEvents(subscriber)
-			responder.SubscribeToEvents(subscriber)
-			voucher := testutil.FakeDTType{Data: "applesauce"}
-			sv := testutil.NewStubbedValidator()
-
-			var sourceDagService, destDagService ipldformat.DAGService
-			if tc.isPush {
-				sourceDagService = gsData.DagService1
-				destDagService = gsData.DagService2
-			} else {
-				sourceDagService = gsData.DagService2
-				destDagService = gsData.DagService1
-			}
-
-			root, origBytes := testutil.LoadUnixFSFile(ctx, t, sourceDagService, loremFile)
-			rootCid := root.(cidlink.Link).Cid
-
-			require.NoError(t, initiator.RegisterVoucherType(&testutil.FakeDTType{}, sv))
-			require.NoError(t, responder.RegisterVoucherType(&testutil.FakeDTType{}, sv))
-
-			// Register a revalidator that records calls to OnPullDataSent and OnPushDataReceived
-			srv := newRestartRevalidator()
-			require.NoError(t, responder.RegisterRevalidator(testutil.NewFakeDTType(), srv))
-
-			// If the test case needs to subscribe to response events, provide
-			// the test case with the responder
-			if tc.registerResponder != nil {
-				tc.registerResponder(responder, dc)
-			}
-
-			// If the initiator is expected to fail, watch for the Failed event
-			initiatorFailed := make(chan struct{})
-			if tc.expectInitiatorDTFail {
-				initiator.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-					if channelState.Status() == datatransfer.Failed {
-						close(initiatorFailed)
-					}
-				})
-			}
-
-			var chid datatransfer.ChannelID
-			if tc.isPush {
-				// Open a push channel
-				chid, err = initiator.OpenPushDataChannel(ctx, responderHost.ID(), &voucher, rootCid, gsData.AllSelector)
-			} else {
-				// Open a pull channel
-				chid, err = initiator.OpenPullDataChannel(ctx, responderHost.ID(), &voucher, rootCid, gsData.AllSelector)
-			}
-			require.NoError(t, err)
-
-			// Wait for the moment at which the test case should experience a disconnect
-			select {
-			case <-time.After(time.Second):
-				t.Fatal("Timed out waiting for point at which to break connection")
-			case <-dc.readyForDisconnect:
-			}
-
-			// Break connection
-			t.Logf("Breaking connection to peer")
-			require.NoError(t, gsData.Mn.UnlinkPeers(initiatorHost.ID(), responderHost.ID()))
-			require.NoError(t, gsData.Mn.DisconnectPeers(initiatorHost.ID(), responderHost.ID()))
-
-			// Inform the coordinator that the disconnect has occurred
-			dc.onDisconnect()
-
-			t.Logf("Sleep for a second")
-			time.Sleep(1 * time.Second)
-
-			// Restore link
-			t.Logf("Restore link")
-			require.NoError(t, gsData.Mn.LinkAll())
-			time.Sleep(200 * time.Millisecond)
-
-			// If we're expecting a Failed event, verify that it occurs
-			if tc.expectInitiatorDTFail {
-				select {
-				case <-ctx.Done():
-					t.Fatal("Initiator data-transfer did not fail as expected")
-					return
-				case <-initiatorFailed:
-					t.Logf("Initiator data-transfer failed as expected")
-					return
-				}
-			}
-
-			// We're not expecting a failure event, wait for the transfer to
-			// complete
-			t.Logf("Waiting for auto-restart on push channel %s", chid)
-
-			(func() {
-				finishedCount := 0
-				for {
-					select {
-					case <-ctx.Done():
-						t.Fatal("Did not complete successful data transfer")
-						return
-					case <-finished:
-						finishedCount++
-						if finishedCount == 2 {
-							return
+				// If the test should disconnect just before the responder sends
+				// the Complete message, add a hook to do so
+				var responderTransportOpts []tp.Option
+				if tc.disconnectOnRequestComplete {
+					if tc.isPush {
+						responderTransportOpts = []tp.Option{
+							tp.RegisterCompletedRequestListener(func(chid datatransfer.ChannelID) {
+								dc.signalReadyForDisconnect(true)
+							}),
+						}
+					} else {
+						responderTransportOpts = []tp.Option{
+							tp.RegisterCompletedResponseListener(func(chid datatransfer.ChannelID) {
+								dc.signalReadyForDisconnect(true)
+							}),
 						}
 					}
 				}
-			})()
 
-			// Verify that the total amount of data sent / received that was
-			// reported to the revalidator is correct
-			if tc.isPush {
-				require.EqualValues(t, loremFileTransferBytes, srv.pushDataSum(chid))
-			} else {
-				require.EqualValues(t, loremFileTransferBytes, srv.pullDataSum(chid))
-			}
+				// The retry config for the network layer: make 5 attempts, backing off by 1s each time
+				netRetry := network.RetryParameters(time.Second, time.Second, 5, 1)
+				gsData := testutil.NewGraphsyncTestingData(ctx, t, ps.host1Protocols, ps.host2Protocols)
+				gsData.DtNet1 = network.NewFromLibp2pHost(gsData.Host1, netRetry)
+				initiatorHost := gsData.Host1 // initiator, data sender
+				responderHost := gsData.Host2 // data recipient
 
-			// Verify that the file was transferred to the destination node
-			testutil.VerifyHasFile(ctx, t, destDagService, root, origBytes)
-		})
+				initiatorGSTspt := gsData.SetupGSTransportHost1()
+				responderGSTspt := gsData.SetupGSTransportHost2(responderTransportOpts...)
+
+				// Set up
+				restartConf := ChannelRestartConfig(channelmonitor.Config{
+					AcceptTimeout:          100 * time.Millisecond,
+					RestartDebounce:        500 * time.Millisecond,
+					RestartBackoff:         500 * time.Millisecond,
+					MaxConsecutiveRestarts: 10,
+					CompleteTimeout:        100 * time.Millisecond,
+				})
+				initiator, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, initiatorGSTspt, restartConf)
+				require.NoError(t, err)
+				testutil.StartAndWaitForReady(ctx, t, initiator)
+				defer initiator.Stop(ctx)
+
+				responder, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, responderGSTspt)
+				require.NoError(t, err)
+				testutil.StartAndWaitForReady(ctx, t, responder)
+				defer responder.Stop(ctx)
+
+				//initiator.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+				//	t.Logf("clnt: evt %s / status %s", datatransfer.Events[event.Code], datatransfer.Statuses[channelState.Status()])
+				//})
+
+				// Watch for successful completion
+				finished := make(chan struct{}, 2)
+				var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+					if channelState.Status() == datatransfer.Completed {
+						finished <- struct{}{}
+					}
+				}
+				initiator.SubscribeToEvents(subscriber)
+				responder.SubscribeToEvents(subscriber)
+				voucher := testutil.FakeDTType{Data: "applesauce"}
+				sv := testutil.NewStubbedValidator()
+
+				var sourceDagService, destDagService ipldformat.DAGService
+				if tc.isPush {
+					sourceDagService = gsData.DagService1
+					destDagService = gsData.DagService2
+				} else {
+					sourceDagService = gsData.DagService2
+					destDagService = gsData.DagService1
+				}
+
+				root, origBytes := testutil.LoadUnixFSFile(ctx, t, sourceDagService, loremFile)
+				rootCid := root.(cidlink.Link).Cid
+
+				require.NoError(t, initiator.RegisterVoucherType(&testutil.FakeDTType{}, sv))
+				require.NoError(t, responder.RegisterVoucherType(&testutil.FakeDTType{}, sv))
+
+				// Register a revalidator that records calls to OnPullDataSent and OnPushDataReceived
+				srv := newRestartRevalidator()
+				require.NoError(t, responder.RegisterRevalidator(testutil.NewFakeDTType(), srv))
+
+				// If the test case needs to subscribe to response events, provide
+				// the test case with the responder
+				if tc.registerResponder != nil {
+					tc.registerResponder(responder, dc)
+				}
+
+				// If the initiator is expected to fail, watch for the Failed event
+				initiatorFailed := make(chan struct{})
+				if tc.expectInitiatorDTFail {
+					initiator.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+						if channelState.Status() == datatransfer.Failed {
+							close(initiatorFailed)
+						}
+					})
+				}
+
+				var chid datatransfer.ChannelID
+				if tc.isPush {
+					// Open a push channel
+					chid, err = initiator.OpenPushDataChannel(ctx, responderHost.ID(), &voucher, rootCid, gsData.AllSelector)
+				} else {
+					// Open a pull channel
+					chid, err = initiator.OpenPullDataChannel(ctx, responderHost.ID(), &voucher, rootCid, gsData.AllSelector)
+				}
+				require.NoError(t, err)
+
+				// Wait for the moment at which the test case should experience a disconnect
+				select {
+				case <-time.After(time.Second):
+					t.Fatal("Timed out waiting for point at which to break connection")
+				case <-dc.readyForDisconnect:
+				}
+
+				// Break connection
+				t.Logf("Breaking connection to peer")
+				require.NoError(t, gsData.Mn.UnlinkPeers(initiatorHost.ID(), responderHost.ID()))
+				require.NoError(t, gsData.Mn.DisconnectPeers(initiatorHost.ID(), responderHost.ID()))
+
+				// Inform the coordinator that the disconnect has occurred
+				dc.onDisconnect()
+
+				t.Logf("Sleep for a second")
+				time.Sleep(1 * time.Second)
+
+				// Restore link
+				t.Logf("Restore link")
+				require.NoError(t, gsData.Mn.LinkAll())
+				time.Sleep(200 * time.Millisecond)
+
+				// If we're expecting a Failed event, verify that it occurs
+				if tc.expectInitiatorDTFail {
+					select {
+					case <-ctx.Done():
+						t.Fatal("Initiator data-transfer did not fail as expected")
+						return
+					case <-initiatorFailed:
+						t.Logf("Initiator data-transfer failed as expected")
+						return
+					}
+				}
+
+				// We're not expecting a failure event, wait for the transfer to
+				// complete
+				t.Logf("Waiting for auto-restart on push channel %s", chid)
+
+				(func() {
+					finishedCount := 0
+					for {
+						select {
+						case <-ctx.Done():
+							t.Fatal("Did not complete successful data transfer")
+							return
+						case <-finished:
+							finishedCount++
+							if finishedCount == 2 {
+								return
+							}
+						}
+					}
+				})()
+
+				// Verify that the total amount of data sent / received that was
+				// reported to the revalidator is correct
+				if tc.isPush {
+					require.EqualValues(t, loremFileTransferBytes, srv.pushDataSum(chid))
+				} else {
+					require.EqualValues(t, loremFileTransferBytes, srv.pullDataSum(chid))
+				}
+
+				// Verify that the file was transferred to the destination node
+				testutil.VerifyHasFile(ctx, t, destDagService, root, origBytes)
+			})
+		}
 	}
 }
 
@@ -1585,7 +1602,7 @@ func TestResponseHookWhenExtensionNotFound(t *testing.T) {
 	gsData.GsNet2.SetDelegate(gsr)
 
 	gs1 := gsData.SetupGraphsyncHost1()
-	tp1 := tp.NewTransport(host1.ID(), gs1)
+	tp1 := tp.NewTransport(host1.ID(), gs1, gsData.DtNet1)
 	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
 	require.NoError(t, err)
 	testutil.StartAndWaitForReady(ctx, t, dt1)

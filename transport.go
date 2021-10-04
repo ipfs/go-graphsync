@@ -3,7 +3,6 @@ package datatransfer
 import (
 	"context"
 
-	"github.com/ipfs/go-cid"
 	ipld "github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
@@ -25,7 +24,7 @@ type EventsHandler interface {
 	// - nil = proceed with sending data
 	// - error = cancel this request
 	// - err == ErrPause - pause this request
-	OnDataReceived(chid ChannelID, link ipld.Link, size uint64) error
+	OnDataReceived(chid ChannelID, link ipld.Link, size uint64, index int64) error
 
 	// OnDataQueued is called when data is queued for sending for the given channel ID
 	// return values are:
@@ -93,13 +92,15 @@ type Transport interface {
 	// Note: from a data transfer symantic standpoint, it doesn't matter if the
 	// request is push or pull -- OpenChannel is called by the party that is
 	// intending to receive data
-	OpenChannel(ctx context.Context,
+	OpenChannel(
+		ctx context.Context,
 		dataSender peer.ID,
 		channelID ChannelID,
 		root ipld.Link,
 		stor ipld.Node,
-		doNotSendCids []cid.Cid,
-		msg Message) error
+		channel ChannelState,
+		msg Message,
+	) error
 
 	// CloseChannel closes the given channel
 	CloseChannel(ctx context.Context, chid ChannelID) error

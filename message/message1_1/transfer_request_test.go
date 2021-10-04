@@ -20,16 +20,20 @@ func TestRequestMessageForProtocol(t *testing.T) {
 	id := datatransfer.TransferID(rand.Int31())
 	voucher := testutil.NewFakeDTType()
 
-	// for the new protocol
+	// for the new protocols
 	request, err := message1_1.NewRequest(id, false, isPull, voucher.Type(), voucher, baseCid, selector)
 	require.NoError(t, err)
 
-	out, err := request.MessageForProtocol(datatransfer.ProtocolDataTransfer1_1)
+	out12, err := request.MessageForProtocol(datatransfer.ProtocolDataTransfer1_2)
 	require.NoError(t, err)
-	require.Equal(t, request, out)
+	require.Equal(t, request, out12)
+
+	out11, err := request.MessageForProtocol(datatransfer.ProtocolDataTransfer1_1)
+	require.NoError(t, err)
+	require.Equal(t, request, out11)
 
 	// for the old protocol
-	out, err = request.MessageForProtocol(datatransfer.ProtocolDataTransfer1_0)
+	out, err := request.MessageForProtocol(datatransfer.ProtocolDataTransfer1_0)
 	require.NoError(t, err)
 	req, ok := out.(datatransfer.Request)
 	require.True(t, ok)

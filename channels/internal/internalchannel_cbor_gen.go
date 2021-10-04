@@ -23,7 +23,7 @@ func (t *ChannelState) MarshalCBOR(w io.Writer) error {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{177}); err != nil {
+	if _, err := w.Write([]byte{178}); err != nil {
 		return err
 	}
 
@@ -345,6 +345,28 @@ func (t *ChannelState) MarshalCBOR(w io.Writer) error {
 		}
 	}
 
+	// t.ReceivedBlocksTotal (int64) (int64)
+	if len("ReceivedBlocksTotal") > cbg.MaxLength {
+		return xerrors.Errorf("Value in field \"ReceivedBlocksTotal\" was too long")
+	}
+
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len("ReceivedBlocksTotal"))); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(w, string("ReceivedBlocksTotal")); err != nil {
+		return err
+	}
+
+	if t.ReceivedBlocksTotal >= 0 {
+		if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajUnsignedInt, uint64(t.ReceivedBlocksTotal)); err != nil {
+			return err
+		}
+	} else {
+		if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajNegativeInt, uint64(-t.ReceivedBlocksTotal-1)); err != nil {
+			return err
+		}
+	}
+
 	// t.Stages (datatransfer.ChannelStages) (struct)
 	if len("Stages") > cbg.MaxLength {
 		return xerrors.Errorf("Value in field \"Stages\" was too long")
@@ -636,6 +658,32 @@ func (t *ChannelState) UnmarshalCBOR(r io.Reader) error {
 				t.VoucherResults[i] = v
 			}
 
+			// t.ReceivedBlocksTotal (int64) (int64)
+		case "ReceivedBlocksTotal":
+			{
+				maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
+				var extraI int64
+				if err != nil {
+					return err
+				}
+				switch maj {
+				case cbg.MajUnsignedInt:
+					extraI = int64(extra)
+					if extraI < 0 {
+						return fmt.Errorf("int64 positive overflow")
+					}
+				case cbg.MajNegativeInt:
+					extraI = int64(extra)
+					if extraI < 0 {
+						return fmt.Errorf("int64 negative oveflow")
+					}
+					extraI = -1 - extraI
+				default:
+					return fmt.Errorf("wrong type for int64 field: %d", maj)
+				}
+
+				t.ReceivedBlocksTotal = int64(extraI)
+			}
 			// t.Stages (datatransfer.ChannelStages) (struct)
 		case "Stages":
 

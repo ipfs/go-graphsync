@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/protocol"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 )
@@ -33,6 +34,10 @@ type DataTransferNetwork interface {
 
 	// ID returns the peer id of this libp2p host
 	ID() peer.ID
+
+	// Protocol returns the protocol version of the peer, connecting to
+	// the peer if necessary
+	Protocol(context.Context, peer.ID) (protocol.ID, error)
 }
 
 // Receiver is an interface for receiving messages from the GraphSyncNetwork.

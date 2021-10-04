@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/protocol"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/network"
@@ -27,6 +28,8 @@ type FakeNetwork struct {
 func NewFakeNetwork(id peer.ID) *FakeNetwork {
 	return &FakeNetwork{PeerID: id}
 }
+
+var _ network.DataTransferNetwork = (*FakeNetwork)(nil)
 
 // SendMessage sends a GraphSync message to a peer.
 func (fn *FakeNetwork) SendMessage(ctx context.Context, p peer.ID, m datatransfer.Message) error {
@@ -61,4 +64,8 @@ func (fn *FakeNetwork) Protect(id peer.ID, tag string) {
 // Unprotect does nothing on the fake network
 func (fn *FakeNetwork) Unprotect(id peer.ID, tag string) bool {
 	return false
+}
+
+func (fn *FakeNetwork) Protocol(ctx context.Context, id peer.ID) (protocol.ID, error) {
+	return datatransfer.ProtocolDataTransfer1_2, nil
 }

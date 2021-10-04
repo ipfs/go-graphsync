@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -12,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
+	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
@@ -39,7 +41,11 @@ const defaultMaxAttemptDuration = 5 * time.Minute
 // The multiplier in the backoff time for each retry
 const defaultBackoffFactor = 5
 
-var defaultDataTransferProtocols = []protocol.ID{datatransfer.ProtocolDataTransfer1_1, datatransfer.ProtocolDataTransfer1_0}
+var defaultDataTransferProtocols = []protocol.ID{
+	datatransfer.ProtocolDataTransfer1_2,
+	datatransfer.ProtocolDataTransfer1_1,
+	datatransfer.ProtocolDataTransfer1_0,
+}
 
 // Option is an option for configuring the libp2p storage market network
 type Option func(*libp2pDataTransferNetwork)
@@ -82,17 +88,21 @@ func NewFromLibp2pHost(host host.Host, options ...Option) DataTransferNetwork {
 		maxAttemptDuration:    defaultMaxAttemptDuration,
 		backoffFactor:         defaultBackoffFactor,
 		dtProtocols:           defaultDataTransferProtocols,
+		peerProtocols:         make(map[peer.ID]protocol.ID),
 	}
 
 	for _, option := range options {
 		option(&dataTransferNetwork)
 	}
 
+	// Listen to network notifications
+	host.Network().Notify(&dataTransferNetwork)
+
 	return &dataTransferNetwork
 }
 
 // libp2pDataTransferNetwork transforms the libp2p host interface, which sends and receives
-// NetMessage objects, into the graphsync network interface.
+// NetMessage objects, into the data transfer network interface.
 type libp2pDataTransferNetwork struct {
 	host host.Host
 	// inbound messages from the network are forwarded to the receiver
@@ -105,6 +115,9 @@ type libp2pDataTransferNetwork struct {
 	maxAttemptDuration    time.Duration
 	dtProtocols           []protocol.ID
 	backoffFactor         float64
+
+	pplk          sync.RWMutex
+	peerProtocols map[peer.ID]protocol.ID
 }
 
 func (impl *libp2pDataTransferNetwork) openStream(ctx context.Context, id peer.ID, protocols ...protocol.ID) (network.Stream, error) {
@@ -129,6 +142,10 @@ func (impl *libp2pDataTransferNetwork) openStream(ctx context.Context, id peer.I
 				log.Debugf("opened stream to %s on attempt %g of %g after %s",
 					id, nAttempts, impl.maxStreamOpenAttempts, time.Since(start))
 			}
+
+			// Cache the peer's protocol version
+			impl.setPeerProtocol(id, s.Protocol())
+
 			return s, err
 		}
 
@@ -212,12 +229,17 @@ func (dtnet *libp2pDataTransferNetwork) handleNewStream(s network.Stream) {
 		return
 	}
 
+	// Cache the peer's protocol version
+	p := s.Conn().RemotePeer()
+	dtnet.setPeerProtocol(p, s.Protocol())
+
 	for {
 		var received datatransfer.Message
 		var err error
-		if s.Protocol() == datatransfer.ProtocolDataTransfer1_1 {
+		switch s.Protocol() {
+		case datatransfer.ProtocolDataTransfer1_2, datatransfer.ProtocolDataTransfer1_1:
 			received, err = message.FromNet(s)
-		} else {
+		default:
 			received, err = message1_0.FromNet(s)
 		}
 
@@ -225,14 +247,13 @@ func (dtnet *libp2pDataTransferNetwork) handleNewStream(s network.Stream) {
 			if err != io.EOF {
 				s.Reset() // nolint: errcheck,gosec
 				go dtnet.receiver.ReceiveError(err)
-				log.Debugf("net handleNewStream from %s error: %s", s.Conn().RemotePeer(), err)
+				log.Debugf("net handleNewStream from %s error: %s", p, err)
 			}
 			return
 		}
 
-		p := s.Conn().RemotePeer()
 		ctx := context.Background()
-		log.Debugf("net handleNewStream from %s", s.Conn().RemotePeer())
+		log.Debugf("net handleNewStream from %s", p)
 
 		if received.IsRequest() {
 			receivedRequest, ok := received.(datatransfer.Request)
@@ -276,8 +297,14 @@ func (dtnet *libp2pDataTransferNetwork) msgToStream(ctx context.Context, s netwo
 	if err := s.SetWriteDeadline(deadline); err != nil {
 		log.Warnf("error setting deadline: %s", err)
 	}
+	defer func() {
+		if err := s.SetWriteDeadline(time.Time{}); err != nil {
+			log.Warnf("error resetting deadline: %s", err)
+		}
+	}()
 
 	switch s.Protocol() {
+	case datatransfer.ProtocolDataTransfer1_2:
 	case datatransfer.ProtocolDataTransfer1_1:
 	case datatransfer.ProtocolDataTransfer1_0:
 	default:
@@ -289,8 +316,52 @@ func (dtnet *libp2pDataTransferNetwork) msgToStream(ctx context.Context, s netwo
 		return err
 	}
 
-	if err := s.SetWriteDeadline(time.Time{}); err != nil {
-		log.Warnf("error resetting deadline: %s", err)
-	}
 	return nil
 }
+
+func (impl *libp2pDataTransferNetwork) Protocol(ctx context.Context, id peer.ID) (protocol.ID, error) {
+	// Check the cache for the peer's protocol version
+	impl.pplk.RLock()
+	proto, ok := impl.peerProtocols[id]
+	impl.pplk.RUnlock()
+
+	if ok {
+		return proto, nil
+	}
+
+	// The peer's protocol version is not in the cache, so connect to the peer.
+	// Note that when the stream is opened, the peer's protocol will be added
+	// to the cache.
+	s, err := impl.openStream(ctx, id, impl.dtProtocols...)
+	if err != nil {
+		return "", err
+	}
+	_ = s.Close()
+
+	return s.Protocol(), nil
+}
+
+func (impl *libp2pDataTransferNetwork) setPeerProtocol(p peer.ID, proto protocol.ID) {
+	impl.pplk.Lock()
+	defer impl.pplk.Unlock()
+
+	impl.peerProtocols[p] = proto
+}
+
+func (impl *libp2pDataTransferNetwork) clearPeerProtocol(p peer.ID) {
+	impl.pplk.Lock()
+	defer impl.pplk.Unlock()
+
+	delete(impl.peerProtocols, p)
+}
+
+// Clear the peer protocol version cache for the peer when the peer disconnects
+func (impl *libp2pDataTransferNetwork) Disconnected(n network.Network, conn network.Conn) {
+	impl.clearPeerProtocol(conn.RemotePeer())
+}
+
+func (impl *libp2pDataTransferNetwork) Listen(n network.Network, multiaddr ma.Multiaddr)      {}
+func (impl *libp2pDataTransferNetwork) ListenClose(n network.Network, multiaddr ma.Multiaddr) {}
+func (impl *libp2pDataTransferNetwork) Connected(n network.Network, conn network.Conn)        {}
+func (impl *libp2pDataTransferNetwork) OpenedStream(n network.Network, stream network.Stream) {}
+func (impl *libp2pDataTransferNetwork) ClosedStream(n network.Network, stream network.Stream) {}

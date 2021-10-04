@@ -18,9 +18,9 @@ const (
 	ExtensionIncomingRequest1_1 = graphsync.ExtensionName("fil/data-transfer/incoming-request/1.1")
 	// ExtensionOutgoingBlock1_1 is the identifier for data sent by the OutgoingBlock hook
 	ExtensionOutgoingBlock1_1 = graphsync.ExtensionName("fil/data-transfer/outgoing-block/1.1")
-	// ExtensionDataTransfer1_1 is the identifier for the current data transfer extension to graphsync
+	// ExtensionDataTransfer1_1 is the identifier for the v1.1 data transfer extension to graphsync
 	ExtensionDataTransfer1_1 = graphsync.ExtensionName("fil/data-transfer/1.1")
-	// ExtensionDataTransfer1_0 is the identifier for the legacy data transfer extension to graphsync
+	// ExtensionDataTransfer1_0 is the identifier for the v1.0 data transfer extension to graphsync
 	ExtensionDataTransfer1_0 = graphsync.ExtensionName("fil/data-transfer")
 )
 
@@ -60,7 +60,7 @@ func ToExtensionData(msg datatransfer.Message, supportedExtensions []graphsync.E
 	return exts, nil
 }
 
-// GsExtended is a small interface used by getExtensionData
+// GsExtended is a small interface used by GetTransferData
 type GsExtended interface {
 	Extension(name graphsync.ExtensionName) ([]byte, bool)
 }

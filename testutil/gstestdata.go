@@ -180,7 +180,8 @@ func (gsData *GraphsyncTestingData) SetupGSTransportHost1(opts ...gstransport.Op
 		}
 		opts = append(opts, gstransport.SupportedExtensions(supportedExtensions))
 	}
-	return gstransport.NewTransport(gsData.Host1.ID(), gs, opts...)
+
+	return gstransport.NewTransport(gsData.Host1.ID(), gs, gsData.DtNet1, opts...)
 }
 
 // SetupGraphsyncHost2 sets up a new, real graphsync instance on top of the second host
@@ -205,7 +206,7 @@ func (gsData *GraphsyncTestingData) SetupGSTransportHost2(opts ...gstransport.Op
 		}
 		opts = append(opts, gstransport.SupportedExtensions(supportedExtensions))
 	}
-	return gstransport.NewTransport(gsData.Host2.ID(), gs, opts...)
+	return gstransport.NewTransport(gsData.Host2.ID(), gs, gsData.DtNet2, opts...)
 }
 
 // LoadUnixFSFile loads a fixtures file we can test dag transfer with

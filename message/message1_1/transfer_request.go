@@ -38,7 +38,7 @@ type transferRequest1_1 struct {
 
 func (trq *transferRequest1_1) MessageForProtocol(targetProtocol protocol.ID) (datatransfer.Message, error) {
 	switch targetProtocol {
-	case datatransfer.ProtocolDataTransfer1_1:
+	case datatransfer.ProtocolDataTransfer1_2, datatransfer.ProtocolDataTransfer1_1:
 		return trq, nil
 	case datatransfer.ProtocolDataTransfer1_0:
 		if trq.IsRestart() || trq.IsRestartExistingChannelRequest() {

@@ -33,8 +33,8 @@ func (m *manager) OnChannelOpened(chid datatransfer.ChannelID) error {
 // It fires an event on the channel, updating the sum of received data and
 // calls revalidators so they can pause / resume the channel or send a
 // message over the transport.
-func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, size uint64) error {
-	isNew, err := m.channels.DataReceived(chid, link.(cidlink.Link).Cid, size)
+func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, size uint64, index int64) error {
+	isNew, err := m.channels.DataReceived(chid, link.(cidlink.Link).Cid, size, index)
 	if err != nil {
 		return err
 	}

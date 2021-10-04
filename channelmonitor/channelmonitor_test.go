@@ -521,6 +521,8 @@ type mockChannelState struct {
 	complete bool
 }
 
+var _ datatransfer.ChannelState = (*mockChannelState)(nil)
+
 func (m *mockChannelState) Queued() uint64 {
 	return m.queued
 }
@@ -613,5 +615,9 @@ func (m *mockChannelState) ReceivedCids() []cid.Cid {
 }
 
 func (m *mockChannelState) ReceivedCidsLen() int {
+	panic("implement me")
+}
+
+func (m *mockChannelState) ReceivedCidsTotal() int64 {
 	panic("implement me")
 }

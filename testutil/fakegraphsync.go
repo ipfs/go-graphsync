@@ -421,8 +421,9 @@ func (fgs *FakeGraphSync) RegisterReceiverNetworkErrorListener(listener graphsyn
 var _ graphsync.GraphExchange = &FakeGraphSync{}
 
 type fakeBlkData struct {
-	link ipld.Link
-	size uint64
+	link  ipld.Link
+	size  uint64
+	index int64
 }
 
 func (fbd fakeBlkData) Link() ipld.Link {
@@ -437,11 +438,16 @@ func (fbd fakeBlkData) BlockSizeOnWire() uint64 {
 	return fbd.size
 }
 
+func (fbd fakeBlkData) Index() int64 {
+	return fbd.index
+}
+
 // NewFakeBlockData returns a fake block that matches the block data interface
 func NewFakeBlockData() graphsync.BlockData {
 	return &fakeBlkData{
-		link: cidlink.Link{Cid: GenerateCids(1)[0]},
-		size: rand.Uint64(),
+		link:  cidlink.Link{Cid: GenerateCids(1)[0]},
+		size:  rand.Uint64(),
+		index: int64(rand.Uint32()),
 	}
 }
 

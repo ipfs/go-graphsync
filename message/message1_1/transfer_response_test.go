@@ -17,8 +17,13 @@ func TestResponseMessageForProtocol(t *testing.T) {
 	response, err := message1_1.NewResponse(id, false, true, voucherResult.Type(), voucherResult) // not accepted
 	require.NoError(t, err)
 
-	// new protocol
-	out, err := response.MessageForProtocol(datatransfer.ProtocolDataTransfer1_1)
+	// v1.2 protocol
+	out, err := response.MessageForProtocol(datatransfer.ProtocolDataTransfer1_2)
+	require.NoError(t, err)
+	require.Equal(t, response, out)
+
+	// v1.1 protocol
+	out, err = response.MessageForProtocol(datatransfer.ProtocolDataTransfer1_1)
 	require.NoError(t, err)
 	require.Equal(t, response, out)
 

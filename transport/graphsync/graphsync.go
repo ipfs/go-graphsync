@@ -3,15 +3,18 @@ package graphsync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	logging "github.com/ipfs/go-log/v2"
 	ipld "github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/protocol"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/xerrors"
 
@@ -73,12 +76,19 @@ func RegisterCompletedResponseListener(l func(channelID datatransfer.ChannelID))
 	}
 }
 
+type PeerProtocol interface {
+	// Protocol returns the protocol version of the peer, connecting to
+	// the peer if necessary
+	Protocol(context.Context, peer.ID) (protocol.ID, error)
+}
+
 // Transport manages graphsync hooks for data transfer, translating from
 // graphsync hooks to semantic data transfer events
 type Transport struct {
-	events datatransfer.EventsHandler
-	gs     graphsync.GraphExchange
-	peerID peer.ID
+	events       datatransfer.EventsHandler
+	gs           graphsync.GraphExchange
+	peerProtocol PeerProtocol
+	peerID       peer.ID
 
 	supportedExtensions       []graphsync.ExtensionName
 	unregisterFuncs           []graphsync.UnregisterHookFunc
@@ -95,9 +105,10 @@ type Transport struct {
 }
 
 // NewTransport makes a new hooks manager with the given hook events interface
-func NewTransport(peerID peer.ID, gs graphsync.GraphExchange, options ...Option) *Transport {
+func NewTransport(peerID peer.ID, gs graphsync.GraphExchange, pp PeerProtocol, options ...Option) *Transport {
 	t := &Transport{
 		gs:                  gs,
+		peerProtocol:        pp,
 		peerID:              peerID,
 		supportedExtensions: defaultSupportedExtensions,
 		dtChannels:          make(map[datatransfer.ChannelID]*dtChannel),
@@ -114,46 +125,37 @@ func NewTransport(peerID peer.ID, gs graphsync.GraphExchange, options ...Option)
 // Note: from a data transfer symantic standpoint, it doesn't matter if the
 // request is push or pull -- OpenChannel is called by the party that is
 // intending to receive data
-func (t *Transport) OpenChannel(ctx context.Context,
+func (t *Transport) OpenChannel(
+	ctx context.Context,
 	dataSender peer.ID,
 	channelID datatransfer.ChannelID,
 	root ipld.Link,
 	stor ipld.Node,
-	doNotSendCids []cid.Cid,
+	channel datatransfer.ChannelState,
 	msg datatransfer.Message,
 ) error {
 	if t.events == nil {
 		return datatransfer.ErrHandlerNotSet
 	}
 
-	// If this is a restart request, the client can send a list of CIDs of
-	// blocks that it has already received, so that the provider knows not
-	// to resend those blocks
 	exts, err := extension.ToExtensionData(msg, t.supportedExtensions)
 	if err != nil {
 		return err
 	}
-	if len(doNotSendCids) != 0 {
-		set := cid.NewSet()
-		for _, c := range doNotSendCids {
-			set.Add(c)
-		}
-		bz, err := cidset.EncodeCidSet(set)
-		if err != nil {
-			return xerrors.Errorf("failed to encode cid set: %w", err)
-		}
-		doNotSendExt := graphsync.ExtensionData{
-			Name: graphsync.ExtensionDoNotSendCIDs,
-			Data: bz,
-		}
-		exts = append(exts, doNotSendExt)
+	// If this is a restart request, the client can indicate the blocks that
+	// it has already received, so that the provider knows not to resend
+	// those blocks
+	restartExts, err := t.getRestartExtension(ctx, dataSender, channel)
+	if err != nil {
+		return err
 	}
+	exts = append(exts, restartExts...)
 
 	// Start tracking the data-transfer channel
 	ch := t.trackDTChannel(channelID)
 
 	// Open a graphsync request to the remote peer
-	req, err := ch.open(ctx, channelID, dataSender, root, stor, doNotSendCids, exts)
+	req, err := ch.open(ctx, channelID, dataSender, root, stor, channel, exts)
 	if err != nil {
 		return err
 	}
@@ -162,6 +164,69 @@ func (t *Transport) OpenChannel(ctx context.Context,
 	go t.executeGsRequest(req)
 
 	return nil
+}
+
+// Get the extension data for sending a Restart message, depending on the
+// protocol version of the peer
+func (t *Transport) getRestartExtension(ctx context.Context, p peer.ID, channel datatransfer.ChannelState) ([]graphsync.ExtensionData, error) {
+	if channel == nil {
+		return nil, nil
+	}
+
+	// Get the peer's protocol version
+	protocol, err := t.peerProtocol.Protocol(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+
+	switch protocol {
+	case datatransfer.ProtocolDataTransfer1_0:
+		// Doesn't support restart extensions
+		return nil, nil
+	case datatransfer.ProtocolDataTransfer1_1:
+		// Supports do-not-send-cids extension
+		return getDoNotSendCidsExtension(channel)
+	default: // Versions higher than 1.1
+		// Supports do-not-send-first-blocks extension
+		return getDoNotSendFirstBlocksExtension(channel)
+	}
+}
+
+// Send a list of CIDs that have already been received, so that the peer
+// doesn't send those blocks again
+func getDoNotSendCidsExtension(channel datatransfer.ChannelState) ([]graphsync.ExtensionData, error) {
+	doNotSendCids := channel.ReceivedCids()
+	if len(doNotSendCids) == 0 {
+		return nil, nil
+	}
+
+	// Make sure the CIDs are unique
+	set := cid.NewSet()
+	for _, c := range doNotSendCids {
+		set.Add(c)
+	}
+	bz, err := cidset.EncodeCidSet(set)
+	if err != nil {
+		return nil, xerrors.Errorf("failed to encode cid set: %w", err)
+	}
+	doNotSendExt := graphsync.ExtensionData{
+		Name: graphsync.ExtensionDoNotSendCIDs,
+		Data: bz,
+	}
+	return []graphsync.ExtensionData{doNotSendExt}, nil
+}
+
+// Skip the first N blocks because they were already received
+func getDoNotSendFirstBlocksExtension(channel datatransfer.ChannelState) ([]graphsync.ExtensionData, error) {
+	skipBlockCount := channel.ReceivedCidsTotal()
+	data, err := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(skipBlockCount)
+	if err != nil {
+		return nil, err
+	}
+	return []graphsync.ExtensionData{{
+		Name: graphsync.ExtensionsDoNotSendFirstBlocks,
+		Data: data,
+	}}, nil
 }
 
 // Read from the graphsync response and error channels until they are closed,
@@ -392,7 +457,7 @@ func (t *Transport) gsIncomingBlockHook(p peer.ID, response graphsync.ResponseDa
 		return
 	}
 
-	err := t.events.OnDataReceived(chid, block.Link(), block.BlockSize())
+	err := t.events.OnDataReceived(chid, block.Link(), block.BlockSize(), block.Index())
 	if err != nil && err != datatransfer.ErrPause {
 		hookActions.TerminateWithError(err)
 		return
@@ -871,7 +936,15 @@ type gsReq struct {
 }
 
 // Open a graphsync request for data to the remote peer
-func (c *dtChannel) open(ctx context.Context, chid datatransfer.ChannelID, dataSender peer.ID, root ipld.Link, stor ipld.Node, doNotSendCids []cid.Cid, exts []graphsync.ExtensionData) (*gsReq, error) {
+func (c *dtChannel) open(
+	ctx context.Context,
+	chid datatransfer.ChannelID,
+	dataSender peer.ID,
+	root ipld.Link,
+	stor ipld.Node,
+	channel datatransfer.ChannelState,
+	exts []graphsync.ExtensionData,
+) (*gsReq, error) {
 	c.lk.Lock()
 	defer c.lk.Unlock()
 
@@ -905,8 +978,11 @@ func (c *dtChannel) open(ctx context.Context, chid datatransfer.ChannelID, dataS
 	c.completed = completed
 
 	// Open a new graphsync request
-	log.Infof("Opening graphsync request to %s for root %s with %d CIDs already received",
-		dataSender, root, len(doNotSendCids))
+	msg := fmt.Sprintf("Opening graphsync request to %s for root %s", dataSender, root)
+	if channel != nil {
+		msg += fmt.Sprintf(" with %d CIDs already received", channel.ReceivedCidsLen())
+	}
+	log.Info(msg)
 	responseChan, errChan := c.gs.Request(ctx, dataSender, root, stor, exts...)
 
 	// Wait for graphsync "request opened" callback

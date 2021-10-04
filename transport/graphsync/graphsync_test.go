@@ -9,11 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/stretchr/testify/require"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
@@ -31,6 +34,7 @@ func TestManager(t *testing.T) {
 		events         fakeEvents
 		action         func(gsData *harness)
 		check          func(t *testing.T, events *fakeEvents, gsData *harness)
+		protocol       protocol.ID
 	}{
 		"gs outgoing request with recognized dt pull channel will record incoming blocks": {
 			action: func(gsData *harness) {
@@ -696,9 +700,11 @@ func TestManager(t *testing.T) {
 				require.True(t, events.OnReceiveDataErrorCalled)
 			},
 		},
-		"open channel adds doNotSendCids to the DoNotSend extension": {
+		"open channel adds cids to the DoNotSendCids extension for v1.1 protocol": {
+			protocol: datatransfer.ProtocolDataTransfer1_1,
 			action: func(gsData *harness) {
 				cids := testutil.GenerateCids(2)
+				channel := &mockChannelState{receivedCids: cids}
 				stor, _ := gsData.outgoing.Selector()
 
 				go gsData.outgoingRequestHook()
@@ -708,7 +714,7 @@ func TestManager(t *testing.T) {
 					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
 					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
 					stor,
-					cids,
+					channel,
 					gsData.outgoing)
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
@@ -726,9 +732,41 @@ func TestManager(t *testing.T) {
 				require.Equal(t, cs.Len(), 2)
 			},
 		},
+		"open channel adds block count to the DoNotSendFirstBlocks extension for v1.2 protocol": {
+			action: func(gsData *harness) {
+				cids := testutil.GenerateCids(2)
+				channel := &mockChannelState{receivedCids: cids}
+				stor, _ := gsData.outgoing.Selector()
+
+				go gsData.outgoingRequestHook()
+				_ = gsData.transport.OpenChannel(
+					gsData.ctx,
+					gsData.other,
+					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
+					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
+					stor,
+					channel,
+					gsData.outgoing)
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+
+				ext := requestReceived.Extensions
+				require.Len(t, ext, 3)
+				doNotSend := ext[2]
+
+				name := doNotSend.Name
+				require.Equal(t, graphsync.ExtensionsDoNotSendFirstBlocks, name)
+				data := doNotSend.Data
+				blockCount, err := donotsendfirstblocks.DecodeDoNotSendFirstBlocks(data)
+				require.NoError(t, err)
+				require.EqualValues(t, blockCount, 2)
+			},
+		},
 		"open channel cancels an existing request with the same channel ID": {
 			action: func(gsData *harness) {
 				cids := testutil.GenerateCids(2)
+				channel := &mockChannelState{receivedCids: cids}
 				stor, _ := gsData.outgoing.Selector()
 				go gsData.outgoingRequestHook()
 				_ = gsData.transport.OpenChannel(
@@ -737,7 +775,7 @@ func TestManager(t *testing.T) {
 					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
 					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
 					stor,
-					cids,
+					channel,
 					gsData.outgoing)
 
 				go gsData.outgoingRequestHook()
@@ -747,7 +785,7 @@ func TestManager(t *testing.T) {
 					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
 					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
 					stor,
-					cids,
+					channel,
 					gsData.outgoing)
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
@@ -1000,7 +1038,13 @@ func TestManager(t *testing.T) {
 			fgs := testutil.NewFakeGraphSync()
 			outgoing := testutil.NewDTRequest(t, transferID)
 			incoming := testutil.NewDTResponse(t, transferID)
-			transport := NewTransport(peers[0], fgs)
+			pp := testutil.NewMockPeerProtocol()
+			proto := datatransfer.ProtocolDataTransfer1_2
+			if data.protocol != "" {
+				proto = data.protocol
+			}
+			pp.SetProtocol(peers[1], proto)
+			transport := NewTransport(peers[0], fgs, pp)
 			gsData := &harness{
 				ctx:                         ctx,
 				outgoing:                    outgoing,
@@ -1103,7 +1147,7 @@ func (fe *fakeEvents) OnChannelOpened(chid datatransfer.ChannelID) error {
 	return fe.OnChannelOpenedError
 }
 
-func (fe *fakeEvents) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, size uint64) error {
+func (fe *fakeEvents) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, size uint64, index int64) error {
 	fe.OnDataReceivedCalled = true
 	return fe.OnDataReceivedError
 }
@@ -1285,4 +1329,106 @@ func assertHasExtensionMessage(t *testing.T, name graphsync.ExtensionName, exten
 		Data: buf.Bytes(),
 	}
 	require.Contains(t, extensions, expectedExt)
+}
+
+type mockChannelState struct {
+	receivedCids []cid.Cid
+}
+
+var _ datatransfer.ChannelState = (*mockChannelState)(nil)
+
+func (m *mockChannelState) ReceivedCids() []cid.Cid {
+	return m.receivedCids
+}
+
+func (m *mockChannelState) ReceivedCidsLen() int {
+	return len(m.receivedCids)
+}
+
+func (m *mockChannelState) ReceivedCidsTotal() int64 {
+	return (int64)(len(m.receivedCids))
+}
+
+func (m *mockChannelState) Queued() uint64 {
+	panic("implement me")
+}
+
+func (m *mockChannelState) Sent() uint64 {
+	panic("implement me")
+}
+
+func (m *mockChannelState) Received() uint64 {
+	panic("implement me")
+}
+
+func (m *mockChannelState) ChannelID() datatransfer.ChannelID {
+	panic("implement me")
+}
+
+func (m *mockChannelState) Status() datatransfer.Status {
+	panic("implement me")
+}
+
+func (m *mockChannelState) TransferID() datatransfer.TransferID {
+	panic("implement me")
+}
+
+func (m *mockChannelState) BaseCID() cid.Cid {
+	panic("implement me")
+}
+
+func (m *mockChannelState) Selector() ipld.Node {
+	panic("implement me")
+}
+
+func (m *mockChannelState) Voucher() datatransfer.Voucher {
+	panic("implement me")
+}
+
+func (m *mockChannelState) Sender() peer.ID {
+	panic("implement me")
+}
+
+func (m *mockChannelState) Recipient() peer.ID {
+	panic("implement me")
+}
+
+func (m *mockChannelState) TotalSize() uint64 {
+	panic("implement me")
+}
+
+func (m *mockChannelState) IsPull() bool {
+	panic("implement me")
+}
+
+func (m *mockChannelState) OtherPeer() peer.ID {
+	panic("implement me")
+}
+
+func (m *mockChannelState) SelfPeer() peer.ID {
+	panic("implement me")
+}
+
+func (m *mockChannelState) Message() string {
+	panic("implement me")
+}
+
+func (m *mockChannelState) Vouchers() []datatransfer.Voucher {
+	panic("implement me")
+}
+
+func (m *mockChannelState) VoucherResults() []datatransfer.VoucherResult {
+	panic("implement me")
+}
+
+func (m *mockChannelState) LastVoucher() datatransfer.Voucher {
+	panic("implement me")
+}
+
+func (m *mockChannelState) LastVoucherResult() datatransfer.VoucherResult {
+	panic("implement me")
+}
+
+func (m *mockChannelState) Stages() *datatransfer.ChannelStages {
+	panic("implement me")
 }
