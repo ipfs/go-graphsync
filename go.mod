@@ -13,7 +13,7 @@ require (
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-datastore v0.4.5
 	github.com/ipfs/go-ds-badger v0.2.6
-	github.com/ipfs/go-graphsync v0.10.0-rc2
+	github.com/ipfs/go-graphsync v0.10.0-rc3
 	github.com/ipfs/go-ipfs-blockstore v1.0.1
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-chunker v0.0.5
@@ -25,7 +25,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.1.1
 	github.com/ipfs/go-merkledag v0.3.2
 	github.com/ipfs/go-unixfs v0.2.4
-	github.com/ipld/go-ipld-prime v0.12.0
+	github.com/ipld/go-ipld-prime v0.12.3-0.20210929125341-05d5528bd84e
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/jpillora/backoff v1.0.0
 	github.com/libp2p/go-libp2p v0.13.0
