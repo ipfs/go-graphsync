@@ -223,8 +223,8 @@ github.com/ipfs/go-ds-badger v0.2.6/go.mod h1:02rnztVKA4aZwDuaRPTf8mpqcKmXP7mLl6
 github.com/ipfs/go-ds-leveldb v0.0.1/go.mod h1:feO8V3kubwsEF22n0YRQCffeb79OOYIykR4L04tMOYc=
 github.com/ipfs/go-ds-leveldb v0.4.1/go.mod h1:jpbku/YqBSsBc1qgME8BkWS4AxzF2cEu1Ii2r79Hh9s=
 github.com/ipfs/go-ds-leveldb v0.4.2/go.mod h1:jpbku/YqBSsBc1qgME8BkWS4AxzF2cEu1Ii2r79Hh9s=
-github.com/ipfs/go-graphsync v0.10.0-rc3 h1:rMu7cZ19JGLoqscBkLXJwkP2h1chHMLlJx450dFLCdQ=
-github.com/ipfs/go-graphsync v0.10.0-rc3/go.mod h1:pA673SIspz4lHNAPgYxyMKXdpWcdIe5aL1OJCsCNejE=
+github.com/ipfs/go-graphsync v0.10.0 h1:VXljS1ETYp1GmAJ6N45hlcKO+tlvPFUzz3xzEQ0jMbM=
+github.com/ipfs/go-graphsync v0.10.0/go.mod h1:cKIshzTaa5rCZjryH5xmSKZVGX9uk1wvwGvz2WEha5Y=
 github.com/ipfs/go-ipfs-blockstore v0.0.1/go.mod h1:d3WClOmRQKFnJ0Jz/jj/zmksX0ma1gROTlovZKBmN08=
 github.com/ipfs/go-ipfs-blockstore v0.1.0/go.mod h1:5aD0AvHPi7mZc6Ci1WCAhiBQu2IsfTduLl+422H6Rqw=
 github.com/ipfs/go-ipfs-blockstore v0.1.4/go.mod h1:Jxm3XMVjh6R17WvxFEiyKBLUGr86HgIYJW/D/MwqeYQ=
@@ -296,7 +296,6 @@ github.com/ipfs/go-verifcid v0.0.1/go.mod h1:5Hrva5KBeIog4A+UpqlaIU+DEstipcJYQQZ
 github.com/ipld/go-codec-dagpb v1.3.0 h1:czTcaoAuNNyIYWs6Qe01DJ+sEX7B+1Z0LcXjSatMGe8=
 github.com/ipld/go-codec-dagpb v1.3.0/go.mod h1:ga4JTU3abYApDC3pZ00BC2RSvC3qfBb9MSJkMLSwnhA=
 github.com/ipld/go-ipld-prime v0.11.0/go.mod h1:+WIAkokurHmZ/KwzDOMUuoeJgaRQktHtEaLglS3ZeV8=
-github.com/ipld/go-ipld-prime v0.12.3-0.20210929125341-05d5528bd84e/go.mod h1:PaeLYq8k6dJLmDUSLrzkEpoGV4PEfe/1OtFN/eALOc8=
 github.com/ipld/go-ipld-prime v0.12.3 h1:furVobw7UBLQZwlEwfE26tYORy3PAK8VYSgZOSr3JMQ=
 github.com/ipld/go-ipld-prime v0.12.3/go.mod h1:PaeLYq8k6dJLmDUSLrzkEpoGV4PEfe/1OtFN/eALOc8=
 github.com/jackpal/gateway v1.0.5/go.mod h1:lTpwd4ACLXmpyiCTRtfiNyVnUmqT9RivzCDQetPfnjA=
