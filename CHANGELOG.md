@@ -1,5 +1,25 @@
 # go-graphsync changelog
 
+# go-graphsync 0.10.0
+
+- github.com/ipfs/go-graphsync:
+  - feat: update to go-ipld-prime v0.12.3 (#237) ([ipfs/go-graphsync#237](https://github.com/ipfs/go-graphsync/pull/237))
+  - Add support for IPLD prime's budgets feature in selectors (#235) ([ipfs/go-graphsync#235](https://github.com/ipfs/go-graphsync/pull/235))
+  - feat(graphsync): add an index for blocks in the on new block hook (#234) ([ipfs/go-graphsync#234](https://github.com/ipfs/go-graphsync/pull/234))
+  - Do not send first blocks extension (#230) ([ipfs/go-graphsync#230](https://github.com/ipfs/go-graphsync/pull/230))
+  - Protect Libp2p Connections (#229) ([ipfs/go-graphsync#229](https://github.com/ipfs/go-graphsync/pull/229))
+  - test(responsemanager): remove check (#228) ([ipfs/go-graphsync#228](https://github.com/ipfs/go-graphsync/pull/228))
+  - feat(graphsync): give missing blocks a named error (#227) ([ipfs/go-graphsync#227](https://github.com/ipfs/go-graphsync/pull/227))
+  - Add request limits (#224) ([ipfs/go-graphsync#224](https://github.com/ipfs/go-graphsync/pull/224))
+  - Tech Debt Cleanup and Docs Update (#219) ([ipfs/go-graphsync#219](https://github.com/ipfs/go-graphsync/pull/219))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 8 | +2988/-2398 | 79 |
+| dirkmc | 1 | +3/-3 | 2 |
+
 # go-graphsync 0.9.3
 
 Hotfix for 0.9.2
