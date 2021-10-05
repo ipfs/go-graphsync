@@ -1,5 +1,18 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.11.1
+
+- github.com/filecoin-project/go-data-transfer:
+  - feat: update to go-graphsync v0.10.0 (#263) ([filecoin-project/go-data-transfer#263](https://github.com/filecoin-project/go-data-transfer/pull/263))
+  - feat: update to go-ipld-prime v0.12.3 (#237) ([ipfs/go-graphsync#237](https://github.com/ipfs/go-graphsync/pull/237))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Dirk McCormick | 1 | +20/-0 | 1 |
+| dirkmc | 2 | +6/-7 | 4 |
+
 # go-data-transfer 1.11.0
 
 Generating Changelog for github.com/filecoin-project/go-data-transfer v1.10.1..3899893a4c97cd748c2c34bb889cf0ae354289c2
