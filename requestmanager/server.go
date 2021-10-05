@@ -133,6 +133,8 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 			LinkSystem: rm.linkSystem,
 			Budget:     budget,
 		}.Start(ctx)
+
+		rm.outgoingRequestProcessingListeners.NotifyOutgoingRequestProcessingListeners(ipr.p, ipr.request)
 	}
 
 	ipr.state = running

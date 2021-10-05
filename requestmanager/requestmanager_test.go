@@ -752,6 +752,66 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	td.fal.VerifyStoreUsed(t, requestRecords[1].gsr.ID(), "")
 }
 
+type outgoingRequestProcessingEvent struct {
+	p       peer.ID
+	request graphsync.RequestData
+}
+
+func TestOutgoingRequestListeners(t *testing.T) {
+	ctx := context.Background()
+	td := newTestData(ctx, t)
+
+	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	peers := testutil.GeneratePeers(1)
+
+	// Listen for outgoing request starts
+	outgoingRequests := make(chan outgoingRequestProcessingEvent, 1)
+	td.outgoingRequestProcessingListeners.Register(func(p peer.ID, request graphsync.RequestData) {
+		outgoingRequests <- outgoingRequestProcessingEvent{p, request}
+	})
+
+	returnedResponseChan1, returnedErrorChan1 := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1)
+
+	select {
+	case <-outgoingRequests:
+		t.Fatal("should not fire outgoing requests listener immediately")
+	default:
+	}
+
+	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)
+
+	// Should have fired by now
+	select {
+	case or := <-outgoingRequests:
+		require.Equal(t, or.p, peers[0])
+		require.Equal(t, or.request.Selector(), td.blockChain.Selector())
+		require.Equal(t, cidlink.Link{Cid: or.request.Root()}, td.blockChain.TipLink)
+	default:
+		t.Fatal("should fire outgoing request listener")
+	}
+
+	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
+	mdEncoded, err := metadata.EncodeMetadata(md)
+	require.NoError(t, err)
+	mdExt := graphsync.ExtensionData{
+		Name: graphsync.ExtensionMetadata,
+		Data: mdEncoded,
+	}
+	responses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, mdExt),
+	}
+	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
+	td.fal.VerifyLastProcessedBlocks(ctx, t, td.blockChain.AllBlocks())
+	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+		requestRecords[0].gsr.ID(): md,
+	})
+	td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
+
+	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan1)
+	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
+}
+
 func TestPauseResume(t *testing.T) {
 	ctx := context.Background()
 	td := newTestData(ctx, t)
@@ -985,26 +1045,27 @@ func encodedMetadataForBlocks(t *testing.T, blks []blocks.Block, present bool) g
 }
 
 type testData struct {
-	requestRecordChan     chan requestRecord
-	fph                   *fakePeerHandler
-	fal                   *testloader.FakeAsyncLoader
-	tcm                   *testutil.TestConnManager
-	requestHooks          *hooks.OutgoingRequestHooks
-	responseHooks         *hooks.IncomingResponseHooks
-	blockHooks            *hooks.IncomingBlockHooks
-	requestManager        *RequestManager
-	blockStore            map[ipld.Link][]byte
-	persistence           ipld.LinkSystem
-	blockChain            *testutil.TestBlockChain
-	extensionName1        graphsync.ExtensionName
-	extensionData1        []byte
-	extension1            graphsync.ExtensionData
-	extensionName2        graphsync.ExtensionName
-	extensionData2        []byte
-	extension2            graphsync.ExtensionData
-	networkErrorListeners *listeners.NetworkErrorListeners
-	taskqueue             *taskqueue.WorkerTaskQueue
-	executor              *executor.Executor
+	requestRecordChan                  chan requestRecord
+	fph                                *fakePeerHandler
+	fal                                *testloader.FakeAsyncLoader
+	tcm                                *testutil.TestConnManager
+	requestHooks                       *hooks.OutgoingRequestHooks
+	responseHooks                      *hooks.IncomingResponseHooks
+	blockHooks                         *hooks.IncomingBlockHooks
+	requestManager                     *RequestManager
+	blockStore                         map[ipld.Link][]byte
+	persistence                        ipld.LinkSystem
+	blockChain                         *testutil.TestBlockChain
+	extensionName1                     graphsync.ExtensionName
+	extensionData1                     []byte
+	extension1                         graphsync.ExtensionData
+	extensionName2                     graphsync.ExtensionName
+	extensionData2                     []byte
+	extension2                         graphsync.ExtensionData
+	networkErrorListeners              *listeners.NetworkErrorListeners
+	outgoingRequestProcessingListeners *listeners.OutgoingRequestProcessingListeners
+	taskqueue                          *taskqueue.WorkerTaskQueue
+	executor                           *executor.Executor
 }
 
 func newTestData(ctx context.Context, t *testing.T) *testData {
@@ -1017,9 +1078,10 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.responseHooks = hooks.NewResponseHooks()
 	td.blockHooks = hooks.NewBlockHooks()
 	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
+	td.outgoingRequestProcessingListeners = listeners.NewOutgoingRequestProcessingListeners()
 	td.taskqueue = taskqueue.NewTaskQueue(ctx)
 	lsys := cidlink.DefaultLinkSystem()
-	td.requestManager = New(ctx, td.fal, lsys, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.taskqueue, td.tcm, 0)
+	td.requestManager = New(ctx, td.fal, lsys, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.outgoingRequestProcessingListeners, td.taskqueue, td.tcm, 0)
 	td.executor = executor.NewExecutor(td.requestManager, td.blockHooks, td.fal.AsyncLoad)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()

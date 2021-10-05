@@ -40,33 +40,34 @@ const defaultSendMessageTimeout = 10 * time.Minute
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
 type GraphSync struct {
-	network                     gsnet.GraphSyncNetwork
-	linkSystem                  ipld.LinkSystem
-	requestManager              *requestmanager.RequestManager
-	responseManager             *responsemanager.ResponseManager
-	asyncLoader                 *asyncloader.AsyncLoader
-	requestQueue                taskqueue.TaskQueue
-	requestExecutor             *executor.Executor
-	responseAssembler           *responseassembler.ResponseAssembler
-	peerTaskQueue               *peertaskqueue.PeerTaskQueue
-	peerManager                 *peermanager.PeerMessageManager
-	incomingRequestQueuedHooks  *responderhooks.IncomingRequestQueuedHooks
-	incomingRequestHooks        *responderhooks.IncomingRequestHooks
-	outgoingBlockHooks          *responderhooks.OutgoingBlockHooks
-	requestUpdatedHooks         *responderhooks.RequestUpdatedHooks
-	completedResponseListeners  *listeners.CompletedResponseListeners
-	requestorCancelledListeners *listeners.RequestorCancelledListeners
-	blockSentListeners          *listeners.BlockSentListeners
-	networkErrorListeners       *listeners.NetworkErrorListeners
-	receiverErrorListeners      *listeners.NetworkReceiverErrorListeners
-	incomingResponseHooks       *requestorhooks.IncomingResponseHooks
-	outgoingRequestHooks        *requestorhooks.OutgoingRequestHooks
-	incomingBlockHooks          *requestorhooks.IncomingBlockHooks
-	persistenceOptions          *persistenceoptions.PersistenceOptions
-	ctx                         context.Context
-	cancel                      context.CancelFunc
-	responseAllocator           *allocator.Allocator
-	requestAllocator            *allocator.Allocator
+	network                            gsnet.GraphSyncNetwork
+	linkSystem                         ipld.LinkSystem
+	requestManager                     *requestmanager.RequestManager
+	responseManager                    *responsemanager.ResponseManager
+	asyncLoader                        *asyncloader.AsyncLoader
+	requestQueue                       taskqueue.TaskQueue
+	requestExecutor                    *executor.Executor
+	responseAssembler                  *responseassembler.ResponseAssembler
+	peerTaskQueue                      *peertaskqueue.PeerTaskQueue
+	peerManager                        *peermanager.PeerMessageManager
+	incomingRequestQueuedHooks         *responderhooks.IncomingRequestQueuedHooks
+	incomingRequestHooks               *responderhooks.IncomingRequestHooks
+	outgoingBlockHooks                 *responderhooks.OutgoingBlockHooks
+	requestUpdatedHooks                *responderhooks.RequestUpdatedHooks
+	outgoingRequestProcessingListeners *listeners.OutgoingRequestProcessingListeners
+	completedResponseListeners         *listeners.CompletedResponseListeners
+	requestorCancelledListeners        *listeners.RequestorCancelledListeners
+	blockSentListeners                 *listeners.BlockSentListeners
+	networkErrorListeners              *listeners.NetworkErrorListeners
+	receiverErrorListeners             *listeners.NetworkReceiverErrorListeners
+	incomingResponseHooks              *requestorhooks.IncomingResponseHooks
+	outgoingRequestHooks               *requestorhooks.OutgoingRequestHooks
+	incomingBlockHooks                 *requestorhooks.IncomingBlockHooks
+	persistenceOptions                 *persistenceoptions.PersistenceOptions
+	ctx                                context.Context
+	cancel                             context.CancelFunc
+	responseAllocator                  *allocator.Allocator
+	requestAllocator                   *allocator.Allocator
 }
 
 type graphsyncConfigOptions struct {
@@ -226,6 +227,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	incomingBlockHooks := requestorhooks.NewBlockHooks()
 	networkErrorListeners := listeners.NewNetworkErrorListeners()
 	receiverErrorListeners := listeners.NewReceiverNetworkErrorListeners()
+	outgoingRequestProcessingListeners := listeners.NewOutgoingRequestProcessingListeners()
 	persistenceOptions := persistenceoptions.New()
 	requestQueuedHooks := responderhooks.NewRequestQueuedHooks()
 	incomingRequestHooks := responderhooks.NewRequestHooks(persistenceOptions)
@@ -246,7 +248,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 
 	asyncLoader := asyncloader.New(ctx, linkSystem, requestAllocator)
 	requestQueue := taskqueue.NewTaskQueue(ctx)
-	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest)
+	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest)
 	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks, asyncLoader.AsyncLoad)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	var ptqopts []peertaskqueue.Option
@@ -348,6 +350,12 @@ func (gs *GraphSync) RegisterOutgoingBlockHook(hook graphsync.OnOutgoingBlockHoo
 // RegisterRequestUpdatedHook registers a hook that runs when an update to a request is received
 func (gs *GraphSync) RegisterRequestUpdatedHook(hook graphsync.OnRequestUpdatedHook) graphsync.UnregisterHookFunc {
 	return gs.requestUpdatedHooks.Register(hook)
+}
+
+// RegisterOutgoingRequestProcessingListener adds a listener that gets called when a request actually begins processing (reaches
+// the top of the outgoing request queue)
+func (gs *GraphSync) RegisterOutgoingRequestProcessingListener(listener graphsync.OnOutgoingRequestProcessingListener) graphsync.UnregisterHookFunc {
+	return gs.outgoingRequestProcessingListeners.Register(listener)
 }
 
 // RegisterCompletedResponseListener adds a listener on the responder for completed responses
