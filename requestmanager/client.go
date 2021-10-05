@@ -101,12 +101,13 @@ type RequestManager struct {
 	maxLinksPerRequest uint64
 
 	// dont touch out side of run loop
-	nextRequestID             graphsync.RequestID
-	inProgressRequestStatuses map[graphsync.RequestID]*inProgressRequestStatus
-	requestHooks              RequestHooks
-	responseHooks             ResponseHooks
-	networkErrorListeners     *listeners.NetworkErrorListeners
-	requestQueue              taskqueue.TaskQueue
+	nextRequestID                      graphsync.RequestID
+	inProgressRequestStatuses          map[graphsync.RequestID]*inProgressRequestStatus
+	requestHooks                       RequestHooks
+	responseHooks                      ResponseHooks
+	networkErrorListeners              *listeners.NetworkErrorListeners
+	outgoingRequestProcessingListeners *listeners.OutgoingRequestProcessingListeners
+	requestQueue                       taskqueue.TaskQueue
 }
 
 type requestManagerMessage interface {
@@ -130,26 +131,28 @@ func New(ctx context.Context,
 	requestHooks RequestHooks,
 	responseHooks ResponseHooks,
 	networkErrorListeners *listeners.NetworkErrorListeners,
+	outgoingRequestProcessingListeners *listeners.OutgoingRequestProcessingListeners,
 	requestQueue taskqueue.TaskQueue,
 	connManager network.ConnManager,
 	maxLinksPerRequest uint64,
 ) *RequestManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RequestManager{
-		ctx:                       ctx,
-		cancel:                    cancel,
-		asyncLoader:               asyncLoader,
-		disconnectNotif:           pubsub.New(disconnectDispatcher),
-		linkSystem:                linkSystem,
-		rc:                        newResponseCollector(ctx),
-		messages:                  make(chan requestManagerMessage, 16),
-		inProgressRequestStatuses: make(map[graphsync.RequestID]*inProgressRequestStatus),
-		requestHooks:              requestHooks,
-		responseHooks:             responseHooks,
-		networkErrorListeners:     networkErrorListeners,
-		requestQueue:              requestQueue,
-		connManager:               connManager,
-		maxLinksPerRequest:        maxLinksPerRequest,
+		ctx:                                ctx,
+		cancel:                             cancel,
+		asyncLoader:                        asyncLoader,
+		disconnectNotif:                    pubsub.New(disconnectDispatcher),
+		linkSystem:                         linkSystem,
+		rc:                                 newResponseCollector(ctx),
+		messages:                           make(chan requestManagerMessage, 16),
+		inProgressRequestStatuses:          make(map[graphsync.RequestID]*inProgressRequestStatus),
+		requestHooks:                       requestHooks,
+		responseHooks:                      responseHooks,
+		networkErrorListeners:              networkErrorListeners,
+		outgoingRequestProcessingListeners: outgoingRequestProcessingListeners,
+		requestQueue:                       requestQueue,
+		connManager:                        connManager,
+		maxLinksPerRequest:                 maxLinksPerRequest,
 	}
 }
 
