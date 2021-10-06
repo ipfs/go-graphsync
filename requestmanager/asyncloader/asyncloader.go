@@ -164,15 +164,17 @@ func (al *AsyncLoader) CompleteResponsesFor(requestID graphsync.RequestID) {
 func (al *AsyncLoader) CleanupRequest(p peer.ID, requestID graphsync.RequestID) {
 	al.stateLk.Lock()
 	defer al.stateLk.Unlock()
+	responseCache := al.responseCache
 	aq, ok := al.requestQueues[requestID]
 	if ok {
-		toFree := al.alternateQueues[aq].responseCache.FinishRequest(requestID)
-		al.allocator.ReleaseBlockMemory(p, toFree)
+		responseCache = al.alternateQueues[aq].responseCache
 		delete(al.requestQueues, requestID)
-		return
 	}
-	toFree := al.responseCache.FinishRequest(requestID)
-	al.allocator.ReleaseBlockMemory(p, toFree)
+	toFree := responseCache.FinishRequest(requestID)
+	err := al.allocator.ReleaseBlockMemory(p, toFree)
+	if err != nil {
+		log.Infow("Error deallocating requestor memory", "p", p, "toFree", toFree, "err", err)
+	}
 }
 
 func (al *AsyncLoader) getLoadAttemptQueue(queue string) *loadattemptqueue.LoadAttemptQueue {
