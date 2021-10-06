@@ -171,9 +171,11 @@ func (al *AsyncLoader) CleanupRequest(p peer.ID, requestID graphsync.RequestID) 
 		delete(al.requestQueues, requestID)
 	}
 	toFree := responseCache.FinishRequest(requestID)
-	err := al.allocator.ReleaseBlockMemory(p, toFree)
-	if err != nil {
-		log.Infow("Error deallocating requestor memory", "p", p, "toFree", toFree, "err", err)
+	if toFree > 0 {
+		err := al.allocator.ReleaseBlockMemory(p, toFree)
+		if err != nil {
+			log.Infow("Error deallocating requestor memory", "p", p, "toFree", toFree, "err", err)
+		}
 	}
 }
 
