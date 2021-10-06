@@ -42,7 +42,8 @@ func New(unverifiedBlockStore UnverifiedBlockStore) *ResponseCache {
 }
 
 // FinishRequest indicate there is no more need to track blocks tied to this
-// response
+// response. It returns the total number of bytes in blocks that were being
+// tracked but are no longer in memory
 func (rc *ResponseCache) FinishRequest(requestID graphsync.RequestID) uint64 {
 	rc.responseCacheLk.Lock()
 	rc.linkTracker.FinishRequest(requestID)
