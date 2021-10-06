@@ -813,7 +813,7 @@ func TestPauseResume(t *testing.T) {
 	// verify no further responses come through
 	time.Sleep(100 * time.Millisecond)
 	testutil.AssertChannelEmpty(t, returnedResponseChan, "no response should be sent request is paused")
-	td.fal.CleanupRequest(rr.gsr.ID())
+	td.fal.CleanupRequest(peers[0], rr.gsr.ID())
 
 	// unpause
 	err = td.requestManager.UnpauseRequest(rr.gsr.ID(), td.extension1, td.extension2)
@@ -893,7 +893,7 @@ func TestPauseResumeExternal(t *testing.T) {
 	// verify no further responses come through
 	time.Sleep(100 * time.Millisecond)
 	testutil.AssertChannelEmpty(t, returnedResponseChan, "no response should be sent request is paused")
-	td.fal.CleanupRequest(rr.gsr.ID())
+	td.fal.CleanupRequest(peers[0], rr.gsr.ID())
 
 	// unpause
 	err = td.requestManager.UnpauseRequest(rr.gsr.ID(), td.extension1, td.extension2)

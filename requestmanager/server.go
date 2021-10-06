@@ -168,7 +168,7 @@ func (rm *RequestManager) terminateRequest(requestID graphsync.RequestID, ipr *i
 	rm.connManager.Unprotect(ipr.p, requestID.Tag())
 	delete(rm.inProgressRequestStatuses, requestID)
 	ipr.cancelFn()
-	rm.asyncLoader.CleanupRequest(requestID)
+	rm.asyncLoader.CleanupRequest(ipr.p, requestID)
 	if ipr.traverser != nil {
 		ipr.traverserCancel()
 		ipr.traverser.Shutdown(rm.ctx)

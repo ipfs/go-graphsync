@@ -23,9 +23,9 @@ func (ubs *fakeUnverifiedBlockStore) AddUnverifiedBlock(lnk ipld.Link, data []by
 	ubs.inMemoryBlocks[lnk] = data
 }
 
-func (ubs *fakeUnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link) bool) {
-	for link := range ubs.inMemoryBlocks {
-		if shouldPrune(link) {
+func (ubs *fakeUnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link, uint64) bool) {
+	for link, data := range ubs.inMemoryBlocks {
+		if shouldPrune(link, uint64(len(data))) {
 			delete(ubs.inMemoryBlocks, link)
 		}
 	}
