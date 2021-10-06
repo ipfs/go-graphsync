@@ -830,7 +830,7 @@ func (t *Transport) gsRequestorCancelledListener(p peer.ID, request graphsync.Re
 		return
 	}
 
-	log.Debugf("%s: requester cancelled data-transfer", ch)
+	log.Debugf("%s: requester cancelled data-transfer", chid)
 	ch.onRequesterCancelled()
 }
 
