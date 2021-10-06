@@ -1,5 +1,16 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.11.2
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix panic (#265) ([filecoin-project/go-data-transfer#265](https://github.com/filecoin-project/go-data-transfer/pull/265))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Aarsh Shah | 1 | +1/-1 | 1 |
+
 # go-data-transfer 1.11.1
 
 - github.com/filecoin-project/go-data-transfer:
