@@ -1,6 +1,12 @@
 package notifications
 
-import "sync"
+import (
+	"sync"
+
+	logging "github.com/ipfs/go-log/v2"
+)
+
+var log = logging.Logger("gs-notifications")
 
 type operation int
 
@@ -208,7 +214,9 @@ func (reg *subscriberRegistry) remove(topic Topic, sub Subscriber) {
 func (ps *publisher) queue(cmd cmd) {
 	ps.cmdsLk.L.Lock()
 	ps.cmds = append(ps.cmds, cmd)
+	cmdsLen := len(ps.cmds)
 	ps.cmdsLk.L.Unlock()
+	log.Debugw("added notification command", "cmd", cmd, "queue len", cmdsLen)
 	ps.cmdsLk.Signal()
 }
 
@@ -220,6 +228,8 @@ func (ps *publisher) dequeue() cmd {
 
 	cmd := ps.cmds[0]
 	ps.cmds = ps.cmds[1:]
+	cmdsLen := len(ps.cmds)
 	ps.cmdsLk.L.Unlock()
+	log.Debugw("processing notification command", "cmd", cmd, "remaining in queue", cmdsLen)
 	return cmd
 }
