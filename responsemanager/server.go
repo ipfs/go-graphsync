@@ -158,8 +158,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 		sub := notifications.NewTopicDataSubscriber(&subscriber{
 			p:                     key.p,
 			request:               request,
-			ctx:                   rm.ctx,
-			messages:              rm.messages,
+			requestCloser:         rm,
 			blockSentListeners:    rm.blockSentListeners,
 			completedListeners:    rm.completedListeners,
 			networkErrorListeners: rm.networkErrorListeners,

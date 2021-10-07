@@ -280,6 +280,11 @@ func (rm *ResponseManager) FinishTask(task *peertask.Task, err error) {
 	rm.send(&finishTaskRequest{task, err}, nil)
 }
 
+// CloseWithNetworkError closes a request due to a network error
+func (rm *ResponseManager) CloseWithNetworkError(p peer.ID, requestID graphsync.RequestID) {
+	rm.send(&errorRequestMessage{p, requestID, errNetworkError, make(chan error, 1)}, nil)
+}
+
 func (rm *ResponseManager) send(message responseManagerMessage, done <-chan struct{}) {
 	select {
 	case <-rm.ctx.Done():
