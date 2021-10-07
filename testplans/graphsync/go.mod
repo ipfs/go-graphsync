@@ -1,6 +1,6 @@
 module github.com/ipfs/go-graphsync/testplans/graphsync
 
-go 1.14
+go 1.16
 
 require (
 	github.com/davidlazar/go-crypto v0.0.0-20190912175916-7055855a373f // indirect
