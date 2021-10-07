@@ -1,5 +1,20 @@
 # go-graphsync changelog
 
+# go-graphsync 0.10.1
+
+Minor fix to allocation behavior on request side
+
+### Changelog
+- github.com/ipfs/go-graphsync:
+  - Free memory on request finish (#240) ([ipfs/go-graphsync#240](https://github.com/ipfs/go-graphsync/pull/240))
+  - release: v1.10.0 ([ipfs/go-graphsync#238](https://github.com/ipfs/go-graphsync/pull/238))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +36/-21 | 9 |
+
 # go-graphsync 0.10.0
 
 - github.com/ipfs/go-graphsync:
