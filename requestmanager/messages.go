@@ -2,12 +2,13 @@ package requestmanager
 
 import (
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/ipfs/go-graphsync"
+	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/requestmanager/executor"
 )
 
 type pauseRequestMessage struct {
