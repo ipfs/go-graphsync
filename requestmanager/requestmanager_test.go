@@ -773,12 +773,6 @@ func TestOutgoingRequestListeners(t *testing.T) {
 
 	returnedResponseChan1, returnedErrorChan1 := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1)
 
-	select {
-	case <-outgoingRequests:
-		t.Fatal("should not fire outgoing requests listener immediately")
-	default:
-	}
-
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)
 
 	// Should have fired by now
