@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
 
@@ -17,7 +18,6 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/responsemanager/runtraversal"
-	"github.com/ipfs/go-peertaskqueue/peertask"
 )
 
 var errCancelledByCommand = errors.New("response cancelled by responder")

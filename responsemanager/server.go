@@ -5,14 +5,15 @@ import (
 	"errors"
 	"math"
 
+	"github.com/ipfs/go-peertaskqueue/peertask"
+	"github.com/libp2p/go-libp2p-core/peer"
+
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
-	"github.com/ipfs/go-peertaskqueue/peertask"
-	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 // The code in this file implements the internal thread for the response manager.

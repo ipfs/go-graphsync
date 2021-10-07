@@ -1,5 +1,22 @@
 # go-graphsync changelog
 
+# go-graphsync 0.10.2
+
+Fix minor deadlocking issue in notification system
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - test(responsemanager): fix flakiness TestCancellationViaCommand (#243) ([ipfs/go-graphsync#243](https://github.com/ipfs/go-graphsync/pull/243))
+  - Fix deadlock on notifications (#242) ([ipfs/go-graphsync#242](https://github.com/ipfs/go-graphsync/pull/242))
+  - Merge branch 'release/v0.10.1'
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 2 | +66/-25 | 5 |
+
 # go-graphsync 0.10.1
 
 Minor fix to allocation behavior on request side
