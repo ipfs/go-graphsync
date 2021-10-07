@@ -1,6 +1,12 @@
 package notifications
 
-import "sync"
+import (
+	"sync"
+
+	logging "github.com/ipfs/go-log/v2"
+)
+
+var log = logging.Logger("gs-notifications")
 
 type operation int
 
@@ -21,16 +27,17 @@ type cmd struct {
 
 // publisher is a publisher of events for
 type publisher struct {
-	lk      sync.RWMutex
-	closed  chan struct{}
-	cmdChan chan cmd
+	lk     sync.RWMutex
+	closed chan struct{}
+	cmds   []cmd
+	cmdsLk *sync.Cond
 }
 
 // NewPublisher returns a new message event publisher
 func NewPublisher() Publisher {
 	ps := &publisher{
-		cmdChan: make(chan cmd),
-		closed:  make(chan struct{}),
+		cmdsLk: sync.NewCond(&sync.Mutex{}),
+		closed: make(chan struct{}),
 	}
 	return ps
 }
@@ -49,7 +56,7 @@ func (ps *publisher) Publish(topic Topic, event Event) {
 	default:
 	}
 
-	ps.cmdChan <- cmd{op: pub, topics: []Topic{topic}, msg: event}
+	ps.queue(cmd{op: pub, topics: []Topic{topic}, msg: event})
 }
 
 // Shutdown shuts down all events and subscriptions
@@ -62,7 +69,7 @@ func (ps *publisher) Shutdown() {
 	default:
 	}
 	close(ps.closed)
-	ps.cmdChan <- cmd{op: shutdown}
+	ps.queue(cmd{op: shutdown})
 }
 
 func (ps *publisher) Close(id Topic) {
@@ -73,7 +80,7 @@ func (ps *publisher) Close(id Topic) {
 		return
 	default:
 	}
-	ps.cmdChan <- cmd{op: closeTopic, topics: []Topic{id}}
+	ps.queue(cmd{op: closeTopic, topics: []Topic{id}})
 }
 
 func (ps *publisher) Subscribe(topic Topic, sub Subscriber) bool {
@@ -86,7 +93,7 @@ func (ps *publisher) Subscribe(topic Topic, sub Subscriber) bool {
 	default:
 	}
 
-	ps.cmdChan <- cmd{op: subscribe, topics: []Topic{topic}, sub: sub}
+	ps.queue(cmd{op: subscribe, topics: []Topic{topic}, sub: sub})
 	return true
 }
 
@@ -100,7 +107,7 @@ func (ps *publisher) Unsubscribe(sub Subscriber) bool {
 	default:
 	}
 
-	ps.cmdChan <- cmd{op: unsubAll, sub: sub}
+	ps.queue(cmd{op: unsubAll, sub: sub})
 	return true
 }
 
@@ -111,7 +118,8 @@ func (ps *publisher) start() {
 	}
 
 loop:
-	for cmd := range ps.cmdChan {
+	for {
+		cmd := ps.dequeue()
 		if cmd.topics == nil {
 			switch cmd.op {
 			case unsubAll:
@@ -201,4 +209,27 @@ func (reg *subscriberRegistry) remove(topic Topic, sub Subscriber) {
 	}
 
 	sub.OnClose(topic)
+}
+
+func (ps *publisher) queue(cmd cmd) {
+	ps.cmdsLk.L.Lock()
+	ps.cmds = append(ps.cmds, cmd)
+	cmdsLen := len(ps.cmds)
+	ps.cmdsLk.L.Unlock()
+	log.Debugw("added notification command", "cmd", cmd, "queue len", cmdsLen)
+	ps.cmdsLk.Signal()
+}
+
+func (ps *publisher) dequeue() cmd {
+	ps.cmdsLk.L.Lock()
+	for len(ps.cmds) == 0 {
+		ps.cmdsLk.Wait()
+	}
+
+	cmd := ps.cmds[0]
+	ps.cmds = ps.cmds[1:]
+	cmdsLen := len(ps.cmds)
+	ps.cmdsLk.L.Unlock()
+	log.Debugw("processing notification command", "cmd", cmd, "remaining in queue", cmdsLen)
+	return cmd
 }
