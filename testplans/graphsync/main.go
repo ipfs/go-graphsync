@@ -559,6 +559,9 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 					panic(err)
 				}
 				bs, err = ReadWriteFilestore(n)
+				if err != nil {
+					panic(err)
+				}
 				bsvc := blockservice.New(bs, offline.Exchange(bs))
 				dags := merkledag.NewDAGService(bsvc)
 				fileDS = format.NewBufferedDAG(ctx, dags)
@@ -590,10 +593,10 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 				// set up http server to send file
 				http.HandleFunc(fmt.Sprintf("/%s", node.Cid()), func(w http.ResponseWriter, r *http.Request) {
 					fileReader, err := os.Open(f.Name())
-					defer fileReader.Close()
 					if err != nil {
 						panic(err)
 					}
+					defer fileReader.Close()
 					_, err = io.Copy(w, fileReader)
 					if err != nil {
 						panic(err)
