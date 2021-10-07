@@ -835,6 +835,7 @@ func (fqq *fakeQueryQueue) ThawRound() {
 }
 
 type fakeResponseAssembler struct {
+	transactionLk        *sync.Mutex
 	sentResponses        chan sentResponse
 	sentExtensions       chan sentExtension
 	lastCompletedRequest chan completedRequest
@@ -848,6 +849,8 @@ type fakeResponseAssembler struct {
 }
 
 func (fra *fakeResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
+	fra.transactionLk.Lock()
+	defer fra.transactionLk.Unlock()
 	frb := &fakeResponseBuilder{requestID, fra,
 		fra.notifeePublisher}
 	return transaction(frb)
@@ -1029,6 +1032,7 @@ type testData struct {
 	networkErrorChan          chan error
 	allBlocks                 []blocks.Block
 	connManager               *testutil.TestConnManager
+	transactionLk             *sync.Mutex
 }
 
 func newTestData(t *testing.T) testData {
@@ -1054,7 +1058,9 @@ func newTestData(t *testing.T) testData {
 	td.completedResponseStatuses = make(chan graphsync.ResponseStatusCode, 1)
 	td.networkErrorChan = make(chan error, td.blockChainLength*2)
 	td.notifeePublisher = testutil.NewMockPublisher()
+	td.transactionLk = &sync.Mutex{}
 	td.responseAssembler = &fakeResponseAssembler{
+		transactionLk:        td.transactionLk,
 		lastCompletedRequest: td.completedRequestChan,
 		sentResponses:        td.sentResponses,
 		sentExtensions:       td.sentExtensions,
@@ -1232,31 +1238,39 @@ func (td *testData) assertSkippedFirstBlocks(expectedSkipCount int64) {
 }
 
 func (td *testData) notifyStatusMessagesSent() {
+	td.transactionLk.Lock()
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isSn := data.(graphsync.ResponseStatusCode)
 		return isSn
 	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Sent}})
+	td.transactionLk.Unlock()
 }
 
 func (td *testData) notifyBlockSendsSent() {
+	td.transactionLk.Lock()
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isBsn := data.(graphsync.BlockData)
 		return isBsn
 	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Sent}})
+	td.transactionLk.Unlock()
 }
 
 func (td *testData) notifyStatusMessagesNetworkError(err error) {
+	td.transactionLk.Lock()
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isSn := data.(graphsync.ResponseStatusCode)
 		return isSn
 	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Error, Err: err}})
+	td.transactionLk.Unlock()
 }
 
 func (td *testData) notifyBlockSendsNetworkError(err error) {
+	td.transactionLk.Lock()
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isBsn := data.(graphsync.BlockData)
 		return isBsn
 	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Error, Err: err}})
+	td.transactionLk.Unlock()
 }
 
 func (td *testData) assertNoCompletedResponseStatuses() {

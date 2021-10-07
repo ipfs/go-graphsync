@@ -14,6 +14,7 @@ import (
 
 var errNetworkError = errors.New("network error")
 
+// RequestCloser can cancel request on a network error
 type RequestCloser interface {
 	CloseWithNetworkError(p peer.ID, requestID graphsync.RequestID)
 }
