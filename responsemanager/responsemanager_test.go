@@ -73,6 +73,15 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	defer td.cancel()
 	responseManager := td.newResponseManager()
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
+	// This block hook is simply used to pause block hook processing after 1 block until the cancel command is sent
+	blkCount := 0
+	waitForCancel := make(chan struct{})
+	td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+		if blkCount == 1 {
+			<-waitForCancel
+		}
+		blkCount++
+	})
 	cancelledListenerCalled := make(chan struct{}, 1)
 	td.cancelledListeners.Register(func(p peer.ID, request graphsync.RequestData) {
 		td.connManager.RefuteProtected(t, td.p)
@@ -90,6 +99,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	}
 	responseManager.ProcessRequests(td.ctx, td.p, cancelRequests)
 	responseManager.synchronize()
+	close(waitForCancel)
 
 	testutil.AssertDoesReceive(td.ctx, t, cancelledListenerCalled, "should call cancelled listener")
 
