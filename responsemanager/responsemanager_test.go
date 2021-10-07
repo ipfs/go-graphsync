@@ -101,6 +101,15 @@ func TestCancellationViaCommand(t *testing.T) {
 	defer td.cancel()
 	responseManager := td.newResponseManager()
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
+	// This block hook is simply used to pause block hook processing after 1 block until the cancel command is sent
+	blkCount := 0
+	waitForCancel := make(chan struct{})
+	td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+		if blkCount == 1 {
+			<-waitForCancel
+		}
+		blkCount++
+	})
 	responseManager.Startup()
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 
@@ -110,6 +119,7 @@ func TestCancellationViaCommand(t *testing.T) {
 	// send a cancellation
 	err := responseManager.CancelResponse(td.p, td.requestID)
 	require.NoError(t, err)
+	close(waitForCancel)
 
 	td.assertCompleteRequestWith(graphsync.RequestCancelled)
 	td.connManager.RefuteProtected(t, td.p)
