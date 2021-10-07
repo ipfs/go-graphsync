@@ -161,16 +161,22 @@ func (al *AsyncLoader) CompleteResponsesFor(requestID graphsync.RequestID) {
 // CleanupRequest indicates the given request is complete on the client side,
 // and no further attempts will be made to load links for this request,
 // so any cached response data is invalid can be cleaned
-func (al *AsyncLoader) CleanupRequest(requestID graphsync.RequestID) {
+func (al *AsyncLoader) CleanupRequest(p peer.ID, requestID graphsync.RequestID) {
 	al.stateLk.Lock()
 	defer al.stateLk.Unlock()
+	responseCache := al.responseCache
 	aq, ok := al.requestQueues[requestID]
 	if ok {
-		al.alternateQueues[aq].responseCache.FinishRequest(requestID)
+		responseCache = al.alternateQueues[aq].responseCache
 		delete(al.requestQueues, requestID)
-		return
 	}
-	al.responseCache.FinishRequest(requestID)
+	toFree := responseCache.FinishRequest(requestID)
+	if toFree > 0 {
+		err := al.allocator.ReleaseBlockMemory(p, toFree)
+		if err != nil {
+			log.Infow("Error deallocating requestor memory", "p", p, "toFree", toFree, "err", err)
+		}
+	}
 }
 
 func (al *AsyncLoader) getLoadAttemptQueue(queue string) *loadattemptqueue.LoadAttemptQueue {

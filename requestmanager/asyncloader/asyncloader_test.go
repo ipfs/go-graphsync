@@ -219,7 +219,7 @@ func TestRegisterUnregister(t *testing.T) {
 		err = asyncLoader.UnregisterPersistenceOption("other")
 		require.EqualError(t, err, "cannot unregister while requests are in progress")
 		asyncLoader.CompleteResponsesFor(requestID2)
-		asyncLoader.CleanupRequest(requestID2)
+		asyncLoader.CleanupRequest(p, requestID2)
 		err = asyncLoader.UnregisterPersistenceOption("other")
 		require.NoError(t, err)
 

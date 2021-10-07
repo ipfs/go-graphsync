@@ -132,7 +132,7 @@ func (fal *FakeAsyncLoader) CompleteResponsesFor(requestID graphsync.RequestID) 
 
 // CleanupRequest simulates the effect of cleaning up the request by removing any response channels
 // for the request
-func (fal *FakeAsyncLoader) CleanupRequest(requestID graphsync.RequestID) {
+func (fal *FakeAsyncLoader) CleanupRequest(p peer.ID, requestID graphsync.RequestID) {
 	fal.responseChannelsLk.Lock()
 	for key := range fal.responseChannels {
 		if key.requestID == requestID {

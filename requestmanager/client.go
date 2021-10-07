@@ -82,7 +82,7 @@ type AsyncLoader interface {
 		blks []blocks.Block)
 	AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) <-chan types.AsyncLoadResult
 	CompleteResponsesFor(requestID graphsync.RequestID)
-	CleanupRequest(requestID graphsync.RequestID)
+	CleanupRequest(p peer.ID, requestID graphsync.RequestID)
 }
 
 // RequestManager tracks outgoing requests and processes incoming reponses

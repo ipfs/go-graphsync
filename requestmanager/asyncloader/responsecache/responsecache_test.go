@@ -23,9 +23,9 @@ func (ubs *fakeUnverifiedBlockStore) AddUnverifiedBlock(lnk ipld.Link, data []by
 	ubs.inMemoryBlocks[lnk] = data
 }
 
-func (ubs *fakeUnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link) bool) {
-	for link := range ubs.inMemoryBlocks {
-		if shouldPrune(link) {
+func (ubs *fakeUnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link, uint64) bool) {
+	for link, data := range ubs.inMemoryBlocks {
+		if shouldPrune(link, uint64(len(data))) {
 			delete(ubs.inMemoryBlocks, link)
 		}
 	}
@@ -134,14 +134,16 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, data, "no data should be returned for unknown block")
 
-	responseCache.FinishRequest(requestID1)
+	toFree := responseCache.FinishRequest(requestID1)
 	// should remove only block 0, since it now has no refering outstanding requests
 	require.Len(t, fubs.blocks(), len(blks)-4, "should prune block when it is orphaned")
 	testutil.RefuteContainsBlock(t, fubs.blocks(), blks[0])
+	require.Equal(t, toFree, uint64(len(blks[0].RawData())))
 
 	responseCache.FinishRequest(requestID2)
 	// should remove last block since are no remaining references
 	require.Len(t, fubs.blocks(), 0, "should prune block when it is orphaned")
 	testutil.RefuteContainsBlock(t, fubs.blocks(), blks[3])
+	require.Equal(t, toFree, uint64(len(blks[3].RawData())))
 
 }

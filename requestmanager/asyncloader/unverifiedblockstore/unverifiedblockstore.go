@@ -40,9 +40,9 @@ func (ubs *UnverifiedBlockStore) AddUnverifiedBlock(lnk ipld.Link, data []byte) 
 
 // PruneBlocks removes blocks from the unverified store without committing them,
 // if the passed in function returns true for the given link
-func (ubs *UnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link) bool) {
+func (ubs *UnverifiedBlockStore) PruneBlocks(shouldPrune func(ipld.Link, uint64) bool) {
 	for link, data := range ubs.inMemoryBlocks {
-		if shouldPrune(link) {
+		if shouldPrune(link, uint64(len(data))) {
 			delete(ubs.inMemoryBlocks, link)
 			ubs.dataSize = ubs.dataSize - uint64(len(data))
 		}

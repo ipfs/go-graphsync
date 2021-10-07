@@ -18,7 +18,7 @@ var log = logging.Logger("graphsync")
 // UnverifiedBlockStore is an interface for storing blocks
 // as they come in and removing them as they are verified
 type UnverifiedBlockStore interface {
-	PruneBlocks(func(ipld.Link) bool)
+	PruneBlocks(func(ipld.Link, uint64) bool)
 	PruneBlock(ipld.Link)
 	VerifyBlock(ipld.Link, ipld.LinkContext) ([]byte, error)
 	AddUnverifiedBlock(ipld.Link, []byte)
@@ -42,15 +42,22 @@ func New(unverifiedBlockStore UnverifiedBlockStore) *ResponseCache {
 }
 
 // FinishRequest indicate there is no more need to track blocks tied to this
-// response
-func (rc *ResponseCache) FinishRequest(requestID graphsync.RequestID) {
+// response. It returns the total number of bytes in blocks that were being
+// tracked but are no longer in memory
+func (rc *ResponseCache) FinishRequest(requestID graphsync.RequestID) uint64 {
 	rc.responseCacheLk.Lock()
 	rc.linkTracker.FinishRequest(requestID)
 
-	rc.unverifiedBlockStore.PruneBlocks(func(link ipld.Link) bool {
-		return rc.linkTracker.BlockRefCount(link) == 0
+	toFree := uint64(0)
+	rc.unverifiedBlockStore.PruneBlocks(func(link ipld.Link, amt uint64) bool {
+		shouldPrune := rc.linkTracker.BlockRefCount(link) == 0
+		if shouldPrune {
+			toFree += amt
+		}
+		return shouldPrune
 	})
 	rc.responseCacheLk.Unlock()
+	return toFree
 }
 
 // AttemptLoad attempts to laod the given block from the cache
