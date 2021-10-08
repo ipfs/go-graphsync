@@ -73,6 +73,15 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	defer td.cancel()
 	responseManager := td.newResponseManager()
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
+	// This block hook is simply used to pause block hook processing after 1 block until the cancel command is sent
+	blkCount := 0
+	waitForCancel := make(chan struct{})
+	td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+		if blkCount == 1 {
+			<-waitForCancel
+		}
+		blkCount++
+	})
 	cancelledListenerCalled := make(chan struct{}, 1)
 	td.cancelledListeners.Register(func(p peer.ID, request graphsync.RequestData) {
 		td.connManager.RefuteProtected(t, td.p)
@@ -90,6 +99,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	}
 	responseManager.ProcessRequests(td.ctx, td.p, cancelRequests)
 	responseManager.synchronize()
+	close(waitForCancel)
 
 	testutil.AssertDoesReceive(td.ctx, t, cancelledListenerCalled, "should call cancelled listener")
 
@@ -825,6 +835,7 @@ func (fqq *fakeQueryQueue) ThawRound() {
 }
 
 type fakeResponseAssembler struct {
+	transactionLk        *sync.Mutex
 	sentResponses        chan sentResponse
 	sentExtensions       chan sentExtension
 	lastCompletedRequest chan completedRequest
@@ -838,6 +849,8 @@ type fakeResponseAssembler struct {
 }
 
 func (fra *fakeResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
+	fra.transactionLk.Lock()
+	defer fra.transactionLk.Unlock()
 	frb := &fakeResponseBuilder{requestID, fra,
 		fra.notifeePublisher}
 	return transaction(frb)
@@ -1019,6 +1032,7 @@ type testData struct {
 	networkErrorChan          chan error
 	allBlocks                 []blocks.Block
 	connManager               *testutil.TestConnManager
+	transactionLk             *sync.Mutex
 }
 
 func newTestData(t *testing.T) testData {
@@ -1044,7 +1058,9 @@ func newTestData(t *testing.T) testData {
 	td.completedResponseStatuses = make(chan graphsync.ResponseStatusCode, 1)
 	td.networkErrorChan = make(chan error, td.blockChainLength*2)
 	td.notifeePublisher = testutil.NewMockPublisher()
+	td.transactionLk = &sync.Mutex{}
 	td.responseAssembler = &fakeResponseAssembler{
+		transactionLk:        td.transactionLk,
 		lastCompletedRequest: td.completedRequestChan,
 		sentResponses:        td.sentResponses,
 		sentExtensions:       td.sentExtensions,
@@ -1222,31 +1238,39 @@ func (td *testData) assertSkippedFirstBlocks(expectedSkipCount int64) {
 }
 
 func (td *testData) notifyStatusMessagesSent() {
+	td.transactionLk.Lock()
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isSn := data.(graphsync.ResponseStatusCode)
 		return isSn
 	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Sent}})
+	td.transactionLk.Unlock()
 }
 
 func (td *testData) notifyBlockSendsSent() {
+	td.transactionLk.Lock()
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isBsn := data.(graphsync.BlockData)
 		return isBsn
 	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Sent}})
+	td.transactionLk.Unlock()
 }
 
 func (td *testData) notifyStatusMessagesNetworkError(err error) {
+	td.transactionLk.Lock()
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isSn := data.(graphsync.ResponseStatusCode)
 		return isSn
 	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Error, Err: err}})
+	td.transactionLk.Unlock()
 }
 
 func (td *testData) notifyBlockSendsNetworkError(err error) {
+	td.transactionLk.Lock()
 	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
 		_, isBsn := data.(graphsync.BlockData)
 		return isBsn
 	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Error, Err: err}})
+	td.transactionLk.Unlock()
 }
 
 func (td *testData) assertNoCompletedResponseStatuses() {
