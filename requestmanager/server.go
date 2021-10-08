@@ -134,7 +134,8 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 			Budget:     budget,
 		}.Start(ctx)
 
-		rm.outgoingRequestProcessingListeners.NotifyOutgoingRequestProcessingListeners(ipr.p, ipr.request)
+		inProgressCount := len(rm.inProgressRequestStatuses)
+		rm.outgoingRequestProcessingListeners.NotifyOutgoingRequestProcessingListeners(ipr.p, ipr.request, inProgressCount)
 	}
 
 	ipr.state = running
