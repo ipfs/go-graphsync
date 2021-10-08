@@ -78,14 +78,15 @@ type OutgoingRequestProcessingListeners struct {
 }
 
 type internalOutgoingRequestProcessingEvent struct {
-	p       peer.ID
-	request graphsync.RequestData
+	p                      peer.ID
+	request                graphsync.RequestData
+	inProgressRequestCount int
 }
 
 func outgoingRequestProcessingDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
 	ie := event.(internalOutgoingRequestProcessingEvent)
 	listener := subscriberFn.(graphsync.OnOutgoingRequestProcessingListener)
-	listener(ie.p, ie.request)
+	listener(ie.p, ie.request, ie.inProgressRequestCount)
 	return nil
 }
 
@@ -100,8 +101,8 @@ func (bsl *OutgoingRequestProcessingListeners) Register(listener graphsync.OnOut
 }
 
 // NotifyOutgoingRequestProcessingListeners notifies all listeners that a requestor cancelled a response
-func (bsl *OutgoingRequestProcessingListeners) NotifyOutgoingRequestProcessingListeners(p peer.ID, request graphsync.RequestData) {
-	_ = bsl.pubSub.Publish(internalOutgoingRequestProcessingEvent{p, request})
+func (bsl *OutgoingRequestProcessingListeners) NotifyOutgoingRequestProcessingListeners(p peer.ID, request graphsync.RequestData, inProgressRequestCount int) {
+	_ = bsl.pubSub.Publish(internalOutgoingRequestProcessingEvent{p, request, inProgressRequestCount})
 }
 
 // BlockSentListeners is a set of listeners for when requestors cancel

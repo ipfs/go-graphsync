@@ -753,8 +753,9 @@ func TestOutgoingRequestHooks(t *testing.T) {
 }
 
 type outgoingRequestProcessingEvent struct {
-	p       peer.ID
-	request graphsync.RequestData
+	p                      peer.ID
+	request                graphsync.RequestData
+	inProgressRequestCount int
 }
 
 func TestOutgoingRequestListeners(t *testing.T) {
@@ -767,8 +768,8 @@ func TestOutgoingRequestListeners(t *testing.T) {
 
 	// Listen for outgoing request starts
 	outgoingRequests := make(chan outgoingRequestProcessingEvent, 1)
-	td.outgoingRequestProcessingListeners.Register(func(p peer.ID, request graphsync.RequestData) {
-		outgoingRequests <- outgoingRequestProcessingEvent{p, request}
+	td.outgoingRequestProcessingListeners.Register(func(p peer.ID, request graphsync.RequestData, inProgressRequestCount int) {
+		outgoingRequests <- outgoingRequestProcessingEvent{p, request, inProgressRequestCount}
 	})
 
 	returnedResponseChan1, returnedErrorChan1 := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector(), td.extension1)
@@ -778,9 +779,10 @@ func TestOutgoingRequestListeners(t *testing.T) {
 	// Should have fired by now
 	select {
 	case or := <-outgoingRequests:
-		require.Equal(t, or.p, peers[0])
-		require.Equal(t, or.request.Selector(), td.blockChain.Selector())
-		require.Equal(t, cidlink.Link{Cid: or.request.Root()}, td.blockChain.TipLink)
+		require.Equal(t, peers[0], or.p)
+		require.Equal(t, td.blockChain.Selector(), or.request.Selector())
+		require.Equal(t, td.blockChain.TipLink, cidlink.Link{Cid: or.request.Root()})
+		require.Equal(t, 1, or.inProgressRequestCount)
 	default:
 		t.Fatal("should fire outgoing request listener")
 	}

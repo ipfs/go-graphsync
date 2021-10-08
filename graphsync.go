@@ -283,7 +283,7 @@ type OnResponseCompletedListener func(p peer.ID, request RequestData, status Res
 
 // OnOutgoingRequestProcessingListener is called when a request actually begins processing (reaches
 // the top of the outgoing request queue)
-type OnOutgoingRequestProcessingListener func(p peer.ID, request RequestData)
+type OnOutgoingRequestProcessingListener func(p peer.ID, request RequestData, inProgressRequestCount int)
 
 // OnRequestorCancelledListener provides a way to listen for responses the requestor canncels
 type OnRequestorCancelledListener func(p peer.ID, request RequestData)
