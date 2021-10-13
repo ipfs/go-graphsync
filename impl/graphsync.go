@@ -132,7 +132,7 @@ func MaxInProgressIncomingRequests(maxInProgressIncomingRequests uint64) Option 
 }
 
 // MaxInProgressIncomingRequestsPerPeer changes the maximum number of
-// incoming graphsync requests that are processed in parallel on a peer peer basis.
+// incoming graphsync requests that are processed in parallel on a per-peer basis.
 // The value is not set by default.
 // Useful in an environment for very high bandwidth graphsync responders serving
 // many peers
