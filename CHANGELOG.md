@@ -1,5 +1,25 @@
 # go-graphsync changelog
 
+# go-graphsync 0.10.3
+
+Additional config options and metrics
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Configure message parameters (#247) ([ipfs/go-graphsync#247](https://github.com/ipfs/go-graphsync/pull/247))
+  - Stats! (#246) ([ipfs/go-graphsync#246](https://github.com/ipfs/go-graphsync/pull/246))
+  - Limit simultaneous incoming requests on a per peer basis (#245) ([ipfs/go-graphsync#245](https://github.com/ipfs/go-graphsync/pull/245))
+  - sync: update CI config files (#191) ([ipfs/go-graphsync#191](https://github.com/ipfs/go-graphsync/pull/191))
+  - Merge branch 'release/v0.10.2'
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 3 | +261/-67 | 14 |
+| web3-bot | 1 | +214/-82 | 11 |
+
 # go-graphsync 0.10.2
 
 Fix minor deadlocking issue in notification system
