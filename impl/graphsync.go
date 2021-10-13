@@ -193,6 +193,8 @@ func MessageSendRetries(messageSendRetries int) Option {
 // trying again (up to max retries).
 // Lower to increase the speed at which an unresponsive peer is
 // detected.
+//
+// If not set, a default of 10 minutes is used.
 func SendMessageTimeout(sendMessageTimeout time.Duration) Option {
 	return func(gs *graphsyncConfigOptions) {
 		gs.sendMessageTimeout = sendMessageTimeout
