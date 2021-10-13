@@ -17,8 +17,6 @@ import (
 
 var log = logging.Logger("graphsync")
 
-const maxRetries = 10
-
 // max block size is the maximum size for batching blocks in a single payload
 const maxBlockSize uint64 = 512 * 1024
 
@@ -38,7 +36,7 @@ type Event struct {
 // MessageNetwork is any network that can connect peers and generate a message
 // sender.
 type MessageNetwork interface {
-	NewMessageSender(context.Context, peer.ID) (gsnet.MessageSender, error)
+	NewMessageSender(context.Context, peer.ID, gsnet.MessageSenderOpts) (gsnet.MessageSender, error)
 	ConnectTo(context.Context, peer.ID) error
 }
 
@@ -58,24 +56,28 @@ type MessageQueue struct {
 	done         chan struct{}
 
 	// internal do not touch outside go routines
-	sender           gsnet.MessageSender
-	eventPublisher   notifications.Publisher
-	buildersLk       sync.RWMutex
-	builders         []*gsmsg.Builder
-	nextBuilderTopic gsmsg.Topic
-	allocator        Allocator
+	sender             gsnet.MessageSender
+	eventPublisher     notifications.Publisher
+	buildersLk         sync.RWMutex
+	builders           []*gsmsg.Builder
+	nextBuilderTopic   gsmsg.Topic
+	allocator          Allocator
+	maxRetries         int
+	sendMessageTimeout time.Duration
 }
 
 // New creats a new MessageQueue.
-func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Allocator) *MessageQueue {
+func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Allocator, maxRetries int, sendMessageTimeout time.Duration) *MessageQueue {
 	return &MessageQueue{
-		ctx:            ctx,
-		network:        network,
-		p:              p,
-		outgoingWork:   make(chan struct{}, 1),
-		done:           make(chan struct{}),
-		eventPublisher: notifications.NewPublisher(),
-		allocator:      allocator,
+		ctx:                ctx,
+		network:            network,
+		p:                  p,
+		outgoingWork:       make(chan struct{}, 1),
+		done:               make(chan struct{}),
+		eventPublisher:     notifications.NewPublisher(),
+		allocator:          allocator,
+		maxRetries:         maxRetries,
+		sendMessageTimeout: sendMessageTimeout,
 	}
 }
 
@@ -220,7 +222,7 @@ func (mq *MessageQueue) sendMessage() {
 		return
 	}
 
-	for i := 0; i < maxRetries; i++ { // try to send this message until we fail.
+	for i := 0; i < mq.maxRetries; i++ { // try to send this message until we fail.
 		if mq.attemptSendAndRecovery(message, publisher) {
 			return
 		}
@@ -232,7 +234,7 @@ func (mq *MessageQueue) initializeSender() error {
 	if mq.sender != nil {
 		return nil
 	}
-	nsender, err := openSender(mq.ctx, mq.network, mq.p)
+	nsender, err := openSender(mq.ctx, mq.network, mq.p, mq.sendMessageTimeout)
 	if err != nil {
 		return err
 	}
@@ -277,7 +279,7 @@ func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, p
 	return false
 }
 
-func openSender(ctx context.Context, network MessageNetwork, p peer.ID) (gsnet.MessageSender, error) {
+func openSender(ctx context.Context, network MessageNetwork, p peer.ID, sendTimeout time.Duration) (gsnet.MessageSender, error) {
 	// allow ten minutes for connections this includes looking them up in the
 	// dht dialing them, and handshaking
 	conctx, cancel := context.WithTimeout(ctx, time.Minute*10)
@@ -288,7 +290,7 @@ func openSender(ctx context.Context, network MessageNetwork, p peer.ID) (gsnet.M
 		return nil, err
 	}
 
-	nsender, err := network.NewMessageSender(ctx, p)
+	nsender, err := network.NewMessageSender(ctx, p, gsnet.MessageSenderOpts{SendTimeout: sendTimeout})
 	if err != nil {
 		return nil, err
 	}

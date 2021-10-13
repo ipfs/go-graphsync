@@ -200,7 +200,7 @@ func (mp *messagePasser) Reset() error {
 	return nil
 }
 
-func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID) (gsnet.MessageSender, error) {
+func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID, _ gsnet.MessageSenderOpts) (gsnet.MessageSender, error) {
 	return &messagePasser{
 		net:    nc,
 		target: p,
