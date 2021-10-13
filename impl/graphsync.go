@@ -180,6 +180,8 @@ func MaxLinksPerIncomingRequests(maxLinksPerIncomingRequest uint64) Option {
 // attempt to send a message before giving up.
 // Lower to increase the speed at which an unresponsive peer is
 // detected.
+//
+// If not set, a default of 10 is used.
 func MessageSendRetries(messageSendRetries int) Option {
 	return func(gs *graphsyncConfigOptions) {
 		gs.messageSendRetries = messageSendRetries
