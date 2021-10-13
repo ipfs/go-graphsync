@@ -341,6 +341,23 @@ func TestAllocator(t *testing.T) {
 					pendingResults = append(pendingResults, next.pendingResult)
 				}
 				require.Equal(t, step.expectedPending, pendingResults)
+				expectedTotalPending := uint64(0)
+				expectedPeersPending := map[peer.ID]struct{}{}
+				for _, pendingResult := range step.expectedPending {
+					expectedTotalPending += pendingResult.amount
+					expectedPeersPending[pendingResult.p] = struct{}{}
+				}
+				expectedNumPeersPending := uint64(len(expectedPeersPending))
+				expendingTotalAllocated := uint64(0)
+				for _, peerTotal := range step.totals {
+					expendingTotalAllocated += peerTotal
+				}
+				stats := allocator.Stats()
+				require.Equal(t, data.total, stats.MaxAllowedAllocatedTotal)
+				require.Equal(t, data.maxPerPeer, stats.MaxAllowedAllocatedPerPeer)
+				require.Equal(t, expectedNumPeersPending, stats.NumPeersWithPendingAllocations)
+				require.Equal(t, expendingTotalAllocated, stats.TotalAllocatedAllPeers)
+				require.Equal(t, expectedTotalPending, stats.TotalPendingAllocations)
 			}
 		})
 	}

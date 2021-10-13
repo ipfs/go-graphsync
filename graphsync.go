@@ -287,6 +287,47 @@ type OnRequestorCancelledListener func(p peer.ID, request RequestData)
 // UnregisterHookFunc is a function call to unregister a hook that was previously registered
 type UnregisterHookFunc func()
 
+// RequestStats offer statistics about request processing
+type RequestStats struct {
+	// TotalPeers is the number of peers that have active or pending requests
+	TotalPeers uint64
+	// Active is the total number of active requests being processing
+	Active uint64
+	// Pending is the total number of requests that are waiting to be processed
+	Pending uint64
+}
+
+// ResponseStats offer statistics about memory allocations for responses
+type ResponseStats struct {
+	// MaxAllowedAllocatedTotal is the preconfigured limit on allocations
+	// for all peers
+	MaxAllowedAllocatedTotal uint64
+	// MaxAllowedAllocatedPerPeer is the preconfigured limit on allocations
+	// for an individual peer
+	MaxAllowedAllocatedPerPeer uint64
+	// TotalAllocatedAllPeers indicates the amount of memory allocated for blocks
+	// across all peers
+	TotalAllocatedAllPeers uint64
+	// TotalPendingAllocations indicates the amount awaiting freeing up of memory
+	TotalPendingAllocations uint64
+	// NumPeersWithPendingAllocations indicates the number of peers that
+	// have either maxed out their individual memory allocations or have
+	// pending allocations cause the total limit has been reached.
+	NumPeersWithPendingAllocations uint64
+}
+
+// Stats describes statistics about the Graphsync implementations
+// current state
+type Stats struct {
+	// Stats for the graphsync requestor
+	OutgoingRequests  RequestStats
+	IncomingResponses ResponseStats
+
+	// Stats for the graphsync responder
+	IncomingRequests  RequestStats
+	OutgoingResponses ResponseStats
+}
+
 // GraphExchange is a protocol that can exchange IPLD graphs based on a selector
 type GraphExchange interface {
 	// Request initiates a new GraphSync request to the given peer using the given selector spec.
@@ -354,4 +395,7 @@ type GraphExchange interface {
 
 	// CancelRequest cancels an in progress request
 	CancelRequest(context.Context, RequestID) error
+
+	// Stats produces insight on the current state of a graphsync exchange
+	Stats() Stats
 }

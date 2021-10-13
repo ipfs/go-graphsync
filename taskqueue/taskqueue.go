@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-peertaskqueue"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -19,6 +20,7 @@ type Executor interface {
 type TaskQueue interface {
 	PushTask(p peer.ID, task peertask.Task)
 	TaskDone(p peer.ID, task *peertask.Task)
+	Stats() graphsync.RequestStats
 }
 
 // TaskQueue is a wrapper around peertaskqueue.PeerTaskQueue that manages running workers
@@ -55,6 +57,16 @@ func (tq *WorkerTaskQueue) PushTask(p peer.ID, task peertask.Task) {
 // TaskDone marks a task as completed so further tasks can be executed
 func (tq *WorkerTaskQueue) TaskDone(p peer.ID, task *peertask.Task) {
 	tq.peerTaskQueue.TasksDone(p, task)
+}
+
+// Stats returns statistics about a task queue
+func (tq *WorkerTaskQueue) Stats() graphsync.RequestStats {
+	ptqstats := tq.peerTaskQueue.Stats()
+	return graphsync.RequestStats{
+		TotalPeers: uint64(ptqstats.NumPeers),
+		Active:     uint64(ptqstats.NumActive),
+		Pending:    uint64(ptqstats.NumPending),
+	}
 }
 
 // Startup runs the given number of task workers with the given executor
