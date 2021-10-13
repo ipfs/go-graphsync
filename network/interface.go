@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"time"
 
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
@@ -30,9 +31,14 @@ type GraphSyncNetwork interface {
 	// ConnectTo establishes a connection to the given peer
 	ConnectTo(context.Context, peer.ID) error
 
-	NewMessageSender(context.Context, peer.ID) (MessageSender, error)
+	NewMessageSender(context.Context, peer.ID, MessageSenderOpts) (MessageSender, error)
 
 	ConnectionManager() ConnManager
+}
+
+// MessageSenderOpts sets parameters for a message sender
+type MessageSenderOpts struct {
+	SendTimeout time.Duration
 }
 
 // ConnManager provides the methods needed to protect and unprotect connections

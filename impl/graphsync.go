@@ -2,6 +2,7 @@ package graphsync
 
 import (
 	"context"
+	"time"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue"
@@ -33,6 +34,8 @@ const maxRecursionDepth = 100
 const defaultTotalMaxMemory = uint64(256 << 20)
 const defaultMaxMemoryPerPeer = uint64(16 << 20)
 const defaultMaxInProgressRequests = uint64(6)
+const defaultMessageSendRetries = 10
+const defaultSendMessageTimeout = 10 * time.Minute
 
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
@@ -77,6 +80,8 @@ type graphsyncConfigOptions struct {
 	registerDefaultValidator             bool
 	maxLinksPerOutgoingRequest           uint64
 	maxLinksPerIncomingRequest           uint64
+	messageSendRetries                   int
+	sendMessageTimeout                   time.Duration
 }
 
 // Option defines the functional option type that can be used to configure
@@ -171,6 +176,31 @@ func MaxLinksPerIncomingRequests(maxLinksPerIncomingRequest uint64) Option {
 	}
 }
 
+// MessageSendRetries sets the number of times graphsync will send
+// attempt to send a message before giving up.
+// Lower to increase the speed at which an unresponsive peer is
+// detected.
+//
+// If not set, a default of 10 is used.
+func MessageSendRetries(messageSendRetries int) Option {
+	return func(gs *graphsyncConfigOptions) {
+		gs.messageSendRetries = messageSendRetries
+	}
+}
+
+// SendMessageTimeout sets the amount of time graphsync will wait
+// for a message to go across the wire before giving up and
+// trying again (up to max retries).
+// Lower to increase the speed at which an unresponsive peer is
+// detected.
+//
+// If not set, a default of 10 minutes is used.
+func SendMessageTimeout(sendMessageTimeout time.Duration) Option {
+	return func(gs *graphsyncConfigOptions) {
+		gs.sendMessageTimeout = sendMessageTimeout
+	}
+}
+
 // New creates a new GraphSync Exchange on the given network,
 // and the given link loader+storer.
 func New(parent context.Context, network gsnet.GraphSyncNetwork,
@@ -185,6 +215,8 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		maxInProgressIncomingRequests: defaultMaxInProgressRequests,
 		maxInProgressOutgoingRequests: defaultMaxInProgressRequests,
 		registerDefaultValidator:      true,
+		messageSendRetries:            defaultMessageSendRetries,
+		sendMessageTimeout:            defaultSendMessageTimeout,
 	}
 	for _, option := range options {
 		option(gsConfig)
@@ -207,7 +239,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	responseAllocator := allocator.NewAllocator(gsConfig.totalMaxMemoryResponder, gsConfig.maxMemoryPerPeerResponder)
 	createMessageQueue := func(ctx context.Context, p peer.ID) peermanager.PeerQueue {
-		return messagequeue.New(ctx, p, network, responseAllocator)
+		return messagequeue.New(ctx, p, network, responseAllocator, gsConfig.messageSendRetries, gsConfig.sendMessageTimeout)
 	}
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
 	requestAllocator := allocator.NewAllocator(gsConfig.totalMaxMemoryRequestor, gsConfig.maxMemoryPerPeerRequestor)

@@ -21,6 +21,9 @@ import (
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
+const sendMessageTimeout = 10 * time.Minute
+const messageSendRetries = 10
+
 type fakeMessageNetwork struct {
 	connectError       error
 	messageSenderError error
@@ -32,7 +35,7 @@ func (fmn *fakeMessageNetwork) ConnectTo(context.Context, peer.ID) error {
 	return fmn.connectError
 }
 
-func (fmn *fakeMessageNetwork) NewMessageSender(context.Context, peer.ID) (gsnet.MessageSender, error) {
+func (fmn *fakeMessageNetwork) NewMessageSender(context.Context, peer.ID, gsnet.MessageSenderOpts) (gsnet.MessageSender, error) {
 	fmn.wait.Done()
 	if fmn.messageSenderError == nil {
 		return fmn.messageSender, nil
@@ -68,7 +71,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator)
+	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
@@ -106,7 +109,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator)
+	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
@@ -154,7 +157,7 @@ func TestProcessingNotification(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator)
+	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
 	waitGroup.Add(1)
 	blks := testutil.GenerateBlocksOfSize(3, 128)
@@ -210,7 +213,7 @@ func TestDedupingMessages(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator)
+	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
 	waitGroup.Add(1)
 	id := graphsync.RequestID(rand.Int31())
@@ -282,7 +285,7 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator)
+	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
 	waitGroup.Add(1)
 
@@ -342,7 +345,7 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 	// use allocator with very small limit
 	allocator := allocator2.NewAllocator(1000, 1000)
 
-	messageQueue := New(ctx, p, messageNetwork, allocator)
+	messageQueue := New(ctx, p, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
 	waitGroup.Add(1)
 

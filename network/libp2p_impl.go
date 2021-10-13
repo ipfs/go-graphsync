@@ -38,7 +38,8 @@ type libp2pGraphSyncNetwork struct {
 }
 
 type streamMessageSender struct {
-	s network.Stream
+	s    network.Stream
+	opts MessageSenderOpts
 }
 
 func (s *streamMessageSender) Close() error {
@@ -50,14 +51,14 @@ func (s *streamMessageSender) Reset() error {
 }
 
 func (s *streamMessageSender) SendMsg(ctx context.Context, msg gsmsg.GraphSyncMessage) error {
-	return msgToStream(ctx, s.s, msg)
+	return msgToStream(ctx, s.s, msg, s.opts.SendTimeout)
 }
 
-func msgToStream(ctx context.Context, s network.Stream, msg gsmsg.GraphSyncMessage) error {
+func msgToStream(ctx context.Context, s network.Stream, msg gsmsg.GraphSyncMessage, timeout time.Duration) error {
 	log.Debugf("Outgoing message with %d requests, %d responses, and %d blocks",
 		len(msg.Requests()), len(msg.Responses()), len(msg.Blocks()))
 
-	deadline := time.Now().Add(sendMessageTimeout)
+	deadline := time.Now().Add(timeout)
 	if dl, ok := ctx.Deadline(); ok {
 		deadline = dl
 	}
@@ -81,13 +82,13 @@ func msgToStream(ctx context.Context, s network.Stream, msg gsmsg.GraphSyncMessa
 	return nil
 }
 
-func (gsnet *libp2pGraphSyncNetwork) NewMessageSender(ctx context.Context, p peer.ID) (MessageSender, error) {
+func (gsnet *libp2pGraphSyncNetwork) NewMessageSender(ctx context.Context, p peer.ID, opts MessageSenderOpts) (MessageSender, error) {
 	s, err := gsnet.newStreamToPeer(ctx, p)
 	if err != nil {
 		return nil, err
 	}
 
-	return &streamMessageSender{s: s}, nil
+	return &streamMessageSender{s: s, opts: setDefaults(opts)}, nil
 }
 
 func (gsnet *libp2pGraphSyncNetwork) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stream, error) {
@@ -104,7 +105,7 @@ func (gsnet *libp2pGraphSyncNetwork) SendMessage(
 		return err
 	}
 
-	if err = msgToStream(ctx, s, outgoing); err != nil {
+	if err = msgToStream(ctx, s, outgoing, sendMessageTimeout); err != nil {
 		_ = s.Reset()
 		return err
 	}
@@ -173,3 +174,11 @@ func (nn *libp2pGraphSyncNotifee) OpenedStream(n network.Network, v network.Stre
 func (nn *libp2pGraphSyncNotifee) ClosedStream(n network.Network, v network.Stream) {}
 func (nn *libp2pGraphSyncNotifee) Listen(n network.Network, a ma.Multiaddr)         {}
 func (nn *libp2pGraphSyncNotifee) ListenClose(n network.Network, a ma.Multiaddr)    {}
+
+func setDefaults(opts MessageSenderOpts) MessageSenderOpts {
+	copy := opts
+	if opts.SendTimeout == 0 {
+		copy.SendTimeout = sendMessageTimeout
+	}
+	return copy
+}
