@@ -12,8 +12,8 @@ import (
 var log = logging.Logger("graphsync_allocator")
 
 type Allocator struct {
-	totalMemoryMax uint64
-	perPeerMax     uint64
+	maxAllowedAllocatedTotal   uint64
+	maxAllowedAllocatedPerPeer uint64
 
 	allocLk                sync.RWMutex
 	totalAllocatedAllPeers uint64
@@ -22,13 +22,13 @@ type Allocator struct {
 	peerStatusQueue        pq.PQ
 }
 
-func NewAllocator(totalMemoryMax uint64, perPeerMax uint64) *Allocator {
+func NewAllocator(maxAllowedAllocatedTotal uint64, maxAllowedAllocatedPerPeer uint64) *Allocator {
 	return &Allocator{
-		totalMemoryMax:         totalMemoryMax,
-		perPeerMax:             perPeerMax,
-		totalAllocatedAllPeers: 0,
-		peerStatuses:           make(map[peer.ID]*peerStatus),
-		peerStatusQueue:        pq.New(makePeerStatusCompare(perPeerMax)),
+		maxAllowedAllocatedTotal:   maxAllowedAllocatedTotal,
+		maxAllowedAllocatedPerPeer: maxAllowedAllocatedPerPeer,
+		totalAllocatedAllPeers:     0,
+		peerStatuses:               make(map[peer.ID]*peerStatus),
+		peerStatusQueue:            pq.New(makePeerStatusCompare(maxAllowedAllocatedPerPeer)),
 	}
 }
 
@@ -58,13 +58,13 @@ func (a *Allocator) AllocateBlockMemory(p peer.ID, amount uint64) <-chan error {
 		a.peerStatuses[p] = status
 	}
 
-	if (a.totalAllocatedAllPeers+amount <= a.totalMemoryMax) && (status.totalAllocated+amount <= a.perPeerMax) && len(status.pendingAllocations) == 0 {
+	if (a.totalAllocatedAllPeers+amount <= a.maxAllowedAllocatedTotal) && (status.totalAllocated+amount <= a.maxAllowedAllocatedPerPeer) && len(status.pendingAllocations) == 0 {
 		a.totalAllocatedAllPeers += amount
 		status.totalAllocated += amount
 		log.Debugw("bytes allocated", "amount", amount, "peer", p, "peer total", status.totalAllocated, "global total", a.totalAllocatedAllPeers)
 		responseChan <- nil
 	} else {
-		log.Debugw("byte allocation deferred pending memory release", "amount", amount, "peer", p, "peer total", status.totalAllocated, "global total", a.totalAllocatedAllPeers, "max per peer", a.perPeerMax, "global max", a.totalMemoryMax)
+		log.Debugw("byte allocation deferred pending memory release", "amount", amount, "peer", p, "peer total", status.totalAllocated, "global total", a.totalAllocatedAllPeers, "max per peer", a.maxAllowedAllocatedPerPeer, "global max", a.maxAllowedAllocatedTotal)
 		pendingAllocation := pendingAllocation{p, amount, responseChan, a.nextAllocIndex}
 		a.nextAllocIndex++
 		status.pendingAllocations = append(status.pendingAllocations, pendingAllocation)
@@ -91,7 +91,7 @@ func (a *Allocator) ReleaseBlockMemory(p peer.ID, amount uint64) error {
 	} else {
 		a.totalAllocatedAllPeers = 0
 	}
-	log.Debugw("memory released", "amount", amount, "peer", p, "peer total", status.totalAllocated, "global total", a.totalAllocatedAllPeers, "max per peer", a.perPeerMax, "global max", a.totalMemoryMax)
+	log.Debugw("memory released", "amount", amount, "peer", p, "peer total", status.totalAllocated, "global total", a.totalAllocatedAllPeers, "max per peer", a.maxAllowedAllocatedPerPeer, "global max", a.maxAllowedAllocatedTotal)
 	a.peerStatusQueue.Update(status.Index())
 	a.processPendingAllocations()
 	return nil
@@ -110,7 +110,7 @@ func (a *Allocator) ReleasePeerMemory(p peer.ID) error {
 		pendingAllocation.response <- errors.New("peer has been deallocated")
 	}
 	a.totalAllocatedAllPeers -= status.totalAllocated
-	log.Debugw("memory released", "amount", status.totalAllocated, "peer", p, "peer total", 0, "global total", a.totalAllocatedAllPeers, "max per peer", a.perPeerMax, "global max", a.totalMemoryMax)
+	log.Debugw("memory released", "amount", status.totalAllocated, "peer", p, "peer total", 0, "global total", a.totalAllocatedAllPeers, "max per peer", a.maxAllowedAllocatedPerPeer, "global max", a.maxAllowedAllocatedTotal)
 	a.processPendingAllocations()
 	return nil
 }
@@ -137,10 +137,10 @@ func (a *Allocator) processPendingAllocations() {
 
 func (a *Allocator) processNextPendingAllocationForPeer(nextPeer *peerStatus) bool {
 	pendingAllocation := nextPeer.pendingAllocations[0]
-	if a.totalAllocatedAllPeers+pendingAllocation.amount > a.totalMemoryMax {
+	if a.totalAllocatedAllPeers+pendingAllocation.amount > a.maxAllowedAllocatedTotal {
 		return false
 	}
-	if nextPeer.totalAllocated+pendingAllocation.amount > a.perPeerMax {
+	if nextPeer.totalAllocated+pendingAllocation.amount > a.maxAllowedAllocatedPerPeer {
 		return false
 	}
 	a.totalAllocatedAllPeers += pendingAllocation.amount
@@ -149,6 +149,39 @@ func (a *Allocator) processNextPendingAllocationForPeer(nextPeer *peerStatus) bo
 	log.Debugw("bytes allocated", "amount", pendingAllocation.amount, "peer", nextPeer.p, "peer total", nextPeer.totalAllocated, "global total", a.totalAllocatedAllPeers)
 	pendingAllocation.response <- nil
 	return true
+}
+
+type Stats struct {
+	MaxAllowedAllocatedTotal       uint64
+	MaxAllowedAllocatedPerPeer     uint64
+	TotalAllocatedAllPeers         uint64
+	TotalPendingAllocations        uint64
+	NumPeersWithPendingAllocations uint64
+}
+
+func (a *Allocator) Stats() Stats {
+	a.allocLk.RLock()
+	defer a.allocLk.RUnlock()
+
+	numPeersWithPendingAllocations := uint64(0)
+	totalPendingAllocations := uint64(0)
+	for _, status := range a.peerStatuses {
+		peerPendingAllocations := uint64(0)
+		for _, pa := range status.pendingAllocations {
+			peerPendingAllocations += pa.amount
+		}
+		if peerPendingAllocations > 0 {
+			numPeersWithPendingAllocations++
+			totalPendingAllocations += peerPendingAllocations
+		}
+	}
+	return Stats{
+		MaxAllowedAllocatedTotal:       a.maxAllowedAllocatedTotal,
+		MaxAllowedAllocatedPerPeer:     a.maxAllowedAllocatedPerPeer,
+		TotalAllocatedAllPeers:         a.totalAllocatedAllPeers,
+		TotalPendingAllocations:        totalPendingAllocations,
+		NumPeersWithPendingAllocations: numPeersWithPendingAllocations,
+	}
 }
 
 type peerStatus struct {
