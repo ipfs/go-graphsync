@@ -67,15 +67,16 @@ type GraphSync struct {
 }
 
 type graphsyncConfigOptions struct {
-	totalMaxMemoryResponder       uint64
-	maxMemoryPerPeerResponder     uint64
-	totalMaxMemoryRequestor       uint64
-	maxMemoryPerPeerRequestor     uint64
-	maxInProgressIncomingRequests uint64
-	maxInProgressOutgoingRequests uint64
-	registerDefaultValidator      bool
-	maxLinksPerOutgoingRequest    uint64
-	maxLinksPerIncomingRequest    uint64
+	totalMaxMemoryResponder              uint64
+	maxMemoryPerPeerResponder            uint64
+	totalMaxMemoryRequestor              uint64
+	maxMemoryPerPeerRequestor            uint64
+	maxInProgressIncomingRequests        uint64
+	maxInProgressIncomingRequestsPerPeer uint64
+	maxInProgressOutgoingRequests        uint64
+	registerDefaultValidator             bool
+	maxLinksPerOutgoingRequest           uint64
+	maxLinksPerIncomingRequest           uint64
 }
 
 // Option defines the functional option type that can be used to configure
@@ -123,15 +124,29 @@ func MaxMemoryPerPeerRequestor(maxMemoryPerPeer uint64) Option {
 }
 
 // MaxInProgressIncomingRequests changes the maximum number of
-// graphsync requests that are processed in parallel (default 6)
+// incoming graphsync requests that are processed in parallel (default 6)
 func MaxInProgressIncomingRequests(maxInProgressIncomingRequests uint64) Option {
 	return func(gs *graphsyncConfigOptions) {
 		gs.maxInProgressIncomingRequests = maxInProgressIncomingRequests
 	}
 }
 
+// MaxInProgressIncomingRequestsPerPeer changes the maximum number of
+// incoming graphsync requests that are processed in parallel on a per-peer basis.
+// The value is not set by default.
+// Useful in an environment for very high bandwidth graphsync responders serving
+// many peers
+// Note: if for some reason this is set higher than MaxInProgressIncomingRequests
+// it will simply have no effect.
+// Note: setting a value of zero will have no effect
+func MaxInProgressIncomingRequestsPerPeer(maxInProgressIncomingRequestsPerPeer uint64) Option {
+	return func(gs *graphsyncConfigOptions) {
+		gs.maxInProgressIncomingRequestsPerPeer = maxInProgressIncomingRequestsPerPeer
+	}
+}
+
 // MaxInProgressOutgoingRequests changes the maximum number of
-// graphsync requests that are processed in parallel (default 6)
+// outgoing graphsync requests that are processed in parallel (default 6)
 func MaxInProgressOutgoingRequests(maxInProgressOutgoingRequests uint64) Option {
 	return func(gs *graphsyncConfigOptions) {
 		gs.maxInProgressOutgoingRequests = maxInProgressOutgoingRequests
@@ -202,7 +217,11 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest)
 	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks, asyncLoader.AsyncLoad)
 	responseAssembler := responseassembler.New(ctx, peerManager)
-	peerTaskQueue := peertaskqueue.New()
+	var ptqopts []peertaskqueue.Option
+	if gsConfig.maxInProgressIncomingRequestsPerPeer > 0 {
+		ptqopts = append(ptqopts, peertaskqueue.MaxOutstandingWorkPerPeer(int(gsConfig.maxInProgressIncomingRequestsPerPeer)))
+	}
+	peerTaskQueue := peertaskqueue.New(ptqopts...)
 	responseManager := responsemanager.New(ctx, linkSystem, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressIncomingRequests, network.ConnectionManager(), gsConfig.maxLinksPerIncomingRequest)
 	graphSync := &GraphSync{
 		network:                     network,
