@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/ipfs/go-graphsync"
 	pq "github.com/ipfs/go-ipfs-pq"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -151,15 +152,7 @@ func (a *Allocator) processNextPendingAllocationForPeer(nextPeer *peerStatus) bo
 	return true
 }
 
-type Stats struct {
-	MaxAllowedAllocatedTotal       uint64
-	MaxAllowedAllocatedPerPeer     uint64
-	TotalAllocatedAllPeers         uint64
-	TotalPendingAllocations        uint64
-	NumPeersWithPendingAllocations uint64
-}
-
-func (a *Allocator) Stats() Stats {
+func (a *Allocator) Stats() graphsync.ResponseStats {
 	a.allocLk.RLock()
 	defer a.allocLk.RUnlock()
 
@@ -175,7 +168,7 @@ func (a *Allocator) Stats() Stats {
 			totalPendingAllocations += peerPendingAllocations
 		}
 	}
-	return Stats{
+	return graphsync.ResponseStats{
 		MaxAllowedAllocatedTotal:       a.maxAllowedAllocatedTotal,
 		MaxAllowedAllocatedPerPeer:     a.maxAllowedAllocatedPerPeer,
 		TotalAllocatedAllPeers:         a.totalAllocatedAllPeers,

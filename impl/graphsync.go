@@ -380,6 +380,28 @@ func (gs *GraphSync) CancelRequest(ctx context.Context, requestID graphsync.Requ
 	return gs.requestManager.CancelRequest(ctx, requestID)
 }
 
+// Stats produces insight on the current state of a graphsync exchange
+func (gs *GraphSync) Stats() graphsync.Stats {
+	outgoingRequestStats := gs.requestQueue.Stats()
+	incomingResponseStats := gs.requestAllocator.Stats()
+
+	ptqstats := gs.peerTaskQueue.Stats()
+	incomingRequestStats := graphsync.RequestStats{
+		TotalPeers: uint64(ptqstats.NumPeers),
+		Active:     uint64(ptqstats.NumActive),
+		Pending:    uint64(ptqstats.NumPending),
+	}
+	outgoingResponseStats := gs.responseAllocator.Stats()
+
+	return graphsync.Stats{
+		OutgoingRequests:  outgoingRequestStats,
+		IncomingResponses: incomingResponseStats,
+
+		IncomingRequests:  incomingRequestStats,
+		OutgoingResponses: outgoingResponseStats,
+	}
+}
+
 type graphSyncReceiver GraphSync
 
 func (gsr *graphSyncReceiver) graphSync() *GraphSync {
