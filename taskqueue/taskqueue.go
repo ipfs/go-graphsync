@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-peertaskqueue"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	peer "github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/ipfs/go-graphsync"
 )
 
 const thawSpeed = time.Millisecond * 100
