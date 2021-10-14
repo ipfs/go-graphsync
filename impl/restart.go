@@ -99,8 +99,16 @@ func (m *manager) openPushRestartChannel(ctx context.Context, channel datatransf
 	}
 	m.dataTransferNetwork.Protect(requestTo, chid.String())
 
+	// Monitor the state of the connection for the channel
+	monitoredChan := m.channelMonitor.AddPushChannel(chid)
 	log.Infof("sending push restart channel to %s for channel %s", requestTo, chid)
 	if err := m.dataTransferNetwork.SendMessage(ctx, requestTo, req); err != nil {
+		// If push channel monitoring is enabled, shutdown the monitor as it
+		// wasn't possible to start the data transfer
+		if monitoredChan != nil {
+			monitoredChan.Shutdown()
+		}
+
 		return xerrors.Errorf("Unable to send restart request: %w", err)
 	}
 
@@ -126,8 +134,16 @@ func (m *manager) openPullRestartChannel(ctx context.Context, channel datatransf
 	}
 	m.dataTransferNetwork.Protect(requestTo, chid.String())
 
+	// Monitor the state of the connection for the channel
+	monitoredChan := m.channelMonitor.AddPullChannel(chid)
 	log.Infof("sending open channel to %s to restart channel %s", requestTo, chid)
 	if err := m.transport.OpenChannel(ctx, requestTo, chid, cidlink.Link{Cid: baseCid}, selector, channel, req); err != nil {
+		// If pull channel monitoring is enabled, shutdown the monitor as it
+		// wasn't possible to start the data transfer
+		if monitoredChan != nil {
+			monitoredChan.Shutdown()
+		}
+
 		return xerrors.Errorf("Unable to send open channel restart request: %w", err)
 	}
 
