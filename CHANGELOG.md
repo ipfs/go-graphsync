@@ -1,5 +1,16 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.11.3
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix: startup channel monitor when a channel is restarted (#269) ([filecoin-project/go-data-transfer#269](https://github.com/filecoin-project/go-data-transfer/pull/269))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 1 | +231/-0 | 2 |
+
 # go-data-transfer 1.11.2
 
 - github.com/filecoin-project/go-data-transfer:
