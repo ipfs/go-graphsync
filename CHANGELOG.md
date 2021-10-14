@@ -1,5 +1,21 @@
 # go-graphsync changelog
 
+# go-grapshync 0.10.4
+
+Fix a critical bug in the allocator
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - fix(allocator): prevent buffer overflow (#248) ([ipfs/go-graphsync#248](https://github.com/ipfs/go-graphsync/pull/248))
+  - Merge branch 'release/v0.10.3'
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +43/-3 | 2 |
+
 # go-graphsync 0.10.3
 
 Additional config options and metrics
