@@ -83,14 +83,18 @@ func (a *Allocator) ReleaseBlockMemory(p peer.ID, amount uint64) error {
 	if !ok {
 		return errors.New("cannot deallocate from peer with no allocations")
 	}
-	if status.totalAllocated > amount {
+	if status.totalAllocated >= amount {
 		status.totalAllocated -= amount
 	} else {
+		log.Infof("deallocation greater than peer memory", "amount", amount, "peer", p, "peer total", status.totalAllocated)
+		// change the amount deallocated so that the global total continues to match the sum of all peers
+		amount = status.totalAllocated
 		status.totalAllocated = 0
 	}
-	if a.totalAllocatedAllPeers > amount {
+	if a.totalAllocatedAllPeers >= amount {
 		a.totalAllocatedAllPeers -= amount
 	} else {
+		log.Warnf("deallocation greater than total allocated", "amount", amount, "peer", p, "global total", a.totalAllocatedAllPeers)
 		a.totalAllocatedAllPeers = 0
 	}
 	log.Debugw("memory released", "amount", amount, "peer", p, "peer total", status.totalAllocated, "global total", a.totalAllocatedAllPeers, "max per peer", a.maxAllowedAllocatedPerPeer, "global max", a.maxAllowedAllocatedTotal)
@@ -111,7 +115,12 @@ func (a *Allocator) ReleasePeerMemory(p peer.ID) error {
 	for _, pendingAllocation := range status.pendingAllocations {
 		pendingAllocation.response <- errors.New("peer has been deallocated")
 	}
-	a.totalAllocatedAllPeers -= status.totalAllocated
+	if a.totalAllocatedAllPeers >= status.totalAllocated {
+		a.totalAllocatedAllPeers -= status.totalAllocated
+	} else {
+		log.Warnf("peer dellocation greater than global total", "peer memory", status.totalAllocated, "peer", p, "global total", a.totalAllocatedAllPeers)
+		a.totalAllocatedAllPeers = 0
+	}
 	log.Debugw("memory released", "amount", status.totalAllocated, "peer", p, "peer total", 0, "global total", a.totalAllocatedAllPeers, "max per peer", a.maxAllowedAllocatedPerPeer, "global max", a.maxAllowedAllocatedTotal)
 	a.processPendingAllocations()
 	return nil

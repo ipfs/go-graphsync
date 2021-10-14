@@ -307,6 +307,37 @@ func TestAllocator(t *testing.T) {
 				},
 			},
 		},
+		"release block then peer more than allocated": {
+			total:      2000,
+			maxPerPeer: 1000,
+			steps: []allocStep{
+				{
+					op:              alloc{peers[0], 1000},
+					totals:          map[peer.ID]uint64{peers[0]: 1000},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              alloc{peers[1], 500},
+					totals:          map[peer.ID]uint64{peers[0]: 1000, peers[1]: 500},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              releaseBlock{peers[0], 500},
+					totals:          map[peer.ID]uint64{peers[0]: 500, peers[1]: 500},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              releaseBlock{peers[0], 1000},
+					totals:          map[peer.ID]uint64{peers[0]: 0, peers[1]: 500},
+					expectedPending: []pendingResult{},
+				},
+				{
+					op:              releasePeer{peers[1]},
+					totals:          map[peer.ID]uint64{peers[0]: 0, peers[1]: 0},
+					expectedPending: []pendingResult{},
+				},
+			},
+		},
 	}
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
