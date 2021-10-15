@@ -1067,6 +1067,12 @@ func (c *dtChannel) pause() error {
 	c.lk.Lock()
 	defer c.lk.Unlock()
 
+	// Check if the channel was already cancelled
+	if c.gsKey == nil {
+		log.Debugf("%s: channel was cancelled so not pausing channel", c.channelID)
+		return nil
+	}
+
 	// If it's a graphsync request
 	if c.gsKey.p == c.peerID {
 		// Pause the request
@@ -1090,6 +1096,12 @@ func (c *dtChannel) pause() error {
 func (c *dtChannel) resume(msg datatransfer.Message) error {
 	c.lk.Lock()
 	defer c.lk.Unlock()
+
+	// Check if the channel was already cancelled
+	if c.gsKey == nil {
+		log.Debugf("%s: channel was cancelled so not resuming channel", c.channelID)
+		return nil
+	}
 
 	var extensions []graphsync.ExtensionData
 	if msg != nil {
@@ -1129,6 +1141,11 @@ func (c *dtChannel) resume(msg datatransfer.Message) error {
 func (c *dtChannel) close(ctx context.Context) error {
 	c.lk.Lock()
 	defer c.lk.Unlock()
+
+	// Check if the channel was already cancelled
+	if c.gsKey == nil {
+		return nil
+	}
 
 	// If it's a graphsync request
 	if c.gsKey.p == c.peerID {
