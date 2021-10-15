@@ -217,6 +217,10 @@ func (c *Channels) Accept(chid datatransfer.ChannelID) error {
 	return c.send(chid, datatransfer.Accept)
 }
 
+func (c *Channels) ChannelOpened(chid datatransfer.ChannelID) error {
+	return c.send(chid, datatransfer.Opened)
+}
+
 func (c *Channels) TransferRequestQueued(chid datatransfer.ChannelID) error {
 	return c.send(chid, datatransfer.TransferRequestQueued)
 }

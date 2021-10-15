@@ -15,9 +15,12 @@ import (
 	"github.com/filecoin-project/go-data-transfer/registry"
 )
 
+// OnChannelOpened is called when we send a request for data to the other
+// peer on the given channel ID
 func (m *manager) OnChannelOpened(chid datatransfer.ChannelID) error {
 	log.Infof("channel %s: opened", chid)
 
+	// Check if the channel is being tracked
 	has, err := m.channels.HasChannel(chid)
 	if err != nil {
 		return err
@@ -25,7 +28,9 @@ func (m *manager) OnChannelOpened(chid datatransfer.ChannelID) error {
 	if !has {
 		return datatransfer.ErrChannelNotFound
 	}
-	return nil
+
+	// Fire an event
+	return m.channels.ChannelOpened(chid)
 }
 
 // OnDataReceived is called when the transport layer reports that it has

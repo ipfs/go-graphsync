@@ -107,6 +107,9 @@ const (
 
 	// RequestCancelled indicates that a transport layer request was cancelled by the request opener
 	RequestCancelled
+
+	// Opened is fired when a request for data is sent from this node to a peer
+	Opened
 )
 
 // Events are human readable names for data transfer events

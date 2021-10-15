@@ -9,10 +9,9 @@ import (
 
 // EventsHandler are semantic data transfer events that happen as a result of graphsync hooks
 type EventsHandler interface {
-	// OnChannelOpened is called when we ask the other peer to send us data on the
-	// given channel ID
+	// OnChannelOpened is called when we send a request for data to the other
+	// peer on the given channel ID
 	// return values are:
-	// - nil = this channel is recognized
 	// - error = ignore incoming data for this channel
 	OnChannelOpened(chid ChannelID) error
 	// OnResponseReceived is called when we receive a response to a request

@@ -50,6 +50,16 @@ var ChannelEvents = fsm.Events{
 		chst.AddLog("")
 		return nil
 	}),
+
+	// When a channel is Opened, clear any previous error message.
+	// (eg if the channel is opened after being restarted due to a connection
+	// error)
+	fsm.Event(datatransfer.Opened).FromAny().ToJustRecord().Action(func(chst *internal.ChannelState) error {
+		chst.Message = ""
+		chst.AddLog("")
+		return nil
+	}),
+
 	fsm.Event(datatransfer.DataReceived).FromAny().ToNoChange().
 		Action(func(chst *internal.ChannelState, rcvdBlocksTotal int64) error {
 			if rcvdBlocksTotal > chst.ReceivedBlocksTotal {
