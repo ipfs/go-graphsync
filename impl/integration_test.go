@@ -48,6 +48,9 @@ import (
 const loremFile = "lorem.txt"
 const loremFileTransferBytes = 20439
 
+const loremLargeFile = "lorem_large.txt"
+const loremLargeFileTransferBytes = 217452
+
 // nil means use the default protocols
 // tests data transfer for the following protocol combinations:
 // default protocol -> default protocols
@@ -973,7 +976,7 @@ func TestAutoRestartAfterBouncingInitiator(t *testing.T) {
 			destDagService = gsData.DagService1
 		}
 
-		root, origBytes := testutil.LoadUnixFSFile(ctx, t, sourceDagService, loremFile)
+		root, origBytes := testutil.LoadUnixFSFile(ctx, t, sourceDagService, loremLargeFile)
 		rootCid := root.(cidlink.Link).Cid
 
 		require.NoError(t, initiator.RegisterVoucherType(&testutil.FakeDTType{}, sv))
@@ -1083,9 +1086,9 @@ func TestAutoRestartAfterBouncingInitiator(t *testing.T) {
 		// Verify that the total amount of data sent / received that was
 		// reported to the revalidator is correct
 		if isPush {
-			require.EqualValues(t, loremFileTransferBytes, srv.pushDataSum(chid))
+			require.EqualValues(t, loremLargeFileTransferBytes, srv.pushDataSum(chid))
 		} else {
-			require.EqualValues(t, loremFileTransferBytes, srv.pullDataSum(chid))
+			require.EqualValues(t, loremLargeFileTransferBytes, srv.pullDataSum(chid))
 		}
 
 		// Verify that the file was transferred to the destination node
