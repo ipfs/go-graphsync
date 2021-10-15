@@ -1003,17 +1003,19 @@ func TestAutoRestartAfterBouncingInitiator(t *testing.T) {
 		case <-dataReceived:
 		}
 
-		// Shut down the initiator of the data transfer
-		t.Logf("Stopping initiator")
-		err = initiator.Stop(ctx)
-		require.NoError(t, err)
-
 		// Break connection
 		t.Logf("Breaking connection to peer")
 		require.NoError(t, gsData.Mn.UnlinkPeers(initiatorHost.ID(), responderHost.ID()))
 		require.NoError(t, gsData.Mn.DisconnectPeers(initiatorHost.ID(), responderHost.ID()))
 
-		// Create a new initiator
+		// We want to simulate shutting down and restarting the initiator of
+		// the data transfer:
+		// 1. Shut down the initiator of the data transfer
+		t.Logf("Stopping initiator")
+		err = initiator.Stop(ctx)
+		require.NoError(t, err)
+
+		// 2. Create a new initiator
 		initiator2GSTspt := gsData.SetupGSTransportHost1()
 		initiator2, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, initiator2GSTspt, restartConf)
 		require.NoError(t, err)
