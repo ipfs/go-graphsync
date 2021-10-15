@@ -897,7 +897,7 @@ func TestAutoRestart(t *testing.T) {
 // 5. The connection is broken when the first block is received
 // 6. The connection is automatically re-established and the transfer completes
 func TestAutoRestartAfterBouncingInitiator(t *testing.T) {
-	//SetDTLogLevelDebug()
+	SetDTLogLevelDebug()
 
 	runTest := func(t *testing.T, isPush bool) {
 		ctx := context.Background()
@@ -1008,12 +1008,17 @@ func TestAutoRestartAfterBouncingInitiator(t *testing.T) {
 		require.NoError(t, gsData.Mn.UnlinkPeers(initiatorHost.ID(), responderHost.ID()))
 		require.NoError(t, gsData.Mn.DisconnectPeers(initiatorHost.ID(), responderHost.ID()))
 
+		time.Sleep(100 * time.Millisecond)
+
 		// We want to simulate shutting down and restarting the initiator of
 		// the data transfer:
 		// 1. Shut down the initiator of the data transfer
 		t.Logf("Stopping initiator")
 		err = initiator.Stop(ctx)
 		require.NoError(t, err)
+
+		t.Logf("Sleep for a moment")
+		time.Sleep(500 * time.Millisecond)
 
 		// 2. Create a new initiator
 		initiator2GSTspt := gsData.SetupGSTransportHost1()
