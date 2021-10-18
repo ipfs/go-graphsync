@@ -4,7 +4,7 @@ name = "memory-stress"
 [global]
 plan = "graphsync"
 case = "stress"
-total_instances = 2
+total_instances = 5
 builder = "docker:go"
 runner = "cluster:k8s"
 
@@ -16,9 +16,9 @@ registry_type="aws"
 
 [global.run.test_params]
 size      = "1GB"
-latencies = '[]'
-bandwidths = '[]'
-concurrency = "1"
+latencies = '["20ms"]'
+bandwidths = '["10"]'
+concurrency = "8"
 chunk_size = "20"
 links_per_level = "1024"
 raw_leaves = "true"
@@ -26,8 +26,12 @@ disk_store = "true"
 memory_snapshots = "detailed"
 compare_http = "false"
 max_in_progress_requests = "20"
-max_memory_per_peer = "256MiB"
+max_memory_per_peer = "32MiB"
 max_memory_total = "1GiB"
+unlimited_bandwidth_case = "false"
+estuary_client = "true"
+block_diagnostics = "true"
+no_latency_case = "false"
 
 [[groups]]
 id = "providers"
@@ -38,7 +42,7 @@ cpu = "1000m"
 
 [[groups]]
 id = "requestors"
-instances = { count = 1 }
+instances = { count = 4 }
 [groups.resources]
 memory = "4096Mi"
 cpu = "1000m"

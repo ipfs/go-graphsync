@@ -2,12 +2,14 @@ package testinstance
 
 import (
 	"context"
+	"path/filepath"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"
-	badgerds "github.com/ipfs/go-ds-badger"
+	flatfs "github.com/ipfs/go-ds-flatfs"
+	measure "github.com/ipfs/go-ds-measure"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/ipld/go-ipld-prime"
@@ -20,7 +22,15 @@ import (
 	gsimpl "github.com/ipfs/go-graphsync/impl"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/storeutil"
+	metricsprometheus "github.com/ipfs/go-metrics-prometheus"
 )
+
+func init() {
+	err := metricsprometheus.Inject()
+	if err != nil {
+		panic(err)
+	}
+}
 
 // TempDirGenerator is any interface that can generate temporary directories
 type TempDirGenerator interface {
@@ -146,18 +156,25 @@ func NewInstance(ctx context.Context, net tn.Network, p tnet.Identity, gsOptions
 	var dstore ds.Batching
 	var err error
 	if diskBasedDatastore {
-		defopts := badgerds.DefaultOptions
-		defopts.SyncWrites = false
-		defopts.Truncate = true
-		dstore, err = badgerds.NewDatastore(tempDir, &defopts)
+		sf, err := flatfs.ParseShardFunc("/repo/flatfs/shard/v1/next-to-last/3")
+		if err != nil {
+			return Instance{}, err
+		}
+
+		path, err := filepath.Abs("./flatfs")
+		if err != nil {
+			return Instance{}, err
+		}
+		dstore, err = flatfs.CreateOrOpen(path, sf, false)
 		if err != nil {
 			return Instance{}, err
 		}
 	} else {
 		dstore = ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
 	}
+	dstore = measure.New("something", dstore)
 	bstore, err := blockstore.CachedBlockstore(ctx,
-		blockstore.NewBlockstore(dstore),
+		blockstore.NewBlockstoreNoPrefix(dstore),
 		blockstore.DefaultCacheOpts())
 	if err != nil {
 		return Instance{}, err

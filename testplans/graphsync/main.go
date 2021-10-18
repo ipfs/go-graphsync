@@ -16,21 +16,26 @@ import (
 	"strings"
 	gosync "sync"
 	"time"
+	"unsafe"
 
 	dgbadger "github.com/dgraph-io/badger/v2"
 	"github.com/dustin/go-humanize"
 	allselector "github.com/hannahhoward/all-selector"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
 	badgerds "github.com/ipfs/go-ds-badger2"
+	flatfs "github.com/ipfs/go-ds-flatfs"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	chunk "github.com/ipfs/go-ipfs-chunker"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	files "github.com/ipfs/go-ipfs-files"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
+	metri "github.com/ipfs/go-metrics-interface"
+	metricsprometheus "github.com/ipfs/go-metrics-prometheus"
 	"github.com/ipfs/go-unixfs/importer/balanced"
 	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -48,6 +53,7 @@ import (
 	"github.com/testground/sdk-go/run"
 	"github.com/testground/sdk-go/runtime"
 	"github.com/testground/sdk-go/sync"
+	bsm "github.com/whyrusleeping/go-bs-measure"
 	"golang.org/x/sync/errgroup"
 
 	gs "github.com/ipfs/go-graphsync"
@@ -135,6 +141,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 		networkParams    = parseNetworkConfig(runenv)
 		memorySnapshots  = parseMemorySnapshotsParam(runenv)
 		useCarStores     = runenv.BooleanParam("use_car_stores")
+		estuaryClient    = runenv.BooleanParam("estuary_client")
 	)
 	runenv.RecordMessage("started test instance")
 	runenv.RecordMessage("network params: %v", networkParams)
@@ -162,11 +169,10 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 		dagsrv = merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
 		gsync  = gsi.New(ctx,
 			gsnet.NewFromLibp2pHost(host),
-			storeutil.LoaderForBlockstore(bs),
-			storeutil.StorerForBlockstore(bs),
+			storeutil.LinkSystemForBlockstore(bs),
 			gsi.MaxMemoryPerPeerResponder(maxMemoryPerPeer),
 			gsi.MaxMemoryResponder(maxMemoryTotal),
-			gsi.MaxInProgressRequests(uint64(maxInProgressRequests)),
+			gsi.MaxInProgressOutgoingRequests(uint64(maxInProgressRequests)),
 		)
 		recorder = &runRecorder{memorySnapshots: memorySnapshots, blockDiagnostics: blockDiagnostics, runenv: runenv}
 	)
@@ -184,7 +190,9 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			gs.RequestID
 		}{p, request.ID()}] = time.Now()
 		startTimesLk.Unlock()
-		if useCarStores {
+		if estuaryClient {
+			hookActions.UsePersistenceOption("estuary")
+		} else if useCarStores {
 			hookActions.UsePersistenceOption(request.Root().String())
 		}
 	})
@@ -257,7 +265,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 
 		runenv.RecordMessage("we are the provider")
 		defer runenv.RecordMessage("done provider")
-		err := runProvider(ctx, runenv, initCtx, gsync, dagsrv, size, host, ip, networkParams, concurrency, memorySnapshots, useCarStores, recorder)
+		err := runProvider(ctx, runenv, initCtx, gsync, dagsrv, size, host, ip, networkParams, concurrency, memorySnapshots, useCarStores, estuaryClient, recorder)
 		if err != nil {
 			runenv.RecordMessage("Error running provider: %s", err.Error())
 		}
@@ -393,9 +401,8 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 				if err != nil {
 					return err
 				}
-				loader := storeutil.LoaderForBlockstore(bs)
-				storer := storeutil.StorerForBlockstore(bs)
-				gsync.RegisterPersistenceOption(c.String(), loader, storer)
+				lsys := storeutil.LinkSystemForBlockstore(bs)
+				gsync.RegisterPersistenceOption(c.String(), lsys)
 			}
 		}
 		// run GC to get accurate-ish stats.
@@ -470,7 +477,7 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 	return nil
 }
 
-func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, gsync gs.GraphExchange, dagsrv format.DAGService, size uint64, h host.Host, ip net.IP, networkParams []networkParams, concurrency int, memorySnapshots snapshotMode, useCarStores bool, recorder *runRecorder) error {
+func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitContext, gsync gs.GraphExchange, dagsrv format.DAGService, size uint64, h host.Host, ip net.IP, networkParams []networkParams, concurrency int, memorySnapshots snapshotMode, useCarStores bool, estuaryClient bool, recorder *runRecorder) error {
 	var (
 		cids       []cid.Cid
 		bufferedDS = format.NewBufferedDAG(ctx, dagsrv)
@@ -503,6 +510,52 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 		}
 	}
 
+	if estuaryClient {
+		runenv.RecordMessage("setting up estuary like client")
+
+		err := metricsprometheus.Inject()
+		if err != nil {
+			panic(err)
+		}
+		runenv.RecordMessage("prometheus metrics injected")
+
+		tmpDir, err := ioutil.TempDir("", "flatfs")
+		if err != nil {
+			panic(err)
+		}
+		sf, err := flatfs.ParseShardFunc("/repo/flatfs/shard/v1/next-to-last/3")
+		if err != nil {
+			panic(err)
+		}
+
+		dstore, err := flatfs.CreateOrOpen(tmpDir, sf, false)
+		if err != nil {
+			panic(err)
+		}
+
+		runenv.RecordMessage("flat fs blockstore created")
+
+		bs := blockstore.NewBlockstoreNoPrefix(dstore)
+		ctx := metri.CtxScope(context.TODO(), "estuary.bstore")
+
+		bs = bsm.New("estuary.blks.base", bs)
+		cbstore, err := blockstore.CachedBlockstore(ctx, bs, blockstore.CacheOpts{
+			//HasBloomFilterSize:   512 << 20,
+			//HasBloomFilterHashes: 7,
+			HasARCCacheSize: 8 << 20,
+		})
+		if err != nil {
+			panic(err)
+		}
+		bs = bsm.New("estuary.repo", cbstore)
+		bsvc := blockservice.New(bs, offline.Exchange(bs))
+		dagsrv := merkledag.NewDAGService(bsvc)
+		bufferedDS = format.NewBufferedDAG(ctx, dagsrv)
+		lsys := storeutil.LinkSystemForBlockstore(bs)
+		gsync.RegisterPersistenceOption("estuary", lsys)
+		runenv.RecordMessage("estuary like client setup")
+
+	}
 	for round, np := range networkParams {
 		var (
 			topicCid    = sync.NewTopic(fmt.Sprintf("cid-%d", round), []cid.Cid{})
@@ -548,7 +601,7 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 
 			var bs ClosableBlockstore
 			var fileDS = bufferedDS
-			if useCarStores {
+			if useCarStores && !estuaryClient {
 				filestore, err := ioutil.TempFile(os.TempDir(), "fsindex-")
 				if err != nil {
 					panic(err)
@@ -561,6 +614,10 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 				bs, err = ReadWriteFilestore(n)
 				if err != nil {
 					panic(err)
+				}
+				bs = &finalizerStore{
+					rr:                 recorder,
+					ClosableBlockstore: bs,
 				}
 				bsvc := blockservice.New(bs, offline.Exchange(bs))
 				dags := merkledag.NewDAGService(bsvc)
@@ -603,10 +660,9 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 					}
 				})
 			}
-			if useCarStores {
-				loader := storeutil.LoaderForBlockstore(bs)
-				storer := storeutil.StorerForBlockstore(bs)
-				gsync.RegisterPersistenceOption(node.Cid().String(), loader, storer)
+			if useCarStores && !estuaryClient {
+				lsys := storeutil.LinkSystemForBlockstore(bs)
+				gsync.RegisterPersistenceOption(node.Cid().String(), lsys)
 				if err := fileDS.Commit(); err != nil {
 					return fmt.Errorf("unable to commit unix fs node: %w", err)
 				}
@@ -764,7 +820,6 @@ func recordSnapshots(runenv *runtime.RunEnv, size uint64, np networkParams, conc
 		return err
 	}
 	goruntime.GC()
-	goruntime.GC()
 	err = writeHeap(runenv, size, np, concurrency, fmt.Sprintf("%s-post-gc", postfix))
 	if err != nil {
 		return err
@@ -796,6 +851,7 @@ type runRecorder struct {
 	index            int
 	queuedIndex      int
 	responseIndex    int
+	collectedIndex   int
 	np               networkParams
 	size             uint64
 	concurrency      int
@@ -816,7 +872,19 @@ func (rr *runRecorder) recordBlock(postfix string) {
 	rr.index++
 }
 
+func (rr *runRecorder) recordBlockGC(postfix string) {
+	if rr.blockDiagnostics {
+		rr.runenv.RecordMessage("block %d GC'd %s", rr.collectedIndex, postfix)
+	}
+	rr.collectedIndex++
+}
+
 func (rr *runRecorder) recordBlockQueued(postfix string) {
+	if rr.memorySnapshots == snapshotDetailed {
+		if rr.index%detailedSnapshotFrequency == 0 {
+			recordSnapshots(rr.runenv, rr.size, rr.np, rr.concurrency, fmt.Sprintf("incremental-%d", rr.index))
+		}
+	}
 	if rr.blockDiagnostics {
 		rr.runenv.RecordMessage("block %d queued %s", rr.queuedIndex, postfix)
 	}
@@ -853,4 +921,29 @@ func (rr *runRecorder) beginRun(np networkParams, size uint64, concurrency int, 
 	measurement := fmt.Sprintf("duration.sec,lat=%s,bw=%s,concurrency=%d,size=%s", rr.np.latency, humanize.IBytes(rr.np.bandwidth), rr.concurrency, humanize.Bytes(rr.size))
 	measurement = strings.ReplaceAll(measurement, " ", "")
 	rr.measurement = measurement
+}
+
+type finalizerStore struct {
+	lk gosync.Mutex
+	rr *runRecorder
+	ClosableBlockstore
+}
+type MySlice struct {
+	Array unsafe.Pointer
+	cap   int
+	len   int
+}
+
+func (fs *finalizerStore) Get(c cid.Cid) (blocks.Block, error) {
+	blk, err := fs.ClosableBlockstore.Get(c)
+	if err == nil {
+		data := blk.RawData()
+		dataPtr := (*[4]byte)((*MySlice)(unsafe.Pointer(&data)).Array)
+		goruntime.SetFinalizer(dataPtr, func(_ *[4]byte) {
+			fs.lk.Lock()
+			fs.rr.recordBlockGC("")
+			fs.lk.Unlock()
+		})
+	}
+	return blk, err
 }

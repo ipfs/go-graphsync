@@ -36,3 +36,4 @@ block_diagnostics = { type = "bool", desc = "output records of block times", def
 use_libp2p_http = { type = "bool", desc = "use libp2p over http for http comparison", default = "false"}
 max_in_progress_requests = { type = "int", desc = "max requests processed by a responder at once", default = "6" }
 use_car_stores = { type = "bool", desc = "use carV2 filestores instead of datastore", default = "true"}
+estuary_client = { type = "bool", desc = "have the responder mimic an estuary client making storage deals", default = "false" }

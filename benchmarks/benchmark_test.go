@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -62,7 +63,7 @@ func BenchmarkRoundtripSuccess(b *testing.B) {
 		p2pStrestTest(ctx, b, 10, allFilesUniformSize(128*(1<<20), 1<<10, 1024, true), tdm, nil, false)
 	})
 	b.Run("test-p2p-stress-1-1GB-memory-pressure", func(b *testing.B) {
-		p2pStrestTest(ctx, b, 1, allFilesUniformSize(1*(1<<30), 1<<20, 1024, true), tdm, []graphsync.Option{graphsync.MaxMemoryResponder(1 << 27)}, true)
+		p2pStrestTest(ctx, b, 1, allFilesUniformSize(1*(1<<30), 1<<20, 1024, true), tdm, []graphsync.Option{graphsync.MaxMemoryResponder(1 << 30), graphsync.MaxMemoryPerPeerResponder(1 << 30)}, true)
 	})
 	b.Run("test-p2p-stress-1-1GB-memory-pressure-missing-blocks", func(b *testing.B) {
 		p2pStrestTest(ctx, b, 1, allFilesMissingTopLevelBlock(1*(1<<30), 1<<20, 1024, true), tdm, []graphsync.Option{graphsync.MaxMemoryResponder(1 << 27)}, true)
@@ -146,7 +147,7 @@ func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc,
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	mn := mocknet.New(ctx)
-	mn.SetLinkDefaults(mocknet.LinkOptions{Latency: 100 * time.Millisecond, Bandwidth: 3000000})
+	mn.SetLinkDefaults(mocknet.LinkOptions{Bandwidth: 3000000})
 	net := tn.StreamNet(ctx, mn)
 	ig := testinstance.NewTestInstanceGenerator(ctx, net, options, tdm, diskBasedDatastore)
 	instances, err := ig.Instances(1 + b.N)
@@ -173,7 +174,17 @@ func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc,
 		for j := 0; j < numfiles; j++ {
 			responseChan, errChan := fetcher.Exchange.Request(grpctx, instances[0].Peer, cidlink.Link{Cid: allCids[j]}, allSelector)
 			errgrp.Go(func() error {
+				i := 0
 				for range responseChan {
+					i++
+					if i%20 == 0 {
+						f, err := os.Create(fmt.Sprintf("memprofile-%d", i/20))
+						if err != nil {
+							return err
+						}
+						runtime.GC()
+						pprof.WriteHeapProfile(f)
+					}
 				}
 				for err := range errChan {
 					return err
