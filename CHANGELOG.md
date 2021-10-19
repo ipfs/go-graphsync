@@ -1,5 +1,18 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.11.4
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix: clear error message on channel open after restart (#273) ([filecoin-project/go-data-transfer#273](https://github.com/filecoin-project/go-data-transfer/pull/273))
+  - fix: flaky TestAutoRestartAfterBouncingInitiator (#272) ([filecoin-project/go-data-transfer#272](https://github.com/filecoin-project/go-data-transfer/pull/272))
+  - fix: check channel cancel on pause / resume (#271) ([filecoin-project/go-data-transfer#271](https://github.com/filecoin-project/go-data-transfer/pull/271))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 5 | +62/-14 | 9 |
+
 # go-data-transfer 1.11.3
 
 - github.com/filecoin-project/go-data-transfer:
