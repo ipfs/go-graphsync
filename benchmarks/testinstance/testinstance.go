@@ -163,7 +163,7 @@ func NewInstance(ctx context.Context, net tn.Network, p tnet.Identity, gsOptions
 		return Instance{}, err
 	}
 
-	lsys := storeutil.LinkSystemForBlockstore(bstore)
+	lsys := storeutil.LinkSystemForBlockstore(ctx, bstore)
 	gs := gsimpl.New(ctx, adapter, lsys, gsOptions...)
 	gs.RegisterIncomingRequestHook(func(p peer.ID, request graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		hookActions.ValidateRequest()

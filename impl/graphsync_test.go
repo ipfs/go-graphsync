@@ -988,10 +988,10 @@ func TestUnixFSFetch(t *testing.T) {
 	origBytes := buf.Bytes()
 
 	// setup an IPLD loader/storer for blockstore 1
-	persistence1 := storeutil.LinkSystemForBlockstore(bs1)
+	persistence1 := storeutil.LinkSystemForBlockstore(ctx, bs1)
 
 	// setup an IPLD loader/storer for blockstore 2
-	persistence2 := storeutil.LinkSystemForBlockstore(bs2)
+	persistence2 := storeutil.LinkSystemForBlockstore(ctx, bs2)
 
 	td := newGsTestData(ctx, t)
 	requestor := New(ctx, td.gsnet1, persistence1)

@@ -1,6 +1,7 @@
 package storeutil
 
 import (
+	"context"
 	"io/ioutil"
 	"testing"
 
@@ -18,7 +19,7 @@ import (
 func TestLinkSystem(t *testing.T) {
 	store := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
 	blk := testutil.GenerateBlocksOfSize(1, 1000)[0]
-	persistence := LinkSystemForBlockstore(store)
+	persistence := LinkSystemForBlockstore(context.Background(), store)
 	buffer, commit, err := persistence.StorageWriteOpener(ipld.LinkContext{})
 	require.NoError(t, err, "Unable to setup buffer")
 	_, err = buffer.Write(blk.RawData())

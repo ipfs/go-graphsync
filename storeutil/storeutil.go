@@ -2,6 +2,7 @@ package storeutil
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 
@@ -12,7 +13,7 @@ import (
 )
 
 // LinkSystemForBlockstore constructs an IPLD LinkSystem for a blockstore
-func LinkSystemForBlockstore(bs bstore.Blockstore) ipld.LinkSystem {
+func LinkSystemForBlockstore(ctx context.Context, bs bstore.Blockstore) ipld.LinkSystem {
 	lsys := cidlink.DefaultLinkSystem()
 	lsys.TrustedStorage = true
 	lsys.StorageReadOpener = func(lnkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
@@ -20,7 +21,7 @@ func LinkSystemForBlockstore(bs bstore.Blockstore) ipld.LinkSystem {
 		if !ok {
 			return nil, fmt.Errorf("unsupported link type")
 		}
-		block, err := bs.Get(asCidLink.Cid)
+		block, err := bs.Get(ctx, asCidLink.Cid)
 		if err != nil {
 			return nil, err
 		}
@@ -37,7 +38,7 @@ func LinkSystemForBlockstore(bs bstore.Blockstore) ipld.LinkSystem {
 			if err != nil {
 				return err
 			}
-			return bs.Put(block)
+			return bs.Put(ctx, block)
 		}
 		return &buffer, committer, nil
 	}
