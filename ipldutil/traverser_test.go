@@ -92,7 +92,7 @@ func TestTraverser(t *testing.T) {
 		testutil.AssertDoesReceive(ctx, t, done, "should have completed verification but did not")
 	})
 
-	t.Run("errors correctly, with budget", func(t *testing.T) {
+	t.Run("errors correctly, data with budget", func(t *testing.T) {
 		store := make(map[ipld.Link][]byte)
 		persistence := testutil.NewTestStore(store)
 		blockChain := testutil.SetupBlockChain(ctx, t, persistence, 100, 10)
@@ -117,7 +117,7 @@ func TestTraverser(t *testing.T) {
 		checkTraverseSequence(ctx, t, traverser, blockChain.Blocks(0, 6), &traversal.ErrBudgetExceeded{BudgetKind: "link", Path: path, Link: blockChain.LinkTipIndex(6)})
 	})
 
-	t.Run("errors correctly, no budget", func(t *testing.T) {
+	t.Run("errors correctly, with zero budget", func(t *testing.T) {
 		store := make(map[ipld.Link][]byte)
 		persistence := testutil.NewTestStore(store)
 		blockChain := testutil.SetupBlockChain(ctx, t, persistence, 100, 10)
