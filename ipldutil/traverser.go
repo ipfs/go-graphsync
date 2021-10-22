@@ -191,6 +191,7 @@ func (t *traverser) start() {
 			t.budget.LinkBudget--
 			if t.budget.LinkBudget <= 0 {
 				t.writeDone(&traversal.ErrBudgetExceeded{BudgetKind: "link", Link: t.root})
+				return
 			}
 		}
 		nd, err := t.linkSystem.Load(ipld.LinkContext{Ctx: t.ctx}, t.root, ns)
