@@ -3,16 +3,15 @@ package executor
 import (
 	"bytes"
 	"context"
-	"strings"
 	"sync/atomic"
 
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
-	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
@@ -76,7 +75,7 @@ func (e *Executor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.
 	}
 	log.Debugw("beginning request execution", "id", requestTask.Request.ID(), "peer", pid.String(), "root_cid", requestTask.Request.Root().String())
 	err := e.traverse(requestTask)
-	if err != nil && !isContextErr(err) {
+	if err != nil && !ipldutil.IsContextCancelErr(err) {
 		e.manager.SendRequest(requestTask.P, gsmsg.CancelRequest(requestTask.Request.ID()))
 		if !isPausedErr(err) {
 			select {
@@ -213,11 +212,6 @@ func (e *Executor) startRemoteRequest(rt RequestTask) error {
 	log.Debugw("starting remote request", "id", rt.Request.ID(), "peer", rt.P.String(), "root_cid", rt.Request.Root().String())
 	e.manager.SendRequest(rt.P, request)
 	return nil
-}
-
-func isContextErr(err error) bool {
-	// TODO: Match with errors.Is when https://github.com/ipld/go-ipld-prime/issues/58 is resolved
-	return strings.Contains(err.Error(), ipldutil.ContextCancelError{}.Error())
 }
 
 func isPausedErr(err error) bool {
