@@ -89,7 +89,7 @@ type AsyncLoader interface {
 // to them.
 type RequestManager struct {
 	ctx             context.Context
-	cancel          func()
+	cancel          context.CancelFunc
 	messages        chan requestManagerMessage
 	peerHandler     PeerHandler
 	rc              *responseCollector

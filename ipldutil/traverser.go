@@ -114,7 +114,7 @@ type traverser struct {
 	blocksCount    int
 	parentCtx      context.Context
 	ctx            context.Context
-	cancel         func()
+	cancel         context.CancelFunc
 	root           ipld.Link
 	selector       ipld.Node
 	visitor        traversal.AdvVisitFn
