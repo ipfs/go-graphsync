@@ -6,6 +6,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 )
 
 type processRequestMessage struct {
@@ -92,11 +93,10 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 
 type startTaskRequest struct {
 	task         *peertask.Task
-	taskDataChan chan<- ResponseTaskData
+	taskDataChan chan<- queryexecutor.ResponseTaskData
 }
 
 func (str *startTaskRequest) handle(rm *ResponseManager) {
-
 	taskData := rm.startTask(str.task)
 
 	select {
