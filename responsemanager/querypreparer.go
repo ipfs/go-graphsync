@@ -34,7 +34,6 @@ func (qe *queryPreparer) prepareQuery(ctx context.Context,
 	p peer.ID,
 	request gsmsg.GraphSyncRequest, signals queryexecutor.ResponseSignals, sub *notifications.TopicDataSubscriber) (ipld.BlockReadOpener, ipldutil.Traverser, bool, error) {
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
-	var transactionError error
 	var isPaused bool
 	failNotifee := notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: sub}
 	rejectNotifee := notifications.Notifee{Data: graphsync.RequestRejected, Subscriber: sub}
@@ -45,11 +44,11 @@ func (qe *queryPreparer) prepareQuery(ctx context.Context,
 		if result.Err != nil {
 			rb.FinishWithError(graphsync.RequestFailedUnknown)
 			rb.AddNotifee(failNotifee)
-			transactionError = result.Err
+			return result.Err
 		} else if !result.IsValidated {
 			rb.FinishWithError(graphsync.RequestRejected)
 			rb.AddNotifee(rejectNotifee)
-			transactionError = errors.New("request not valid")
+			return errors.New("request not valid")
 		} else if result.IsPaused {
 			rb.PauseRequest()
 			isPaused = true
@@ -58,9 +57,6 @@ func (qe *queryPreparer) prepareQuery(ctx context.Context,
 	})
 	if err != nil {
 		return nil, nil, false, err
-	}
-	if transactionError != nil {
-		return nil, nil, false, transactionError
 	}
 	if err := qe.processDedupByKey(request, p, failNotifee); err != nil {
 		return nil, nil, false, err
