@@ -285,7 +285,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestorCancelledListeners,
 		responseAssembler,
 		responseWorkSignal,
-		time.NewTicker(queryexecutor.ThawSpeed),
 		network.ConnectionManager(),
 	)
 	graphSync := &GraphSync{

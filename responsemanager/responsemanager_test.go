@@ -1106,7 +1106,7 @@ func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 }
 
 func (td *testData) newQueryExecutor(manager queryexecutor.Manager) *queryexecutor.QueryExecutor {
-	return queryexecutor.New(td.ctx, manager, td.blockHooks, td.updateHooks, td.cancelledListeners, td.responseAssembler, td.workSignal, time.NewTicker(queryexecutor.ThawSpeed), td.connManager)
+	return queryexecutor.New(td.ctx, manager, td.blockHooks, td.updateHooks, td.cancelledListeners, td.responseAssembler, td.workSignal, td.connManager)
 }
 
 func (td *testData) assertPausedRequest() {

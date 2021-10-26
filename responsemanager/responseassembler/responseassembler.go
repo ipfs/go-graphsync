@@ -98,9 +98,7 @@ func (ra *ResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestI
 		linkTracker: ra.GetProcess(p).(*peerLinkTracker),
 	}
 	err := transaction(rb)
-	if err == nil {
-		ra.execute(p, rb.operations, rb.notifees)
-	}
+	ra.execute(p, rb.operations, rb.notifees)
 	return err
 }
 
