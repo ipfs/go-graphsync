@@ -27,8 +27,10 @@ import (
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
+	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
+	"github.com/ipfs/go-graphsync/taskqueue"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -1033,6 +1035,8 @@ type testData struct {
 	allBlocks                 []blocks.Block
 	connManager               *testutil.TestConnManager
 	transactionLk             *sync.Mutex
+	workSignal                chan struct{}
+	taskqueue                 *taskqueue.WorkerTaskQueue
 }
 
 func newTestData(t *testing.T) testData {
@@ -1106,6 +1110,8 @@ func newTestData(t *testing.T) testData {
 	td.cancelledListeners = listeners.NewRequestorCancelledListeners()
 	td.blockSentListeners = listeners.NewBlockSentListeners()
 	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
+	td.workSignal = make(chan struct{}, 1)
+	td.taskqueue = taskqueue.NewTaskQueue(ctx)
 	td.completedListeners.Register(func(p peer.ID, requestID graphsync.RequestData, status graphsync.ResponseStatusCode) {
 		select {
 		case td.completedResponseStatuses <- status:
@@ -1129,13 +1135,23 @@ func newTestData(t *testing.T) testData {
 }
 
 func (td *testData) newResponseManager() *ResponseManager {
-	return New(td.ctx, td.persistence, td.responseAssembler, td.queryQueue, td.requestQueuedHooks, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0)
+	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0, td.workSignal, td.taskqueue)
+	queryExecutor := td.newQueryExecutor(rm)
+	td.taskqueue.Startup(6, queryExecutor)
+	return rm
 }
 
 func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 	obs := make(map[ipld.Link][]byte)
 	persistence := testutil.NewTestStore(obs)
-	return New(td.ctx, persistence, td.responseAssembler, td.queryQueue, td.requestQueuedHooks, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0)
+	rm := New(td.ctx, persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0, td.workSignal, td.taskqueue)
+	queryExecutor := td.newQueryExecutor(rm)
+	td.taskqueue.Startup(6, queryExecutor)
+	return rm
+}
+
+func (td *testData) newQueryExecutor(manager queryexecutor.Manager) *queryexecutor.QueryExecutor {
+	return queryexecutor.New(td.ctx, manager, td.blockHooks, td.updateHooks, td.cancelledListeners, td.responseAssembler, td.workSignal, time.NewTicker(queryexecutor.ThawSpeed), td.connManager)
 }
 
 func (td *testData) assertPausedRequest() {
