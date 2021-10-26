@@ -38,7 +38,7 @@ func TestEmptyTask(t *testing.T) {
 	peer := testutil.GeneratePeers(1)[0]
 	task := &peertask.Task{}
 	td.manager.expectedStartTask = task
-	td.manager.toSendResponseTaskData = ResponseTaskData{Empty: true}
+	td.manager.toSendResponseTaskData = ResponseTask{Empty: true}
 
 	qe := New(
 		td.ctx,
@@ -48,7 +48,6 @@ func TestEmptyTask(t *testing.T) {
 		td.cancelledListeners,
 		td.responseAssembler,
 		td.workSignal,
-		time.NewTicker(ThawSpeed),
 		td.connManager,
 	)
 
@@ -113,7 +112,7 @@ func TestOneBlockTask(t *testing.T) {
 	}
 
 	td.manager.expectedStartTask = task
-	td.manager.toSendResponseTaskData = ResponseTaskData{
+	td.manager.toSendResponseTaskData = ResponseTask{
 		Request:    td.requests[0],
 		Loader:     loader,
 		Traverser:  expectedTraverser,
@@ -129,7 +128,6 @@ func TestOneBlockTask(t *testing.T) {
 		td.cancelledListeners,
 		td.responseAssembler,
 		td.workSignal,
-		time.NewTicker(ThawSpeed),
 		td.connManager,
 	)
 
@@ -214,7 +212,7 @@ func TestSmallGraphTask(t *testing.T) {
 		}
 
 		td.manager.expectedStartTask = task
-		td.manager.toSendResponseTaskData = ResponseTaskData{
+		td.manager.toSendResponseTaskData = ResponseTask{
 			Request:    td.requests[0],
 			Loader:     loader,
 			Traverser:  expectedTraverser,
@@ -230,7 +228,6 @@ func TestSmallGraphTask(t *testing.T) {
 			td.cancelledListeners,
 			td.responseAssembler,
 			td.workSignal,
-			time.NewTicker(ThawSpeed),
 			td.connManager,
 		)
 		return td, qe
@@ -622,16 +619,16 @@ func newTestData(t *testing.T) *testData {
 type fauxManager struct {
 	ctx                    context.Context
 	t                      *testing.T
-	toSendResponseTaskData ResponseTaskData
+	toSendResponseTaskData ResponseTask
 	expectedStartTask      *peertask.Task
 }
 
-func (fm *fauxManager) StartTask(task *peertask.Task, responseTaskDataChan chan<- ResponseTaskData) {
+func (fm *fauxManager) StartTask(task *peertask.Task, responseTaskChan chan<- ResponseTask) {
 	require.Same(fm.t, fm.expectedStartTask, task)
 	go func() {
 		select {
 		case <-fm.ctx.Done():
-		case responseTaskDataChan <- fm.toSendResponseTaskData:
+		case responseTaskChan <- fm.toSendResponseTaskData:
 		}
 	}()
 }
