@@ -21,6 +21,7 @@ type Executor interface {
 type TaskQueue interface {
 	PushTask(p peer.ID, task peertask.Task)
 	TaskDone(p peer.ID, task *peertask.Task)
+	Remove(t peertask.Topic, p peer.ID)
 	Stats() graphsync.RequestStats
 }
 
@@ -68,6 +69,11 @@ func (tq *WorkerTaskQueue) Stats() graphsync.RequestStats {
 		Active:     uint64(ptqstats.NumActive),
 		Pending:    uint64(ptqstats.NumPending),
 	}
+}
+
+// Remove removes a task from the execution queue
+func (tq *WorkerTaskQueue) Remove(topic peertask.Topic, p peer.ID) {
+	tq.peerTaskQueue.Remove(topic, p)
 }
 
 // Startup runs the given number of task workers with the given executor

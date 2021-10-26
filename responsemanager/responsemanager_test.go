@@ -27,8 +27,10 @@ import (
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
+	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
+	"github.com/ipfs/go-graphsync/taskqueue"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -138,13 +140,15 @@ func TestCancellationViaCommand(t *testing.T) {
 func TestEarlyCancellation(t *testing.T) {
 	td := newTestData(t)
 	defer td.cancel()
-	td.queryQueue.popWait.Add(1)
-	responseManager := td.newResponseManager()
+	// we're not testing the queryexeuctor or taskqueue here, we're testing
+	// that cancellation inside the responsemanager itself is properly
+	// activated, so we won't let responses get far enough to race our
+	// cancellation
+	responseManager := td.nullTaskQueueResponseManager()
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 	responseManager.synchronize()
-
 	td.connManager.AssertProtectedWithTags(t, td.p, td.requests[0].ID().Tag())
 
 	// send a cancellation
@@ -154,9 +158,6 @@ func TestEarlyCancellation(t *testing.T) {
 	responseManager.ProcessRequests(td.ctx, td.p, cancelRequests)
 
 	responseManager.synchronize()
-
-	// unblock popping from queue
-	td.queryQueue.popWait.Done()
 
 	td.assertNoResponses()
 	td.connManager.RefuteProtected(t, td.p)
@@ -786,54 +787,6 @@ func TestNetworkErrors(t *testing.T) {
 	})
 }
 
-type fakeQueryQueue struct {
-	popWait   sync.WaitGroup
-	queriesLk sync.RWMutex
-	queries   []*peertask.QueueTask
-}
-
-func (fqq *fakeQueryQueue) PushTasks(to peer.ID, tasks ...peertask.Task) {
-	fqq.queriesLk.Lock()
-
-	// This isn't quite right as the queue should deduplicate requests, but
-	// it's good enough.
-	for _, task := range tasks {
-		fqq.queries = append(fqq.queries, peertask.NewQueueTask(task, to, time.Now()))
-	}
-	fqq.queriesLk.Unlock()
-}
-
-func (fqq *fakeQueryQueue) PopTasks(targetWork int) (peer.ID, []*peertask.Task, int) {
-	fqq.popWait.Wait()
-	fqq.queriesLk.Lock()
-	defer fqq.queriesLk.Unlock()
-	if len(fqq.queries) == 0 {
-		return "", nil, -1
-	}
-	// We're not bothering to implement "work"
-	task := fqq.queries[0]
-	fqq.queries = fqq.queries[1:]
-	return task.Target, []*peertask.Task{&task.Task}, 0
-}
-
-func (fqq *fakeQueryQueue) Remove(topic peertask.Topic, p peer.ID) {
-	fqq.queriesLk.Lock()
-	defer fqq.queriesLk.Unlock()
-	for i, query := range fqq.queries {
-		if query.Target == p && query.Topic == topic {
-			fqq.queries = append(fqq.queries[:i], fqq.queries[i+1:]...)
-		}
-	}
-}
-
-func (fqq *fakeQueryQueue) TasksDone(to peer.ID, tasks ...*peertask.Task) {
-	// We don't track active tasks so this is a no-op
-}
-
-func (fqq *fakeQueryQueue) ThawRound() {
-
-}
-
 type fakeResponseAssembler struct {
 	transactionLk        *sync.Mutex
 	sentResponses        chan sentResponse
@@ -1005,7 +958,6 @@ type testData struct {
 	skippedFirstBlocks        chan int64
 	dedupKeys                 chan string
 	responseAssembler         *fakeResponseAssembler
-	queryQueue                *fakeQueryQueue
 	extensionData             []byte
 	extensionName             graphsync.ExtensionName
 	extension                 graphsync.ExtensionData
@@ -1033,6 +985,8 @@ type testData struct {
 	allBlocks                 []blocks.Block
 	connManager               *testutil.TestConnManager
 	transactionLk             *sync.Mutex
+	workSignal                chan struct{}
+	taskqueue                 *taskqueue.WorkerTaskQueue
 }
 
 func newTestData(t *testing.T) testData {
@@ -1071,7 +1025,6 @@ func newTestData(t *testing.T) testData {
 		dedupKeys:            td.dedupKeys,
 		notifeePublisher:     td.notifeePublisher,
 	}
-	td.queryQueue = &fakeQueryQueue{}
 
 	td.extensionData = testutil.RandomBytes(100)
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
@@ -1106,6 +1059,8 @@ func newTestData(t *testing.T) testData {
 	td.cancelledListeners = listeners.NewRequestorCancelledListeners()
 	td.blockSentListeners = listeners.NewBlockSentListeners()
 	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
+	td.workSignal = make(chan struct{}, 1)
+	td.taskqueue = taskqueue.NewTaskQueue(ctx)
 	td.completedListeners.Register(func(p peer.ID, requestID graphsync.RequestData, status graphsync.ResponseStatusCode) {
 		select {
 		case td.completedResponseStatuses <- status:
@@ -1129,13 +1084,29 @@ func newTestData(t *testing.T) testData {
 }
 
 func (td *testData) newResponseManager() *ResponseManager {
-	return New(td.ctx, td.persistence, td.responseAssembler, td.queryQueue, td.requestQueuedHooks, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0)
+	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0, td.workSignal, td.taskqueue)
+	queryExecutor := td.newQueryExecutor(rm)
+	td.taskqueue.Startup(6, queryExecutor)
+	return rm
+}
+
+func (td *testData) nullTaskQueueResponseManager() *ResponseManager {
+	ntq := nullTaskQueue{}
+	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0, td.workSignal, ntq)
+	return rm
 }
 
 func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 	obs := make(map[ipld.Link][]byte)
 	persistence := testutil.NewTestStore(obs)
-	return New(td.ctx, persistence, td.responseAssembler, td.queryQueue, td.requestQueuedHooks, td.requestHooks, td.blockHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0)
+	rm := New(td.ctx, persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0, td.workSignal, td.taskqueue)
+	queryExecutor := td.newQueryExecutor(rm)
+	td.taskqueue.Startup(6, queryExecutor)
+	return rm
+}
+
+func (td *testData) newQueryExecutor(manager queryexecutor.Manager) *queryexecutor.QueryExecutor {
+	return queryexecutor.New(td.ctx, manager, td.blockHooks, td.updateHooks, td.cancelledListeners, td.responseAssembler, td.workSignal, time.NewTicker(queryexecutor.ThawSpeed), td.connManager)
 }
 
 func (td *testData) assertPausedRequest() {
@@ -1289,3 +1260,12 @@ func (td *testData) assertHasNetworkErrors(err error) {
 	testutil.AssertReceive(td.ctx, td.t, td.networkErrorChan, &receivedErr, "should sent block")
 	require.EqualError(td.t, receivedErr, err.Error())
 }
+
+type nullTaskQueue struct{}
+
+func (ntq nullTaskQueue) PushTask(p peer.ID, task peertask.Task)  {}
+func (ntq nullTaskQueue) TaskDone(p peer.ID, task *peertask.Task) {}
+func (ntq nullTaskQueue) Remove(t peertask.Topic, p peer.ID)      {}
+func (ntq nullTaskQueue) Stats() graphsync.RequestStats           { return graphsync.RequestStats{} }
+
+var _ taskqueue.TaskQueue = nullTaskQueue{}

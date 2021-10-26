@@ -1,8 +1,6 @@
 package responsemanager
 
 import (
-	"errors"
-
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
@@ -11,8 +9,6 @@ import (
 	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
 )
-
-var errNetworkError = errors.New("network error")
 
 // RequestCloser can cancel request on a network error
 type RequestCloser interface {

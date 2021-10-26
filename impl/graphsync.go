@@ -23,6 +23,7 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager"
 	responderhooks "github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
+	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	"github.com/ipfs/go-graphsync/taskqueue"
@@ -44,7 +45,9 @@ type GraphSync struct {
 	linkSystem                         ipld.LinkSystem
 	requestManager                     *requestmanager.RequestManager
 	responseManager                    *responsemanager.ResponseManager
+	queryExecutor                      *queryexecutor.QueryExecutor
 	asyncLoader                        *asyncloader.AsyncLoader
+	responseQueue                      taskqueue.TaskQueue
 	requestQueue                       taskqueue.TaskQueue
 	requestExecutor                    *executor.Executor
 	responseAssembler                  *responseassembler.ResponseAssembler
@@ -256,13 +259,43 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		ptqopts = append(ptqopts, peertaskqueue.MaxOutstandingWorkPerPeer(int(gsConfig.maxInProgressIncomingRequestsPerPeer)))
 	}
 	peerTaskQueue := peertaskqueue.New(ptqopts...)
-	responseManager := responsemanager.New(ctx, linkSystem, responseAssembler, peerTaskQueue, requestQueuedHooks, incomingRequestHooks, outgoingBlockHooks, requestUpdatedHooks, completedResponseListeners, requestorCancelledListeners, blockSentListeners, networkErrorListeners, gsConfig.maxInProgressIncomingRequests, network.ConnectionManager(), gsConfig.maxLinksPerIncomingRequest)
+	responseQueue := taskqueue.NewTaskQueue(ctx)
+	responseWorkSignal := make(chan struct{}, 1)
+	responseManager := responsemanager.New(
+		ctx,
+		linkSystem,
+		responseAssembler,
+		requestQueuedHooks,
+		incomingRequestHooks,
+		requestUpdatedHooks,
+		completedResponseListeners,
+		requestorCancelledListeners,
+		blockSentListeners,
+		networkErrorListeners,
+		gsConfig.maxInProgressIncomingRequests,
+		network.ConnectionManager(),
+		gsConfig.maxLinksPerIncomingRequest,
+		responseWorkSignal,
+		responseQueue)
+	queryExecutor := queryexecutor.New(
+		ctx,
+		responseManager,
+		outgoingBlockHooks,
+		requestUpdatedHooks,
+		requestorCancelledListeners,
+		responseAssembler,
+		responseWorkSignal,
+		time.NewTicker(queryexecutor.ThawSpeed),
+		network.ConnectionManager(),
+	)
 	graphSync := &GraphSync{
 		network:                     network,
 		linkSystem:                  linkSystem,
 		requestManager:              requestManager,
 		responseManager:             responseManager,
+		queryExecutor:               queryExecutor,
 		asyncLoader:                 asyncLoader,
+		responseQueue:               responseQueue,
 		requestQueue:                requestQueue,
 		requestExecutor:             requestExecutor,
 		responseAssembler:           responseAssembler,
@@ -291,6 +324,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	requestManager.Startup()
 	requestQueue.Startup(gsConfig.maxInProgressOutgoingRequests, requestExecutor)
 	responseManager.Startup()
+	responseQueue.Startup(gsConfig.maxInProgressIncomingRequests, queryExecutor)
 	network.SetDelegate((*graphSyncReceiver)(graphSync))
 	return graphSync
 }

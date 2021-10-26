@@ -13,6 +13,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
+	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 )
 
@@ -27,9 +28,6 @@ func (rm *ResponseManager) cleanupInProcessResponses() {
 
 func (rm *ResponseManager) run() {
 	defer rm.cleanupInProcessResponses()
-	for i := uint64(0); i < rm.maxInProcessRequests; i++ {
-		go rm.qe.processQueriesWorker()
-	}
 
 	for {
 		select {
@@ -54,7 +52,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		default:
 		}
 		return
-	}
+	} // else this is a paused response, so the update needs to be handled here and not in the executor
 	result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, update)
 	err := rm.responseAssembler.Transaction(key.p, key.requestID, func(rb responseassembler.ResponseBuilder) error {
 		for _, extension := range result.Extensions {
@@ -80,7 +78,6 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 			log.Warnf("error unpausing request: %s", err.Error())
 		}
 	}
-
 }
 
 func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
@@ -101,7 +98,7 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 			return nil
 		})
 	}
-	rm.queryQueue.PushTasks(p, peertask.Task{Topic: key, Priority: math.MaxInt32, Work: 1})
+	rm.responseQueue.PushTask(p, peertask.Task{Topic: key, Priority: math.MaxInt32, Work: 1})
 	select {
 	case rm.workSignal <- struct{}{}:
 	default:
@@ -111,7 +108,7 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 
 func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID, err error) error {
 	key := responseKey{p, requestID}
-	rm.queryQueue.Remove(key, key.p)
+	rm.responseQueue.Remove(key, key.p)
 	response, ok := rm.inProgressResponses[key]
 	if !ok {
 		return errors.New("could not find request")
@@ -123,7 +120,7 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 				rm.connManager.Unprotect(p, requestID.Tag())
 				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
 				rb.ClearRequest()
-			} else if err == errNetworkError {
+			} else if err == queryexecutor.ErrNetworkError {
 				rb.ClearRequest()
 			} else {
 				rb.FinishWithError(graphsync.RequestCancelled)
@@ -172,7 +169,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 				cancelFn:   cancelFn,
 				subscriber: sub,
 				request:    request,
-				signals: ResponseSignals{
+				signals: queryexecutor.ResponseSignals{
 					PauseSignal:  make(chan struct{}, 1),
 					UpdateSignal: make(chan struct{}, 1),
 					ErrSignal:    make(chan error, 1),
@@ -181,7 +178,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			}
 		// TODO: Use a better work estimation metric.
 
-		rm.queryQueue.PushTasks(p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
+		rm.responseQueue.PushTask(p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
 
 		select {
 		case rm.workSignal <- struct{}{}:
@@ -190,41 +187,49 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 	}
 }
 
-func (rm *ResponseManager) taskDataForKey(key responseKey) ResponseTaskData {
+func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.ResponseTaskData {
 	response, hasResponse := rm.inProgressResponses[key]
 	if !hasResponse {
-		return ResponseTaskData{Empty: true}
+		return queryexecutor.ResponseTaskData{Empty: true}
 	}
 	if response.loader == nil || response.traverser == nil {
 		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.linkSystem, rm.maxLinksPerRequest}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
 		if err != nil {
 			response.cancelFn()
 			delete(rm.inProgressResponses, key)
-			return ResponseTaskData{Empty: true}
+			return queryexecutor.ResponseTaskData{Empty: true}
 		}
 		response.loader = loader
 		response.traverser = traverser
 		if isPaused {
 			response.state = paused
-			return ResponseTaskData{Empty: true}
+			return queryexecutor.ResponseTaskData{Empty: true}
 		}
 	}
 	response.state = running
-	return ResponseTaskData{false, response.subscriber, response.ctx, response.request, response.loader, response.traverser, response.signals}
+	return queryexecutor.ResponseTaskData{
+		Ctx:        response.ctx,
+		Empty:      false,
+		Subscriber: response.subscriber,
+		Request:    response.request,
+		Loader:     response.loader,
+		Traverser:  response.traverser,
+		Signals:    response.signals,
+	}
 }
 
-func (rm *ResponseManager) startTask(task *peertask.Task) ResponseTaskData {
+func (rm *ResponseManager) startTask(task *peertask.Task) queryexecutor.ResponseTaskData {
 	key := task.Topic.(responseKey)
 	taskData := rm.taskDataForKey(key)
 	if taskData.Empty {
-		rm.queryQueue.TasksDone(key.p, task)
+		rm.responseQueue.TaskDone(key.p, task)
 	}
 	return taskData
 }
 
 func (rm *ResponseManager) finishTask(task *peertask.Task, err error) {
 	key := task.Topic.(responseKey)
-	rm.queryQueue.TasksDone(key.p, task)
+	rm.responseQueue.TaskDone(key.p, task)
 	response, ok := rm.inProgressResponses[key]
 	if !ok {
 		return

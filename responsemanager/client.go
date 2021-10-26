@@ -3,7 +3,6 @@ package responsemanager
 import (
 	"context"
 	"errors"
-	"time"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
@@ -16,7 +15,9 @@ import (
 	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
+	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
+	"github.com/ipfs/go-graphsync/taskqueue"
 )
 
 // The code in this file implements the public interface of the response manager.
@@ -24,10 +25,6 @@ import (
 // NOT modify the internal state of the ResponseManager.
 
 var log = logging.Logger("graphsync")
-
-const (
-	thawSpeed = time.Millisecond * 100
-)
 
 type state uint64
 
@@ -43,7 +40,7 @@ type inProgressResponseStatus struct {
 	request    gsmsg.GraphSyncRequest
 	loader     ipld.BlockReadOpener
 	traverser  ipldutil.Traverser
-	signals    ResponseSignals
+	signals    queryexecutor.ResponseSignals
 	updates    []gsmsg.GraphSyncRequest
 	state      state
 	subscriber *notifications.TopicDataSubscriber
@@ -54,34 +51,6 @@ type responseKey struct {
 	requestID graphsync.RequestID
 }
 
-// ResponseSignals are message channels to communicate between the manager and the query
-type ResponseSignals struct {
-	PauseSignal  chan struct{}
-	UpdateSignal chan struct{}
-	ErrSignal    chan error
-}
-
-// ResponseTaskData returns all information needed to execute a given response
-type ResponseTaskData struct {
-	Empty      bool
-	Subscriber *notifications.TopicDataSubscriber
-	Ctx        context.Context
-	Request    gsmsg.GraphSyncRequest
-	Loader     ipld.BlockReadOpener
-	Traverser  ipldutil.Traverser
-	Signals    ResponseSignals
-}
-
-// QueryQueue is an interface that can receive new selector query tasks
-// and prioritize them as needed, and pop them off later
-type QueryQueue interface {
-	PushTasks(to peer.ID, tasks ...peertask.Task)
-	PopTasks(targetMinWork int) (peer.ID, []*peertask.Task, int)
-	Remove(topic peertask.Topic, p peer.ID)
-	TasksDone(to peer.ID, tasks ...*peertask.Task)
-	ThawRound()
-}
-
 // RequestHooks is an interface for processing request hooks
 type RequestHooks interface {
 	ProcessRequestHooks(p peer.ID, request graphsync.RequestData) hooks.RequestResult
@@ -90,11 +59,6 @@ type RequestHooks interface {
 // RequestQueuedHooks is an interface for processing request queued hooks
 type RequestQueuedHooks interface {
 	ProcessRequestQueuedHooks(p peer.ID, request graphsync.RequestData)
-}
-
-// BlockHooks is an interface for processing block hooks
-type BlockHooks interface {
-	ProcessBlockHooks(p peer.ID, request graphsync.RequestData, blockData graphsync.BlockData) hooks.BlockResult
 }
 
 // UpdateHooks is an interface for processing update hooks
@@ -140,7 +104,6 @@ type ResponseManager struct {
 	ctx                   context.Context
 	cancelFn              context.CancelFunc
 	responseAssembler     ResponseAssembler
-	queryQueue            QueryQueue
 	requestHooks          RequestHooks
 	linkSystem            ipld.LinkSystem
 	requestQueuedHooks    RequestQueuedHooks
@@ -151,22 +114,20 @@ type ResponseManager struct {
 	networkErrorListeners NetworkErrorListeners
 	messages              chan responseManagerMessage
 	workSignal            chan struct{}
-	qe                    *queryExecutor
 	inProgressResponses   map[responseKey]*inProgressResponseStatus
 	maxInProcessRequests  uint64
 	connManager           network.ConnManager
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
 	maxLinksPerRequest uint64
+	responseQueue      taskqueue.TaskQueue
 }
 
 // New creates a new response manager for responding to requests
 func New(ctx context.Context,
 	linkSystem ipld.LinkSystem,
 	responseAssembler ResponseAssembler,
-	queryQueue QueryQueue,
 	requestQueuedHooks RequestQueuedHooks,
 	requestHooks RequestHooks,
-	blockHooks BlockHooks,
 	updateHooks UpdateHooks,
 	completedListeners CompletedListeners,
 	cancelledListeners CancelledListeners,
@@ -175,17 +136,17 @@ func New(ctx context.Context,
 	maxInProcessRequests uint64,
 	connManager network.ConnManager,
 	maxLinksPerRequest uint64,
+	workSignal chan struct{},
+	responseQueue taskqueue.TaskQueue,
 ) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
 	messages := make(chan responseManagerMessage, 16)
-	workSignal := make(chan struct{}, 1)
 	rm := &ResponseManager{
 		ctx:                   ctx,
 		cancelFn:              cancelFn,
 		requestHooks:          requestHooks,
 		linkSystem:            linkSystem,
 		responseAssembler:     responseAssembler,
-		queryQueue:            queryQueue,
 		requestQueuedHooks:    requestQueuedHooks,
 		updateHooks:           updateHooks,
 		cancelledListeners:    cancelledListeners,
@@ -198,18 +159,7 @@ func New(ctx context.Context,
 		maxInProcessRequests:  maxInProcessRequests,
 		connManager:           connManager,
 		maxLinksPerRequest:    maxLinksPerRequest,
-	}
-	rm.qe = &queryExecutor{
-		blockHooks:         blockHooks,
-		updateHooks:        updateHooks,
-		cancelledListeners: cancelledListeners,
-		responseAssembler:  responseAssembler,
-		queryQueue:         queryQueue,
-		manager:            rm,
-		ctx:                ctx,
-		workSignal:         workSignal,
-		ticker:             time.NewTicker(thawSpeed),
-		connManager:        connManager,
+		responseQueue:         responseQueue,
 	}
 	return rm
 }
@@ -246,7 +196,7 @@ func (rm *ResponseManager) PauseResponse(p peer.ID, requestID graphsync.RequestI
 // CancelResponse cancels an in progress response
 func (rm *ResponseManager) CancelResponse(p peer.ID, requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
-	rm.send(&errorRequestMessage{p, requestID, errCancelledByCommand, response}, nil)
+	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrCancelledByCommand, response}, nil)
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -266,7 +216,7 @@ func (rm *ResponseManager) synchronize() {
 }
 
 // StartTask starts the given task from the peer task queue
-func (rm *ResponseManager) StartTask(task *peertask.Task, responseTaskDataChan chan<- ResponseTaskData) {
+func (rm *ResponseManager) StartTask(task *peertask.Task, responseTaskDataChan chan<- queryexecutor.ResponseTaskData) {
 	rm.send(&startTaskRequest{task, responseTaskDataChan}, nil)
 }
 
@@ -282,7 +232,7 @@ func (rm *ResponseManager) FinishTask(task *peertask.Task, err error) {
 
 // CloseWithNetworkError closes a request due to a network error
 func (rm *ResponseManager) CloseWithNetworkError(p peer.ID, requestID graphsync.RequestID) {
-	rm.send(&errorRequestMessage{p, requestID, errNetworkError, make(chan error, 1)}, nil)
+	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrNetworkError, make(chan error, 1)}, nil)
 }
 
 func (rm *ResponseManager) send(message responseManagerMessage, done <-chan struct{}) {
