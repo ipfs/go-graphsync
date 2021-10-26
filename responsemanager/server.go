@@ -54,7 +54,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		return
 	} // else this is a paused response, so the update needs to be handled here and not in the executor
 	result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, update)
-	err := rm.responseAssembler.Transaction(key.p, key.requestID, func(rb responseassembler.ResponseBuilder) error {
+	_ = rm.responseAssembler.Transaction(key.p, key.requestID, func(rb responseassembler.ResponseBuilder) error {
 		for _, extension := range result.Extensions {
 			rb.SendExtensionData(extension)
 		}
@@ -64,9 +64,6 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		}
 		return nil
 	})
-	if err != nil {
-		log.Errorf("Error processing update: %s", err)
-	}
 	if result.Err != nil {
 		delete(rm.inProgressResponses, key)
 		response.cancelFn()
@@ -187,27 +184,27 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 	}
 }
 
-func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.ResponseTaskData {
+func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.ResponseTask {
 	response, hasResponse := rm.inProgressResponses[key]
 	if !hasResponse {
-		return queryexecutor.ResponseTaskData{Empty: true}
+		return queryexecutor.ResponseTask{Empty: true}
 	}
 	if response.loader == nil || response.traverser == nil {
 		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.linkSystem, rm.maxLinksPerRequest}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
 		if err != nil {
 			response.cancelFn()
 			delete(rm.inProgressResponses, key)
-			return queryexecutor.ResponseTaskData{Empty: true}
+			return queryexecutor.ResponseTask{Empty: true}
 		}
 		response.loader = loader
 		response.traverser = traverser
 		if isPaused {
 			response.state = paused
-			return queryexecutor.ResponseTaskData{Empty: true}
+			return queryexecutor.ResponseTask{Empty: true}
 		}
 	}
 	response.state = running
-	return queryexecutor.ResponseTaskData{
+	return queryexecutor.ResponseTask{
 		Ctx:        response.ctx,
 		Empty:      false,
 		Subscriber: response.subscriber,
@@ -218,7 +215,7 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.Respons
 	}
 }
 
-func (rm *ResponseManager) startTask(task *peertask.Task) queryexecutor.ResponseTaskData {
+func (rm *ResponseManager) startTask(task *peertask.Task) queryexecutor.ResponseTask {
 	key := task.Topic.(responseKey)
 	taskData := rm.taskDataForKey(key)
 	if taskData.Empty {

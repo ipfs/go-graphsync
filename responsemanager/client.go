@@ -216,8 +216,8 @@ func (rm *ResponseManager) synchronize() {
 }
 
 // StartTask starts the given task from the peer task queue
-func (rm *ResponseManager) StartTask(task *peertask.Task, responseTaskDataChan chan<- queryexecutor.ResponseTaskData) {
-	rm.send(&startTaskRequest{task, responseTaskDataChan}, nil)
+func (rm *ResponseManager) StartTask(task *peertask.Task, responseTaskChan chan<- queryexecutor.ResponseTask) {
+	rm.send(&startTaskRequest{task, responseTaskChan}, nil)
 }
 
 // GetUpdates is called to read pending updates for a task and clear them

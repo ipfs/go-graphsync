@@ -93,7 +93,7 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 
 type startTaskRequest struct {
 	task         *peertask.Task
-	taskDataChan chan<- queryexecutor.ResponseTaskData
+	taskDataChan chan<- queryexecutor.ResponseTask
 }
 
 func (str *startTaskRequest) handle(rm *ResponseManager) {
