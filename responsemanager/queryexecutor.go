@@ -3,11 +3,10 @@ package responsemanager
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/ipfs/go-peertaskqueue/peertask"
-	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
@@ -73,7 +72,7 @@ func (qe *queryExecutor) processQueriesWorker() {
 			}
 			log.Debugw("beginning response execution", "id", taskData.Request.ID(), "peer", pid.String(), "root_cid", taskData.Request.Root().String())
 			_, err := qe.executeQuery(pid, taskData.Request, taskData.Loader, taskData.Traverser, taskData.Signals, taskData.Subscriber)
-			isCancelled := err != nil && isContextErr(err)
+			isCancelled := err != nil && ipldutil.IsContextCancelErr(err)
 			if isCancelled {
 				qe.connManager.Unprotect(pid, taskData.Request.ID().Tag())
 				qe.cancelledListeners.NotifyCancelledListeners(pid, taskData.Request)
@@ -125,7 +124,7 @@ func (qe *queryExecutor) executeQuery(
 				code = graphsync.RequestPaused
 				return nil
 			}
-			if isContextErr(err) {
+			if ipldutil.IsContextCancelErr(err) {
 				rb.ClearRequest()
 				code = graphsync.RequestCancelled
 				return nil
@@ -184,9 +183,4 @@ func (qe *queryExecutor) checkForUpdates(
 			return nil
 		}
 	}
-}
-
-func isContextErr(err error) bool {
-	// TODO: Match with errors.Is when https://github.com/ipld/go-ipld-prime/issues/58 is resolved
-	return strings.Contains(err.Error(), ipldutil.ContextCancelError{}.Error())
 }

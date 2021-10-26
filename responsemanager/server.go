@@ -119,7 +119,7 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 
 	if response.state != running {
 		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
-			if isContextErr(err) {
+			if ipldutil.IsContextCancelErr(err) {
 				rm.connManager.Unprotect(p, requestID.Tag())
 				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
 				rb.ClearRequest()

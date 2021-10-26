@@ -29,6 +29,12 @@ func (cp ContextCancelError) Error() string {
 	return "context cancelled"
 }
 
+// IsContextCancelErr checks whther the given err is ContextCancelError or has a one wrapped.
+// See: errors.Is.
+func IsContextCancelErr(err error) bool {
+	return errors.Is(err, ContextCancelError{})
+}
+
 // TraversalBuilder defines parameters for an iterative traversal
 type TraversalBuilder struct {
 	Root       ipld.Link

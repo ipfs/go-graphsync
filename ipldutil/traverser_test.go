@@ -3,12 +3,14 @@ package ipldutil
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"math"
 	"testing"
 	"time"
 
 	blocks "github.com/ipfs/go-block-format"
-	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime"
+
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal"
@@ -154,5 +156,34 @@ func checkTraverseSequence(ctx context.Context, t *testing.T, traverser Traverse
 		require.NoError(t, err)
 	} else {
 		require.EqualError(t, err, finalErr.Error())
+	}
+}
+
+func Test_IsContextErr(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "ContextCancelErrorIsMatched",
+			err:  ContextCancelError{},
+			want: true,
+		},
+		{
+			name: "WrappedContextCancelErrorIsMatched",
+			err:  fmt.Errorf("%w", ContextCancelError{}),
+			want: true,
+		},
+		{
+			name: "UnwrappedContextCancelErrorWithMatchingStringIsNotMatched",
+			err:  fmt.Errorf("%s", ContextCancelError{}),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsContextCancelErr(tt.err)
+			require.Equal(t, tt.want, got, "IsContextCancelErr() = %v, want %v", got, tt.want)
+		})
 	}
 }
