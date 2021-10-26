@@ -991,7 +991,7 @@ func (frb *fakeResponseBuilder) AddNotifee(notifee notifications.Notifee) {
 type testData struct {
 	ctx                       context.Context
 	t                         *testing.T
-	cancel                    func()
+	cancel                    context.CancelFunc
 	blockStore                map[ipld.Link][]byte
 	persistence               ipld.LinkSystem
 	blockChainLength          int
