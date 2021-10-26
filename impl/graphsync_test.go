@@ -1188,7 +1188,6 @@ func (td *gsTestData) GraphSyncHost1(options ...Option) graphsync.GraphExchange 
 }
 
 func (td *gsTestData) GraphSyncHost2(options ...Option) graphsync.GraphExchange {
-
 	return New(td.ctx, td.gsnet2, td.persistence2, options...)
 }
 
