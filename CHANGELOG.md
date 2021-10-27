@@ -1,5 +1,16 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.11.5
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix: potential deadlock on channel shutdown (#278) ([filecoin-project/go-data-transfer#278](https://github.com/filecoin-project/go-data-transfer/pull/278))
+
+Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dirkmc | 2 | +104/-38 | 2 |
+
 # go-data-transfer 1.11.4
 
 - github.com/filecoin-project/go-data-transfer:
