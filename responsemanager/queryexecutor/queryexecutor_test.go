@@ -32,514 +32,230 @@ import (
 )
 
 func TestEmptyTask(t *testing.T) {
-	td := newTestData(t)
+	td, qe := newTestData(t, 0, 0)
 	defer td.cancel()
-
-	peer := testutil.GeneratePeers(1)[0]
-	task := &peertask.Task{}
-	td.manager.expectedStartTask = task
-	td.manager.toSendResponseTaskData = ResponseTask{Empty: true}
-
-	qe := New(
-		td.ctx,
-		td.manager,
-		td.blockHooks,
-		td.updateHooks,
-		td.cancelledListeners,
-		td.responseAssembler,
-		td.workSignal,
-		td.connManager,
-	)
-
-	// should panic if we sent anything other than Empty:true
-	require.Equal(t, false, qe.ExecuteTask(td.ctx, peer, task))
+	td.manager.responseTask = ResponseTask{Empty: true}
+	require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 }
 
 func TestOneBlockTask(t *testing.T) {
-	td := newTestData(t)
+	td, qe := newTestData(t, 1, 1)
 	defer td.cancel()
-
-	peer := testutil.GeneratePeers(1)[0]
-	task := &peertask.Task{}
-	sub := &notifications.TopicDataSubscriber{}
-	expectedResponseCode := graphsync.ResponseStatusCode(101)
-	expectedBlock := newRandomBlock(101)
-
-	var notifeeCount int
-	notifeeCb := func(n notifications.Notifee) {
-		require.Same(t, sub, n.Subscriber)
-		switch notifeeCount {
-		case 0:
-			require.Same(t, expectedBlock, n.Data)
-		case 1:
-			require.Equal(t, expectedResponseCode, n.Data)
-		default:
-			require.Fail(t, "too many calls")
-		}
-		notifeeCount++
-	}
-	sendResponseCb := func(actualLink ipld.Link, actualData []byte) graphsync.BlockData {
-		require.Same(t, expectedBlock.link, actualLink)
-		require.Equal(t, expectedBlock.data, actualData)
-		return expectedBlock
-	}
-
-	rb := &fauxResponseBuilder{
-		t:                   t,
-		toSendFinishRequest: expectedResponseCode,
-		notifeeCb:           notifeeCb,
-		sendResponseCb:      sendResponseCb,
-	}
-	td.responseAssembler = &fauxResponseAssembler{
-		t:                     t,
-		toSendResponseBuilder: rb,
-	}
-
-	var loads int
-	loader := func(_ linking.LinkContext, _ datamodel.Link) (io.Reader, error) {
-		require.Equal(t, 0, loads, "should not have loaded more than one block")
-		loads++
-		return bytes.NewReader(expectedBlock.data), nil
-	}
-	expectedTraverser := &fauxTraverser{
-		links: []ipld.Link{expectedBlock.link},
-		advanceCb: func(curLink int, b []byte) error {
-			if curLink != 0 {
-				require.Fail(t, "should not have advanced beyond first block")
-			}
-			return nil
-		},
-	}
-
-	td.manager.expectedStartTask = task
-	td.manager.toSendResponseTaskData = ResponseTask{
-		Request:    td.requests[0],
-		Loader:     loader,
-		Traverser:  expectedTraverser,
-		Signals:    *td.signals,
-		Subscriber: sub,
-	}
-
-	qe := New(
-		td.ctx,
-		td.manager,
-		td.blockHooks,
-		td.updateHooks,
-		td.cancelledListeners,
-		td.responseAssembler,
-		td.workSignal,
-		td.connManager,
-	)
-
-	require.Equal(t, false, qe.ExecuteTask(td.ctx, peer, task))
+	notifeeExpect(t, td, 1, td.responseCode)
+	require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+	require.Equal(t, 0, td.clearRequestCalls)
+	require.Equal(t, 0, td.cancelledCalls)
 }
 
 func TestSmallGraphTask(t *testing.T) {
-	setup := func(t *testing.T, blockCount int, expectedTraverse int) (*testData, *QueryExecutor) {
-		td := newTestData(t)
-
-		task := &peertask.Task{}
-		sub := &notifications.TopicDataSubscriber{}
-		expectedResponseCode := graphsync.ResponseStatusCode(101)
-		expectedBlocks := make([]*blockData, 0)
-		links := make([]ipld.Link, 0)
-		for i := 0; i < blockCount; i++ {
-			expectedBlocks = append(expectedBlocks, newRandomBlock(int64(i)))
-			links = append(links, expectedBlocks[i].link)
-		}
-
-		var notifeeCount int
-		notifeeCb := func(n notifications.Notifee) {
-			require.Same(t, sub, n.Subscriber)
-			expMax := blockCount
-			if expectedTraverse != blockCount {
-				expMax = expectedTraverse + 1 // we load one before than we use
+	blockHookExpect := func(t *testing.T, td *testData, triggerAt int, triggerCb func(graphsync.OutgoingBlockHookActions), limit int) {
+		var hookCalls int
+		td.blockHooks.Register(func(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+			if hookCalls == triggerAt {
+				triggerCb(hookActions)
 			}
-			if notifeeCount < expMax {
-				require.Same(t, expectedBlocks[notifeeCount], n.Data)
-			} else if notifeeCount == blockCount {
-				require.Equal(t, expectedResponseCode, n.Data)
-			} else {
-				require.Fail(t, "too many notifee calls")
-			}
-			notifeeCount++
-		}
-		var sentCount int
-		sendResponseCb := func(actualLink ipld.Link, actualData []byte) graphsync.BlockData {
-			require.Same(t, expectedBlocks[sentCount].link, actualLink)
-			require.Equal(t, expectedBlocks[sentCount].data, actualData)
-			sentCount++
-			return expectedBlocks[sentCount-1]
-		}
-
-		rb := &fauxResponseBuilder{
-			t:                   t,
-			toSendFinishRequest: expectedResponseCode,
-			notifeeCb:           notifeeCb,
-			sendResponseCb:      sendResponseCb,
-			clearRequestCb: func() {
-				require.Fail(t, "should not have called ResponseBuilder#ClearRequest()")
-			},
-			pauseCb: func() {
-				require.Fail(t, "should not have called ResponseBuilder#PauseRequest()")
-			},
-		}
-
-		td.responseAssembler = &fauxResponseAssembler{
-			t:                     t,
-			toSendResponseBuilder: rb,
-		}
-
-		var loads int
-		loader := func(_ linking.LinkContext, _ datamodel.Link) (io.Reader, error) {
-			if expectedTraverse == blockCount {
-				require.Less(t, loads, blockCount, "should not have loaded more than the blocks we have")
-			} else {
-				// we load one before than we use
-				require.Less(t, loads, expectedTraverse+1, "should not have loaded more than one extra block")
-			}
-			loads++
-			return bytes.NewReader(expectedBlocks[loads-1].data), nil
-		}
-		expectedTraverser := &fauxTraverser{
-			links: links,
-			advanceCb: func(curLink int, actualData []byte) error {
-				require.Less(t, loads-1, len(expectedBlocks), "should not have loaded more than the blocks we have")
-				require.NotSame(t, expectedBlocks[curLink].data, actualData) // a copy has to happen
-				require.Equal(t, expectedBlocks[curLink].data, actualData)
-				return nil
-			},
-		}
-
-		td.manager.expectedStartTask = task
-		td.manager.toSendResponseTaskData = ResponseTask{
-			Request:    td.requests[0],
-			Loader:     loader,
-			Traverser:  expectedTraverser,
-			Signals:    *td.signals,
-			Subscriber: sub,
-		}
-
-		qe := New(
-			td.ctx,
-			td.manager,
-			td.blockHooks,
-			td.updateHooks,
-			td.cancelledListeners,
-			td.responseAssembler,
-			td.workSignal,
-			td.connManager,
-		)
-		return td, qe
+			// complete the current block we have on hand once we have a pause signal
+			require.LessOrEqual(t, hookCalls, limit, "called block hook too many times")
+			hookCalls++
+		})
 	}
 
-	noCancel := func(t *testing.T, td *testData) {
-		td.cancelledListeners.Register(func(p peer.ID, request graphsync.RequestData) {
-			require.Fail(t, "should not have called a cancel listener")
-		})
+	transactionExpect := func(t *testing.T, td *testData, errorAt []int, errorStr string) {
+		var transactionCalls int
+		td.responseAssembler.transactionCb = func(e error) {
+			var erroredAt bool
+			for _, i := range errorAt {
+				if transactionCalls == i {
+					require.EqualError(t, e, errorStr)
+					erroredAt = true
+				}
+			}
+			if !erroredAt {
+				require.NoError(t, e)
+			}
+			transactionCalls++
+		}
 	}
 
 	t.Run("full graph", func(t *testing.T) {
-		td, qe := setup(t, 10, 10)
+		td, qe := newTestData(t, 10, 10)
 		defer td.cancel()
-		noCancel(t, td)
-
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, testutil.GeneratePeers(1)[0], td.manager.expectedStartTask))
+		notifeeExpect(t, td, 10, td.responseCode) // AddNotifee called on all blocks
+		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.Equal(t, 0, td.clearRequestCalls)
+		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("paused by hook", func(t *testing.T) {
-		td, qe := setup(t, 10, 6)
+		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		noCancel(t, td)
+		notifeeExpect(t, td, 7, nil) // AddNotifee called on first 7 blocks
+		blockHookExpect(t, td, 6, func(hookActions graphsync.OutgoingBlockHookActions) {
+			hookActions.PauseResponse()
+		}, 6)
+		transactionExpect(t, td, []int{6, 7}, hooks.ErrPaused{}.Error()) // last 2 transactions are ErrPaused
 
-		var hookCalls int
-		td.blockHooks.Register(func(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-			if hookCalls == 6 {
-				hookActions.PauseResponse()
-			} else {
-				require.Less(t, hookCalls, 6, "have only called block hook once per block before pausing")
-			}
-			hookCalls++
-		})
-		var pauseCalls int
-		td.responseAssembler.toSendResponseBuilder.pauseCb = func() {
-			pauseCalls++
-		}
-
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, testutil.GeneratePeers(1)[0], td.manager.expectedStartTask))
-		require.Equal(t, 1, pauseCalls)
+		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.Equal(t, 1, td.pauseCalls)
+		require.Equal(t, 0, td.clearRequestCalls)
+		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("paused by signal", func(t *testing.T) {
-		td, qe := setup(t, 10, 6)
+		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		noCancel(t, td)
-
-		var hookCalls int
-		td.blockHooks.Register(func(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-			if hookCalls == 5 {
-				select {
-				case td.signals.PauseSignal <- struct{}{}:
-				default:
-					require.Fail(t, "failed to send pause signal")
-				}
+		notifeeExpect(t, td, 7, nil) // AddNotifee called on first 7 blocks
+		blockHookExpect(t, td, 5, func(hookActions graphsync.OutgoingBlockHookActions) {
+			select {
+			case td.signals.PauseSignal <- struct{}{}:
+			default:
+				require.Fail(t, "failed to send pause signal")
 			}
-			// on a pause, we continue to send the current block, so this is signal+2, whereas other error types are signal+1
-			require.Less(t, hookCalls, 7, "have only called block hook once per block before pausing (with padding for signals)")
-			hookCalls++
-		})
-		var pauseCalls int
-		td.responseAssembler.toSendResponseBuilder.pauseCb = func() {
-			pauseCalls++
-		}
+		}, 7)
+		transactionExpect(t, td, []int{6, 7}, hooks.ErrPaused{}.Error()) // last 2 transactions are ErrPaused
 
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, testutil.GeneratePeers(1)[0], td.manager.expectedStartTask))
-		require.Equal(t, 1, pauseCalls)
+		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.Equal(t, 1, td.pauseCalls)
+		require.Equal(t, 0, td.clearRequestCalls)
+		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("partial cancelled by hook", func(t *testing.T) {
-		td, qe := setup(t, 10, 5)
+		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
+		notifeeExpect(t, td, 7, nil) // AddNotifee called on first 7 blocks
+		blockHookExpect(t, td, 6, func(hookActions graphsync.OutgoingBlockHookActions) {
+			hookActions.TerminateWithError(ipldutil.ContextCancelError{})
+		}, 6)
+		transactionExpect(t, td, []int{6, 7}, ipldutil.ContextCancelError{}.Error()) // last 2 transactions are ContextCancelled
 
-		var hookCalls int
-		td.blockHooks.Register(func(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-			if hookCalls == 5 {
-				hookActions.TerminateWithError(ipldutil.ContextCancelError{})
-			} else {
-				require.Less(t, hookCalls, 5, "have only called block hook once per block before cancelling")
-			}
-			hookCalls++
-		})
-
-		var cancelledCalls int
-		td.cancelledListeners.Register(func(p peer.ID, request graphsync.RequestData) {
-			cancelledCalls++
-		})
-
-		var clearRequestCalls int
-		td.responseAssembler.toSendResponseBuilder.clearRequestCb = func() {
-			clearRequestCalls++
-		}
-
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, testutil.GeneratePeers(1)[0], td.manager.expectedStartTask))
-		require.Equal(t, 1, clearRequestCalls)
-		require.Equal(t, 1, cancelledCalls)
+		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.Equal(t, 1, td.cancelledCalls)
+		require.Equal(t, 1, td.clearRequestCalls)
 	})
 
 	t.Run("partial cancelled by signal", func(t *testing.T) {
-		td, qe := setup(t, 10, 6)
+		// we load 7 blocks, by don't send the final one because cancel interrupts it,
+		// unlike via blockhooks which is run after the block is sent
+		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-
-		var hookCalls int
-		td.blockHooks.Register(func(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-			if hookCalls == 5 {
-				select {
-				case td.signals.ErrSignal <- ErrCancelledByCommand:
-				default:
-					require.Fail(t, "failed to send error signal")
-				}
+		notifeeExpect(t, td, 6, graphsync.RequestCancelled) // AddNotifee called on first 6 blocks
+		blockHookExpect(t, td, 5, func(hookActions graphsync.OutgoingBlockHookActions) {
+			select {
+			case td.signals.ErrSignal <- ErrCancelledByCommand:
+			default:
+				require.Fail(t, "failed to send error signal")
 			}
-			// on a pause, we continue to send the current block, so this is signal+2, whereas other error types are signal+1
-			require.Less(t, hookCalls, 6, "have only called block hook once per block before cancelling (with padding for signals)")
-			hookCalls++
-		})
+		}, 6)
+		transactionExpect(t, td, []int{6, 7}, ErrCancelledByCommand.Error())
 
-		// the standard AddNotifee call checker won't work here, we need to check for a custom code at block 6
-		stdNotifeeCb := td.responseAssembler.toSendResponseBuilder.notifeeCb
-		var notifeeCount int
-		td.responseAssembler.toSendResponseBuilder.notifeeCb = func(n notifications.Notifee) {
-			if notifeeCount < 6 {
-				stdNotifeeCb(n)
-			} else if notifeeCount == 6 {
-				require.Equal(t, graphsync.RequestCancelled, n.Data)
-			} else {
-				require.Fail(t, "too many notifee calls")
-			}
-			notifeeCount++
-		}
-
-		/* TODO(rv): this is not called because `ErrCancelledByCommand` isn't a `isContextError()`
-		var cancelledCalls int
-		td.cancelledListeners.Register(func(p peer.ID, request graphsync.RequestData) {
-			cancelledCalls++
-		})
-		*/
-
-		td.responseAssembler.toSendResponseBuilder.clearRequestCb = func() {
-			require.Fail(t, "unexpected clear request call")
-		}
-
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, testutil.GeneratePeers(1)[0], td.manager.expectedStartTask))
-		// require.Equal(t, 1, cancelledCalls)
+		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.Equal(t, 0, td.clearRequestCalls)
+		// cancelled by signal doesn't mean we get a cancelled call here
+		// ErrCancelledByCommand is treated differently to a context cancellation error
+		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("unknown error by hook", func(t *testing.T) {
-		td, qe := setup(t, 10, 6)
+		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		noCancel(t, td)
-
 		expectedErr := fmt.Errorf("derp")
+		notifeeExpect(t, td, 7, graphsync.RequestFailedUnknown) // AddNotifee called on first 7 blocks
+		blockHookExpect(t, td, 6, func(hookActions graphsync.OutgoingBlockHookActions) {
+			hookActions.TerminateWithError(expectedErr)
+		}, 6)
+		transactionExpect(t, td, []int{6, 7}, expectedErr.Error())
 
-		var hookCalls int
-		td.blockHooks.Register(func(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-			if hookCalls == 6 {
-				hookActions.TerminateWithError(expectedErr)
-			} else {
-				require.Less(t, hookCalls, 6, "have only called block hook once per block before erroring")
-			}
-			hookCalls++
-		})
-		// the standard AddNotifee call checker won't work here, we need to check for a custom code at block 6
-		stdNotifeeCb := td.responseAssembler.toSendResponseBuilder.notifeeCb
-		var notifeeCount int
-		td.responseAssembler.toSendResponseBuilder.notifeeCb = func(n notifications.Notifee) {
-			if notifeeCount < 7 {
-				stdNotifeeCb(n)
-			} else if notifeeCount == 7 {
-				require.Equal(t, graphsync.RequestFailedUnknown, n.Data)
-			} else {
-				require.Fail(t, "too many notifee calls")
-			}
-			notifeeCount++
-		}
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, testutil.GeneratePeers(1)[0], td.manager.expectedStartTask))
+		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.Equal(t, 0, td.clearRequestCalls)
+		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("unknown error by signal", func(t *testing.T) {
-		td, qe := setup(t, 10, 6)
+		// we load 7 blocks, by don't send the final one because error interrupts it,
+		// unlike via blockhooks which is run after the block is sent
+		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		noCancel(t, td)
-
 		expectedErr := fmt.Errorf("derp")
+		notifeeExpect(t, td, 6, graphsync.RequestFailedUnknown) // AddNotifee called on first 6 blocks
+		blockHookExpect(t, td, 5, func(hookActions graphsync.OutgoingBlockHookActions) {
+			select {
+			case td.signals.ErrSignal <- expectedErr:
+			default:
+				require.Fail(t, "failed to send error signal")
+			}
+		}, 6)
+		transactionExpect(t, td, []int{6, 7}, expectedErr.Error())
 
-		var hookCalls int
-		td.blockHooks.Register(func(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-			if hookCalls == 5 {
-				select {
-				case td.signals.ErrSignal <- expectedErr:
-				default:
-					require.Fail(t, "failed to send error signal")
-				}
-			}
-			require.Less(t, hookCalls, 6, "have only called block hook once per block before erroring (with padding for signals)")
-			hookCalls++
-		})
-		// the standard AddNotifee call checker won't work here, we need to check for a custom code at block 6
-		stdNotifeeCb := td.responseAssembler.toSendResponseBuilder.notifeeCb
-		var notifeeCount int
-		td.responseAssembler.toSendResponseBuilder.notifeeCb = func(n notifications.Notifee) {
-			if notifeeCount < 6 {
-				stdNotifeeCb(n)
-			} else if notifeeCount == 6 {
-				require.Equal(t, graphsync.RequestFailedUnknown, n.Data)
-			} else {
-				require.Fail(t, "too many notifee calls")
-			}
-			notifeeCount++
-		}
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, testutil.GeneratePeers(1)[0], td.manager.expectedStartTask))
+		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.Equal(t, 0, td.clearRequestCalls)
+		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("network error by hook", func(t *testing.T) {
-		td, qe := setup(t, 10, 6)
+		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		noCancel(t, td)
-
 		expectedErr := ErrNetworkError
+		notifeeExpect(t, td, 7, nil) // AddNotifee called on first 6 blocks
+		blockHookExpect(t, td, 6, func(hookActions graphsync.OutgoingBlockHookActions) {
+			hookActions.TerminateWithError(expectedErr)
+		}, 6)
+		transactionExpect(t, td, []int{6, 7}, expectedErr.Error())
 
-		var hookCalls int
-		td.blockHooks.Register(func(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-			if hookCalls == 6 {
-				hookActions.TerminateWithError(expectedErr)
-			} else {
-				require.Less(t, hookCalls, 6, "have only called block hook once per block before erroring")
-			}
-			hookCalls++
-		})
-		// the standard AddNotifee call checker won't work here, we need to check for a custom code at block 6
-		stdNotifeeCb := td.responseAssembler.toSendResponseBuilder.notifeeCb
-		var notifeeCount int
-		td.responseAssembler.toSendResponseBuilder.notifeeCb = func(n notifications.Notifee) {
-			if notifeeCount < 7 {
-				stdNotifeeCb(n)
-			} else if notifeeCount == 7 {
-				require.Equal(t, graphsync.RequestFailedUnknown, n.Data)
-			} else {
-				require.Fail(t, "too many notifee calls")
-			}
-			notifeeCount++
-		}
-		var clearRequestCalls int
-		td.responseAssembler.toSendResponseBuilder.clearRequestCb = func() {
-			clearRequestCalls++
-		}
-
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, testutil.GeneratePeers(1)[0], td.manager.expectedStartTask))
-		require.Equal(t, 1, clearRequestCalls)
+		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.Equal(t, 1, td.clearRequestCalls)
+		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("network error by signal", func(t *testing.T) {
-		td, qe := setup(t, 10, 6)
+		// we load 7 blocks, by don't send the final one because error interrupts it,
+		// unlike via blockhooks which is run after the block is sent
+		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		noCancel(t, td)
-
 		expectedErr := ErrNetworkError
-
-		var hookCalls int
-		td.blockHooks.Register(func(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-			if hookCalls == 5 {
-				select {
-				case td.signals.ErrSignal <- expectedErr:
-				default:
-					require.Fail(t, "failed to send error signal")
-				}
+		notifeeExpect(t, td, 6, nil) // AddNotifee called on first 6 blocks
+		blockHookExpect(t, td, 5, func(hookActions graphsync.OutgoingBlockHookActions) {
+			select {
+			case td.signals.ErrSignal <- expectedErr:
+			default:
+				require.Fail(t, "failed to send error signal")
 			}
-			require.Less(t, hookCalls, 6, "have only called block hook once per block before erroring (with padding for signals)")
-			hookCalls++
-		})
-		// the standard AddNotifee call checker won't work here, we need to check for a custom code at block 6
-		stdNotifeeCb := td.responseAssembler.toSendResponseBuilder.notifeeCb
-		var notifeeCount int
-		td.responseAssembler.toSendResponseBuilder.notifeeCb = func(n notifications.Notifee) {
-			if notifeeCount < 6 {
-				stdNotifeeCb(n)
-			} else if notifeeCount == 6 {
-				require.Equal(t, graphsync.RequestFailedUnknown, n.Data)
-			} else {
-				require.Fail(t, "too many notifee calls")
-			}
-			notifeeCount++
-		}
-		var clearRequestCalls int
-		td.responseAssembler.toSendResponseBuilder.clearRequestCb = func() {
-			clearRequestCalls++
-		}
+		}, 6)
+		transactionExpect(t, td, []int{6, 7}, expectedErr.Error())
 
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, testutil.GeneratePeers(1)[0], td.manager.expectedStartTask))
-		require.Equal(t, 1, clearRequestCalls)
+		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.Equal(t, 1, td.clearRequestCalls)
+		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("first block wont load", func(t *testing.T) {
-		td, qe := setup(t, 10, 6)
+		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		noCancel(t, td)
+		notifeeExpect(t, td, 0, graphsync.RequestFailedContentNotFound) // AddNotifee only called with error
+		td.manager.responseTask.Traverser = &skipMeTraverser{}
+		blockHookExpect(t, td, 0, func(hookActions graphsync.OutgoingBlockHookActions) {}, 0)
+		transactionExpect(t, td, []int{0}, ErrFirstBlockLoad.Error())
 
-		td.manager.toSendResponseTaskData.Traverser = &skipMeTraverser{}
-
-		td.blockHooks.Register(func(p peer.ID, request graphsync.RequestData, block graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
-			require.Fail(t, "unexpected hook call")
-		})
-		td.responseAssembler.toSendResponseBuilder.notifeeCb = func(n notifications.Notifee) {
-			require.Equal(t, graphsync.RequestFailedContentNotFound, n.Data)
-		}
-		td.responseAssembler.toSendResponseBuilder.clearRequestCb = func() {
-			require.Fail(t, "unexpected clear request call")
-		}
-
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, testutil.GeneratePeers(1)[0], td.manager.expectedStartTask))
+		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.Equal(t, 0, td.clearRequestCalls)
+		require.Equal(t, 0, td.cancelledCalls)
 	})
+}
 
-	// TODO: test extensions, and update signals
+func notifeeExpect(t *testing.T, td *testData, expectedCalls int, expectedFinalData notifications.TopicData) {
+	notifeeCount := 1
+	td.responseBuilder.notifeeCb = func(n notifications.Notifee) {
+		require.Same(t, td.subscriber, n.Subscriber)
+		if notifeeCount <= expectedCalls {
+			require.Same(t, td.expectedBlocks[notifeeCount-1], n.Data)
+		} else if notifeeCount == expectedCalls+1 {
+			// may not reach here in some cases
+			require.Equal(t, expectedFinalData, n.Data)
+		} else {
+			require.Fail(t, "too many notifee calls")
+		}
+		notifeeCount++
+	}
 }
 
 func newRandomBlock(index int64) *blockData {
@@ -563,10 +279,12 @@ type testData struct {
 	ctx                context.Context
 	t                  *testing.T
 	cancel             func()
+	task               *peertask.Task
 	blockStore         map[ipld.Link][]byte
 	persistence        ipld.LinkSystem
 	manager            *fauxManager
 	responseAssembler  *fauxResponseAssembler
+	responseBuilder    *fauxResponseBuilder
 	connManager        *testutil.TestConnManager
 	blockHooks         *hooks.OutgoingBlockHooks
 	updateHooks        *hooks.RequestUpdatedHooks
@@ -580,16 +298,24 @@ type testData struct {
 	requestSelector    datamodel.Node
 	requests           []gsmsg.GraphSyncRequest
 	signals            *ResponseSignals
+	pauseCalls         int
+	clearRequestCalls  int
+	cancelledCalls     int
+	expectedBlocks     []*blockData
+	responseCode       graphsync.ResponseStatusCode
+	peer               peer.ID
+	subscriber         *notifications.TopicDataSubscriber
 }
 
-func newTestData(t *testing.T) *testData {
+func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData, *QueryExecutor) {
 	ctx := context.Background()
 	td := &testData{}
 	td.t = t
 	td.ctx, td.cancel = context.WithTimeout(ctx, 10*time.Second)
 	td.blockStore = make(map[ipld.Link][]byte)
 	td.persistence = testutil.NewTestStore(td.blockStore)
-	td.manager = &fauxManager{ctx: ctx, t: t}
+	td.task = &peertask.Task{}
+	td.manager = &fauxManager{ctx: ctx, t: t, expectedStartTask: td.task}
 	td.responseAssembler = &fauxResponseAssembler{}
 	td.connManager = testutil.NewTestConnManager()
 	td.blockHooks = hooks.NewBlockHooks()
@@ -601,6 +327,10 @@ func newTestData(t *testing.T) *testData {
 	td.requestSelector = basicnode.NewInt(rand.Int63())
 	td.extensionData = testutil.RandomBytes(100)
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
+	td.responseCode = graphsync.ResponseStatusCode(101)
+	td.peer = testutil.GeneratePeers(1)[0]
+	td.subscriber = &notifications.TopicDataSubscriber{}
+
 	td.extension = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionData,
@@ -613,14 +343,86 @@ func newTestData(t *testing.T) *testData {
 		ErrSignal:   make(chan error, 1),
 	}
 
-	return td
+	td.expectedBlocks = make([]*blockData, 0)
+	links := make([]ipld.Link, 0)
+	for i := 0; i < blockCount; i++ {
+		td.expectedBlocks = append(td.expectedBlocks, newRandomBlock(int64(i)))
+		links = append(links, td.expectedBlocks[i].link)
+	}
+
+	var sentCount int
+	sendResponseCb := func(actualLink ipld.Link, actualData []byte) graphsync.BlockData {
+		require.Same(t, td.expectedBlocks[sentCount].link, actualLink)
+		require.Equal(t, td.expectedBlocks[sentCount].data, actualData)
+		sentCount++
+		return td.expectedBlocks[sentCount-1]
+	}
+
+	td.responseBuilder = &fauxResponseBuilder{
+		t:              t,
+		finishRequest:  td.responseCode,
+		sendResponseCb: sendResponseCb,
+		clearRequestCb: func() {
+			td.clearRequestCalls++
+		},
+		pauseCb: func() {
+			require.Fail(t, "should not have called ResponseBuilder#PauseRequest()")
+		},
+	}
+
+	td.responseAssembler = &fauxResponseAssembler{
+		t:               t,
+		responseBuilder: td.responseBuilder,
+	}
+
+	loads := 1
+	loader := func(_ linking.LinkContext, _ datamodel.Link) (io.Reader, error) {
+		require.LessOrEqual(t, loads, expectedTraverse, "loaded more blocks than expected")
+		loads++
+		return bytes.NewReader(td.expectedBlocks[loads-2].data), nil
+	}
+	expectedTraverser := &fauxTraverser{
+		links: links,
+		advanceCb: func(curLink int, actualData []byte) error {
+			require.Less(t, loads-2, len(td.expectedBlocks), "should not have loaded more than the blocks we have")
+			require.NotSame(t, td.expectedBlocks[curLink].data, actualData) // a copy has to happen
+			require.Equal(t, td.expectedBlocks[curLink].data, actualData)
+			return nil
+		},
+	}
+
+	td.manager.responseTask = ResponseTask{
+		Request:    td.requests[0],
+		Loader:     loader,
+		Traverser:  expectedTraverser,
+		Signals:    *td.signals,
+		Subscriber: td.subscriber,
+	}
+	td.responseAssembler.responseBuilder.pauseCb = func() {
+		td.pauseCalls++
+	}
+	td.cancelledListeners.Register(func(p peer.ID, request graphsync.RequestData) {
+		td.cancelledCalls++
+	})
+
+	qe := New(
+		td.ctx,
+		td.manager,
+		td.blockHooks,
+		td.updateHooks,
+		td.cancelledListeners,
+		td.responseAssembler,
+		td.workSignal,
+		td.connManager,
+	)
+	return td, qe
 }
 
 type fauxManager struct {
-	ctx                    context.Context
-	t                      *testing.T
-	toSendResponseTaskData ResponseTask
-	expectedStartTask      *peertask.Task
+	ctx               context.Context
+	t                 *testing.T
+	responseTask      ResponseTask
+	expectedStartTask *peertask.Task
 }
 
 func (fm *fauxManager) StartTask(task *peertask.Task, responseTaskChan chan<- ResponseTask) {
@@ -628,7 +430,7 @@ func (fm *fauxManager) StartTask(task *peertask.Task, responseTaskChan chan<- Re
 	go func() {
 		select {
 		case <-fm.ctx.Done():
-		case responseTaskChan <- fm.toSendResponseTaskData:
+		case responseTaskChan <- fm.responseTask:
 		}
 	}()
 }
@@ -640,24 +442,31 @@ func (fm *fauxManager) FinishTask(task *peertask.Task, err error) {
 }
 
 type fauxResponseAssembler struct {
-	t                     *testing.T
-	toSendResponseBuilder *fauxResponseBuilder
+	t               *testing.T
+	responseBuilder *fauxResponseBuilder
+	transactionCb   func(error)
 }
 
 func (fra *fauxResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
-	if fra.toSendResponseBuilder != nil {
-		require.NoError(fra.t, transaction(fra.toSendResponseBuilder))
+	var err error
+	if fra.responseBuilder != nil {
+		err = transaction(fra.responseBuilder)
 	}
-	return nil
+	if fra.transactionCb != nil {
+		fra.transactionCb(err)
+	} else {
+		require.NoError(fra.t, err)
+	}
+	return err
 }
 
 type fauxResponseBuilder struct {
-	t                   *testing.T
-	sendResponseCb      func(ipld.Link, []byte) graphsync.BlockData
-	toSendFinishRequest graphsync.ResponseStatusCode
-	notifeeCb           func(n notifications.Notifee)
-	pauseCb             func()
-	clearRequestCb      func()
+	t              *testing.T
+	sendResponseCb func(ipld.Link, []byte) graphsync.BlockData
+	finishRequest  graphsync.ResponseStatusCode
+	notifeeCb      func(n notifications.Notifee)
+	pauseCb        func()
+	clearRequestCb func()
 }
 
 func (rb fauxResponseBuilder) SendResponse(link ipld.Link, data []byte) graphsync.BlockData {
@@ -674,7 +483,7 @@ func (rb fauxResponseBuilder) ClearRequest() {
 }
 
 func (rb fauxResponseBuilder) FinishRequest() graphsync.ResponseStatusCode {
-	return rb.toSendFinishRequest
+	return rb.finishRequest
 }
 
 func (rb fauxResponseBuilder) FinishWithError(status graphsync.ResponseStatusCode) {

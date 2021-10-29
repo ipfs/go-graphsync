@@ -133,11 +133,7 @@ func (qe *QueryExecutor) executeQuery(
 			if isPaused {
 				return err
 			}
-			if ipldutil.IsContextCancelErr(err) {
-				rb.ClearRequest()
-				return err
-			}
-			if err == ErrNetworkError {
+			if err == ErrNetworkError || ipldutil.IsContextCancelErr(err) {
 				rb.ClearRequest()
 				return err
 			}

@@ -2,7 +2,6 @@ package responsemanager
 
 import (
 	"context"
-	"errors"
 	"math"
 
 	"github.com/ipfs/go-cid"
@@ -21,6 +20,14 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 )
+
+type errorString string
+
+func (e errorString) Error() string {
+	return string(e)
+}
+
+const errInvalidRequest = errorString("request not valid")
 
 type queryPreparer struct {
 	requestHooks      RequestHooks
@@ -48,7 +55,7 @@ func (qe *queryPreparer) prepareQuery(ctx context.Context,
 		} else if !result.IsValidated {
 			rb.FinishWithError(graphsync.RequestRejected)
 			rb.AddNotifee(rejectNotifee)
-			return errors.New("request not valid")
+			return errInvalidRequest
 		} else if result.IsPaused {
 			rb.PauseRequest()
 			isPaused = true
