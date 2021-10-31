@@ -28,7 +28,7 @@ type responseBuilder struct {
 func (rb *responseBuilder) SendResponse(link ipld.Link, data []byte) graphsync.BlockData {
 	op := rb.setupBlockOperation(link, data)
 	rb.operations = append(rb.operations, op)
-	return op
+	return op.Block()
 }
 
 func (rb *responseBuilder) SendExtensionData(extension graphsync.ExtensionData) {
@@ -128,25 +128,44 @@ func (bo blockOperation) build(builder *gsmsg.Builder) {
 	builder.AddLink(bo.requestID, bo.link, bo.data != nil)
 }
 
-func (bo blockOperation) Link() ipld.Link {
-	return bo.link
-}
-
-func (bo blockOperation) BlockSize() uint64 {
-	return uint64(len(bo.data))
-}
-
-func (bo blockOperation) BlockSizeOnWire() uint64 {
+func (bo blockOperation) size() uint64 {
 	if !bo.sendBlock {
 		return 0
 	}
-	return bo.BlockSize()
+	return uint64(len(bo.data))
 }
 
-func (bo blockOperation) Index() int64 {
+func (bo blockOperation) Block() blockQueued {
+	return blockQueued{
+		sendBlock: bo.sendBlock,
+		link:      bo.link,
+		index:     bo.index,
+		size:      uint64(len(bo.data)),
+	}
+}
+
+type blockQueued struct {
+	sendBlock bool
+	link      ipld.Link
+	index     int64
+	size      uint64
+}
+
+func (bo blockQueued) Link() ipld.Link {
+	return bo.link
+}
+
+func (bo blockQueued) BlockSize() uint64 {
+	return bo.size
+}
+
+func (bo blockQueued) BlockSizeOnWire() uint64 {
+	if !bo.sendBlock {
+		return 0
+	}
+	return bo.size
+}
+
+func (bo blockQueued) Index() int64 {
 	return bo.index
-}
-
-func (bo blockOperation) size() uint64 {
-	return bo.BlockSizeOnWire()
 }
