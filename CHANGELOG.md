@@ -1,5 +1,31 @@
 # go-graphsync changelog
 
+# go-graphsync v0.10.5
+
+Small refactors and improvements, remove memory leaks, add OutgoingRequestProcessing hook
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - fix(responseassembler): dont hold block data reference in passed on subscribed block link (#268) ([ipfs/go-graphsync#268](https://github.com/ipfs/go-graphsync/pull/268))
+  - sync: update CI config files (#266) ([ipfs/go-graphsync#266](https://github.com/ipfs/go-graphsync/pull/266))
+  - Check IPLD context cancellation error type instead of string comparison
+  - Use `context.CancelFunc` instead of `func()` (#257) ([ipfs/go-graphsync#257](https://github.com/ipfs/go-graphsync/pull/257))
+  - fix: bail properly when budget exceeded
+  - feat(requestmanager): report inProgressRequestCount on OutgoingRequests event
+  - fix(requestmanager): remove failing racy test select block
+  - feat(requestmanager): add OutgoingRequeustProcessingListener
+  - Merge branch 'release/v0.10.4'
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Rod Vagg | 4 | +205/-91 | 13 |
+| Masih H. Derkani | 2 | +49/-24 | 9 |
+| Hannah Howard | 1 | +30/-11 | 1 |
+| web3-bot | 1 | +39/-0 | 4 |
+
 # go-grapshync 0.10.4
 
 Fix a critical bug in the allocator
