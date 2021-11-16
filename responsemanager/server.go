@@ -96,10 +96,6 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 		})
 	}
 	rm.responseQueue.PushTask(p, peertask.Task{Topic: key, Priority: math.MaxInt32, Work: 1})
-	select {
-	case rm.workSignal <- struct{}{}:
-	default:
-	}
 	return nil
 }
 
@@ -176,11 +172,6 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 		// TODO: Use a better work estimation metric.
 
 		rm.responseQueue.PushTask(p, peertask.Task{Topic: key, Priority: int(request.Priority()), Work: 1})
-
-		select {
-		case rm.workSignal <- struct{}{}:
-		default:
-		}
 	}
 }
 

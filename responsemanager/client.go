@@ -113,7 +113,6 @@ type ResponseManager struct {
 	blockSentListeners    BlockSentListeners
 	networkErrorListeners NetworkErrorListeners
 	messages              chan responseManagerMessage
-	workSignal            chan struct{}
 	inProgressResponses   map[responseKey]*inProgressResponseStatus
 	maxInProcessRequests  uint64
 	connManager           network.ConnManager
@@ -136,7 +135,6 @@ func New(ctx context.Context,
 	maxInProcessRequests uint64,
 	connManager network.ConnManager,
 	maxLinksPerRequest uint64,
-	workSignal chan struct{},
 	responseQueue taskqueue.TaskQueue,
 ) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
@@ -154,7 +152,6 @@ func New(ctx context.Context,
 		blockSentListeners:    blockSentListeners,
 		networkErrorListeners: networkErrorListeners,
 		messages:              messages,
-		workSignal:            workSignal,
 		inProgressResponses:   make(map[responseKey]*inProgressResponseStatus),
 		maxInProcessRequests:  maxInProcessRequests,
 		connManager:           connManager,

@@ -60,7 +60,6 @@ type QueryExecutor struct {
 	updateHooks        UpdateHooks
 	cancelledListeners CancelledListeners
 	responseAssembler  ResponseAssembler
-	workSignal         chan struct{}
 	connManager        network.ConnManager
 }
 
@@ -71,7 +70,6 @@ func New(ctx context.Context,
 	updateHooks UpdateHooks,
 	cancelledListeners CancelledListeners,
 	responseAssembler ResponseAssembler,
-	workSignal chan struct{},
 	connManager network.ConnManager,
 ) *QueryExecutor {
 	qm := &QueryExecutor{
@@ -81,7 +79,6 @@ func New(ctx context.Context,
 		responseAssembler:  responseAssembler,
 		manager:            manager,
 		ctx:                ctx,
-		workSignal:         workSignal,
 		connManager:        connManager,
 	}
 	return qm

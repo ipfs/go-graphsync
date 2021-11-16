@@ -260,7 +260,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	peerTaskQueue := peertaskqueue.New(ptqopts...)
 	responseQueue := taskqueue.NewTaskQueue(ctx)
-	responseWorkSignal := make(chan struct{}, 1)
 	responseManager := responsemanager.New(
 		ctx,
 		linkSystem,
@@ -275,7 +274,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		gsConfig.maxInProgressIncomingRequests,
 		network.ConnectionManager(),
 		gsConfig.maxLinksPerIncomingRequest,
-		responseWorkSignal,
 		responseQueue)
 	queryExecutor := queryexecutor.New(
 		ctx,
@@ -284,7 +282,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestUpdatedHooks,
 		requestorCancelledListeners,
 		responseAssembler,
-		responseWorkSignal,
 		network.ConnectionManager(),
 	)
 	graphSync := &GraphSync{

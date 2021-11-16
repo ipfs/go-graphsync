@@ -289,7 +289,6 @@ type testData struct {
 	blockHooks         *hooks.OutgoingBlockHooks
 	updateHooks        *hooks.RequestUpdatedHooks
 	cancelledListeners *listeners.RequestorCancelledListeners
-	workSignal         chan struct{}
 	extensionData      []byte
 	extensionName      graphsync.ExtensionName
 	extension          graphsync.ExtensionData
@@ -321,7 +320,6 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()
 	td.cancelledListeners = listeners.NewRequestorCancelledListeners()
-	td.workSignal = make(chan struct{}, 1)
 	td.requestID = graphsync.RequestID(rand.Int31())
 	td.requestCid, _ = cid.Decode("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	td.requestSelector = basicnode.NewInt(rand.Int63())
@@ -412,7 +410,6 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 		td.updateHooks,
 		td.cancelledListeners,
 		td.responseAssembler,
-		td.workSignal,
 		td.connManager,
 	)
 	return td, qe
