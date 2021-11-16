@@ -985,7 +985,7 @@ type testData struct {
 	allBlocks                 []blocks.Block
 	connManager               *testutil.TestConnManager
 	transactionLk             *sync.Mutex
-	taskqueue                 *taskqueue.WorkerTaskQueue
+	taskqueue                 *immediateTaskQueue
 }
 
 func newTestData(t *testing.T) testData {
@@ -1058,7 +1058,7 @@ func newTestData(t *testing.T) testData {
 	td.cancelledListeners = listeners.NewRequestorCancelledListeners()
 	td.blockSentListeners = listeners.NewBlockSentListeners()
 	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
-	td.taskqueue = taskqueue.NewTaskQueue(ctx)
+	td.taskqueue = &immediateTaskQueue{started: make(chan struct{})}
 	td.completedListeners.Register(func(p peer.ID, requestID graphsync.RequestData, status graphsync.ResponseStatusCode) {
 		select {
 		case td.completedResponseStatuses <- status:
@@ -1084,7 +1084,7 @@ func newTestData(t *testing.T) testData {
 func (td *testData) newResponseManager() *ResponseManager {
 	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0, td.taskqueue)
 	queryExecutor := td.newQueryExecutor(rm)
-	td.taskqueue.Startup(6, queryExecutor)
+	td.taskqueue.Startup(td.ctx, queryExecutor)
 	return rm
 }
 
@@ -1099,7 +1099,7 @@ func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 	persistence := testutil.NewTestStore(obs)
 	rm := New(td.ctx, persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0, td.taskqueue)
 	queryExecutor := td.newQueryExecutor(rm)
-	td.taskqueue.Startup(6, queryExecutor)
+	td.taskqueue.Startup(td.ctx, queryExecutor)
 	return rm
 }
 
@@ -1267,3 +1267,26 @@ func (ntq nullTaskQueue) Remove(t peertask.Topic, p peer.ID)      {}
 func (ntq nullTaskQueue) Stats() graphsync.RequestStats           { return graphsync.RequestStats{} }
 
 var _ taskqueue.TaskQueue = nullTaskQueue{}
+
+type immediateTaskQueue struct {
+	ctx      context.Context
+	executor taskqueue.Executor
+	started  chan struct{}
+	start    sync.Once
+}
+
+func (itq *immediateTaskQueue) Startup(ctx context.Context, executor taskqueue.Executor) {
+	itq.start.Do(func() {
+		itq.ctx = ctx
+		itq.executor = executor
+		close(itq.started)
+	})
+}
+
+func (itq *immediateTaskQueue) PushTask(to peer.ID, task peertask.Task) {
+	<-itq.started
+	go itq.executor.ExecuteTask(itq.ctx, to, &task)
+}
+func (itq *immediateTaskQueue) Remove(topic peertask.Topic, p peer.ID)   {}
+func (itq *immediateTaskQueue) TaskDone(to peer.ID, task *peertask.Task) {}
+func (itq *immediateTaskQueue) Stats() graphsync.RequestStats            { return graphsync.RequestStats{} }
