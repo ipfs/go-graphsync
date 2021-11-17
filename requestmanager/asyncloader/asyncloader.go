@@ -27,17 +27,11 @@ type alternateQueue struct {
 	loadAttemptQueue *loadattemptqueue.LoadAttemptQueue
 }
 
-// Allocator indicates a mechanism for tracking memory used by a given peer
-type Allocator interface {
-	ReleaseBlockMemory(p peer.ID, amount uint64) error
-}
-
 // AsyncLoader manages loading links asynchronously in as new responses
 // come in from the network
 type AsyncLoader struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	allocator Allocator
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	// this mutex protects access to the state of the async loader, which covers all data fields below below
 	stateLk          sync.Mutex
@@ -50,8 +44,8 @@ type AsyncLoader struct {
 
 // New initializes a new link loading manager for asynchronous loads from the given context
 // and local store loading and storing function
-func New(ctx context.Context, linkSystem ipld.LinkSystem, allocator Allocator) *AsyncLoader {
-	responseCache, loadAttemptQueue := setupAttemptQueue(linkSystem, allocator)
+func New(ctx context.Context, linkSystem ipld.LinkSystem) *AsyncLoader {
+	responseCache, loadAttemptQueue := setupAttemptQueue(linkSystem)
 	ctx, cancel := context.WithCancel(ctx)
 	return &AsyncLoader{
 		ctx:              ctx,
@@ -61,7 +55,6 @@ func New(ctx context.Context, linkSystem ipld.LinkSystem, allocator Allocator) *
 		alternateQueues:  make(map[string]alternateQueue),
 		responseCache:    responseCache,
 		loadAttemptQueue: loadAttemptQueue,
-		allocator:        allocator,
 	}
 }
 
@@ -73,7 +66,7 @@ func (al *AsyncLoader) RegisterPersistenceOption(name string, lsys ipld.LinkSyst
 	if existing {
 		return errors.New("already registerd a persistence option with this name")
 	}
-	responseCache, loadAttemptQueue := setupAttemptQueue(lsys, al.allocator)
+	responseCache, loadAttemptQueue := setupAttemptQueue(lsys)
 	al.alternateQueues[name] = alternateQueue{responseCache, loadAttemptQueue}
 	return nil
 }
@@ -170,13 +163,7 @@ func (al *AsyncLoader) CleanupRequest(p peer.ID, requestID graphsync.RequestID) 
 		responseCache = al.alternateQueues[aq].responseCache
 		delete(al.requestQueues, requestID)
 	}
-	toFree := responseCache.FinishRequest(requestID)
-	if toFree > 0 {
-		err := al.allocator.ReleaseBlockMemory(p, toFree)
-		if err != nil {
-			log.Infow("Error deallocating requestor memory", "p", p, "toFree", toFree, "err", err)
-		}
-	}
+	responseCache.FinishRequest(requestID)
 }
 
 func (al *AsyncLoader) getLoadAttemptQueue(queue string) *loadattemptqueue.LoadAttemptQueue {
@@ -193,7 +180,7 @@ func (al *AsyncLoader) getResponseCache(queue string) *responsecache.ResponseCac
 	return al.alternateQueues[queue].responseCache
 }
 
-func setupAttemptQueue(lsys ipld.LinkSystem, allocator Allocator) (*responsecache.ResponseCache, *loadattemptqueue.LoadAttemptQueue) {
+func setupAttemptQueue(lsys ipld.LinkSystem) (*responsecache.ResponseCache, *loadattemptqueue.LoadAttemptQueue) {
 
 	unverifiedBlockStore := unverifiedblockstore.New(lsys.StorageWriteOpener)
 	responseCache := responsecache.New(unverifiedBlockStore)
@@ -204,10 +191,6 @@ func setupAttemptQueue(lsys ipld.LinkSystem, allocator Allocator) (*responsecach
 			return types.AsyncLoadResult{Err: err, Local: false}
 		}
 		if data != nil {
-			err = allocator.ReleaseBlockMemory(p, uint64(len(data)))
-			if err != nil {
-				log.Warningf("releasing block memory: %s", err.Error())
-			}
 			return types.AsyncLoadResult{Data: data, Local: false}
 		}
 		// fall back to local store

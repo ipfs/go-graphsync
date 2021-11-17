@@ -44,20 +44,14 @@ func New(unverifiedBlockStore UnverifiedBlockStore) *ResponseCache {
 // FinishRequest indicate there is no more need to track blocks tied to this
 // response. It returns the total number of bytes in blocks that were being
 // tracked but are no longer in memory
-func (rc *ResponseCache) FinishRequest(requestID graphsync.RequestID) uint64 {
+func (rc *ResponseCache) FinishRequest(requestID graphsync.RequestID) {
 	rc.responseCacheLk.Lock()
 	rc.linkTracker.FinishRequest(requestID)
 
-	toFree := uint64(0)
 	rc.unverifiedBlockStore.PruneBlocks(func(link ipld.Link, amt uint64) bool {
-		shouldPrune := rc.linkTracker.BlockRefCount(link) == 0
-		if shouldPrune {
-			toFree += amt
-		}
-		return shouldPrune
+		return rc.linkTracker.BlockRefCount(link) == 0
 	})
 	rc.responseCacheLk.Unlock()
-	return toFree
 }
 
 // AttemptLoad attempts to laod the given block from the cache
