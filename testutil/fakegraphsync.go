@@ -418,6 +418,10 @@ func (fgs *FakeGraphSync) RegisterReceiverNetworkErrorListener(listener graphsyn
 	}
 }
 
+func (fgs *FakeGraphSync) Stats() graphsync.Stats {
+	return graphsync.Stats{}
+}
+
 var _ graphsync.GraphExchange = &FakeGraphSync{}
 
 type fakeBlkData struct {

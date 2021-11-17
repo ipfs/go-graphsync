@@ -897,6 +897,7 @@ func TestAutoRestart(t *testing.T) {
 // 5. The connection is broken when the first block is received
 // 6. The connection is automatically re-established and the transfer completes
 func TestAutoRestartAfterBouncingInitiator(t *testing.T) {
+	t.Skip("flaky test")
 	SetDTLogLevelDebug()
 
 	runTest := func(t *testing.T, isPush bool) {
