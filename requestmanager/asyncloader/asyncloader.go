@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	blocks "github.com/ipfs/go-block-format"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 
@@ -19,8 +18,6 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/unverifiedblockstore"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 )
-
-var log = logging.Logger("gs-asyncloader")
 
 type alternateQueue struct {
 	responseCache    *responsecache.ResponseCache
