@@ -140,6 +140,7 @@ func TestTraverser(t *testing.T) {
 }
 
 func checkTraverseSequence(ctx context.Context, t *testing.T, traverser Traverser, expectedBlks []blocks.Block, finalErr error) {
+	t.Helper()
 	for _, blk := range expectedBlks {
 		isComplete, err := traverser.IsComplete()
 		require.False(t, isComplete)

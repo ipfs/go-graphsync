@@ -395,6 +395,7 @@ func TestAllocator(t *testing.T) {
 }
 
 func readPending(t *testing.T, pending []pendingResultWithChan) []pendingResultWithChan {
+	t.Helper()
 	morePending := true
 	for morePending && len(pending) > 0 {
 		morePending = false
