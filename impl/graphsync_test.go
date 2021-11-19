@@ -1145,6 +1145,7 @@ type gsTestData struct {
 }
 
 func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
+	t.Helper()
 	td := &gsTestData{ctx: ctx}
 	td.mn = mocknet.New(ctx)
 	var err error

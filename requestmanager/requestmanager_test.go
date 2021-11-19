@@ -1031,6 +1031,7 @@ func metadataForBlocks(blks []blocks.Block, present bool) metadata.Metadata {
 }
 
 func encodedMetadataForBlocks(t *testing.T, blks []blocks.Block, present bool) graphsync.ExtensionData {
+	t.Helper()
 	md := metadataForBlocks(blks, present)
 	metadataEncoded, err := metadata.EncodeMetadata(md)
 	require.NoError(t, err, "did not encode metadata")
@@ -1065,6 +1066,7 @@ type testData struct {
 }
 
 func newTestData(ctx context.Context, t *testing.T) *testData {
+	t.Helper()
 	td := &testData{}
 	td.requestRecordChan = make(chan requestRecord, 3)
 	td.fph = &fakePeerHandler{td.requestRecordChan}
