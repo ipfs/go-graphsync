@@ -70,14 +70,11 @@ type GraphSync struct {
 	ctx                                context.Context
 	cancel                             context.CancelFunc
 	responseAllocator                  *allocator.Allocator
-	requestAllocator                   *allocator.Allocator
 }
 
 type graphsyncConfigOptions struct {
 	totalMaxMemoryResponder              uint64
 	maxMemoryPerPeerResponder            uint64
-	totalMaxMemoryRequestor              uint64
-	maxMemoryPerPeerRequestor            uint64
 	maxInProgressIncomingRequests        uint64
 	maxInProgressIncomingRequestsPerPeer uint64
 	maxInProgressOutgoingRequests        uint64
@@ -113,22 +110,6 @@ func MaxMemoryResponder(totalMaxMemory uint64) Option {
 func MaxMemoryPerPeerResponder(maxMemoryPerPeer uint64) Option {
 	return func(gs *graphsyncConfigOptions) {
 		gs.maxMemoryPerPeerResponder = maxMemoryPerPeer
-	}
-}
-
-// MaxMemoryRequestor defines the maximum amount of memory the responder
-// may consume queueing up messages for a response in total
-func MaxMemoryRequestor(totalMaxMemory uint64) Option {
-	return func(gs *graphsyncConfigOptions) {
-		gs.totalMaxMemoryRequestor = totalMaxMemory
-	}
-}
-
-// MaxMemoryPerPeerRequestor defines the maximum amount of memory a peer
-// may consume queueing up messages for a response
-func MaxMemoryPerPeerRequestor(maxMemoryPerPeer uint64) Option {
-	return func(gs *graphsyncConfigOptions) {
-		gs.maxMemoryPerPeerRequestor = maxMemoryPerPeer
 	}
 }
 
@@ -214,8 +195,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	gsConfig := &graphsyncConfigOptions{
 		totalMaxMemoryResponder:       defaultTotalMaxMemory,
 		maxMemoryPerPeerResponder:     defaultMaxMemoryPerPeer,
-		totalMaxMemoryRequestor:       defaultTotalMaxMemory,
-		maxMemoryPerPeerRequestor:     defaultMaxMemoryPerPeer,
 		maxInProgressIncomingRequests: defaultMaxInProgressRequests,
 		maxInProgressOutgoingRequests: defaultMaxInProgressRequests,
 		registerDefaultValidator:      true,
@@ -247,9 +226,8 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		return messagequeue.New(ctx, p, network, responseAllocator, gsConfig.messageSendRetries, gsConfig.sendMessageTimeout)
 	}
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
-	requestAllocator := allocator.NewAllocator(gsConfig.totalMaxMemoryRequestor, gsConfig.maxMemoryPerPeerRequestor)
 
-	asyncLoader := asyncloader.New(ctx, linkSystem, requestAllocator)
+	asyncLoader := asyncloader.New(ctx, linkSystem)
 	requestQueue := taskqueue.NewTaskQueue(ctx)
 	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest)
 	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks, asyncLoader.AsyncLoad)
@@ -313,7 +291,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		ctx:                         ctx,
 		cancel:                      cancel,
 		responseAllocator:           responseAllocator,
-		requestAllocator:            requestAllocator,
 	}
 
 	requestManager.SetDelegate(peerManager)
@@ -453,7 +430,6 @@ func (gs *GraphSync) CancelRequest(ctx context.Context, requestID graphsync.Requ
 // Stats produces insight on the current state of a graphsync exchange
 func (gs *GraphSync) Stats() graphsync.Stats {
 	outgoingRequestStats := gs.requestQueue.Stats()
-	incomingResponseStats := gs.requestAllocator.Stats()
 
 	ptqstats := gs.peerTaskQueue.Stats()
 	incomingRequestStats := graphsync.RequestStats{
@@ -465,8 +441,6 @@ func (gs *GraphSync) Stats() graphsync.Stats {
 
 	return graphsync.Stats{
 		OutgoingRequests:  outgoingRequestStats,
-		IncomingResponses: incomingResponseStats,
-
 		IncomingRequests:  incomingRequestStats,
 		OutgoingResponses: outgoingResponseStats,
 	}
@@ -485,14 +459,6 @@ func (gsr *graphSyncReceiver) ReceiveMessage(
 	sender peer.ID,
 	incoming gsmsg.GraphSyncMessage) {
 	gsr.graphSync().responseManager.ProcessRequests(ctx, sender, incoming.Requests())
-	totalMemoryAllocated := uint64(0)
-	for _, blk := range incoming.Blocks() {
-		totalMemoryAllocated += uint64(len(blk.RawData()))
-	}
-	select {
-	case <-gsr.graphSync().requestAllocator.AllocateBlockMemory(sender, totalMemoryAllocated):
-	case <-gsr.ctx.Done():
-	}
 	gsr.graphSync().requestManager.ProcessResponses(sender, incoming.Responses(), incoming.Blocks())
 }
 

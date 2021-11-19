@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/allocator"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
@@ -385,8 +384,7 @@ func withLoader(st *store, exec func(ctx context.Context, asyncLoader *AsyncLoad
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	allocator := allocator.NewAllocator(256*(1<<20), 16*(1<<20))
-	asyncLoader := New(ctx, st.lsys, allocator)
+	asyncLoader := New(ctx, st.lsys)
 	exec(ctx, asyncLoader)
 }
 
