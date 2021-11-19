@@ -3,8 +3,6 @@ module github.com/ipfs/go-graphsync
 go 1.16
 
 require (
-	github.com/gogo/protobuf v1.3.2
-	github.com/golang/protobuf v1.5.0
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20200817222906-ea96cece81f1
 	github.com/hannahhoward/go-pubsub v0.0.0-20200423002714-8d62886cc36e
 	github.com/ipfs/go-block-format v0.0.3

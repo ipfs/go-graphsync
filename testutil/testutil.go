@@ -79,12 +79,14 @@ func ContainsPeer(peers []peer.ID, p peer.ID) bool {
 }
 
 // AssertContainsPeer will fail a test if the peer is not in the given peer list
-func AssertContainsPeer(t TestingT, peers []peer.ID, p peer.ID) {
+func AssertContainsPeer(t testing.TB, peers []peer.ID, p peer.ID) {
+	t.Helper()
 	require.True(t, ContainsPeer(peers, p), "given peer should be in list")
 }
 
 // RefuteContainsPeer will fail a test if the peer is in the given peer list
-func RefuteContainsPeer(t TestingT, peers []peer.ID, p peer.ID) {
+func RefuteContainsPeer(t testing.TB, peers []peer.ID, p peer.ID) {
+	t.Helper()
 	require.False(t, ContainsPeer(peers, p), "given peer should not be in list")
 }
 
@@ -104,18 +106,21 @@ func ContainsBlock(blks []blocks.Block, block blocks.Block) bool {
 }
 
 // AssertContainsBlock will fail a test if the block is not in the given block list
-func AssertContainsBlock(t TestingT, blks []blocks.Block, block blocks.Block) {
+func AssertContainsBlock(t testing.TB, blks []blocks.Block, block blocks.Block) {
+	t.Helper()
 	require.True(t, ContainsBlock(blks, block), "given block should be in list")
 }
 
 // RefuteContainsBlock will fail a test if the block is in the given block list
-func RefuteContainsBlock(t TestingT, blks []blocks.Block, block blocks.Block) {
+func RefuteContainsBlock(t testing.TB, blks []blocks.Block, block blocks.Block) {
+	t.Helper()
 	require.False(t, ContainsBlock(blks, block), "given block should not be in list")
 }
 
 // CollectResponses is just a utility to convert a graphsync response progress
 // channel into an array.
-func CollectResponses(ctx context.Context, t TestingT, responseChan <-chan graphsync.ResponseProgress) []graphsync.ResponseProgress {
+func CollectResponses(ctx context.Context, t testing.TB, responseChan <-chan graphsync.ResponseProgress) []graphsync.ResponseProgress {
+	t.Helper()
 	var collectedBlocks []graphsync.ResponseProgress
 	for {
 		select {
@@ -132,6 +137,7 @@ func CollectResponses(ctx context.Context, t TestingT, responseChan <-chan graph
 
 // CollectErrors is just a utility to convert an error channel into an array.
 func CollectErrors(ctx context.Context, t *testing.T, errChan <-chan error) []error {
+	t.Helper()
 	var collectedErrors []error
 	for {
 		select {
@@ -148,7 +154,8 @@ func CollectErrors(ctx context.Context, t *testing.T, errChan <-chan error) []er
 
 // ReadNResponses does a partial read from a ResponseProgress channel -- up
 // to n values
-func ReadNResponses(ctx context.Context, t TestingT, responseChan <-chan graphsync.ResponseProgress, count int) []graphsync.ResponseProgress {
+func ReadNResponses(ctx context.Context, t testing.TB, responseChan <-chan graphsync.ResponseProgress, count int) []graphsync.ResponseProgress {
+	t.Helper()
 	var returnedBlocks []graphsync.ResponseProgress
 	for i := 0; i < count; i++ {
 		select {
@@ -166,7 +173,8 @@ func ReadNResponses(ctx context.Context, t TestingT, responseChan <-chan graphsy
 
 // VerifySingleTerminalError verifies that exactly one error was sent over a channel
 // and then the channel was closed.
-func VerifySingleTerminalError(ctx context.Context, t TestingT, errChan <-chan error) {
+func VerifySingleTerminalError(ctx context.Context, t testing.TB, errChan <-chan error) {
+	t.Helper()
 	var err error
 	AssertReceive(ctx, t, errChan, &err, "should receive an error")
 	select {
@@ -178,7 +186,8 @@ func VerifySingleTerminalError(ctx context.Context, t TestingT, errChan <-chan e
 }
 
 // VerifyHasErrors verifies that at least one error was sent over a channel
-func VerifyHasErrors(ctx context.Context, t TestingT, errChan <-chan error) {
+func VerifyHasErrors(ctx context.Context, t testing.TB, errChan <-chan error) {
+	t.Helper()
 	errCount := 0
 	for {
 		select {
@@ -196,7 +205,8 @@ func VerifyHasErrors(ctx context.Context, t TestingT, errChan <-chan error) {
 
 // VerifyEmptyErrors verifies that no errors were sent over a channel before
 // it was closed
-func VerifyEmptyErrors(ctx context.Context, t TestingT, errChan <-chan error) {
+func VerifyEmptyErrors(ctx context.Context, t testing.TB, errChan <-chan error) {
+	t.Helper()
 	for {
 		select {
 		case _, ok := <-errChan:
@@ -212,7 +222,8 @@ func VerifyEmptyErrors(ctx context.Context, t TestingT, errChan <-chan error) {
 
 // VerifyEmptyResponse verifies that no response progress happened before the
 // channel was closed.
-func VerifyEmptyResponse(ctx context.Context, t TestingT, responseChan <-chan graphsync.ResponseProgress) {
+func VerifyEmptyResponse(ctx context.Context, t testing.TB, responseChan <-chan graphsync.ResponseProgress) {
+	t.Helper()
 	for {
 		select {
 		case _, ok := <-responseChan:

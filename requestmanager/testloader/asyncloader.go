@@ -70,6 +70,7 @@ func (fal *FakeAsyncLoader) ProcessResponse(responses map[graphsync.RequestID]me
 // VerifyLastProcessedBlocks verifies the blocks passed to the last call to ProcessResponse
 // match the expected ones
 func (fal *FakeAsyncLoader) VerifyLastProcessedBlocks(ctx context.Context, t *testing.T, expectedBlocks []blocks.Block) {
+	t.Helper()
 	var processedBlocks []blocks.Block
 	testutil.AssertReceive(ctx, t, fal.blks, &processedBlocks, "did not process blocks")
 	require.Equal(t, expectedBlocks, processedBlocks, "did not process correct blocks")
@@ -79,6 +80,7 @@ func (fal *FakeAsyncLoader) VerifyLastProcessedBlocks(ctx context.Context, t *te
 // match the expected ones
 func (fal *FakeAsyncLoader) VerifyLastProcessedResponses(ctx context.Context, t *testing.T,
 	expectedResponses map[graphsync.RequestID]metadata.Metadata) {
+	t.Helper()
 	var responses map[graphsync.RequestID]metadata.Metadata
 	testutil.AssertReceive(ctx, t, fal.responses, &responses, "did not process responses")
 	require.Equal(t, expectedResponses, responses, "did not process correct responses")
@@ -87,6 +89,7 @@ func (fal *FakeAsyncLoader) VerifyLastProcessedResponses(ctx context.Context, t 
 // VerifyNoRemainingData verifies no outstanding response channels are open for the given
 // RequestID (CleanupRequest was called last)
 func (fal *FakeAsyncLoader) VerifyNoRemainingData(t *testing.T, requestID graphsync.RequestID) {
+	t.Helper()
 	fal.responseChannelsLk.RLock()
 	for key := range fal.responseChannels {
 		require.NotEqual(t, key.requestID, requestID, "did not clean up request properly")
@@ -96,6 +99,7 @@ func (fal *FakeAsyncLoader) VerifyNoRemainingData(t *testing.T, requestID graphs
 
 // VerifyStoreUsed verifies the given store was used for the given request
 func (fal *FakeAsyncLoader) VerifyStoreUsed(t *testing.T, requestID graphsync.RequestID, storeName string) {
+	t.Helper()
 	fal.storesRequestedLk.RLock()
 	_, ok := fal.storesRequested[storeKey{requestID, storeName}]
 	require.True(t, ok, "request should load from correct store")

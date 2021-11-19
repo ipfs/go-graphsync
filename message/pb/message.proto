@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package graphsync.message.pb;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 option go_package = ".;graphsync_message_pb";
 
 message Message {
@@ -30,8 +29,8 @@ message Message {
   
   // the actual data included in this message
   bool completeRequestList    = 1; // This request list includes *all* requests, replacing outstanding requests.
-  repeated Request  requests  = 2 [(gogoproto.nullable) = false]; // The list of requests.
-  repeated Response responses = 3 [(gogoproto.nullable) = false]; // The list of responses.
-  repeated Block    data      = 4 [(gogoproto.nullable) = false]; // Blocks related to the responses
+  repeated Request  requests  = 2; // The list of requests.
+  repeated Response responses = 3; // The list of responses.
+  repeated Block    data      = 4; // Blocks related to the responses
 
 }

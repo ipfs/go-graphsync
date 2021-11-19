@@ -36,6 +36,7 @@ func (ts *TestSubscriber) OnClose(topic notifications.Topic) {
 }
 
 func (ts *TestSubscriber) ExpectEvents(ctx context.Context, t *testing.T, events []DispatchedEvent) {
+	t.Helper()
 	for _, expectedEvent := range events {
 		var event DispatchedEvent
 		AssertReceive(ctx, t, ts.receivedEvents, &event, "should receive another event")
@@ -44,10 +45,12 @@ func (ts *TestSubscriber) ExpectEvents(ctx context.Context, t *testing.T, events
 }
 
 func (ts *TestSubscriber) NoEventsReceived(t *testing.T) {
+	t.Helper()
 	AssertChannelEmpty(t, ts.receivedEvents, "should have received no events")
 }
 
 func (ts *TestSubscriber) ExpectClosesAnyOrder(ctx context.Context, t *testing.T, topics []notifications.Topic) {
+	t.Helper()
 	expectedTopics := make(map[notifications.Topic]struct{})
 	receivedTopics := make(map[notifications.Topic]struct{})
 	for _, expectedTopic := range topics {
@@ -60,6 +63,7 @@ func (ts *TestSubscriber) ExpectClosesAnyOrder(ctx context.Context, t *testing.T
 }
 
 func (ts *TestSubscriber) ExpectCloses(ctx context.Context, t *testing.T, topics []notifications.Topic) {
+	t.Helper()
 	for _, expectedTopic := range topics {
 		var topic notifications.Topic
 		AssertReceive(ctx, t, ts.closed, &topic, "should receive another event")
@@ -73,6 +77,7 @@ type NotifeeVerifier struct {
 }
 
 func (nv *NotifeeVerifier) ExpectEvents(ctx context.Context, t *testing.T, events []notifications.Event) {
+	t.Helper()
 	dispatchedEvents := make([]DispatchedEvent, 0, len(events))
 	for _, ev := range events {
 		dispatchedEvents = append(dispatchedEvents, DispatchedEvent{nv.expectedTopic, ev})
@@ -81,6 +86,7 @@ func (nv *NotifeeVerifier) ExpectEvents(ctx context.Context, t *testing.T, event
 }
 
 func (nv *NotifeeVerifier) ExpectClose(ctx context.Context, t *testing.T) {
+	t.Helper()
 	nv.subscriber.ExpectCloses(ctx, t, []notifications.Topic{nv.expectedTopic})
 }
 

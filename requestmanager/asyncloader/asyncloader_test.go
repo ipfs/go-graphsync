@@ -389,6 +389,7 @@ func withLoader(st *store, exec func(ctx context.Context, asyncLoader *AsyncLoad
 }
 
 func assertSuccessResponse(ctx context.Context, t *testing.T, resultChan <-chan types.AsyncLoadResult) {
+	t.Helper()
 	var result types.AsyncLoadResult
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
 	require.NotNil(t, result.Data, "should send response")
@@ -396,6 +397,7 @@ func assertSuccessResponse(ctx context.Context, t *testing.T, resultChan <-chan 
 }
 
 func assertFailResponse(ctx context.Context, t *testing.T, resultChan <-chan types.AsyncLoadResult) {
+	t.Helper()
 	var result types.AsyncLoadResult
 	testutil.AssertReceive(ctx, t, resultChan, &result, "should close response channel with response")
 	require.Nil(t, result.Data, "should not send responses")

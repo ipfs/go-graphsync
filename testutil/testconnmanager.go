@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"sync"
+	"testing"
 
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
@@ -45,14 +46,16 @@ func (tcm *TestConnManager) Unprotect(p peer.ID, tag string) bool {
 }
 
 // AssertProtected asserts that the connection is protected by at least one tag
-func (tcm *TestConnManager) AssertProtected(t TestingT, p peer.ID) {
+func (tcm *TestConnManager) AssertProtected(t testing.TB, p peer.ID) {
+	t.Helper()
 	tcm.protectedConnsLk.RLock()
 	defer tcm.protectedConnsLk.RUnlock()
 	require.True(t, len(tcm.protectedConns[p]) > 0)
 }
 
 // RefuteProtected refutes that a connection has been protect
-func (tcm *TestConnManager) RefuteProtected(t TestingT, p peer.ID) {
+func (tcm *TestConnManager) RefuteProtected(t testing.TB, p peer.ID) {
+	t.Helper()
 	tcm.protectedConnsLk.RLock()
 	defer tcm.protectedConnsLk.RUnlock()
 	require.False(t, len(tcm.protectedConns[p]) > 0)
@@ -60,7 +63,8 @@ func (tcm *TestConnManager) RefuteProtected(t TestingT, p peer.ID) {
 
 // AssertProtectedWithTags verifies the connection is protected with the given
 // tags at least
-func (tcm *TestConnManager) AssertProtectedWithTags(t TestingT, p peer.ID, tags ...string) {
+func (tcm *TestConnManager) AssertProtectedWithTags(t testing.TB, p peer.ID, tags ...string) {
+	t.Helper()
 	tcm.protectedConnsLk.RLock()
 	defer tcm.protectedConnsLk.RUnlock()
 	for _, tag := range tags {
@@ -70,7 +74,8 @@ func (tcm *TestConnManager) AssertProtectedWithTags(t TestingT, p peer.ID, tags 
 
 // RefuteProtectedWithTags verifies the connection is not protected with any of the given
 // tags
-func (tcm *TestConnManager) RefuteProtectedWithTags(t TestingT, p peer.ID, tags ...string) {
+func (tcm *TestConnManager) RefuteProtectedWithTags(t testing.TB, p peer.ID, tags ...string) {
+	t.Helper()
 	tcm.protectedConnsLk.RLock()
 	defer tcm.protectedConnsLk.RUnlock()
 	for _, tag := range tags {

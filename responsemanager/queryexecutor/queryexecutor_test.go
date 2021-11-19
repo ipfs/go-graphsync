@@ -243,6 +243,7 @@ func TestSmallGraphTask(t *testing.T) {
 }
 
 func notifeeExpect(t *testing.T, td *testData, expectedCalls int, expectedFinalData notifications.TopicData) {
+	t.Helper()
 	notifeeCount := 1
 	td.responseBuilder.notifeeCb = func(n notifications.Notifee) {
 		require.Same(t, td.subscriber, n.Subscriber)
@@ -307,6 +308,7 @@ type testData struct {
 }
 
 func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData, *QueryExecutor) {
+	t.Helper()
 	ctx := context.Background()
 	td := &testData{}
 	td.t = t

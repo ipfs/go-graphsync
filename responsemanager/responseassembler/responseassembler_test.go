@@ -424,18 +424,21 @@ func findResponseForRequestID(responses []gsmsg.GraphSyncResponse, requestID gra
 }
 
 func assertSentNotOnWire(t *testing.T, bd graphsync.BlockData, blk blocks.Block) {
+	t.Helper()
 	require.Equal(t, cidlink.Link{Cid: blk.Cid()}, bd.Link())
 	require.Equal(t, uint64(len(blk.RawData())), bd.BlockSize())
 	require.Equal(t, uint64(0), bd.BlockSizeOnWire())
 }
 
 func assertSentOnWire(t *testing.T, bd graphsync.BlockData, blk blocks.Block) {
+	t.Helper()
 	require.Equal(t, cidlink.Link{Cid: blk.Cid()}, bd.Link())
 	require.Equal(t, uint64(len(blk.RawData())), bd.BlockSize())
 	require.Equal(t, uint64(len(blk.RawData())), bd.BlockSizeOnWire())
 }
 
 func assertNotSent(t *testing.T, bd graphsync.BlockData, blk blocks.Block) {
+	t.Helper()
 	require.Equal(t, cidlink.Link{Cid: blk.Cid()}, bd.Link())
 	require.Equal(t, uint64(0), bd.BlockSize())
 	require.Equal(t, uint64(0), bd.BlockSizeOnWire())
@@ -451,6 +454,7 @@ type fakePeerHandler struct {
 }
 
 func newFakePeerHandler(ctx context.Context, t *testing.T) *fakePeerHandler {
+	t.Helper()
 	return &fakePeerHandler{
 		ctx: ctx,
 		t:   t,
