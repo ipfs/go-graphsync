@@ -8,6 +8,9 @@ import (
 	"github.com/ipfs/go-peertaskqueue"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/allocator"
@@ -304,6 +307,15 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 
 // Request initiates a new GraphSync request to the given peer using the given selector spec.
 func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
+	var extNames []string
+	for _, ext := range extensions {
+		extNames = append(extNames, string(ext.Name))
+	}
+	ctx, _ = otel.Tracer("graphsync").Start(ctx, "request", trace.WithAttributes(
+		attribute.String("peerID", p.Pretty()),
+		attribute.String("root", root.String()),
+		attribute.StringSlice("extensions", extNames),
+	))
 	return gs.requestManager.NewRequest(ctx, p, root, selector, extensions...)
 }
 
