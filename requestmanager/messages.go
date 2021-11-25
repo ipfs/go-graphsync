@@ -5,6 +5,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
@@ -76,13 +77,19 @@ type releaseRequestTaskMessage struct {
 	p    peer.ID
 	task *peertask.Task
 	err  error
+	done chan struct{}
 }
 
 func (trm *releaseRequestTaskMessage) handle(rm *RequestManager) {
 	rm.releaseRequestTask(trm.p, trm.task, trm.err)
+	select {
+	case <-rm.ctx.Done():
+	case trm.done <- struct{}{}:
+	}
 }
 
 type newRequestMessage struct {
+	span                  trace.Span
 	p                     peer.ID
 	root                  ipld.Link
 	selector              ipld.Node
@@ -93,7 +100,7 @@ type newRequestMessage struct {
 func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	var ipr inProgressRequest
 
-	ipr.request, ipr.incoming, ipr.incomingError = rm.newRequest(nrm.p, nrm.root, nrm.selector, nrm.extensions)
+	ipr.request, ipr.incoming, ipr.incomingError = rm.newRequest(nrm.span, nrm.p, nrm.root, nrm.selector, nrm.extensions)
 	ipr.requestID = ipr.request.ID()
 
 	select {
