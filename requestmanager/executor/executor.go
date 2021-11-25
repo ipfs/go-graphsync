@@ -12,6 +12,9 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
@@ -73,11 +76,17 @@ func (e *Executor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.
 		log.Info("Empty task on peer request stack")
 		return false
 	}
+
+	_, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(ctx, requestTask.Span), "executeTask")
+	defer span.End()
+
 	log.Debugw("beginning request execution", "id", requestTask.Request.ID(), "peer", pid.String(), "root_cid", requestTask.Request.Root().String())
 	err := e.traverse(requestTask)
+	span.RecordError(err)
 	if err != nil && !ipldutil.IsContextCancelErr(err) {
 		e.manager.SendRequest(requestTask.P, gsmsg.CancelRequest(requestTask.Request.ID()))
 		if !isPausedErr(err) {
+			span.SetStatus(codes.Error, err.Error())
 			select {
 			case <-requestTask.Ctx.Done():
 			case requestTask.InProgressErr <- err:
@@ -92,6 +101,7 @@ func (e *Executor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.
 // RequestTask are parameters for a single request execution
 type RequestTask struct {
 	Ctx            context.Context
+	Span           trace.Span
 	Request        gsmsg.GraphSyncRequest
 	LastResponse   *atomic.Value
 	DoNotSendCids  *cid.Set

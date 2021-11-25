@@ -15,6 +15,10 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
@@ -49,14 +53,21 @@ func (rm *RequestManager) cleanupInProcessRequests() {
 	}
 }
 
-func (rm *RequestManager) newRequest(p peer.ID, root ipld.Link, selector ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, chan graphsync.ResponseProgress, chan error) {
+func (rm *RequestManager) newRequest(parentSpan trace.Span, p peer.ID, root ipld.Link, selector ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, chan graphsync.ResponseProgress, chan error) {
 	requestID := rm.nextRequestID
 	rm.nextRequestID++
+
+	parentSpan.SetAttributes(attribute.Int("requestID", int(requestID)))
+	ctx, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, parentSpan), "newRequest")
+	defer span.End()
 
 	log.Infow("graphsync request initiated", "request id", requestID, "peer", p, "root", root)
 
 	request, hooksResult, err := rm.validateRequest(requestID, p, root, selector, extensions)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		defer parentSpan.End()
 		rp, err := rm.singleErrorResponse(err)
 		return request, rp, err
 	}
@@ -65,15 +76,19 @@ func (rm *RequestManager) newRequest(p peer.ID, root ipld.Link, selector ipld.No
 	if has {
 		doNotSendCids, err = cidset.DecodeCidSet(doNotSendCidsData)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			defer parentSpan.End()
 			rp, err := rm.singleErrorResponse(err)
 			return request, rp, err
 		}
 	} else {
 		doNotSendCids = cid.NewSet()
 	}
-	ctx, cancel := context.WithCancel(rm.ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	requestStatus := &inProgressRequestStatus{
 		ctx:              ctx,
+		span:             parentSpan,
 		startTime:        time.Now(),
 		cancelFn:         cancel,
 		p:                p,
@@ -141,6 +156,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 	ipr.state = running
 	return executor.RequestTask{
 		Ctx:            ipr.ctx,
+		Span:           ipr.span,
 		Request:        ipr.request,
 		LastResponse:   &ipr.lastResponse,
 		DoNotSendCids:  ipr.doNotSendCids,
@@ -163,6 +179,10 @@ func (rm *RequestManager) getRequestTask(p peer.ID, task *peertask.Task) executo
 }
 
 func (rm *RequestManager) terminateRequest(requestID graphsync.RequestID, ipr *inProgressRequestStatus) {
+	_, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, ipr.span), "terminateRequest")
+	defer span.End()
+	defer ipr.span.End() // parent span for this whole request
+
 	if ipr.terminalError != nil {
 		select {
 		case ipr.inProgressErr <- ipr.terminalError:
