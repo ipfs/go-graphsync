@@ -2,6 +2,7 @@ package taskqueue
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/ipfs/go-peertaskqueue"
@@ -34,7 +35,7 @@ type WorkerTaskQueue struct {
 	workSignal    chan struct{}
 	noTaskSignal  chan struct{}
 	ticker        *time.Ticker
-	activeTasks   int
+	activeTasks   int32
 }
 
 // NewTaskQueue initializes a new queue
@@ -92,7 +93,7 @@ func (tq *WorkerTaskQueue) Shutdown() {
 }
 
 func (tq *WorkerTaskQueue) WaitForNoActiveTasks() {
-	for tq.activeTasks > 0 {
+	for atomic.LoadInt32(&tq.activeTasks) > 0 {
 		select {
 		case <-tq.ctx.Done():
 			return
@@ -117,10 +118,9 @@ func (tq *WorkerTaskQueue) worker(executor Executor) {
 			}
 		}
 		for _, task := range tasks {
-			tq.activeTasks++
+			atomic.AddInt32(&tq.activeTasks, 1)
 			terminate := executor.ExecuteTask(tq.ctx, pid, task)
-			tq.activeTasks--
-			if tq.activeTasks == 0 {
+			if atomic.AddInt32(&tq.activeTasks, -1) == 0 {
 				select {
 				case tq.noTaskSignal <- struct{}{}:
 				default:
