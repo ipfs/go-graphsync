@@ -1,5 +1,21 @@
 # go-graphsync changelog
 
+# go-graphsync v0.11.0
+
+Breaking update to new go-datastore interfaces
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Merge branch 'release/v0.10.6'
+  - update to context datastores (#275) ([ipfs/go-graphsync#275](https://github.com/ipfs/go-graphsync/pull/275))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Whyrusleeping | 1 | +895/-111 | 3 |
+
 # go-graphsync v0.10.6
 
 Use TaskQueue in ResponseManager and remove memory backpressure from request side
