@@ -1,5 +1,30 @@
 # go-graphsync changelog
 
+# go-graphsync v0.10.6
+
+Use TaskQueue in ResponseManager and remove memory backpressure from request side
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - feat!(requestmanager): remove request allocation backpressure (#272) ([ipfs/go-graphsync#272](https://github.com/ipfs/go-graphsync/pull/272))
+  - message/pb: stop using gogo/protobuf (#277) ([ipfs/go-graphsync#277](https://github.com/ipfs/go-graphsync/pull/277))
+  - mark all test helper funcs via t.Helper (#276) ([ipfs/go-graphsync#276](https://github.com/ipfs/go-graphsync/pull/276))
+  - chore(queryexecutor): remove unused RunTraversal
+  - chore(responsemanager): remove unused workSignal
+  - chore(queryexecutor): fix tests for runtraversal refactor + clean up
+  - feat(queryexecutor): merge RunTraversal into QueryExecutor
+  - feat(responsemanager): QueryExecutor to separate module - use TaskQueue, add tests
+  - Merge branch 'release/v0.10.5'
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Rod Vagg | 5 | +1451/-1213 | 28 |
+| hannahhoward | 1 | +150/-120 | 9 |
+| Daniel Martí | 2 | +133/-122 | 19 |
+
 # go-graphsync v0.10.5
 
 Small refactors and improvements, remove memory leaks, add OutgoingRequestProcessing hook
