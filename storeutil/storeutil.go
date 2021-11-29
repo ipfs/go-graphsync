@@ -20,7 +20,8 @@ func LinkSystemForBlockstore(bs bstore.Blockstore) ipld.LinkSystem {
 		if !ok {
 			return nil, fmt.Errorf("unsupported link type")
 		}
-		block, err := bs.Get(asCidLink.Cid)
+
+		block, err := bs.Get(lnkCtx.Ctx, asCidLink.Cid)
 		if err != nil {
 			return nil, err
 		}
@@ -37,7 +38,7 @@ func LinkSystemForBlockstore(bs bstore.Blockstore) ipld.LinkSystem {
 			if err != nil {
 				return err
 			}
-			return bs.Put(block)
+			return bs.Put(lnkCtx.Ctx, block)
 		}
 		return &buffer, committer, nil
 	}
