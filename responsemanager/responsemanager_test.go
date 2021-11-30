@@ -291,6 +291,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		// request fails with base loader reading from block store that's missing data
 		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestFailedContentNotFound)
+		td.taskqueue.WaitForNoActiveTasks()
 
 		err := td.peristenceOptions.Register("chainstore", td.persistence)
 		require.NoError(t, err)
@@ -631,6 +632,8 @@ func TestValidationAndExtensions(t *testing.T) {
 				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 				td.verifyNResponses(blockCount)
 				td.assertPausedRequest()
+
+				td.taskqueue.WaitForNoActiveTasks()
 
 				// send update
 				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
