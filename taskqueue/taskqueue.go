@@ -2,10 +2,12 @@ package taskqueue
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/ipfs/go-peertaskqueue"
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	"github.com/ipfs/go-peertaskqueue/peertracker"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
@@ -23,16 +25,19 @@ type TaskQueue interface {
 	TaskDone(p peer.ID, task *peertask.Task)
 	Remove(t peertask.Topic, p peer.ID)
 	Stats() graphsync.RequestStats
+	PeerTopics(p peer.ID) *peertracker.PeerTrackerTopics
 }
 
-// TaskQueue is a wrapper around peertaskqueue.PeerTaskQueue that manages running workers
+// WorkerTaskQueue is a wrapper around peertaskqueue.PeerTaskQueue that manages running workers
 // that pop tasks and execute them
 type WorkerTaskQueue struct {
-	ctx           context.Context
-	cancelFn      func()
-	peerTaskQueue *peertaskqueue.PeerTaskQueue
-	workSignal    chan struct{}
-	ticker        *time.Ticker
+	*peertaskqueue.PeerTaskQueue
+	ctx         context.Context
+	cancelFn    func()
+	workSignal  chan struct{}
+	noTaskCond  *sync.Cond
+	ticker      *time.Ticker
+	activeTasks int32
 }
 
 // NewTaskQueue initializes a new queue
@@ -41,15 +46,16 @@ func NewTaskQueue(ctx context.Context) *WorkerTaskQueue {
 	return &WorkerTaskQueue{
 		ctx:           ctx,
 		cancelFn:      cancelFn,
-		peerTaskQueue: peertaskqueue.New(),
+		PeerTaskQueue: peertaskqueue.New(),
 		workSignal:    make(chan struct{}, 1),
+		noTaskCond:    sync.NewCond(&sync.Mutex{}),
 		ticker:        time.NewTicker(thawSpeed),
 	}
 }
 
 // PushTask pushes a new task on to the queue
 func (tq *WorkerTaskQueue) PushTask(p peer.ID, task peertask.Task) {
-	tq.peerTaskQueue.PushTasks(p, task)
+	tq.PeerTaskQueue.PushTasks(p, task)
 	select {
 	case tq.workSignal <- struct{}{}:
 	default:
@@ -58,22 +64,17 @@ func (tq *WorkerTaskQueue) PushTask(p peer.ID, task peertask.Task) {
 
 // TaskDone marks a task as completed so further tasks can be executed
 func (tq *WorkerTaskQueue) TaskDone(p peer.ID, task *peertask.Task) {
-	tq.peerTaskQueue.TasksDone(p, task)
+	tq.PeerTaskQueue.TasksDone(p, task)
 }
 
 // Stats returns statistics about a task queue
 func (tq *WorkerTaskQueue) Stats() graphsync.RequestStats {
-	ptqstats := tq.peerTaskQueue.Stats()
+	ptqstats := tq.PeerTaskQueue.Stats()
 	return graphsync.RequestStats{
 		TotalPeers: uint64(ptqstats.NumPeers),
 		Active:     uint64(ptqstats.NumActive),
 		Pending:    uint64(ptqstats.NumPending),
 	}
-}
-
-// Remove removes a task from the execution queue
-func (tq *WorkerTaskQueue) Remove(topic peertask.Topic, p peer.ID) {
-	tq.peerTaskQueue.Remove(topic, p)
 }
 
 // Startup runs the given number of task workers with the given executor
@@ -88,23 +89,40 @@ func (tq *WorkerTaskQueue) Shutdown() {
 	tq.cancelFn()
 }
 
+func (tq *WorkerTaskQueue) WaitForNoActiveTasks() {
+	tq.noTaskCond.L.Lock()
+	for tq.activeTasks > 0 {
+		tq.noTaskCond.Wait()
+	}
+	tq.noTaskCond.L.Unlock()
+}
+
 func (tq *WorkerTaskQueue) worker(executor Executor) {
 	targetWork := 1
 	for {
-		pid, tasks, _ := tq.peerTaskQueue.PopTasks(targetWork)
+		pid, tasks, _ := tq.PeerTaskQueue.PopTasks(targetWork)
 		for len(tasks) == 0 {
 			select {
 			case <-tq.ctx.Done():
 				return
 			case <-tq.workSignal:
-				pid, tasks, _ = tq.peerTaskQueue.PopTasks(targetWork)
+				pid, tasks, _ = tq.PeerTaskQueue.PopTasks(targetWork)
 			case <-tq.ticker.C:
-				tq.peerTaskQueue.ThawRound()
-				pid, tasks, _ = tq.peerTaskQueue.PopTasks(targetWork)
+				tq.PeerTaskQueue.ThawRound()
+				pid, tasks, _ = tq.PeerTaskQueue.PopTasks(targetWork)
 			}
 		}
 		for _, task := range tasks {
+			tq.noTaskCond.L.Lock()
+			tq.activeTasks = tq.activeTasks + 1
+			tq.noTaskCond.L.Unlock()
 			terminate := executor.ExecuteTask(tq.ctx, pid, task)
+			tq.noTaskCond.L.Lock()
+			tq.activeTasks = tq.activeTasks - 1
+			if tq.activeTasks == 0 {
+				tq.noTaskCond.Broadcast()
+			}
+			tq.noTaskCond.L.Unlock()
 			if terminate {
 				return
 			}

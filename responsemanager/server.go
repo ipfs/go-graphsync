@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"math"
+	"time"
 
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	"github.com/ipfs/go-peertaskqueue/peertracker"
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
@@ -45,7 +48,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		log.Warnf("received update for non existent request, peer %s, request ID %d", key.p.Pretty(), key.requestID)
 		return
 	}
-	if response.state != paused {
+	if response.state != graphsync.Paused {
 		response.updates = append(response.updates, update)
 		select {
 		case response.signals.UpdateSignal <- struct{}{}:
@@ -83,10 +86,10 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	if !ok {
 		return errors.New("could not find request")
 	}
-	if inProgressResponse.state != paused {
+	if inProgressResponse.state != graphsync.Paused {
 		return errors.New("request is not paused")
 	}
-	inProgressResponse.state = queued
+	inProgressResponse.state = graphsync.Queued
 	if len(extensions) > 0 {
 		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
 			for _, extension := range extensions {
@@ -107,7 +110,7 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 		return errors.New("could not find request")
 	}
 
-	if response.state != running {
+	if response.state != graphsync.Running {
 		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
 			if ipldutil.IsContextCancelErr(err) {
 				rm.connManager.Unprotect(p, requestID.Tag())
@@ -155,6 +158,11 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			networkErrorListeners: rm.networkErrorListeners,
 			connManager:           rm.connManager,
 		})
+		log.Infow("graphsync request initiated", "request id", request.ID(), "peer", p, "root", request.Root())
+		ipr, ok := rm.inProgressResponses[key]
+		if ok && ipr.state == graphsync.Running {
+			log.Warnf("there is an identical request already in progress", "request id", request.ID(), "peer", p)
+		}
 
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
@@ -167,7 +175,8 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 					UpdateSignal: make(chan struct{}, 1),
 					ErrSignal:    make(chan error, 1),
 				},
-				state: queued,
+				state:     graphsync.Queued,
+				startTime: time.Now(),
 			}
 		// TODO: Use a better work estimation metric.
 
@@ -180,6 +189,8 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.Respons
 	if !hasResponse {
 		return queryexecutor.ResponseTask{Empty: true}
 	}
+	log.Infow("graphsync response processing begins", "request id", key.requestID, "peer", key.p, "total time", time.Since(response.startTime))
+
 	if response.loader == nil || response.traverser == nil {
 		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.linkSystem, rm.maxLinksPerRequest}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
 		if err != nil {
@@ -190,11 +201,11 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.Respons
 		response.loader = loader
 		response.traverser = traverser
 		if isPaused {
-			response.state = paused
+			response.state = graphsync.Paused
 			return queryexecutor.ResponseTask{Empty: true}
 		}
 	}
-	response.state = running
+	response.state = graphsync.Running
 	return queryexecutor.ResponseTask{
 		Ctx:        response.ctx,
 		Empty:      false,
@@ -212,6 +223,7 @@ func (rm *ResponseManager) startTask(task *peertask.Task) queryexecutor.Response
 	if taskData.Empty {
 		rm.responseQueue.TaskDone(key.p, task)
 	}
+
 	return taskData
 }
 
@@ -223,9 +235,11 @@ func (rm *ResponseManager) finishTask(task *peertask.Task, err error) {
 		return
 	}
 	if _, ok := err.(hooks.ErrPaused); ok {
-		response.state = paused
+		response.state = graphsync.Paused
 		return
 	}
+	log.Infow("graphsync response processing complete (messages stil sending)", "request id", key.requestID, "peer", key.p, "total time", time.Since(response.startTime))
+
 	if err != nil {
 		log.Infof("response failed: %w", err)
 	}
@@ -249,7 +263,7 @@ func (rm *ResponseManager) pauseRequest(p peer.ID, requestID graphsync.RequestID
 	if !ok {
 		return errors.New("could not find request")
 	}
-	if inProgressResponse.state == paused {
+	if inProgressResponse.state == graphsync.Paused {
 		return errors.New("request is already paused")
 	}
 	select {
@@ -257,4 +271,33 @@ func (rm *ResponseManager) pauseRequest(p peer.ID, requestID graphsync.RequestID
 	default:
 	}
 	return nil
+}
+
+func (rm *ResponseManager) peerState(p peer.ID) peerstate.PeerState {
+	requestStates := make(graphsync.RequestStates)
+	for key, ipr := range rm.inProgressResponses {
+		if key.p == p {
+			requestStates[key.requestID] = ipr.state
+		}
+	}
+	peerTopics := rm.responseQueue.PeerTopics(p)
+	return peerstate.PeerState{RequestStates: requestStates, TaskQueueState: fromPeerTopics(peerTopics)}
+}
+
+func fromPeerTopics(pt *peertracker.PeerTrackerTopics) peerstate.TaskQueueState {
+	if pt == nil {
+		return peerstate.TaskQueueState{}
+	}
+	active := make([]graphsync.RequestID, 0, len(pt.Active))
+	for _, topic := range pt.Active {
+		active = append(active, topic.(responseKey).requestID)
+	}
+	pending := make([]graphsync.RequestID, 0, len(pt.Pending))
+	for _, topic := range pt.Pending {
+		pending = append(pending, topic.(responseKey).requestID)
+	}
+	return peerstate.TaskQueueState{
+		Active:  active,
+		Pending: pending,
+	}
 }

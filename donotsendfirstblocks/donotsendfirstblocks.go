@@ -1,7 +1,7 @@
 package donotsendfirstblocks
 
 import (
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 
 	"github.com/ipfs/go-graphsync/ipldutil"
 )

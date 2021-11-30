@@ -6,6 +6,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 )
 
@@ -85,10 +86,15 @@ func (rur *responseUpdateRequest) handle(rm *ResponseManager) {
 type finishTaskRequest struct {
 	task *peertask.Task
 	err  error
+	done chan struct{}
 }
 
 func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 	rm.finishTask(ftr.task, ftr.err)
+	select {
+	case <-rm.ctx.Done():
+	case ftr.done <- struct{}{}:
+	}
 }
 
 type startTaskRequest struct {
@@ -107,4 +113,17 @@ func (str *startTaskRequest) handle(rm *ResponseManager) {
 
 func (prm *processRequestMessage) handle(rm *ResponseManager) {
 	rm.processRequests(prm.p, prm.requests)
+}
+
+type peerStateMessage struct {
+	p             peer.ID
+	peerStatsChan chan<- peerstate.PeerState
+}
+
+func (psm *peerStateMessage) handle(rm *ResponseManager) {
+	peerState := rm.peerState(psm.p)
+	select {
+	case psm.peerStatsChan <- peerState:
+	case <-rm.ctx.Done():
+	}
 }

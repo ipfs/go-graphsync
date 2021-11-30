@@ -30,7 +30,7 @@ import (
 	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -41,13 +41,18 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
+	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/storeutil"
+	"github.com/ipfs/go-graphsync/taskqueue"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestMakeRequestToNetwork(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -84,12 +89,32 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	returnedData, found := receivedRequest.Extension(td.extensionName)
 	require.True(t, found)
 	require.Equal(t, td.extensionData, returnedData, "Failed to encode extension")
+
+	graphSync.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
+
+	// make sure the attributes are what we expect
+	requestSpans := tracing.FindSpans("request")
+	peerIdAttr := testutil.AttributeValueInTraceSpan(t, requestSpans[0], "peerID")
+	require.Equal(t, td.host2.ID().Pretty(), peerIdAttr.AsString())
+	rootAttr := testutil.AttributeValueInTraceSpan(t, requestSpans[0], "root")
+	require.Equal(t, blockChain.TipLink.String(), rootAttr.AsString())
+	extensionsAttr := testutil.AttributeValueInTraceSpan(t, requestSpans[0], "extensions")
+	require.Equal(t, []string{string(td.extensionName)}, extensionsAttr.AsStringSlice())
+	requestIdAttr := testutil.AttributeValueInTraceSpan(t, requestSpans[0], "requestID")
+	require.Equal(t, int64(0), requestIdAttr.AsInt64())
 }
 
 func TestSendResponseToIncomingRequest(t *testing.T) {
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 	r := &receiver{
@@ -153,9 +178,11 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 }
 
 func TestRejectRequestsByDefault(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -171,12 +198,25 @@ func TestRejectRequestsByDefault(t *testing.T) {
 
 	testutil.VerifyEmptyResponse(ctx, t, progressChan)
 	testutil.VerifySingleTerminalError(ctx, t, errChan)
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
+	// has ContextCancelError exception recorded in the right place
+	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
 }
 
 func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -197,12 +237,25 @@ func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
 	blockChain.VerifyResponseRange(ctx, progressChan, 0, int(linksToTraverse))
 	testutil.VerifySingleTerminalError(ctx, t, errChan)
 	require.Len(t, td.blockStore1, int(linksToTraverse), "did not store all blocks")
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
+	// has ErrBudgetExceeded exception recorded in the right place
+	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrBudgetExceeded", "traversal budget exceeded", true)
 }
 
 func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -223,12 +276,26 @@ func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
 	blockChain.VerifyResponseRange(ctx, progressChan, 0, int(linksToTraverse))
 	testutil.VerifySingleTerminalError(ctx, t, errChan)
 	require.Len(t, td.blockStore1, int(linksToTraverse), "did not store all blocks")
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
+	// has ContextCancelError exception recorded in the right place
+	// the requester gets a cancel, the responder gets a ErrBudgetExceeded
+	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
 }
 
 func TestGraphsyncRoundTrip(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -284,12 +351,23 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	var finalResponseStatus graphsync.ResponseStatusCode
 	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
 	require.Equal(t, graphsync.RequestCompletedFull, finalResponseStatus)
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 }
 
 func TestGraphsyncRoundTripPartial(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -333,12 +411,23 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 	var finalResponseStatus graphsync.ResponseStatusCode
 	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
 	require.Equal(t, graphsync.RequestCompletedPartial, finalResponseStatus)
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 }
 
 func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -382,9 +471,20 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 
 	require.Equal(t, blockChainLength, totalSent)
 	require.Equal(t, blockChainLength-set.Len(), totalSentOnWire)
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 }
 
 func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -433,9 +533,20 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 
 	require.Equal(t, blockChainLength, totalSent)
 	require.Equal(t, blockChainLength-50, totalSentOnWire)
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 }
 
 func TestPauseResume(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -477,6 +588,25 @@ func TestPauseResume(t *testing.T) {
 	timer := time.NewTimer(100 * time.Millisecond)
 	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
 
+	requestorPeerState := requestor.(*GraphSync).PeerState(td.host2.ID())
+	require.Len(t, requestorPeerState.OutgoingState.RequestStates, 1)
+	require.Len(t, requestorPeerState.IncomingState.RequestStates, 0)
+	require.Len(t, requestorPeerState.OutgoingState.Active, 1)
+	require.Contains(t, requestorPeerState.OutgoingState.RequestStates, requestorPeerState.OutgoingState.Active[0])
+	require.Len(t, requestorPeerState.OutgoingState.Pending, 0)
+	require.Len(t, requestorPeerState.IncomingState.Active, 0)
+	require.Len(t, requestorPeerState.IncomingState.Pending, 0)
+	require.Len(t, requestorPeerState.OutgoingState.Diagnostics(), 0)
+	responderPeerState := responder.(*GraphSync).PeerState(td.host1.ID())
+	require.Len(t, responderPeerState.IncomingState.RequestStates, 1)
+	require.Len(t, responderPeerState.OutgoingState.RequestStates, 0)
+	// no tasks as response is paused by responder
+	require.Len(t, responderPeerState.IncomingState.Active, 0)
+	require.Len(t, responderPeerState.IncomingState.Pending, 0)
+	require.Len(t, responderPeerState.OutgoingState.Active, 0)
+	require.Len(t, responderPeerState.OutgoingState.Pending, 0)
+	require.Len(t, responderPeerState.IncomingState.Diagnostics(), 0)
+
 	requestID := <-requestIDChan
 	err := responder.UnpauseResponse(td.host1.ID(), requestID)
 	require.NoError(t, err)
@@ -485,8 +615,19 @@ func TestPauseResume(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
 	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
 
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 }
+
 func TestPauseResumeRequest(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -531,9 +672,23 @@ func TestPauseResumeRequest(t *testing.T) {
 	blockChain.VerifyRemainder(ctx, progressChan, stopPoint)
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
 	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->executeTask(1)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
+	// has ErrPaused exception recorded in the right place
+	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrPaused", hooks.ErrPaused{}.Error(), false)
 }
 
 func TestPauseResumeViaUpdate(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -590,9 +745,20 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 
 	require.Equal(t, td.extensionResponseData, receivedReponseData, "did not receive correct extension response data")
 	require.Equal(t, td.extensionUpdateData, receivedUpdateData, "did not receive correct extension update data")
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 }
 
 func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -651,9 +817,20 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 
 	require.Equal(t, td.extensionResponseData, receivedReponseData, "did not receive correct extension response data")
 	require.Equal(t, td.extensionUpdateData, receivedUpdateData, "did not receive correct extension update data")
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 }
 
 func TestNetworkDisconnect(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -722,9 +899,22 @@ func TestNetworkDisconnect(t *testing.T) {
 	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
 	require.EqualError(t, err, graphsync.RequestClientCancelledErr{}.Error())
 	testutil.AssertReceive(ctx, t, receiverError, &err, "should receive an error on receiver side")
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
+	// has ContextCancelError exception recorded in the right place
+	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
 }
 
 func TestConnectFail(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -757,12 +947,25 @@ func TestConnectFail(t *testing.T) {
 	testutil.AssertReceive(ctx, t, reqNetworkError, &err, "should receive network error")
 	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
 	require.EqualError(t, err, graphsync.RequestClientCancelledErr{}.Error())
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
+	// has ContextCancelError exception recorded in the right place
+	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
 }
 
 func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -822,12 +1025,29 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
 	require.Len(t, td.blockStore1, 0, "should store no blocks in normal store")
 	require.Len(t, altStore1, blockChainLength, "did not store all blocks in alternate store")
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	// two complete request traces expected
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+		"request(1)->newRequest(0)",
+		"request(1)->executeTask(0)",
+		"request(1)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
+	// TODO(rvagg): this is randomly either a SkipMe or a ipldutil.ContextCancelError; confirm this is sane
+	// tracing.SingleExceptionEvent(t, "request(0)->newRequest(0)","request(0)->executeTask(0)", "SkipMe", traversal.SkipMe{}.Error(), true)
 }
 
 func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -887,6 +1107,18 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, errChan2)
 	require.Len(t, altStore1, blockChainLength, "did not store all blocks in alternate store 2")
 
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	// two complete request traces expected
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+		"request(1)->newRequest(0)",
+		"request(1)->executeTask(0)",
+		"request(1)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 }
 
 // TestRoundTripLargeBlocksSlowNetwork test verifies graphsync continues to work
@@ -898,6 +1130,8 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 // backlog of blocks and then sending them in one giant network packet that can't
 // be decoded on the client side
 func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	if testing.Short() {
 		t.Skip()
@@ -924,6 +1158,15 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 
 	blockChain.VerifyWholeChain(ctx, progressChan)
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 }
 
 // What this test does:
@@ -939,6 +1182,7 @@ func TestUnixFSFetch(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
+	collectTracing := testutil.SetupTracing()
 
 	const unixfsChunkSize uint64 = 1 << 10
 	const unixfsLinksPerLevel = 1024
@@ -1044,12 +1288,23 @@ func TestUnixFSFetch(t *testing.T) {
 
 	// verify original bytes match final bytes!
 	require.Equal(t, origBytes, finalBytes, "should have gotten same bytes written as read but didn't")
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 }
 
 func TestGraphsyncBlockListeners(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -1124,6 +1379,15 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 	require.Equal(t, blockChainLength, blocksOutgoing)
 	require.Equal(t, blockChainLength, blocksIncoming)
 	require.Equal(t, blockChainLength, blocksSent)
+
+	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 }
 
 type gsTestData struct {

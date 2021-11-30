@@ -5,8 +5,10 @@ import (
 	"errors"
 	"io"
 
+	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 )
@@ -19,7 +21,7 @@ can go away */
 
 var defaultLinkSystem = cidlink.DefaultLinkSystem()
 
-var defaultVisitor traversal.AdvVisitFn = func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil }
+func defaultVisitor(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil }
 
 // ContextCancelError is a sentinel that indicates the passed in context
 // was cancelled
@@ -86,7 +88,7 @@ func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 		root:         tb.Root,
 		selector:     tb.Selector,
 		visitor:      defaultVisitor,
-		chooser:      defaultChooser,
+		chooser:      dagpb.AddSupportToChooser(basicnode.Chooser),
 		linkSystem:   tb.LinkSystem,
 		budget:       tb.Budget,
 		awaitRequest: make(chan struct{}, 1),

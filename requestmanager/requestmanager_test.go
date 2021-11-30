@@ -978,6 +978,32 @@ func TestPauseResumeExternal(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 }
 
+func TestStats(t *testing.T) {
+	ctx := context.Background()
+	td := newTestData(ctx, t)
+
+	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	peers := testutil.GeneratePeers(2)
+
+	blockChain2 := testutil.SetupBlockChain(ctx, t, td.persistence, 100, 5)
+
+	_, _ = td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+	_, _ = td.requestManager.NewRequest(requestCtx, peers[0], blockChain2.TipLink, blockChain2.Selector())
+	_, _ = td.requestManager.NewRequest(requestCtx, peers[1], td.blockChain.TipLink, td.blockChain.Selector())
+
+	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 3)
+
+	peerState := td.requestManager.PeerState(peers[0])
+	require.Len(t, peerState.RequestStates, 2)
+	require.Equal(t, peerState.RequestStates[requestRecords[0].gsr.ID()], graphsync.Running)
+	require.Equal(t, peerState.RequestStates[requestRecords[1].gsr.ID()], graphsync.Running)
+	require.Len(t, peerState.Active, 2)
+	require.Contains(t, peerState.Active, requestRecords[0].gsr.ID())
+	require.Contains(t, peerState.Active, requestRecords[1].gsr.ID())
+	require.Len(t, peerState.Pending, 0)
+}
+
 type requestRecord struct {
 	gsr gsmsg.GraphSyncRequest
 	p   peer.ID

@@ -16,6 +16,8 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
@@ -25,6 +27,7 @@ import (
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
@@ -42,22 +45,15 @@ const (
 	defaultPriority = graphsync.Priority(0)
 )
 
-type state uint64
-
-const (
-	queued state = iota
-	running
-	paused
-)
-
 type inProgressRequestStatus struct {
 	ctx              context.Context
+	span             trace.Span
 	startTime        time.Time
 	cancelFn         func()
 	p                peer.ID
 	terminalError    error
 	pauseMessages    chan struct{}
-	state            state
+	state            graphsync.RequestState
 	lastResponse     atomic.Value
 	onTerminated     []chan<- error
 	request          gsmsg.GraphSyncRequest
@@ -174,13 +170,20 @@ func (rm *RequestManager) NewRequest(ctx context.Context,
 	root ipld.Link,
 	selectorNode ipld.Node,
 	extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
+
+	span := trace.SpanFromContext(ctx)
+
 	if _, err := selector.ParseSelector(selectorNode); err != nil {
-		return rm.singleErrorResponse(fmt.Errorf("invalid selector spec"))
+		err := fmt.Errorf("invalid selector spec")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		defer span.End()
+		return rm.singleErrorResponse(err)
 	}
 
 	inProgressRequestChan := make(chan inProgressRequest)
 
-	rm.send(&newRequestMessage{p, root, selectorNode, extensions, inProgressRequestChan}, ctx.Done())
+	rm.send(&newRequestMessage{span, p, root, selectorNode, extensions, inProgressRequestChan}, ctx.Done())
 	var receivedInProgressRequest inProgressRequest
 	select {
 	case <-rm.ctx.Done():
@@ -322,7 +325,24 @@ func (rm *RequestManager) GetRequestTask(p peer.ID, task *peertask.Task, request
 
 // ReleaseRequestTask releases a task request the requestQueue
 func (rm *RequestManager) ReleaseRequestTask(p peer.ID, task *peertask.Task, err error) {
-	rm.send(&releaseRequestTaskMessage{p, task, err}, nil)
+	done := make(chan struct{}, 1)
+	rm.send(&releaseRequestTaskMessage{p, task, err, done}, nil)
+	select {
+	case <-rm.ctx.Done():
+	case <-done:
+	}
+}
+
+// PeerState gets stats on all outgoing requests for a given peer
+func (rm *RequestManager) PeerState(p peer.ID) peerstate.PeerState {
+	response := make(chan peerstate.PeerState)
+	rm.send(&peerStateMessage{p, response}, nil)
+	select {
+	case <-rm.ctx.Done():
+		return peerstate.PeerState{}
+	case peerState := <-response:
+		return peerState
+	}
 }
 
 // SendRequest sends a request to the message queue

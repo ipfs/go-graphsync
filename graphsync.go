@@ -332,6 +332,34 @@ type Stats struct {
 	OutgoingResponses ResponseStats
 }
 
+// RequestState describes the current general state of a request
+type RequestState uint64
+
+// RequestStates describe a set of request IDs and their current state
+type RequestStates map[RequestID]RequestState
+
+const (
+	// Queued means a request has been received and is queued for processing
+	Queued RequestState = iota
+	// Running means a request is actively sending or receiving data
+	Running
+	// Paused means a request is paused
+	Paused
+)
+
+func (rs RequestState) String() string {
+	switch rs {
+	case Queued:
+		return "queued"
+	case Running:
+		return "running"
+	case Paused:
+		return "paused"
+	default:
+		return "unrecognized request state"
+	}
+}
+
 // GraphExchange is a protocol that can exchange IPLD graphs based on a selector
 type GraphExchange interface {
 	// Request initiates a new GraphSync request to the given peer using the given selector spec.

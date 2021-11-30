@@ -11,9 +11,10 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	"github.com/ipfs/go-peertaskqueue/peertracker"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 
@@ -161,6 +162,38 @@ func TestEarlyCancellation(t *testing.T) {
 
 	td.assertNoResponses()
 	td.connManager.RefuteProtected(t, td.p)
+}
+
+func TestStats(t *testing.T) {
+	td := newTestData(t)
+	defer td.cancel()
+	// we're not testing the queryexeuctor or taskqueue here, we're testing
+	// that cancellation inside the responsemanager itself is properly
+	// activated, so we won't let responses get far enough to race our
+	// cancellation
+	responseManager := td.nullTaskQueueResponseManager()
+	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
+	responseManager.Startup()
+	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+	p2 := testutil.GeneratePeers(1)[0]
+	responseManager.ProcessRequests(td.ctx, p2, td.requests)
+	peerState := responseManager.PeerState(td.p)
+	require.Len(t, peerState.RequestStates, 1)
+	require.Equal(t, peerState.RequestStates[td.requestID], graphsync.Queued)
+	require.Len(t, peerState.Pending, 1)
+	require.Equal(t, peerState.Pending[0], td.requestID)
+	require.Len(t, peerState.Active, 0)
+	// no inconsistencies
+	require.Len(t, peerState.Diagnostics(), 0)
+	peerState = responseManager.PeerState(p2)
+	require.Len(t, peerState.RequestStates, 1)
+	require.Equal(t, peerState.RequestStates[td.requestID], graphsync.Queued)
+	require.Len(t, peerState.Pending, 1)
+	require.Equal(t, peerState.Pending[0], td.requestID)
+	require.Len(t, peerState.Active, 0)
+	// no inconsistencies
+	require.Len(t, peerState.Diagnostics(), 0)
+
 }
 func TestMissingContent(t *testing.T) {
 	t.Run("missing root block", func(t *testing.T) {
@@ -1090,7 +1123,7 @@ func (td *testData) newResponseManager() *ResponseManager {
 }
 
 func (td *testData) nullTaskQueueResponseManager() *ResponseManager {
-	ntq := nullTaskQueue{}
+	ntq := nullTaskQueue{tasksQueued: make(map[peer.ID][]peertask.Topic)}
 	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0, ntq)
 	return rm
 }
@@ -1111,6 +1144,7 @@ func (td *testData) newQueryExecutor(manager queryexecutor.Manager) *queryexecut
 func (td *testData) assertPausedRequest() {
 	var pausedRequest pausedRequest
 	testutil.AssertReceive(td.ctx, td.t, td.pausedRequests, &pausedRequest, "should pause request")
+	td.taskqueue.WaitForNoActiveTasks()
 }
 
 func (td *testData) getAllBlocks() []blocks.Block {
@@ -1147,6 +1181,7 @@ func (td *testData) assertCompleteRequestWith(expectedCode graphsync.ResponseSta
 	var status graphsync.ResponseStatusCode
 	testutil.AssertReceive(td.ctx, td.t, td.completedResponseStatuses, &status, "should receive status")
 	require.Equal(td.t, expectedCode, status)
+	td.taskqueue.WaitForNoActiveTasks()
 }
 
 func (td *testData) assertOnlyCompleteProcessingWith(expectedCode graphsync.ResponseStatusCode) {
@@ -1260,11 +1295,19 @@ func (td *testData) assertHasNetworkErrors(err error) {
 	require.EqualError(td.t, receivedErr, err.Error())
 }
 
-type nullTaskQueue struct{}
+type nullTaskQueue struct {
+	tasksQueued map[peer.ID][]peertask.Topic
+}
 
-func (ntq nullTaskQueue) PushTask(p peer.ID, task peertask.Task)  {}
+func (ntq nullTaskQueue) PushTask(p peer.ID, task peertask.Task) {
+	ntq.tasksQueued[p] = append(ntq.tasksQueued[p], task.Topic)
+}
+
 func (ntq nullTaskQueue) TaskDone(p peer.ID, task *peertask.Task) {}
 func (ntq nullTaskQueue) Remove(t peertask.Topic, p peer.ID)      {}
 func (ntq nullTaskQueue) Stats() graphsync.RequestStats           { return graphsync.RequestStats{} }
+func (ntq nullTaskQueue) PeerTopics(p peer.ID) *peertracker.PeerTrackerTopics {
+	return &peertracker.PeerTrackerTopics{Pending: ntq.tasksQueued[p]}
+}
 
 var _ taskqueue.TaskQueue = nullTaskQueue{}

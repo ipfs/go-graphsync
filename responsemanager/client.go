@@ -3,6 +3,7 @@ package responsemanager
 import (
 	"context"
 	"errors"
+	"time"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
@@ -14,6 +15,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
@@ -26,14 +28,6 @@ import (
 
 var log = logging.Logger("graphsync")
 
-type state uint64
-
-const (
-	queued state = iota
-	running
-	paused
-)
-
 type inProgressResponseStatus struct {
 	ctx        context.Context
 	cancelFn   func()
@@ -42,8 +36,9 @@ type inProgressResponseStatus struct {
 	traverser  ipldutil.Traverser
 	signals    queryexecutor.ResponseSignals
 	updates    []gsmsg.GraphSyncRequest
-	state      state
+	state      graphsync.RequestState
 	subscriber *notifications.TopicDataSubscriber
+	startTime  time.Time
 }
 
 type responseKey struct {
@@ -224,12 +219,29 @@ func (rm *ResponseManager) GetUpdates(p peer.ID, requestID graphsync.RequestID, 
 
 // FinishTask marks a task from the task queue as done
 func (rm *ResponseManager) FinishTask(task *peertask.Task, err error) {
-	rm.send(&finishTaskRequest{task, err}, nil)
+	done := make(chan struct{}, 1)
+	rm.send(&finishTaskRequest{task, err, done}, nil)
+	select {
+	case <-rm.ctx.Done():
+	case <-done:
+	}
 }
 
 // CloseWithNetworkError closes a request due to a network error
 func (rm *ResponseManager) CloseWithNetworkError(p peer.ID, requestID graphsync.RequestID) {
 	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrNetworkError, make(chan error, 1)}, nil)
+}
+
+// PeerState gets current state of the outgoing responses for a given peer
+func (rm *ResponseManager) PeerState(p peer.ID) peerstate.PeerState {
+	response := make(chan peerstate.PeerState)
+	rm.send(&peerStateMessage{p, response}, nil)
+	select {
+	case <-rm.ctx.Done():
+		return peerstate.PeerState{}
+	case peerState := <-response:
+		return peerState
+	}
 }
 
 func (rm *ResponseManager) send(message responseManagerMessage, done <-chan struct{}) {

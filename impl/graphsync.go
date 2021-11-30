@@ -8,6 +8,9 @@ import (
 	"github.com/ipfs/go-peertaskqueue"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/allocator"
@@ -16,6 +19,7 @@ import (
 	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/peermanager"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/requestmanager"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
@@ -304,6 +308,15 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 
 // Request initiates a new GraphSync request to the given peer using the given selector spec.
 func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
+	var extNames []string
+	for _, ext := range extensions {
+		extNames = append(extNames, string(ext.Name))
+	}
+	ctx, _ = otel.Tracer("graphsync").Start(ctx, "request", trace.WithAttributes(
+		attribute.String("peerID", p.Pretty()),
+		attribute.String("root", root.String()),
+		attribute.StringSlice("extensions", extNames),
+	))
 	return gs.requestManager.NewRequest(ctx, p, root, selector, extensions...)
 }
 
@@ -446,6 +459,20 @@ func (gs *GraphSync) Stats() graphsync.Stats {
 	}
 }
 
+// PeerState describes the state of graphsync for a given peer
+type PeerState struct {
+	OutgoingState peerstate.PeerState
+	IncomingState peerstate.PeerState
+}
+
+// PeerState produces insight on the current state of a given peer
+func (gs *GraphSync) PeerState(p peer.ID) PeerState {
+	return PeerState{
+		OutgoingState: gs.requestManager.PeerState(p),
+		IncomingState: gs.responseManager.PeerState(p),
+	}
+}
+
 type graphSyncReceiver GraphSync
 
 func (gsr *graphSyncReceiver) graphSync() *GraphSync {
@@ -458,8 +485,17 @@ func (gsr *graphSyncReceiver) ReceiveMessage(
 	ctx context.Context,
 	sender peer.ID,
 	incoming gsmsg.GraphSyncMessage) {
-	gsr.graphSync().responseManager.ProcessRequests(ctx, sender, incoming.Requests())
-	gsr.graphSync().requestManager.ProcessResponses(sender, incoming.Responses(), incoming.Blocks())
+
+	requests := incoming.Requests()
+	responses := incoming.Responses()
+	blocks := incoming.Blocks()
+
+	if len(requests) > 0 {
+		gsr.graphSync().responseManager.ProcessRequests(ctx, sender, requests)
+	}
+	if len(responses) > 0 || len(blocks) > 0 {
+		gsr.graphSync().requestManager.ProcessResponses(sender, responses, blocks)
+	}
 }
 
 // ReceiveError is part of the network's Receiver interface and handles incoming

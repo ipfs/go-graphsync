@@ -10,17 +10,23 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	"github.com/ipfs/go-peertaskqueue/peertracker"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/dedupkey"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 )
@@ -49,14 +55,21 @@ func (rm *RequestManager) cleanupInProcessRequests() {
 	}
 }
 
-func (rm *RequestManager) newRequest(p peer.ID, root ipld.Link, selector ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, chan graphsync.ResponseProgress, chan error) {
+func (rm *RequestManager) newRequest(parentSpan trace.Span, p peer.ID, root ipld.Link, selector ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, chan graphsync.ResponseProgress, chan error) {
 	requestID := rm.nextRequestID
 	rm.nextRequestID++
+
+	parentSpan.SetAttributes(attribute.Int("requestID", int(requestID)))
+	ctx, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, parentSpan), "newRequest")
+	defer span.End()
 
 	log.Infow("graphsync request initiated", "request id", requestID, "peer", p, "root", root)
 
 	request, hooksResult, err := rm.validateRequest(requestID, p, root, selector, extensions)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		defer parentSpan.End()
 		rp, err := rm.singleErrorResponse(err)
 		return request, rp, err
 	}
@@ -65,22 +78,26 @@ func (rm *RequestManager) newRequest(p peer.ID, root ipld.Link, selector ipld.No
 	if has {
 		doNotSendCids, err = cidset.DecodeCidSet(doNotSendCidsData)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			defer parentSpan.End()
 			rp, err := rm.singleErrorResponse(err)
 			return request, rp, err
 		}
 	} else {
 		doNotSendCids = cid.NewSet()
 	}
-	ctx, cancel := context.WithCancel(rm.ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	requestStatus := &inProgressRequestStatus{
 		ctx:              ctx,
+		span:             parentSpan,
 		startTime:        time.Now(),
 		cancelFn:         cancel,
 		p:                p,
 		pauseMessages:    make(chan struct{}, 1),
 		doNotSendCids:    doNotSendCids,
 		request:          request,
-		state:            queued,
+		state:            graphsync.Queued,
 		nodeStyleChooser: hooksResult.CustomChooser,
 		inProgressChan:   make(chan graphsync.ResponseProgress),
 		inProgressErr:    make(chan error),
@@ -138,9 +155,10 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 		rm.outgoingRequestProcessingListeners.NotifyOutgoingRequestProcessingListeners(ipr.p, ipr.request, inProgressCount)
 	}
 
-	ipr.state = running
+	ipr.state = graphsync.Running
 	return executor.RequestTask{
 		Ctx:            ipr.ctx,
+		Span:           ipr.span,
 		Request:        ipr.request,
 		LastResponse:   &ipr.lastResponse,
 		DoNotSendCids:  ipr.doNotSendCids,
@@ -163,6 +181,10 @@ func (rm *RequestManager) getRequestTask(p peer.ID, task *peertask.Task) executo
 }
 
 func (rm *RequestManager) terminateRequest(requestID graphsync.RequestID, ipr *inProgressRequestStatus) {
+	_, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, ipr.span), "terminateRequest")
+	defer span.End()
+	defer ipr.span.End() // parent span for this whole request
+
 	if ipr.terminalError != nil {
 		select {
 		case ipr.inProgressErr <- ipr.terminalError:
@@ -203,7 +225,7 @@ func (rm *RequestManager) releaseRequestTask(p peer.ID, task *peertask.Task, err
 		return
 	}
 	if _, ok := err.(hooks.ErrPaused); ok {
-		ipr.state = paused
+		ipr.state = graphsync.Paused
 		return
 	}
 	log.Infow("graphsync request complete", "request id", requestID, "peer", ipr.p, "total time", time.Since(ipr.startTime))
@@ -233,7 +255,7 @@ func (rm *RequestManager) cancelOnError(requestID graphsync.RequestID, ipr *inPr
 	if ipr.terminalError == nil {
 		ipr.terminalError = terminalError
 	}
-	if ipr.state != running {
+	if ipr.state != graphsync.Running {
 		rm.terminateRequest(requestID, ipr)
 	} else {
 		ipr.cancelFn()
@@ -348,10 +370,10 @@ func (rm *RequestManager) unpause(id graphsync.RequestID, extensions []graphsync
 	if !ok {
 		return graphsync.RequestNotFoundErr{}
 	}
-	if inProgressRequestStatus.state != paused {
+	if inProgressRequestStatus.state != graphsync.Paused {
 		return errors.New("request is not paused")
 	}
-	inProgressRequestStatus.state = queued
+	inProgressRequestStatus.state = graphsync.Queued
 	inProgressRequestStatus.request = inProgressRequestStatus.request.ReplaceExtensions(extensions)
 	rm.requestQueue.PushTask(inProgressRequestStatus.p, peertask.Task{Topic: id, Priority: math.MaxInt32, Work: 1})
 	return nil
@@ -362,7 +384,7 @@ func (rm *RequestManager) pause(id graphsync.RequestID) error {
 	if !ok {
 		return graphsync.RequestNotFoundErr{}
 	}
-	if inProgressRequestStatus.state == paused {
+	if inProgressRequestStatus.state == graphsync.Paused {
 		return errors.New("request is already paused")
 	}
 	select {
@@ -370,4 +392,33 @@ func (rm *RequestManager) pause(id graphsync.RequestID) error {
 	default:
 	}
 	return nil
+}
+
+func (rm *RequestManager) peerStats(p peer.ID) peerstate.PeerState {
+	requestStates := make(graphsync.RequestStates)
+	for id, ipr := range rm.inProgressRequestStatuses {
+		if ipr.p == p {
+			requestStates[id] = graphsync.RequestState(ipr.state)
+		}
+	}
+	peerTopics := rm.requestQueue.PeerTopics(p)
+	return peerstate.PeerState{RequestStates: requestStates, TaskQueueState: fromPeerTopics(peerTopics)}
+}
+
+func fromPeerTopics(pt *peertracker.PeerTrackerTopics) peerstate.TaskQueueState {
+	if pt == nil {
+		return peerstate.TaskQueueState{}
+	}
+	active := make([]graphsync.RequestID, 0, len(pt.Active))
+	for _, topic := range pt.Active {
+		active = append(active, topic.(graphsync.RequestID))
+	}
+	pending := make([]graphsync.RequestID, 0, len(pt.Pending))
+	for _, topic := range pt.Pending {
+		pending = append(pending, topic.(graphsync.RequestID))
+	}
+	return peerstate.TaskQueueState{
+		Active:  active,
+		Pending: pending,
+	}
 }
