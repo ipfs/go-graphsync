@@ -224,7 +224,12 @@ func (rm *ResponseManager) GetUpdates(p peer.ID, requestID graphsync.RequestID, 
 
 // FinishTask marks a task from the task queue as done
 func (rm *ResponseManager) FinishTask(task *peertask.Task, err error) {
-	rm.send(&finishTaskRequest{task, err}, nil)
+	done := make(chan struct{}, 1)
+	rm.send(&finishTaskRequest{task, err, done}, nil)
+	select {
+	case <-rm.ctx.Done():
+	case <-done:
+	}
 }
 
 // CloseWithNetworkError closes a request due to a network error

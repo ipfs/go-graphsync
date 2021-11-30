@@ -85,10 +85,15 @@ func (rur *responseUpdateRequest) handle(rm *ResponseManager) {
 type finishTaskRequest struct {
 	task *peertask.Task
 	err  error
+	done chan struct{}
 }
 
 func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 	rm.finishTask(ftr.task, ftr.err)
+	select {
+	case <-rm.ctx.Done():
+	case ftr.done <- struct{}{}:
+	}
 }
 
 type startTaskRequest struct {
