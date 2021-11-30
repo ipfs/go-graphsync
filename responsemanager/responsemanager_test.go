@@ -291,7 +291,6 @@ func TestValidationAndExtensions(t *testing.T) {
 		// request fails with base loader reading from block store that's missing data
 		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestFailedContentNotFound)
-		td.taskqueue.WaitForNoActiveTasks()
 
 		err := td.peristenceOptions.Register("chainstore", td.persistence)
 		require.NoError(t, err)
@@ -632,8 +631,6 @@ func TestValidationAndExtensions(t *testing.T) {
 				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 				td.verifyNResponses(blockCount)
 				td.assertPausedRequest()
-
-				td.taskqueue.WaitForNoActiveTasks()
 
 				// send update
 				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
@@ -1114,6 +1111,7 @@ func (td *testData) newQueryExecutor(manager queryexecutor.Manager) *queryexecut
 func (td *testData) assertPausedRequest() {
 	var pausedRequest pausedRequest
 	testutil.AssertReceive(td.ctx, td.t, td.pausedRequests, &pausedRequest, "should pause request")
+	td.taskqueue.WaitForNoActiveTasks()
 }
 
 func (td *testData) getAllBlocks() []blocks.Block {
@@ -1150,6 +1148,7 @@ func (td *testData) assertCompleteRequestWith(expectedCode graphsync.ResponseSta
 	var status graphsync.ResponseStatusCode
 	testutil.AssertReceive(td.ctx, td.t, td.completedResponseStatuses, &status, "should receive status")
 	require.Equal(td.t, expectedCode, status)
+	td.taskqueue.WaitForNoActiveTasks()
 }
 
 func (td *testData) assertOnlyCompleteProcessingWith(expectedCode graphsync.ResponseStatusCode) {
