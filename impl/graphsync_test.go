@@ -860,7 +860,7 @@ func TestNetworkDisconnect(t *testing.T) {
 		default:
 		}
 	})
-	requestCtx, requestCancel := context.WithTimeout(ctx, 2*time.Second)
+	requestCtx, requestCancel := context.WithTimeout(ctx, 1*time.Second)
 	defer requestCancel()
 	progressChan, errChan := requestor.Request(requestCtx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
@@ -908,7 +908,7 @@ func TestConnectFail(t *testing.T) {
 	blockChainLength := 100
 	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
-	requestCtx, requestCancel := context.WithTimeout(ctx, 2*time.Second)
+	requestCtx, requestCancel := context.WithTimeout(ctx, 1*time.Second)
 	defer requestCancel()
 
 	// unlink peers so they cannot communicate
