@@ -9,6 +9,10 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-peertaskqueue/peertracker"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
@@ -50,6 +54,7 @@ func (rm *ResponseManager) terminateRequest(key responseKey) {
 	rm.connManager.Unprotect(key.p, key.requestID.Tag())
 	delete(rm.inProgressResponses, key)
 	ipr.cancelFn()
+	ipr.span.End()
 }
 
 func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSyncRequest) {
@@ -58,6 +63,17 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		log.Warnf("received update for non existent request, peer %s, request ID %d", key.p.Pretty(), key.requestID)
 		return
 	}
+
+	_, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, response.span), "processUpdate", trace.WithAttributes(
+		attribute.Int("id", int(update.ID())),
+		attribute.Int("priority", int(update.Priority())),
+		attribute.String("root", update.Root().String()),
+		attribute.Bool("isCancel", update.IsCancel()),
+		attribute.Bool("isUpdate", update.IsUpdate()),
+		attribute.StringSlice("extensions", update.ExtensionNames()),
+	))
+	defer span.End()
+
 	if response.state != graphsync.Paused {
 		response.updates = append(response.updates, update)
 		select {
@@ -79,11 +95,15 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 	})
 	if result.Err != nil {
 		response.state = graphsync.CompletingSend
+		response.span.RecordError(result.Err)
+		response.span.SetStatus(codes.Error, result.Err.Error())
 		return
 	}
 	if result.Unpause {
 		err := rm.unpauseRequest(key.p, key.requestID)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, result.Err.Error())
 			log.Warnf("error unpausing request: %s", err.Error())
 		}
 	}
@@ -118,6 +138,13 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 	if !ok || response.state == graphsync.CompletingSend {
 		return errors.New("could not find request")
 	}
+
+	_, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, response.span), "abortRequest")
+	defer span.End()
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+	response.span.RecordError(err)
+	response.span.SetStatus(codes.Error, err.Error())
 
 	if response.state != graphsync.Running {
 		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
@@ -155,9 +182,17 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			rm.processUpdate(key, request)
 			continue
 		}
+		ctx, responseSpan := otel.Tracer("graphsync").Start(rm.ctx, "response", trace.WithAttributes(
+			attribute.Int("id", int(request.ID())),
+			attribute.Int("priority", int(request.Priority())),
+			attribute.String("root", request.Root().String()),
+			attribute.Bool("isCancel", request.IsCancel()),
+			attribute.Bool("isUpdate", request.IsUpdate()),
+			attribute.StringSlice("extensions", request.ExtensionNames()),
+		))
 		rm.connManager.Protect(p, request.ID().Tag())
 		rm.requestQueuedHooks.ProcessRequestQueuedHooks(p, request)
-		ctx, cancelFn := context.WithCancel(rm.ctx)
+		ctx, cancelFn := context.WithCancel(ctx)
 		sub := notifications.NewTopicDataSubscriber(&subscriber{
 			p:                     key.p,
 			request:               request,
@@ -176,6 +211,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
 				ctx:        ctx,
+				span:       responseSpan,
 				cancelFn:   cancelFn,
 				subscriber: sub,
 				request:    request,
@@ -204,6 +240,8 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.Respons
 		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.linkSystem, rm.maxLinksPerRequest}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
 		if err != nil {
 			response.state = graphsync.CompletingSend
+			response.span.RecordError(err)
+			response.span.SetStatus(codes.Error, err.Error())
 			return queryexecutor.ResponseTask{Empty: true}
 		}
 		response.loader = loader
@@ -216,6 +254,7 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.Respons
 	response.state = graphsync.Running
 	return queryexecutor.ResponseTask{
 		Ctx:        response.ctx,
+		Span:       response.span,
 		Empty:      false,
 		Subscriber: response.subscriber,
 		Request:    response.request,
@@ -249,6 +288,8 @@ func (rm *ResponseManager) finishTask(task *peertask.Task, err error) {
 	log.Infow("graphsync response processing complete (messages stil sending)", "request id", key.requestID, "peer", key.p, "total time", time.Since(response.startTime))
 
 	if err != nil {
+		response.span.RecordError(err)
+		response.span.SetStatus(codes.Error, err.Error())
 		log.Infof("response failed: %w", err)
 	}
 

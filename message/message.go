@@ -375,6 +375,15 @@ func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) ([]byte, boo
 	return val, true
 }
 
+// ExtensionNames returns the names of the extensions included in this request
+func (gsr GraphSyncRequest) ExtensionNames() []string {
+	var extNames []string
+	for ext := range gsr.extensions {
+		extNames = append(extNames, ext)
+	}
+	return extNames
+}
+
 // IsCancel returns true if this particular request is being cancelled
 func (gsr GraphSyncRequest) IsCancel() bool { return gsr.isCancel }
 
@@ -398,7 +407,15 @@ func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) ([]byte, bo
 		return nil, false
 	}
 	return val, true
+}
 
+// ExtensionNames returns the names of the extensions included in this request
+func (gsr GraphSyncResponse) ExtensionNames() []string {
+	var extNames []string
+	for ext := range gsr.extensions {
+		extNames = append(extNames, ext)
+	}
+	return extNames
 }
 
 // ReplaceExtensions merges the extensions given extensions into the request to create a new request,

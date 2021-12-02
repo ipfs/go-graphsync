@@ -305,7 +305,12 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 }
 
 // Request initiates a new GraphSync request to the given peer using the given selector spec.
-func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, selector ipld.Node, extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
+func (gs *GraphSync) Request(
+	ctx context.Context,
+	p peer.ID, root ipld.Link,
+	selector ipld.Node,
+	extensions ...graphsync.ExtensionData) (<-chan graphsync.ResponseProgress, <-chan error) {
+
 	var extNames []string
 	for _, ext := range extensions {
 		extNames = append(extNames, string(ext.Name))
@@ -477,7 +482,7 @@ func (gsr *graphSyncReceiver) graphSync() *GraphSync {
 	return (*GraphSync)(gsr)
 }
 
-// ReceiveMessage is part of the networks Receiver interface and receives
+// ReceiveMessage is part of the network's Receiver interface and receives
 // incoming messages from the network
 func (gsr *graphSyncReceiver) ReceiveMessage(
 	ctx context.Context,
