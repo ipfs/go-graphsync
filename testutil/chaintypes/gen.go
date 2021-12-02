@@ -1,14 +1,14 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
-	"os/exec"
-
 	"github.com/ipld/go-ipld-prime/schema"
 	gengo "github.com/ipld/go-ipld-prime/schema/gen/go"
 )
 
 func main() {
-
 	ts := schema.TypeSystem{}
 	ts.Init()
 	adjCfg := &gengo.AdjunctCfg{}
@@ -28,5 +28,4 @@ func main() {
 		schema.SpawnStructRepresentationMap(nil),
 	))
 	gengo.Generate(".", pkgName, ts, adjCfg)
-	_ = exec.Command("go", "fmt").Run()
 }
