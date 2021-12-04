@@ -458,6 +458,22 @@ func (gs *GraphSync) Stats() graphsync.Stats {
 	}
 }
 
+// PeerStats describes the state of graphsync for a given
+type PeerStats struct {
+	// OutgoingRequests
+	OutgoingRequests graphsync.RequestStates
+	// IncomingRequests
+	IncomingRequests graphsync.RequestStates
+}
+
+// PeerStats produces insight on the current state of a given peer
+func (gs *GraphSync) PeerStats(p peer.ID) PeerStats {
+	return PeerStats{
+		OutgoingRequests: gs.requestManager.PeerStats(p),
+		IncomingRequests: gs.responseManager.PeerStats(p),
+	}
+}
+
 type graphSyncReceiver GraphSync
 
 func (gsr *graphSyncReceiver) graphSync() *GraphSync {

@@ -95,7 +95,7 @@ func (rm *RequestManager) newRequest(parentSpan trace.Span, p peer.ID, root ipld
 		pauseMessages:    make(chan struct{}, 1),
 		doNotSendCids:    doNotSendCids,
 		request:          request,
-		state:            queued,
+		state:            graphsync.Queued,
 		nodeStyleChooser: hooksResult.CustomChooser,
 		inProgressChan:   make(chan graphsync.ResponseProgress),
 		inProgressErr:    make(chan error),
@@ -153,7 +153,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 		rm.outgoingRequestProcessingListeners.NotifyOutgoingRequestProcessingListeners(ipr.p, ipr.request, inProgressCount)
 	}
 
-	ipr.state = running
+	ipr.state = graphsync.Running
 	return executor.RequestTask{
 		Ctx:            ipr.ctx,
 		Span:           ipr.span,
@@ -223,7 +223,7 @@ func (rm *RequestManager) releaseRequestTask(p peer.ID, task *peertask.Task, err
 		return
 	}
 	if _, ok := err.(hooks.ErrPaused); ok {
-		ipr.state = paused
+		ipr.state = graphsync.Paused
 		return
 	}
 	log.Infow("graphsync request complete", "request id", requestID, "peer", ipr.p, "total time", time.Since(ipr.startTime))
@@ -253,7 +253,7 @@ func (rm *RequestManager) cancelOnError(requestID graphsync.RequestID, ipr *inPr
 	if ipr.terminalError == nil {
 		ipr.terminalError = terminalError
 	}
-	if ipr.state != running {
+	if ipr.state != graphsync.Running {
 		rm.terminateRequest(requestID, ipr)
 	} else {
 		ipr.cancelFn()
@@ -368,10 +368,10 @@ func (rm *RequestManager) unpause(id graphsync.RequestID, extensions []graphsync
 	if !ok {
 		return graphsync.RequestNotFoundErr{}
 	}
-	if inProgressRequestStatus.state != paused {
+	if inProgressRequestStatus.state != graphsync.Paused {
 		return errors.New("request is not paused")
 	}
-	inProgressRequestStatus.state = queued
+	inProgressRequestStatus.state = graphsync.Queued
 	inProgressRequestStatus.request = inProgressRequestStatus.request.ReplaceExtensions(extensions)
 	rm.requestQueue.PushTask(inProgressRequestStatus.p, peertask.Task{Topic: id, Priority: math.MaxInt32, Work: 1})
 	return nil
@@ -382,7 +382,7 @@ func (rm *RequestManager) pause(id graphsync.RequestID) error {
 	if !ok {
 		return graphsync.RequestNotFoundErr{}
 	}
-	if inProgressRequestStatus.state == paused {
+	if inProgressRequestStatus.state == graphsync.Paused {
 		return errors.New("request is already paused")
 	}
 	select {
@@ -390,4 +390,14 @@ func (rm *RequestManager) pause(id graphsync.RequestID) error {
 	default:
 	}
 	return nil
+}
+
+func (rm *RequestManager) peerStats(p peer.ID) graphsync.RequestStates {
+	peerStats := make(graphsync.RequestStates)
+	for id, ipr := range rm.inProgressRequestStatuses {
+		if ipr.p == p {
+			peerStats[id] = graphsync.RequestState(ipr.state)
+		}
+	}
+	return peerStats
 }

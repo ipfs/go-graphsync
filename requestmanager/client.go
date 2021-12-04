@@ -44,14 +44,6 @@ const (
 	defaultPriority = graphsync.Priority(0)
 )
 
-type state uint64
-
-const (
-	queued state = iota
-	running
-	paused
-)
-
 type inProgressRequestStatus struct {
 	ctx              context.Context
 	span             trace.Span
@@ -60,7 +52,7 @@ type inProgressRequestStatus struct {
 	p                peer.ID
 	terminalError    error
 	pauseMessages    chan struct{}
-	state            state
+	state            graphsync.RequestState
 	lastResponse     atomic.Value
 	onTerminated     []chan<- error
 	request          gsmsg.GraphSyncRequest
@@ -337,6 +329,18 @@ func (rm *RequestManager) ReleaseRequestTask(p peer.ID, task *peertask.Task, err
 	select {
 	case <-rm.ctx.Done():
 	case <-done:
+	}
+}
+
+// PeerStats gets stats on all outgoing requests for a given peer
+func (rm *RequestManager) PeerStats(p peer.ID) graphsync.RequestStates {
+	response := make(chan graphsync.RequestStates)
+	rm.send(&peerStatsMessage{p, response}, nil)
+	select {
+	case <-rm.ctx.Done():
+		return nil
+	case peerStats := <-response:
+		return peerStats
 	}
 }
 
