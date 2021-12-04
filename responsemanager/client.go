@@ -3,6 +3,7 @@ package responsemanager
 import (
 	"context"
 	"errors"
+	"time"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
@@ -36,6 +37,7 @@ type inProgressResponseStatus struct {
 	updates    []gsmsg.GraphSyncRequest
 	state      graphsync.RequestState
 	subscriber *notifications.TopicDataSubscriber
+	startTime  time.Time
 }
 
 type responseKey struct {

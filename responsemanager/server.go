@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"time"
 
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -155,6 +156,14 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			networkErrorListeners: rm.networkErrorListeners,
 			connManager:           rm.connManager,
 		})
+		log.Infow("graphsync request initiated", "request id", request.ID(), "peer", p, "root", request.Root())
+		ipr, ok := rm.inProgressResponses[key]
+		if ok && ipr.state == graphsync.Running {
+			// if we replace a running request, the signals and context will no longer work, meaning the request could get
+			// stuck indefinitely
+			log.Infof("there is an identical request already in progress", "request id", request.ID(), "peer", p)
+			continue
+		}
 
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
@@ -167,7 +176,8 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 					UpdateSignal: make(chan struct{}, 1),
 					ErrSignal:    make(chan error, 1),
 				},
-				state: graphsync.Queued,
+				state:     graphsync.Queued,
+				startTime: time.Now(),
 			}
 		// TODO: Use a better work estimation metric.
 
@@ -180,6 +190,8 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.Respons
 	if !hasResponse {
 		return queryexecutor.ResponseTask{Empty: true}
 	}
+	log.Infow("graphsync response processing begins", "request id", key.requestID, "peer", key.p, "total time", time.Since(response.startTime))
+
 	if response.loader == nil || response.traverser == nil {
 		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.linkSystem, rm.maxLinksPerRequest}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
 		if err != nil {
@@ -212,6 +224,7 @@ func (rm *ResponseManager) startTask(task *peertask.Task) queryexecutor.Response
 	if taskData.Empty {
 		rm.responseQueue.TaskDone(key.p, task)
 	}
+
 	return taskData
 }
 
@@ -226,6 +239,8 @@ func (rm *ResponseManager) finishTask(task *peertask.Task, err error) {
 		response.state = graphsync.Paused
 		return
 	}
+	log.Infow("graphsync response processing complete (messages stil sending)", "request id", key.requestID, "peer", key.p, "total time", time.Since(response.startTime))
+
 	if err != nil {
 		log.Infof("response failed: %w", err)
 	}
