@@ -1,6 +1,7 @@
 package cidsets
 
 import (
+	"context"
 	"sync"
 
 	"github.com/ipfs/go-cid"
@@ -77,12 +78,13 @@ func NewCIDSet(ds datastore.Batching) *cidSet {
 // Insert a CID into the set.
 // Returns true if the the CID was already in the set.
 func (s *cidSet) Insert(c cid.Cid) (exists bool, err error) {
+	ctx := context.TODO()
 	s.lk.Lock()
 	defer s.lk.Unlock()
 
 	// Check if the key is in the set already
 	k := datastore.NewKey(c.String())
-	has, err := s.ds.Has(k)
+	has, err := s.ds.Has(ctx, k)
 	if err != nil {
 		return false, err
 	}
@@ -98,7 +100,7 @@ func (s *cidSet) Insert(c cid.Cid) (exists bool, err error) {
 	}
 
 	// Add the new CID to the set
-	err = s.ds.Put(k, nil)
+	err = s.ds.Put(ctx, k, nil)
 	if err != nil {
 		return false, err
 	}
@@ -118,13 +120,15 @@ func (s *cidSet) Len() (int, error) {
 }
 
 func (s *cidSet) unlockedLen() (int, error) {
+	ctx := context.TODO()
+
 	// If the length is already cached, return it
 	if s.len >= 0 {
 		return s.len, nil
 	}
 
 	// Query the datastore for all keys
-	res, err := s.ds.Query(query.Query{KeysOnly: true})
+	res, err := s.ds.Query(ctx, query.Query{KeysOnly: true})
 	if err != nil {
 		return 0, err
 	}
@@ -142,10 +146,12 @@ func (s *cidSet) unlockedLen() (int, error) {
 
 // Get all cids in the set as an array
 func (s *cidSet) ToArray() ([]cid.Cid, error) {
+	ctx := context.TODO()
+
 	s.lk.Lock()
 	defer s.lk.Unlock()
 
-	res, err := s.ds.Query(query.Query{KeysOnly: true})
+	res, err := s.ds.Query(ctx, query.Query{KeysOnly: true})
 	if err != nil {
 		return nil, err
 	}
@@ -175,11 +181,13 @@ func (s *cidSet) ToArray() ([]cid.Cid, error) {
 
 // Truncate removes all CIDs in the set
 func (s *cidSet) Truncate() error {
+	ctx := context.TODO()
+
 	s.lk.Lock()
 	defer s.lk.Unlock()
 
 	// Get all keys in the datastore
-	res, err := s.ds.Query(query.Query{KeysOnly: true})
+	res, err := s.ds.Query(ctx, query.Query{KeysOnly: true})
 	if err != nil {
 		return err
 	}
@@ -190,21 +198,21 @@ func (s *cidSet) Truncate() error {
 	}
 
 	// Create a batch to perform all deletes as one operation
-	batched, err := s.ds.Batch()
+	batched, err := s.ds.Batch(ctx)
 	if err != nil {
 		return err
 	}
 
 	// Add delete operations for each key to the batch
 	for _, entry := range entries {
-		err := batched.Delete(datastore.NewKey(entry.Key))
+		err := batched.Delete(ctx, datastore.NewKey(entry.Key))
 		if err != nil {
 			return err
 		}
 	}
 
 	// Commit the batch
-	err = batched.Commit()
+	err = batched.Commit(ctx)
 	if err != nil {
 		return err
 	}

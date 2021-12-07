@@ -490,7 +490,7 @@ func TestMigrationsV0(t *testing.T) {
 		buf := new(bytes.Buffer)
 		err = channel.MarshalCBOR(buf)
 		require.NoError(t, err)
-		err = ds.Put(datastore.NewKey(datatransfer.ChannelID{
+		err = ds.Put(ctx, datastore.NewKey(datatransfer.ChannelID{
 			Initiator: initiators[i],
 			Responder: responders[i],
 			ID:        transferIDs[i],
@@ -622,7 +622,7 @@ func TestMigrationsV1(t *testing.T) {
 		buf := new(bytes.Buffer)
 		err = channel.MarshalCBOR(buf)
 		require.NoError(t, err)
-		err = vds.Put(datastore.NewKey(datatransfer.ChannelID{
+		err = vds.Put(ctx, datastore.NewKey(datatransfer.ChannelID{
 			Initiator: initiators[i],
 			Responder: responders[i],
 			ID:        transferIDs[i],
