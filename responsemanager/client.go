@@ -26,14 +26,6 @@ import (
 
 var log = logging.Logger("graphsync")
 
-type state uint64
-
-const (
-	queued state = iota
-	running
-	paused
-)
-
 type inProgressResponseStatus struct {
 	ctx        context.Context
 	cancelFn   func()
@@ -42,7 +34,7 @@ type inProgressResponseStatus struct {
 	traverser  ipldutil.Traverser
 	signals    queryexecutor.ResponseSignals
 	updates    []gsmsg.GraphSyncRequest
-	state      state
+	state      graphsync.RequestState
 	subscriber *notifications.TopicDataSubscriber
 }
 
@@ -235,6 +227,18 @@ func (rm *ResponseManager) FinishTask(task *peertask.Task, err error) {
 // CloseWithNetworkError closes a request due to a network error
 func (rm *ResponseManager) CloseWithNetworkError(p peer.ID, requestID graphsync.RequestID) {
 	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrNetworkError, make(chan error, 1)}, nil)
+}
+
+// PeerStats gets stats on all outgoing requests for a given peer
+func (rm *ResponseManager) PeerStats(p peer.ID) graphsync.RequestStates {
+	response := make(chan graphsync.RequestStates)
+	rm.send(&peerStatsMessage{p, response}, nil)
+	select {
+	case <-rm.ctx.Done():
+		return nil
+	case peerStats := <-response:
+		return peerStats
+	}
 }
 
 func (rm *ResponseManager) send(message responseManagerMessage, done <-chan struct{}) {

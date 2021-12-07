@@ -162,6 +162,28 @@ func TestEarlyCancellation(t *testing.T) {
 	td.assertNoResponses()
 	td.connManager.RefuteProtected(t, td.p)
 }
+
+func TestStats(t *testing.T) {
+	td := newTestData(t)
+	defer td.cancel()
+	// we're not testing the queryexeuctor or taskqueue here, we're testing
+	// that cancellation inside the responsemanager itself is properly
+	// activated, so we won't let responses get far enough to race our
+	// cancellation
+	responseManager := td.nullTaskQueueResponseManager()
+	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
+	responseManager.Startup()
+	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+	p2 := testutil.GeneratePeers(1)[0]
+	responseManager.ProcessRequests(td.ctx, p2, td.requests)
+	stats := responseManager.PeerStats(td.p)
+	require.Len(t, stats, 1)
+	require.Equal(t, stats[td.requestID], graphsync.Queued)
+	stats = responseManager.PeerStats(p2)
+	require.Len(t, stats, 1)
+	require.Equal(t, stats[td.requestID], graphsync.Queued)
+
+}
 func TestMissingContent(t *testing.T) {
 	t.Run("missing root block", func(t *testing.T) {
 		td := newTestData(t)

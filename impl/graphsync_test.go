@@ -588,6 +588,14 @@ func TestPauseResume(t *testing.T) {
 	timer := time.NewTimer(100 * time.Millisecond)
 	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
 
+	requestorPeerStats := requestor.(*GraphSync).PeerStats(td.host2.ID())
+	require.Len(t, requestorPeerStats.OutgoingRequests, 1)
+	require.Len(t, requestorPeerStats.IncomingRequests, 0)
+
+	responderPeerStats := responder.(*GraphSync).PeerStats(td.host1.ID())
+	require.Len(t, responderPeerStats.IncomingRequests, 1)
+	require.Len(t, responderPeerStats.OutgoingRequests, 0)
+
 	requestID := <-requestIDChan
 	err := responder.UnpauseResponse(td.host1.ID(), requestID)
 	require.NoError(t, err)

@@ -113,3 +113,16 @@ func (str *startTaskRequest) handle(rm *ResponseManager) {
 func (prm *processRequestMessage) handle(rm *ResponseManager) {
 	rm.processRequests(prm.p, prm.requests)
 }
+
+type peerStatsMessage struct {
+	p             peer.ID
+	peerStatsChan chan<- graphsync.RequestStates
+}
+
+func (psm *peerStatsMessage) handle(rm *ResponseManager) {
+	peerStats := rm.peerStats(psm.p)
+	select {
+	case psm.peerStatsChan <- peerStats:
+	case <-rm.ctx.Done():
+	}
+}

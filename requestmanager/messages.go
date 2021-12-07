@@ -108,3 +108,16 @@ func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	case <-rm.ctx.Done():
 	}
 }
+
+type peerStatsMessage struct {
+	p             peer.ID
+	peerStatsChan chan<- graphsync.RequestStates
+}
+
+func (psm *peerStatsMessage) handle(rm *RequestManager) {
+	peerStats := rm.peerStats(psm.p)
+	select {
+	case psm.peerStatsChan <- peerStats:
+	case <-rm.ctx.Done():
+	}
+}
