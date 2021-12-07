@@ -994,7 +994,7 @@ func TestStats(t *testing.T) {
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 3)
 
-	states := td.requestManager.peerStats(peers[0])
+	states := td.requestManager.PeerStats(peers[0])
 	require.Len(t, states, 2)
 	require.Equal(t, states[requestRecords[0].gsr.ID()], graphsync.Running)
 	require.Equal(t, states[requestRecords[1].gsr.ID()], graphsync.Running)
