@@ -159,10 +159,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 		log.Infow("graphsync request initiated", "request id", request.ID(), "peer", p, "root", request.Root())
 		ipr, ok := rm.inProgressResponses[key]
 		if ok && ipr.state == graphsync.Running {
-			// if we replace a running request, the signals and context will no longer work, meaning the request could get
-			// stuck indefinitely
-			log.Infof("there is an identical request already in progress", "request id", request.ID(), "peer", p)
-			continue
+			log.Warnf("there is an identical request already in progress", "request id", request.ID(), "peer", p)
 		}
 
 		rm.inProgressResponses[key] =
