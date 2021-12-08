@@ -15,6 +15,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
@@ -231,15 +232,15 @@ func (rm *ResponseManager) CloseWithNetworkError(p peer.ID, requestID graphsync.
 	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrNetworkError, make(chan error, 1)}, nil)
 }
 
-// PeerStats gets stats on all outgoing requests for a given peer
-func (rm *ResponseManager) PeerStats(p peer.ID) graphsync.RequestStates {
-	response := make(chan graphsync.RequestStates)
-	rm.send(&peerStatsMessage{p, response}, nil)
+// PeerState gets current state of the outgoing responses for a given peer
+func (rm *ResponseManager) PeerState(p peer.ID) peerstate.PeerState {
+	response := make(chan peerstate.PeerState)
+	rm.send(&peerStateMessage{p, response}, nil)
 	select {
 	case <-rm.ctx.Done():
-		return nil
-	case peerStats := <-response:
-		return peerStats
+		return peerstate.PeerState{}
+	case peerState := <-response:
+		return peerState
 	}
 }
 

@@ -2,13 +2,10 @@ package graphsync
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue"
-	"github.com/ipfs/go-peertaskqueue/peertask"
-	"github.com/ipfs/go-peertaskqueue/peertracker"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"go.opentelemetry.io/otel"
@@ -22,6 +19,7 @@ import (
 	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/peermanager"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/requestmanager"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
@@ -461,99 +459,18 @@ func (gs *GraphSync) Stats() graphsync.Stats {
 	}
 }
 
-// TaskQueueStatus describes the the set of requests for a given peer in a task queue
-type TaskQueueStatus struct {
-	Active  []graphsync.RequestID
-	Pending []graphsync.RequestID
+// PeerState describes the state of graphsync for a given peer
+type PeerState struct {
+	OutgoingState peerstate.PeerState
+	IncomingState peerstate.PeerState
 }
 
-func fromPeerTopics(pt *peertracker.PeerTrackerTopics, toRequestID func(peertask.Topic) graphsync.RequestID) TaskQueueStatus {
-	if pt == nil {
-		return TaskQueueStatus{}
+// PeerState produces insight on the current state of a given peer
+func (gs *GraphSync) PeerState(p peer.ID) PeerState {
+	return PeerState{
+		OutgoingState: gs.requestManager.PeerState(p),
+		IncomingState: gs.responseManager.PeerState(p),
 	}
-	active := make([]graphsync.RequestID, 0, len(pt.Active))
-	for _, topic := range pt.Active {
-		active = append(active, toRequestID(topic))
-	}
-	pending := make([]graphsync.RequestID, 0, len(pt.Pending))
-	for _, topic := range pt.Pending {
-		pending = append(pending, toRequestID(topic))
-	}
-	return TaskQueueStatus{
-		Active:  active,
-		Pending: pending,
-	}
-}
-
-// PeerStats describes the state of graphsync for a given
-type PeerStats struct {
-	// OutgoingRequests
-	OutgoingRequests graphsync.RequestStates
-	// OutgoingTaskQueue is set of requests for this peer in the outgoing task queue
-	OutgoingTaskQueue TaskQueueStatus
-	// IncomingRequests
-	IncomingRequests graphsync.RequestStates
-	// IncomingTaskQueue is set of requests for this peer in the incoming task queue
-	IncomingTaskQueue TaskQueueStatus
-}
-
-// PeerStats produces insight on the current state of a given peer
-func (gs *GraphSync) PeerStats(p peer.ID) PeerStats {
-	return PeerStats{
-		OutgoingRequests:  gs.requestManager.PeerStats(p),
-		OutgoingTaskQueue: fromPeerTopics(gs.requestQueue.PeerTopics(p), requestmanager.RequestIDFromTaskTopic),
-		IncomingRequests:  gs.responseManager.PeerStats(p),
-		IncomingTaskQueue: fromPeerTopics(gs.responseQueue.PeerTopics(p), responsemanager.RequestIDFromTaskTopic),
-	}
-}
-
-// QueueDiagnostics compares request states with the current state of the task queue to identify unexpected
-// states or inconsistences between the tracked task queue and the tracked requests
-func QueueDiagnostics(requestStates graphsync.RequestStates, taskQueueStatus TaskQueueStatus) map[graphsync.RequestID]string {
-	matchedActiveQueue := make(map[graphsync.RequestID]struct{}, len(requestStates))
-	matchedPendingQueue := make(map[graphsync.RequestID]struct{}, len(requestStates))
-	diagnostics := make(map[graphsync.RequestID]string)
-	for _, id := range taskQueueStatus.Active {
-		status, ok := requestStates[id]
-		if ok {
-			matchedActiveQueue[id] = struct{}{}
-			if status != graphsync.Running {
-				diagnostics[id] = fmt.Sprintf("expected request with id %d in active task queue to be in running state, but was %s", id, status)
-			}
-		} else {
-			diagnostics[id] = fmt.Sprintf("request with id %d in active task queue but appears to have no tracked state", id)
-		}
-	}
-	for _, id := range taskQueueStatus.Pending {
-		status, ok := requestStates[id]
-		if ok {
-			matchedPendingQueue[id] = struct{}{}
-			if status != graphsync.Queued {
-				diagnostics[id] = fmt.Sprintf("expected request with id %d in pending task queue to be in queued state, but was %s", id, status)
-			}
-		} else {
-			diagnostics[id] = fmt.Sprintf("request with id %d in pending task queue but appears to have no tracked state", id)
-		}
-	}
-	for id, state := range requestStates {
-		if state == graphsync.Running {
-			if _, ok := matchedActiveQueue[id]; !ok {
-				// prefer message over being in incorrect state if present over being missing from queue
-				if _, ok := diagnostics[id]; !ok {
-					diagnostics[id] = fmt.Sprintf("request with id %d in running state is not in the active task queue", id)
-				}
-			}
-		}
-		if state == graphsync.Queued {
-			if _, ok := matchedPendingQueue[id]; !ok {
-				// prefer message over being in incorrect state if present over being missing from queue
-				if _, ok := diagnostics[id]; !ok {
-					diagnostics[id] = fmt.Sprintf("request with id %d in queued state is not in the pending task queue", id)
-				}
-			}
-		}
-	}
-	return diagnostics
 }
 
 type graphSyncReceiver GraphSync
