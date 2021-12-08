@@ -11,6 +11,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	"github.com/ipfs/go-peertaskqueue/peertracker"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
@@ -1286,9 +1287,10 @@ func (td *testData) assertHasNetworkErrors(err error) {
 
 type nullTaskQueue struct{}
 
-func (ntq nullTaskQueue) PushTask(p peer.ID, task peertask.Task)  {}
-func (ntq nullTaskQueue) TaskDone(p peer.ID, task *peertask.Task) {}
-func (ntq nullTaskQueue) Remove(t peertask.Topic, p peer.ID)      {}
-func (ntq nullTaskQueue) Stats() graphsync.RequestStats           { return graphsync.RequestStats{} }
+func (ntq nullTaskQueue) PushTask(p peer.ID, task peertask.Task)              {}
+func (ntq nullTaskQueue) TaskDone(p peer.ID, task *peertask.Task)             {}
+func (ntq nullTaskQueue) Remove(t peertask.Topic, p peer.ID)                  {}
+func (ntq nullTaskQueue) Stats() graphsync.RequestStats                       { return graphsync.RequestStats{} }
+func (ntq nullTaskQueue) PeerTopics(p peer.ID) *peertracker.PeerTrackerTopics { return nil }
 
 var _ taskqueue.TaskQueue = nullTaskQueue{}
