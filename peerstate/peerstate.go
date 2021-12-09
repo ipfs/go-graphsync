@@ -21,19 +21,19 @@ type PeerState struct {
 
 // Diagnostics compares request states with the current state of the task queue to identify unexpected
 // states or inconsistences between the tracked task queue and the tracked requests
-func (ps PeerState) Diagnostics() map[graphsync.RequestID]string {
+func (ps PeerState) Diagnostics() map[graphsync.RequestID][]string {
 	matchedActiveQueue := make(map[graphsync.RequestID]struct{}, len(ps.RequestStates))
 	matchedPendingQueue := make(map[graphsync.RequestID]struct{}, len(ps.RequestStates))
-	diagnostics := make(map[graphsync.RequestID]string)
+	diagnostics := make(map[graphsync.RequestID][]string)
 	for _, id := range ps.TaskQueueState.Active {
 		status, ok := ps.RequestStates[id]
 		if ok {
 			matchedActiveQueue[id] = struct{}{}
 			if status != graphsync.Running {
-				diagnostics[id] = fmt.Sprintf("expected request with id %d in active task queue to be in running state, but was %s", id, status)
+				diagnostics[id] = append(diagnostics[id], fmt.Sprintf("expected request with id %d in active task queue to be in running state, but was %s", id, status))
 			}
 		} else {
-			diagnostics[id] = fmt.Sprintf("request with id %d in active task queue but appears to have no tracked state", id)
+			diagnostics[id] = append(diagnostics[id], fmt.Sprintf("request with id %d in active task queue but appears to have no tracked state", id))
 		}
 	}
 	for _, id := range ps.TaskQueueState.Pending {
@@ -41,27 +41,21 @@ func (ps PeerState) Diagnostics() map[graphsync.RequestID]string {
 		if ok {
 			matchedPendingQueue[id] = struct{}{}
 			if status != graphsync.Queued {
-				diagnostics[id] = fmt.Sprintf("expected request with id %d in pending task queue to be in queued state, but was %s", id, status)
+				diagnostics[id] = append(diagnostics[id], fmt.Sprintf("expected request with id %d in pending task queue to be in queued state, but was %s", id, status))
 			}
 		} else {
-			diagnostics[id] = fmt.Sprintf("request with id %d in pending task queue but appears to have no tracked state", id)
+			diagnostics[id] = append(diagnostics[id], fmt.Sprintf("request with id %d in pending task queue but appears to have no tracked state", id))
 		}
 	}
 	for id, state := range ps.RequestStates {
 		if state == graphsync.Running {
 			if _, ok := matchedActiveQueue[id]; !ok {
-				// prefer message over being in incorrect state if present over being missing from queue
-				if _, ok := diagnostics[id]; !ok {
-					diagnostics[id] = fmt.Sprintf("request with id %d in running state is not in the active task queue", id)
-				}
+				diagnostics[id] = append(diagnostics[id], fmt.Sprintf("request with id %d in running state is not in the active task queue", id))
 			}
 		}
 		if state == graphsync.Queued {
 			if _, ok := matchedPendingQueue[id]; !ok {
-				// prefer message over being in incorrect state if present over being missing from queue
-				if _, ok := diagnostics[id]; !ok {
-					diagnostics[id] = fmt.Sprintf("request with id %d in queued state is not in the pending task queue", id)
-				}
+				diagnostics[id] = append(diagnostics[id], fmt.Sprintf("request with id %d in queued state is not in the pending task queue", id))
 			}
 		}
 	}

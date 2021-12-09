@@ -18,7 +18,7 @@ func TestDiagnostics(t *testing.T) {
 	testCases := map[string]struct {
 		requestStates       graphsync.RequestStates
 		queueStats          peerstate.TaskQueueState
-		expectedDiagnostics map[graphsync.RequestID]string
+		expectedDiagnostics map[graphsync.RequestID][]string
 	}{
 		"all requests and queue match": {
 			requestStates: graphsync.RequestStates{
@@ -32,7 +32,7 @@ func TestDiagnostics(t *testing.T) {
 				Active:  []graphsync.RequestID{requestIDs[0], requestIDs[1]},
 				Pending: []graphsync.RequestID{requestIDs[2], requestIDs[3]},
 			},
-			expectedDiagnostics: map[graphsync.RequestID]string{},
+			expectedDiagnostics: map[graphsync.RequestID][]string{},
 		},
 		"active task with with incorrect state": {
 			requestStates: graphsync.RequestStates{
@@ -46,9 +46,9 @@ func TestDiagnostics(t *testing.T) {
 				Active:  []graphsync.RequestID{requestIDs[0], requestIDs[1], requestIDs[4]},
 				Pending: []graphsync.RequestID{requestIDs[2], requestIDs[3]},
 			},
-			expectedDiagnostics: map[graphsync.RequestID]string{
-				requestIDs[1]: fmt.Sprintf("expected request with id %d in active task queue to be in running state, but was queued", requestIDs[1]),
-				requestIDs[4]: fmt.Sprintf("expected request with id %d in active task queue to be in running state, but was paused", requestIDs[4]),
+			expectedDiagnostics: map[graphsync.RequestID][]string{
+				requestIDs[1]: {fmt.Sprintf("expected request with id %d in active task queue to be in running state, but was queued", requestIDs[1]), fmt.Sprintf("request with id %d in queued state is not in the pending task queue", requestIDs[1])},
+				requestIDs[4]: {fmt.Sprintf("expected request with id %d in active task queue to be in running state, but was paused", requestIDs[4])},
 			},
 		},
 		"active task with no state": {
@@ -62,8 +62,8 @@ func TestDiagnostics(t *testing.T) {
 				Active:  []graphsync.RequestID{requestIDs[0], requestIDs[1]},
 				Pending: []graphsync.RequestID{requestIDs[2], requestIDs[3]},
 			},
-			expectedDiagnostics: map[graphsync.RequestID]string{
-				requestIDs[1]: fmt.Sprintf("request with id %d in active task queue but appears to have no tracked state", requestIDs[1]),
+			expectedDiagnostics: map[graphsync.RequestID][]string{
+				requestIDs[1]: {fmt.Sprintf("request with id %d in active task queue but appears to have no tracked state", requestIDs[1])},
 			},
 		},
 		"pending task with with incorrect state": {
@@ -78,9 +78,9 @@ func TestDiagnostics(t *testing.T) {
 				Active:  []graphsync.RequestID{requestIDs[0], requestIDs[1]},
 				Pending: []graphsync.RequestID{requestIDs[2], requestIDs[3], requestIDs[4]},
 			},
-			expectedDiagnostics: map[graphsync.RequestID]string{
-				requestIDs[3]: fmt.Sprintf("expected request with id %d in pending task queue to be in queued state, but was running", requestIDs[3]),
-				requestIDs[4]: fmt.Sprintf("expected request with id %d in pending task queue to be in queued state, but was paused", requestIDs[4]),
+			expectedDiagnostics: map[graphsync.RequestID][]string{
+				requestIDs[3]: {fmt.Sprintf("expected request with id %d in pending task queue to be in queued state, but was running", requestIDs[3]), fmt.Sprintf("request with id %d in running state is not in the active task queue", requestIDs[3])},
+				requestIDs[4]: {fmt.Sprintf("expected request with id %d in pending task queue to be in queued state, but was paused", requestIDs[4])},
 			},
 		},
 		"pending task with no state": {
@@ -94,8 +94,8 @@ func TestDiagnostics(t *testing.T) {
 				Active:  []graphsync.RequestID{requestIDs[0], requestIDs[1]},
 				Pending: []graphsync.RequestID{requestIDs[2], requestIDs[3]},
 			},
-			expectedDiagnostics: map[graphsync.RequestID]string{
-				requestIDs[3]: fmt.Sprintf("request with id %d in pending task queue but appears to have no tracked state", requestIDs[3]),
+			expectedDiagnostics: map[graphsync.RequestID][]string{
+				requestIDs[3]: {fmt.Sprintf("request with id %d in pending task queue but appears to have no tracked state", requestIDs[3])},
 			},
 		},
 		"request state running with no active task": {
@@ -110,8 +110,8 @@ func TestDiagnostics(t *testing.T) {
 				Active:  []graphsync.RequestID{requestIDs[0]},
 				Pending: []graphsync.RequestID{requestIDs[2], requestIDs[3]},
 			},
-			expectedDiagnostics: map[graphsync.RequestID]string{
-				requestIDs[1]: fmt.Sprintf("request with id %d in running state is not in the active task queue", requestIDs[1]),
+			expectedDiagnostics: map[graphsync.RequestID][]string{
+				requestIDs[1]: {fmt.Sprintf("request with id %d in running state is not in the active task queue", requestIDs[1])},
 			},
 		},
 		"request state queued with no pending task": {
@@ -126,8 +126,8 @@ func TestDiagnostics(t *testing.T) {
 				Active:  []graphsync.RequestID{requestIDs[0], requestIDs[1]},
 				Pending: []graphsync.RequestID{requestIDs[2]},
 			},
-			expectedDiagnostics: map[graphsync.RequestID]string{
-				requestIDs[3]: fmt.Sprintf("request with id %d in queued state is not in the pending task queue", requestIDs[3]),
+			expectedDiagnostics: map[graphsync.RequestID][]string{
+				requestIDs[3]: {fmt.Sprintf("request with id %d in queued state is not in the pending task queue", requestIDs[3])},
 			},
 		},
 	}
