@@ -246,6 +246,16 @@ func TestManager(t *testing.T) {
 				require.True(t, gsData.incomingRequestHookActions.Validated)
 				assertHasExtensionMessage(t, extension.ExtensionDataTransfer1_1, gsData.incomingRequestHookActions.SentExtensions, events.RequestReceivedResponse)
 				require.NoError(t, gsData.incomingRequestHookActions.TerminationError)
+
+				channelsForPeer := gsData.transport.ChannelsForPeer(gsData.other)
+				require.Equal(t, channelsForPeer, ChannelsForPeer{
+					SendingChannels: map[datatransfer.ChannelID]ChannelGraphsyncRequests{
+						events.RequestReceivedChannelID: {
+							Current: gsData.request.ID(),
+						},
+					},
+					ReceivingChannels: map[datatransfer.ChannelID]ChannelGraphsyncRequests{},
+				})
 			},
 		},
 		"incoming gs request with recognized dt response will validate gs request": {
@@ -763,6 +773,36 @@ func TestManager(t *testing.T) {
 				require.EqualValues(t, blockCount, 2)
 			},
 		},
+		"ChannelsForPeer when request is open": {
+			action: func(gsData *harness) {
+				cids := testutil.GenerateCids(2)
+				channel := &mockChannelState{receivedCids: cids}
+				stor, _ := gsData.outgoing.Selector()
+
+				go gsData.outgoingRequestHook()
+				_ = gsData.transport.OpenChannel(
+					gsData.ctx,
+					gsData.other,
+					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
+					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
+					stor,
+					channel,
+					gsData.outgoing)
+			},
+			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
+				gsData.fgs.AssertRequestReceived(gsData.ctx, t)
+
+				channelsForPeer := gsData.transport.ChannelsForPeer(gsData.other)
+				require.Equal(t, channelsForPeer, ChannelsForPeer{
+					ReceivingChannels: map[datatransfer.ChannelID]ChannelGraphsyncRequests{
+						events.ChannelOpenedChannelID: {
+							Current: gsData.request.ID(),
+						},
+					},
+					SendingChannels: map[datatransfer.ChannelID]ChannelGraphsyncRequests{},
+				})
+			},
+		},
 		"open channel cancels an existing request with the same channel ID": {
 			action: func(gsData *harness) {
 				cids := testutil.GenerateCids(2)
@@ -778,7 +818,7 @@ func TestManager(t *testing.T) {
 					channel,
 					gsData.outgoing)
 
-				go gsData.outgoingRequestHook()
+				go gsData.altOutgoingRequestHook()
 				_ = gsData.transport.OpenChannel(
 					gsData.ctx,
 					gsData.other,
@@ -795,6 +835,17 @@ func TestManager(t *testing.T) {
 				ctxt, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
 				gsData.fgs.AssertCancelRequestReceived(ctxt, t)
+
+				channelsForPeer := gsData.transport.ChannelsForPeer(gsData.other)
+				require.Equal(t, channelsForPeer, ChannelsForPeer{
+					ReceivingChannels: map[datatransfer.ChannelID]ChannelGraphsyncRequests{
+						events.ChannelOpenedChannelID: {
+							Current:  gsData.altRequest.ID(),
+							Previous: []graphsync.RequestID{gsData.request.ID()},
+						},
+					},
+					SendingChannels: map[datatransfer.ChannelID]ChannelGraphsyncRequests{},
+				})
 			},
 		},
 		"OnChannelCompleted called when outgoing request completes successfully": {
@@ -1032,6 +1083,7 @@ func TestManager(t *testing.T) {
 			transferID := datatransfer.TransferID(rand.Uint64())
 			requestID := graphsync.RequestID(rand.Int31())
 			request := data.requestConfig.makeRequest(t, transferID, requestID)
+			altRequest := data.requestConfig.makeRequest(t, transferID, graphsync.RequestID(rand.Int31()))
 			response := data.responseConfig.makeResponse(t, transferID, requestID)
 			updatedRequest := data.updatedConfig.makeRequest(t, transferID, requestID)
 			block := testutil.NewFakeBlockData()
@@ -1054,6 +1106,7 @@ func TestManager(t *testing.T) {
 				self:                        peers[0],
 				transferID:                  transferID,
 				other:                       peers[1],
+				altRequest:                  altRequest,
 				request:                     request,
 				response:                    response,
 				updatedRequest:              updatedRequest,
@@ -1196,6 +1249,7 @@ type harness struct {
 	other                       peer.ID
 	block                       graphsync.BlockData
 	request                     graphsync.RequestData
+	altRequest                  graphsync.RequestData
 	response                    graphsync.ResponseData
 	updatedRequest              graphsync.RequestData
 	outgoingRequestHookActions  *testutil.FakeOutgoingRequestHookActions
@@ -1209,12 +1263,18 @@ type harness struct {
 func (ha *harness) outgoingRequestHook() {
 	ha.fgs.OutgoingRequestHook(ha.other, ha.request, ha.outgoingRequestHookActions)
 }
+
+func (ha *harness) altOutgoingRequestHook() {
+	ha.fgs.OutgoingRequestHook(ha.other, ha.altRequest, ha.outgoingRequestHookActions)
+}
+
 func (ha *harness) incomingBlockHook() {
 	ha.fgs.IncomingBlockHook(ha.other, ha.response, ha.block, ha.incomingBlockHookActions)
 }
 func (ha *harness) outgoingBlockHook() {
 	ha.fgs.OutgoingBlockHook(ha.other, ha.request, ha.block, ha.outgoingBlockHookActions)
 }
+
 func (ha *harness) incomingRequestHook() {
 	ha.fgs.IncomingRequestHook(ha.other, ha.request, ha.incomingRequestHookActions)
 }

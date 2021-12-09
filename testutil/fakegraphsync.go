@@ -422,6 +422,11 @@ func (fgs *FakeGraphSync) Stats() graphsync.Stats {
 	return graphsync.Stats{}
 }
 
+func (fgs *FakeGraphSync) RegisterOutgoingRequestProcessingListener(graphsync.OnOutgoingRequestProcessingListener) graphsync.UnregisterHookFunc {
+	// TODO: just a stub for now, hopefully nobody needs this
+	return func() {}
+}
+
 var _ graphsync.GraphExchange = &FakeGraphSync{}
 
 type fakeBlkData struct {
