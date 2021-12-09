@@ -25,12 +25,13 @@ type TaskQueue interface {
 	TaskDone(p peer.ID, task *peertask.Task)
 	Remove(t peertask.Topic, p peer.ID)
 	Stats() graphsync.RequestStats
-	PeerTopics(p peer.ID) *peertracker.PeerTrackerTopics
+	WithPeerTopics(p peer.ID, f func(*peertracker.PeerTrackerTopics))
 }
 
 // WorkerTaskQueue is a wrapper around peertaskqueue.PeerTaskQueue that manages running workers
 // that pop tasks and execute them
 type WorkerTaskQueue struct {
+	lockTopics sync.Mutex
 	*peertaskqueue.PeerTaskQueue
 	ctx         context.Context
 	cancelFn    func()
@@ -55,7 +56,9 @@ func NewTaskQueue(ctx context.Context) *WorkerTaskQueue {
 
 // PushTask pushes a new task on to the queue
 func (tq *WorkerTaskQueue) PushTask(p peer.ID, task peertask.Task) {
+	tq.lockTopics.Lock()
 	tq.PeerTaskQueue.PushTasks(p, task)
+	tq.lockTopics.Unlock()
 	select {
 	case tq.workSignal <- struct{}{}:
 	default:
@@ -64,17 +67,28 @@ func (tq *WorkerTaskQueue) PushTask(p peer.ID, task peertask.Task) {
 
 // TaskDone marks a task as completed so further tasks can be executed
 func (tq *WorkerTaskQueue) TaskDone(p peer.ID, task *peertask.Task) {
+	tq.lockTopics.Lock()
 	tq.PeerTaskQueue.TasksDone(p, task)
+	tq.lockTopics.Unlock()
 }
 
 // Stats returns statistics about a task queue
 func (tq *WorkerTaskQueue) Stats() graphsync.RequestStats {
+	tq.lockTopics.Lock()
 	ptqstats := tq.PeerTaskQueue.Stats()
+	tq.lockTopics.Unlock()
 	return graphsync.RequestStats{
 		TotalPeers: uint64(ptqstats.NumPeers),
 		Active:     uint64(ptqstats.NumActive),
 		Pending:    uint64(ptqstats.NumPending),
 	}
+}
+
+func (tq *WorkerTaskQueue) WithPeerTopics(p peer.ID, withPeerTopics func(*peertracker.PeerTrackerTopics)) {
+	tq.lockTopics.Lock()
+	peerTopics := tq.PeerTaskQueue.PeerTopics(p)
+	withPeerTopics(peerTopics)
+	tq.lockTopics.Unlock()
 }
 
 // Startup runs the given number of task workers with the given executor
@@ -100,16 +114,22 @@ func (tq *WorkerTaskQueue) WaitForNoActiveTasks() {
 func (tq *WorkerTaskQueue) worker(executor Executor) {
 	targetWork := 1
 	for {
+		tq.lockTopics.Lock()
 		pid, tasks, _ := tq.PeerTaskQueue.PopTasks(targetWork)
+		tq.lockTopics.Unlock()
 		for len(tasks) == 0 {
 			select {
 			case <-tq.ctx.Done():
 				return
 			case <-tq.workSignal:
+				tq.lockTopics.Lock()
 				pid, tasks, _ = tq.PeerTaskQueue.PopTasks(targetWork)
+				tq.lockTopics.Unlock()
 			case <-tq.ticker.C:
+				tq.lockTopics.Lock()
 				tq.PeerTaskQueue.ThawRound()
 				pid, tasks, _ = tq.PeerTaskQueue.PopTasks(targetWork)
+				tq.lockTopics.Unlock()
 			}
 		}
 		for _, task := range tasks {

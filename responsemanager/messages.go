@@ -127,3 +127,17 @@ func (psm *peerStateMessage) handle(rm *ResponseManager) {
 	case <-rm.ctx.Done():
 	}
 }
+
+type terminateRequestMessage struct {
+	p         peer.ID
+	requestID graphsync.RequestID
+	done      chan<- struct{}
+}
+
+func (trm *terminateRequestMessage) handle(rm *ResponseManager) {
+	rm.terminateRequest(responseKey{trm.p, trm.requestID})
+	select {
+	case <-rm.ctx.Done():
+	case trm.done <- struct{}{}:
+	}
+}

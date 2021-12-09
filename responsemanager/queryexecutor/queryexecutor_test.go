@@ -23,7 +23,6 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
-	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
@@ -44,7 +43,6 @@ func TestOneBlockTask(t *testing.T) {
 	notifeeExpect(t, td, 1, td.responseCode)
 	require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 	require.Equal(t, 0, td.clearRequestCalls)
-	require.Equal(t, 0, td.cancelledCalls)
 }
 
 func TestSmallGraphTask(t *testing.T) {
@@ -83,7 +81,6 @@ func TestSmallGraphTask(t *testing.T) {
 		notifeeExpect(t, td, 10, td.responseCode) // AddNotifee called on all blocks
 		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 0, td.clearRequestCalls)
-		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("paused by hook", func(t *testing.T) {
@@ -98,7 +95,6 @@ func TestSmallGraphTask(t *testing.T) {
 		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 1, td.pauseCalls)
 		require.Equal(t, 0, td.clearRequestCalls)
-		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("paused by signal", func(t *testing.T) {
@@ -117,7 +113,6 @@ func TestSmallGraphTask(t *testing.T) {
 		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 1, td.pauseCalls)
 		require.Equal(t, 0, td.clearRequestCalls)
-		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("partial cancelled by hook", func(t *testing.T) {
@@ -130,7 +125,6 @@ func TestSmallGraphTask(t *testing.T) {
 		transactionExpect(t, td, []int{6, 7}, ipldutil.ContextCancelError{}.Error()) // last 2 transactions are ContextCancelled
 
 		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
-		require.Equal(t, 1, td.cancelledCalls)
 		require.Equal(t, 1, td.clearRequestCalls)
 	})
 
@@ -153,7 +147,6 @@ func TestSmallGraphTask(t *testing.T) {
 		require.Equal(t, 0, td.clearRequestCalls)
 		// cancelled by signal doesn't mean we get a cancelled call here
 		// ErrCancelledByCommand is treated differently to a context cancellation error
-		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("unknown error by hook", func(t *testing.T) {
@@ -168,7 +161,6 @@ func TestSmallGraphTask(t *testing.T) {
 
 		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 0, td.clearRequestCalls)
-		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("unknown error by signal", func(t *testing.T) {
@@ -189,7 +181,6 @@ func TestSmallGraphTask(t *testing.T) {
 
 		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 0, td.clearRequestCalls)
-		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("network error by hook", func(t *testing.T) {
@@ -204,7 +195,6 @@ func TestSmallGraphTask(t *testing.T) {
 
 		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 1, td.clearRequestCalls)
-		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("network error by signal", func(t *testing.T) {
@@ -225,7 +215,6 @@ func TestSmallGraphTask(t *testing.T) {
 
 		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 1, td.clearRequestCalls)
-		require.Equal(t, 0, td.cancelledCalls)
 	})
 
 	t.Run("first block wont load", func(t *testing.T) {
@@ -238,7 +227,6 @@ func TestSmallGraphTask(t *testing.T) {
 
 		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 0, td.clearRequestCalls)
-		require.Equal(t, 0, td.cancelledCalls)
 	})
 }
 
@@ -277,34 +265,31 @@ func newRandomBlock(index int64) *blockData {
 }
 
 type testData struct {
-	ctx                context.Context
-	t                  *testing.T
-	cancel             func()
-	task               *peertask.Task
-	blockStore         map[ipld.Link][]byte
-	persistence        ipld.LinkSystem
-	manager            *fauxManager
-	responseAssembler  *fauxResponseAssembler
-	responseBuilder    *fauxResponseBuilder
-	connManager        *testutil.TestConnManager
-	blockHooks         *hooks.OutgoingBlockHooks
-	updateHooks        *hooks.RequestUpdatedHooks
-	cancelledListeners *listeners.RequestorCancelledListeners
-	extensionData      []byte
-	extensionName      graphsync.ExtensionName
-	extension          graphsync.ExtensionData
-	requestID          graphsync.RequestID
-	requestCid         cid.Cid
-	requestSelector    datamodel.Node
-	requests           []gsmsg.GraphSyncRequest
-	signals            *ResponseSignals
-	pauseCalls         int
-	clearRequestCalls  int
-	cancelledCalls     int
-	expectedBlocks     []*blockData
-	responseCode       graphsync.ResponseStatusCode
-	peer               peer.ID
-	subscriber         *notifications.TopicDataSubscriber
+	ctx               context.Context
+	t                 *testing.T
+	cancel            func()
+	task              *peertask.Task
+	blockStore        map[ipld.Link][]byte
+	persistence       ipld.LinkSystem
+	manager           *fauxManager
+	responseAssembler *fauxResponseAssembler
+	responseBuilder   *fauxResponseBuilder
+	blockHooks        *hooks.OutgoingBlockHooks
+	updateHooks       *hooks.RequestUpdatedHooks
+	extensionData     []byte
+	extensionName     graphsync.ExtensionName
+	extension         graphsync.ExtensionData
+	requestID         graphsync.RequestID
+	requestCid        cid.Cid
+	requestSelector   datamodel.Node
+	requests          []gsmsg.GraphSyncRequest
+	signals           *ResponseSignals
+	pauseCalls        int
+	clearRequestCalls int
+	expectedBlocks    []*blockData
+	responseCode      graphsync.ResponseStatusCode
+	peer              peer.ID
+	subscriber        *notifications.TopicDataSubscriber
 }
 
 func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData, *QueryExecutor) {
@@ -318,10 +303,8 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td.task = &peertask.Task{}
 	td.manager = &fauxManager{ctx: ctx, t: t, expectedStartTask: td.task}
 	td.responseAssembler = &fauxResponseAssembler{}
-	td.connManager = testutil.NewTestConnManager()
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()
-	td.cancelledListeners = listeners.NewRequestorCancelledListeners()
 	td.requestID = graphsync.RequestID(rand.Int31())
 	td.requestCid, _ = cid.Decode("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	td.requestSelector = basicnode.NewInt(rand.Int63())
@@ -401,18 +384,13 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td.responseAssembler.responseBuilder.pauseCb = func() {
 		td.pauseCalls++
 	}
-	td.cancelledListeners.Register(func(p peer.ID, request graphsync.RequestData) {
-		td.cancelledCalls++
-	})
 
 	qe := New(
 		td.ctx,
 		td.manager,
 		td.blockHooks,
 		td.updateHooks,
-		td.cancelledListeners,
 		td.responseAssembler,
-		td.connManager,
 	)
 	return td, qe
 }

@@ -232,6 +232,16 @@ func (rm *ResponseManager) CloseWithNetworkError(p peer.ID, requestID graphsync.
 	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrNetworkError, make(chan error, 1)}, nil)
 }
 
+// TerminateRequest indicates a request has finished sending data and should no longer be tracked
+func (rm *ResponseManager) TerminateRequest(p peer.ID, requestID graphsync.RequestID) {
+	done := make(chan struct{}, 1)
+	rm.send(&terminateRequestMessage{p, requestID, done}, nil)
+	select {
+	case <-rm.ctx.Done():
+	case <-done:
+	}
+}
+
 // PeerState gets current state of the outgoing responses for a given peer
 func (rm *ResponseManager) PeerState(p peer.ID) peerstate.PeerState {
 	response := make(chan peerstate.PeerState)
