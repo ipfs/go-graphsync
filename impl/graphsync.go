@@ -485,8 +485,17 @@ func (gsr *graphSyncReceiver) ReceiveMessage(
 	ctx context.Context,
 	sender peer.ID,
 	incoming gsmsg.GraphSyncMessage) {
-	gsr.graphSync().responseManager.ProcessRequests(ctx, sender, incoming.Requests())
-	gsr.graphSync().requestManager.ProcessResponses(sender, incoming.Responses(), incoming.Blocks())
+
+	requests := incoming.Requests()
+	responses := incoming.Responses()
+	blocks := incoming.Blocks()
+
+	if len(requests) > 0 {
+		gsr.graphSync().responseManager.ProcessRequests(ctx, sender, requests)
+	}
+	if len(responses) > 0 || len(blocks) > 0 {
+		gsr.graphSync().requestManager.ProcessResponses(sender, responses, blocks)
+	}
 }
 
 // ReceiveError is part of the network's Receiver interface and handles incoming
