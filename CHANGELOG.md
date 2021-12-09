@@ -47,6 +47,21 @@ Breaking update to new go-datastore interfaces
 |-------------|---------|---------|---------------|
 | Whyrusleeping | 1 | +895/-111 | 3 |
 
+# go-graphsync v0.10.8
+
+HOTFIX branch merges v0.11.x series changes without context data store change
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Merge updates from 0.11.x series
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +145/-110 | 11 |
+
 # go-graphsync v0.10.7
 
 HOTFIX branch merges additional commits from v0.11.x series without context data store change
