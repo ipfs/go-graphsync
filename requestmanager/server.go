@@ -395,14 +395,17 @@ func (rm *RequestManager) pause(id graphsync.RequestID) error {
 }
 
 func (rm *RequestManager) peerStats(p peer.ID) peerstate.PeerState {
-	requestStates := make(graphsync.RequestStates)
-	for id, ipr := range rm.inProgressRequestStatuses {
-		if ipr.p == p {
-			requestStates[id] = graphsync.RequestState(ipr.state)
+	var peerState peerstate.PeerState
+	rm.requestQueue.WithPeerTopics(p, func(peerTopics *peertracker.PeerTrackerTopics) {
+		requestStates := make(graphsync.RequestStates)
+		for id, ipr := range rm.inProgressRequestStatuses {
+			if ipr.p == p {
+				requestStates[id] = graphsync.RequestState(ipr.state)
+			}
 		}
-	}
-	peerTopics := rm.requestQueue.PeerTopics(p)
-	return peerstate.PeerState{RequestStates: requestStates, TaskQueueState: fromPeerTopics(peerTopics)}
+		peerState = peerstate.PeerState{RequestStates: requestStates, TaskQueueState: fromPeerTopics(peerTopics)}
+	})
+	return peerState
 }
 
 func fromPeerTopics(pt *peertracker.PeerTrackerTopics) peerstate.TaskQueueState {
