@@ -14,7 +14,6 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
@@ -54,13 +53,11 @@ type ResponseSignals struct {
 
 // QueryExecutor is responsible for performing individual requests by executing their traversals
 type QueryExecutor struct {
-	ctx                context.Context
-	manager            Manager
-	blockHooks         BlockHooks
-	updateHooks        UpdateHooks
-	cancelledListeners CancelledListeners
-	responseAssembler  ResponseAssembler
-	connManager        network.ConnManager
+	ctx               context.Context
+	manager           Manager
+	blockHooks        BlockHooks
+	updateHooks       UpdateHooks
+	responseAssembler ResponseAssembler
 }
 
 // New creates a new QueryExecutor
@@ -68,18 +65,14 @@ func New(ctx context.Context,
 	manager Manager,
 	blockHooks BlockHooks,
 	updateHooks UpdateHooks,
-	cancelledListeners CancelledListeners,
 	responseAssembler ResponseAssembler,
-	connManager network.ConnManager,
 ) *QueryExecutor {
 	qm := &QueryExecutor{
-		blockHooks:         blockHooks,
-		updateHooks:        updateHooks,
-		cancelledListeners: cancelledListeners,
-		responseAssembler:  responseAssembler,
-		manager:            manager,
-		ctx:                ctx,
-		connManager:        connManager,
+		blockHooks:        blockHooks,
+		updateHooks:       updateHooks,
+		responseAssembler: responseAssembler,
+		manager:           manager,
+		ctx:               ctx,
 	}
 	return qm
 }
@@ -106,11 +99,6 @@ func (qe *QueryExecutor) ExecuteTask(ctx context.Context, pid peer.ID, task *pee
 
 	log.Debugw("beginning response execution", "id", rt.Request.ID(), "peer", pid.String(), "root_cid", rt.Request.Root().String())
 	err := qe.executeQuery(pid, rt)
-	isCancelled := err != nil && ipldutil.IsContextCancelErr(err)
-	if isCancelled {
-		qe.connManager.Unprotect(pid, rt.Request.ID().Tag())
-		qe.cancelledListeners.NotifyCancelledListeners(pid, rt.Request)
-	}
 	qe.manager.FinishTask(task, err)
 	log.Debugw("finishing response execution", "id", rt.Request.ID(), "peer", pid.String(), "root_cid", rt.Request.Root().String())
 	return false
@@ -284,11 +272,6 @@ type BlockHooks interface {
 // UpdateHooks is an interface for processing update hooks
 type UpdateHooks interface {
 	ProcessUpdateHooks(p peer.ID, request graphsync.RequestData, update graphsync.RequestData) hooks.UpdateResult
-}
-
-// CancelledListeners is an interface for notifying listeners that requestor cancelled
-type CancelledListeners interface {
-	NotifyCancelledListeners(p peer.ID, request graphsync.RequestData)
 }
 
 // ResponseAssembler is an interface that returns sender interfaces for peer responses.

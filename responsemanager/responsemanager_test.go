@@ -87,7 +87,6 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	})
 	cancelledListenerCalled := make(chan struct{}, 1)
 	td.cancelledListeners.Register(func(p peer.ID, request graphsync.RequestData) {
-		td.connManager.RefuteProtected(t, td.p)
 		cancelledListenerCalled <- struct{}{}
 	})
 	responseManager.Startup()
@@ -105,6 +104,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	close(waitForCancel)
 
 	testutil.AssertDoesReceive(td.ctx, t, cancelledListenerCalled, "should call cancelled listener")
+	td.connManager.RefuteProtected(t, td.p)
 
 	td.assertRequestCleared()
 }
@@ -1138,7 +1138,7 @@ func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 }
 
 func (td *testData) newQueryExecutor(manager queryexecutor.Manager) *queryexecutor.QueryExecutor {
-	return queryexecutor.New(td.ctx, manager, td.blockHooks, td.updateHooks, td.cancelledListeners, td.responseAssembler, td.connManager)
+	return queryexecutor.New(td.ctx, manager, td.blockHooks, td.updateHooks, td.responseAssembler)
 }
 
 func (td *testData) assertPausedRequest() {

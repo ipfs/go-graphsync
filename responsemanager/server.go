@@ -42,9 +42,19 @@ func (rm *ResponseManager) run() {
 	}
 }
 
+func (rm *ResponseManager) terminateRequest(key responseKey) {
+	ipr, ok := rm.inProgressResponses[key]
+	if !ok {
+		return
+	}
+	rm.connManager.Unprotect(key.p, key.requestID.Tag())
+	delete(rm.inProgressResponses, key)
+	ipr.cancelFn()
+}
+
 func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSyncRequest) {
 	response, ok := rm.inProgressResponses[key]
-	if !ok {
+	if !ok || response.state == graphsync.CompletingSend {
 		log.Warnf("received update for non existent request, peer %s, request ID %d", key.p.Pretty(), key.requestID)
 		return
 	}
@@ -68,8 +78,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		return nil
 	})
 	if result.Err != nil {
-		delete(rm.inProgressResponses, key)
-		response.cancelFn()
+		response.state = graphsync.CompletingSend
 		return
 	}
 	if result.Unpause {
@@ -106,26 +115,26 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 	key := responseKey{p, requestID}
 	rm.responseQueue.Remove(key, key.p)
 	response, ok := rm.inProgressResponses[key]
-	if !ok {
+	if !ok || response.state == graphsync.CompletingSend {
 		return errors.New("could not find request")
 	}
 
 	if response.state != graphsync.Running {
 		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
 			if ipldutil.IsContextCancelErr(err) {
-				rm.connManager.Unprotect(p, requestID.Tag())
 				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
 				rb.ClearRequest()
+				rm.terminateRequest(key)
 			} else if err == queryexecutor.ErrNetworkError {
 				rb.ClearRequest()
+				rm.terminateRequest(key)
 			} else {
 				rb.FinishWithError(graphsync.RequestCancelled)
 				rb.AddNotifee(notifications.Notifee{Data: graphsync.RequestCancelled, Subscriber: response.subscriber})
+				response.state = graphsync.CompletingSend
 			}
 			return nil
 		})
-		delete(rm.inProgressResponses, key)
-		response.cancelFn()
 		return nil
 	}
 	select {
@@ -186,7 +195,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 
 func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.ResponseTask {
 	response, hasResponse := rm.inProgressResponses[key]
-	if !hasResponse {
+	if !hasResponse || response.state == graphsync.CompletingSend {
 		return queryexecutor.ResponseTask{Empty: true}
 	}
 	log.Infow("graphsync response processing begins", "request id", key.requestID, "peer", key.p, "total time", time.Since(response.startTime))
@@ -194,8 +203,7 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.Respons
 	if response.loader == nil || response.traverser == nil {
 		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.linkSystem, rm.maxLinksPerRequest}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
 		if err != nil {
-			response.cancelFn()
-			delete(rm.inProgressResponses, key)
+			response.state = graphsync.CompletingSend
 			return queryexecutor.ResponseTask{Empty: true}
 		}
 		response.loader = loader
@@ -243,8 +251,19 @@ func (rm *ResponseManager) finishTask(task *peertask.Task, err error) {
 	if err != nil {
 		log.Infof("response failed: %w", err)
 	}
-	delete(rm.inProgressResponses, key)
-	response.cancelFn()
+
+	if ipldutil.IsContextCancelErr(err) {
+		rm.cancelledListeners.NotifyCancelledListeners(key.p, response.request)
+		rm.terminateRequest(key)
+		return
+	}
+
+	if err == queryexecutor.ErrNetworkError {
+		rm.terminateRequest(key)
+		return
+	}
+
+	response.state = graphsync.CompletingSend
 }
 
 func (rm *ResponseManager) getUpdates(key responseKey) []gsmsg.GraphSyncRequest {
@@ -260,7 +279,7 @@ func (rm *ResponseManager) getUpdates(key responseKey) []gsmsg.GraphSyncRequest 
 func (rm *ResponseManager) pauseRequest(p peer.ID, requestID graphsync.RequestID) error {
 	key := responseKey{p, requestID}
 	inProgressResponse, ok := rm.inProgressResponses[key]
-	if !ok {
+	if !ok || inProgressResponse.state == graphsync.CompletingSend {
 		return errors.New("could not find request")
 	}
 	if inProgressResponse.state == graphsync.Paused {
