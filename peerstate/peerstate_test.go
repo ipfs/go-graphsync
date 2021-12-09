@@ -5,9 +5,10 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/peerstate"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDiagnostics(t *testing.T) {

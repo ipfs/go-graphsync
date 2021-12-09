@@ -1,5 +1,36 @@
 # go-graphsync changelog
 
+# go-graphsync v0.11.1
+
+Introduction of tracing and various instrumentation tools
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Merge branch 'release/v0.10.7'
+  - Expose task queue diagnostics (#302) ([ipfs/go-graphsync#302](https://github.com/ipfs/go-graphsync/pull/302))
+  - chore: short-circuit unnecessary message processing
+  - Add a bit of logging (#301) ([ipfs/go-graphsync#301](https://github.com/ipfs/go-graphsync/pull/301))
+  - Peer Stats function (#298) ([ipfs/go-graphsync#298](https://github.com/ipfs/go-graphsync/pull/298))
+  - fix: use sync.Cond to handle no-task blocking wait (#299) ([ipfs/go-graphsync#299](https://github.com/ipfs/go-graphsync/pull/299))
+  - ipldutil: use chooser APIs from dagpb and basicnode (#292) ([ipfs/go-graphsync#292](https://github.com/ipfs/go-graphsync/pull/292))
+  - testutil/chaintypes: simplify maintenance of codegen (#294) ([ipfs/go-graphsync#294](https://github.com/ipfs/go-graphsync/pull/294))
+  - fix(test): increase 1s timeouts to 2s for slow CI (#289) ([ipfs/go-graphsync#289](https://github.com/ipfs/go-graphsync/pull/289))
+  - docs(tests): document tracing test helper utilities
+  - feat: add basic OT tracing for incoming requests
+  - fix(responsemanager): make fix more global
+  - fix(responsemanager): fix flaky tests
+  - feat: add WorkerTaskQueue#WaitForNoActiveTasks() for tests (#284) ([ipfs/go-graphsync#284](https://github.com/ipfs/go-graphsync/pull/284))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Rod Vagg | 7 | +2016/-452 | 57 |
+| Hannah Howard | 3 | +568/-119 | 30 |
+| Daniel Martí | 2 | +316/-323 | 26 |
+| hannahhoward | 3 | +35/-6 | 7 |
+
 # go-graphsync v0.11.0
 
 Breaking update to new go-datastore interfaces
@@ -15,6 +46,21 @@ Breaking update to new go-datastore interfaces
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|
 | Whyrusleeping | 1 | +895/-111 | 3 |
+
+# go-graphsync v0.10.7
+
+HOTFIX branch merges additional commits from v0.11.x series without context data store change
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Merge commits from main to v0.10.x release branch
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Rod Vagg | 1 | +1417/-408 | 43 |
 
 # go-graphsync v0.10.6
 

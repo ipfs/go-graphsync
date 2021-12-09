@@ -1,10 +1,11 @@
 package requestmanager
 
 import (
+	"github.com/ipfs/go-peertaskqueue/peertask"
+
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
-	"github.com/ipfs/go-peertaskqueue/peertask"
 )
 
 func metadataForResponses(responses []gsmsg.GraphSyncResponse) map[graphsync.RequestID]metadata.Metadata {
