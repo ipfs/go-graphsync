@@ -16,6 +16,21 @@ Breaking update to new go-datastore interfaces
 |-------------|---------|---------|---------------|
 | Whyrusleeping | 1 | +895/-111 | 3 |
 
+# go-graphsync v0.10.7
+
+HOTFIX branch merges additional commits from v0.11.x series without context data store change
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Merge commits from main to v0.10.x release branch
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Rod Vagg | 1 | +1417/-408 | 43 |
+
 # go-graphsync v0.10.6
 
 Use TaskQueue in ResponseManager and remove memory backpressure from request side
