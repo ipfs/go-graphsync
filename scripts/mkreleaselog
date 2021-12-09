@@ -22,7 +22,6 @@ REPO_SUFFIXES_TO_STRIP=(
 AUTHORS=(
     # orgs
     filecoin-project/go-data-transfer
-    ipfs/go-graphsync
 
     # Authors of personal repos used by filecoin-ffi that should be mentioned in the
     # release notes.

@@ -1,5 +1,24 @@
 # go-data-transfer changelog
 
+# go-data-transfer 1.12.0
+
+new context data stores and improved diagnostics
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Improve GraphSync Transport Diagnostics (#287) ([filecoin-project/go-data-transfer#287](https://github.com/filecoin-project/go-data-transfer/pull/287))
+  - Update to graphsync v0.11.0 (#286) ([filecoin-project/go-data-transfer#286](https://github.com/filecoin-project/go-data-transfer/pull/286))
+  - update to context datastores (#283) ([filecoin-project/go-data-transfer#283](https://github.com/filecoin-project/go-data-transfer/pull/283))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Whyrusleeping | 1 | +544/-102 | 5 |
+| Aayush Rajasekaran | 1 | +269/-68 | 2 |
+| Hannah Howard | 1 | +132/-7 | 2 |
+
 # go-data-transfer 1.11.5
 
 - github.com/filecoin-project/go-data-transfer:
