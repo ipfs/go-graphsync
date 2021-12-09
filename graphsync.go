@@ -345,6 +345,9 @@ const (
 	Running
 	// Paused means a request is paused
 	Paused
+	// CompletingSend means we have processed a query and are waiting for data to
+	// go over the network
+	CompletingSend
 )
 
 func (rs RequestState) String() string {
@@ -355,6 +358,8 @@ func (rs RequestState) String() string {
 		return "running"
 	case Paused:
 		return "paused"
+	case CompletingSend:
+		return "completing send"
 	default:
 		return "unrecognized request state"
 	}
