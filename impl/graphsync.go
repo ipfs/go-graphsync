@@ -19,6 +19,7 @@ import (
 	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/peermanager"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/requestmanager"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
@@ -458,19 +459,17 @@ func (gs *GraphSync) Stats() graphsync.Stats {
 	}
 }
 
-// PeerStats describes the state of graphsync for a given
-type PeerStats struct {
-	// OutgoingRequests
-	OutgoingRequests graphsync.RequestStates
-	// IncomingRequests
-	IncomingRequests graphsync.RequestStates
+// PeerState describes the state of graphsync for a given peer
+type PeerState struct {
+	OutgoingState peerstate.PeerState
+	IncomingState peerstate.PeerState
 }
 
-// PeerStats produces insight on the current state of a given peer
-func (gs *GraphSync) PeerStats(p peer.ID) PeerStats {
-	return PeerStats{
-		OutgoingRequests: gs.requestManager.PeerStats(p),
-		IncomingRequests: gs.responseManager.PeerStats(p),
+// PeerState produces insight on the current state of a given peer
+func (gs *GraphSync) PeerState(p peer.ID) PeerState {
+	return PeerState{
+		OutgoingState: gs.requestManager.PeerState(p),
+		IncomingState: gs.responseManager.PeerState(p),
 	}
 }
 

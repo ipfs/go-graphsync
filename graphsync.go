@@ -347,6 +347,19 @@ const (
 	Paused
 )
 
+func (rs RequestState) String() string {
+	switch rs {
+	case Queued:
+		return "queued"
+	case Running:
+		return "running"
+	case Paused:
+		return "paused"
+	default:
+		return "unrecognized request state"
+	}
+}
+
 // GraphExchange is a protocol that can exchange IPLD graphs based on a selector
 type GraphExchange interface {
 	// Request initiates a new GraphSync request to the given peer using the given selector spec.

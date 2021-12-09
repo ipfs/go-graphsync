@@ -27,6 +27,7 @@ import (
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
@@ -332,15 +333,15 @@ func (rm *RequestManager) ReleaseRequestTask(p peer.ID, task *peertask.Task, err
 	}
 }
 
-// PeerStats gets stats on all outgoing requests for a given peer
-func (rm *RequestManager) PeerStats(p peer.ID) graphsync.RequestStates {
-	response := make(chan graphsync.RequestStates)
-	rm.send(&peerStatsMessage{p, response}, nil)
+// PeerState gets stats on all outgoing requests for a given peer
+func (rm *RequestManager) PeerState(p peer.ID) peerstate.PeerState {
+	response := make(chan peerstate.PeerState)
+	rm.send(&peerStateMessage{p, response}, nil)
 	select {
 	case <-rm.ctx.Done():
-		return nil
-	case peerStats := <-response:
-		return peerStats
+		return peerstate.PeerState{}
+	case peerState := <-response:
+		return peerState
 	}
 }
 

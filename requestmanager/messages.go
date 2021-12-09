@@ -9,6 +9,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 )
 
@@ -109,12 +110,12 @@ func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	}
 }
 
-type peerStatsMessage struct {
+type peerStateMessage struct {
 	p             peer.ID
-	peerStatsChan chan<- graphsync.RequestStates
+	peerStatsChan chan<- peerstate.PeerState
 }
 
-func (psm *peerStatsMessage) handle(rm *RequestManager) {
+func (psm *peerStateMessage) handle(rm *RequestManager) {
 	peerStats := rm.peerStats(psm.p)
 	select {
 	case psm.peerStatsChan <- peerStats:

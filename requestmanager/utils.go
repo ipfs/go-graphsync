@@ -4,6 +4,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-peertaskqueue/peertask"
 )
 
 func metadataForResponses(responses []gsmsg.GraphSyncResponse) map[graphsync.RequestID]metadata.Metadata {
@@ -22,4 +23,9 @@ func metadataForResponses(responses []gsmsg.GraphSyncResponse) map[graphsync.Req
 		responseMetadata[response.RequestID()] = md
 	}
 	return responseMetadata
+}
+
+// RequestIDFromTaskTopic extracts a request ID from a given peer task topic
+func RequestIDFromTaskTopic(topic peertask.Topic) graphsync.RequestID {
+	return topic.(graphsync.RequestID)
 }

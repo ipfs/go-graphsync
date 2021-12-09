@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	"github.com/ipfs/go-peertaskqueue/peertracker"
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
@@ -271,12 +273,31 @@ func (rm *ResponseManager) pauseRequest(p peer.ID, requestID graphsync.RequestID
 	return nil
 }
 
-func (rm *ResponseManager) peerStats(p peer.ID) graphsync.RequestStates {
-	peerStats := make(graphsync.RequestStates)
+func (rm *ResponseManager) peerState(p peer.ID) peerstate.PeerState {
+	requestStates := make(graphsync.RequestStates)
 	for key, ipr := range rm.inProgressResponses {
 		if key.p == p {
-			peerStats[key.requestID] = ipr.state
+			requestStates[key.requestID] = ipr.state
 		}
 	}
-	return peerStats
+	peerTopics := rm.responseQueue.PeerTopics(p)
+	return peerstate.PeerState{RequestStates: requestStates, TaskQueueState: fromPeerTopics(peerTopics)}
+}
+
+func fromPeerTopics(pt *peertracker.PeerTrackerTopics) peerstate.TaskQueueState {
+	if pt == nil {
+		return peerstate.TaskQueueState{}
+	}
+	active := make([]graphsync.RequestID, 0, len(pt.Active))
+	for _, topic := range pt.Active {
+		active = append(active, topic.(responseKey).requestID)
+	}
+	pending := make([]graphsync.RequestID, 0, len(pt.Pending))
+	for _, topic := range pt.Pending {
+		pending = append(pending, topic.(responseKey).requestID)
+	}
+	return peerstate.TaskQueueState{
+		Active:  active,
+		Pending: pending,
+	}
 }
