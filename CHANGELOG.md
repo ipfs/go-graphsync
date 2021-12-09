@@ -1,5 +1,23 @@
 # go-graphsync changelog
 
+# go-graphsync v0.11.2
+
+Improvements to diagnostics and new CompletingSend state
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Merge branch 'release/v0.10.8'
+  - feat(taskqueue): fix race on peer state gather (#303) ([ipfs/go-graphsync#303](https://github.com/ipfs/go-graphsync/pull/303))
+  - feat(responsemanager): clarify response completion (#304) ([ipfs/go-graphsync#304](https://github.com/ipfs/go-graphsync/pull/304))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 3 | +290/-220 | 24 |
+| hannahhoward | 1 | +15/-0 | 1 |
+
 # go-graphsync v0.11.1
 
 Introduction of tracing and various instrumentation tools
