@@ -1306,8 +1306,8 @@ func (ntq nullTaskQueue) PushTask(p peer.ID, task peertask.Task) {
 func (ntq nullTaskQueue) TaskDone(p peer.ID, task *peertask.Task) {}
 func (ntq nullTaskQueue) Remove(t peertask.Topic, p peer.ID)      {}
 func (ntq nullTaskQueue) Stats() graphsync.RequestStats           { return graphsync.RequestStats{} }
-func (ntq nullTaskQueue) PeerTopics(p peer.ID) *peertracker.PeerTrackerTopics {
-	return &peertracker.PeerTrackerTopics{Pending: ntq.tasksQueued[p]}
+func (ntq nullTaskQueue) WithPeerTopics(p peer.ID, f func(*peertracker.PeerTrackerTopics)) {
+	f(&peertracker.PeerTrackerTopics{Pending: ntq.tasksQueued[p]})
 }
 
 var _ taskqueue.TaskQueue = nullTaskQueue{}

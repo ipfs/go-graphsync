@@ -274,14 +274,17 @@ func (rm *ResponseManager) pauseRequest(p peer.ID, requestID graphsync.RequestID
 }
 
 func (rm *ResponseManager) peerState(p peer.ID) peerstate.PeerState {
-	requestStates := make(graphsync.RequestStates)
-	for key, ipr := range rm.inProgressResponses {
-		if key.p == p {
-			requestStates[key.requestID] = ipr.state
+	var peerState peerstate.PeerState
+	rm.responseQueue.WithPeerTopics(p, func(peerTopics *peertracker.PeerTrackerTopics) {
+		requestStates := make(graphsync.RequestStates)
+		for key, ipr := range rm.inProgressResponses {
+			if key.p == p {
+				requestStates[key.requestID] = ipr.state
+			}
 		}
-	}
-	peerTopics := rm.responseQueue.PeerTopics(p)
-	return peerstate.PeerState{RequestStates: requestStates, TaskQueueState: fromPeerTopics(peerTopics)}
+		peerState = peerstate.PeerState{RequestStates: requestStates, TaskQueueState: fromPeerTopics(peerTopics)}
+	})
+	return peerState
 }
 
 func fromPeerTopics(pt *peertracker.PeerTrackerTopics) peerstate.TaskQueueState {
