@@ -12,6 +12,7 @@ import (
 
 // RequestCloser can cancel request on a network error
 type RequestCloser interface {
+	TerminateRequest(p peer.ID, requestID graphsync.RequestID)
 	CloseWithNetworkError(p peer.ID, requestID graphsync.RequestID)
 }
 
@@ -43,12 +44,13 @@ func (s *subscriber) OnNext(topic notifications.Topic, event notifications.Event
 	}
 	status, isStatus := topic.(graphsync.ResponseStatusCode)
 	if isStatus {
-		s.connManager.Unprotect(s.p, s.request.ID().Tag())
 		switch responseEvent.Name {
 		case messagequeue.Error:
-			s.networkErrorListeners.NotifyNetworkErrorListeners(s.p, s.request, responseEvent.Err)
 			s.requestCloser.CloseWithNetworkError(s.p, s.request.ID())
+			s.requestCloser.TerminateRequest(s.p, s.request.ID())
+			s.networkErrorListeners.NotifyNetworkErrorListeners(s.p, s.request, responseEvent.Err)
 		case messagequeue.Sent:
+			s.requestCloser.TerminateRequest(s.p, s.request.ID())
 			s.completedListeners.NotifyCompletedListeners(s.p, s.request, status)
 		}
 	}
