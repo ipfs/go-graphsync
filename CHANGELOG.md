@@ -19,6 +19,59 @@ new context data stores and improved diagnostics
 | Aayush Rajasekaran | 1 | +269/-68 | 2 |
 | Hannah Howard | 1 | +132/-7 | 2 |
 
+# go-data-transfer 1.11.7
+
+Backport 1.12.0 change & update graphsync v0.10.7
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Merge updates from 1.12.0
+- github.com/ipfs/go-graphsync (v0.11.0 -> v0.10.7):
+  - docs(CHANGELOG): update for v0.10.7 release
+  - Merge commits from main to v0.10.x release branch
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Rod Vagg | 1 | +1417/-408 | 43 |
+| Hannah Howard | 1 | +160/-18 | 6 |
+| hannahhoward | 1 | +19/-2 | 3 |
+
+# go-data-transfer v1.11.6
+
+Update go-graphsync to 0.10.4
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - update to graphsync-v0.10.4 (#281) ([filecoin-project/go-data-transfer#281](https://github.com/filecoin-project/go-data-transfer/pull/281))
+  - release: v1.11.5 ([filecoin-project/go-data-transfer#280](https://github.com/filecoin-project/go-data-transfer/pull/280))
+- github.com/ipfs/go-graphsync (v0.10.0 -> v0.10.4):
+  - docs(CHANGELOG): updage for v0.10.4
+  - fix(allocator): prevent buffer overflow (#248) ([ipfs/go-graphsync#248](https://github.com/ipfs/go-graphsync/pull/248))
+  - Merge branch 'release/v0.10.3'
+  - Configure message parameters (#247) ([ipfs/go-graphsync#247](https://github.com/ipfs/go-graphsync/pull/247))
+  - Stats! (#246) ([ipfs/go-graphsync#246](https://github.com/ipfs/go-graphsync/pull/246))
+  - Limit simultaneous incoming requests on a per peer basis (#245) ([ipfs/go-graphsync#245](https://github.com/ipfs/go-graphsync/pull/245))
+  - sync: update CI config files (#191) ([ipfs/go-graphsync#191](https://github.com/ipfs/go-graphsync/pull/191))
+  - Merge branch 'release/v0.10.2'
+  - test(responsemanager): fix flakiness TestCancellationViaCommand (#243) ([ipfs/go-graphsync#243](https://github.com/ipfs/go-graphsync/pull/243))
+  - Fix deadlock on notifications (#242) ([ipfs/go-graphsync#242](https://github.com/ipfs/go-graphsync/pull/242))
+  - Merge branch 'release/v0.10.1'
+  - Free memory on request finish (#240) ([ipfs/go-graphsync#240](https://github.com/ipfs/go-graphsync/pull/240))
+  - release: v1.10.0 ([ipfs/go-graphsync#238](https://github.com/ipfs/go-graphsync/pull/238))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 7 | +406/-116 | 30 |
+| web3-bot | 1 | +214/-82 | 11 |
+| hannahhoward | 4 | +91/-17 | 12 |
+| dirkmc | 1 | +14/-7 | 5 |
+
 # go-data-transfer 1.11.5
 
 - github.com/filecoin-project/go-data-transfer:
