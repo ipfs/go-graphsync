@@ -40,10 +40,7 @@ jobs:
       - name: Run tests
         uses: protocol/multiple-go-modules@v1.2
         with:
-          # Use -coverpkg=./..., so that we include cross-package coverage.
-          # If package ./A imports ./B, and ./A's tests also cover ./B,
-          # this means ./B's coverage will be significantly higher than 0%.
-          run: go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./...
+          run: go test -v -coverprofile=module-coverage.txt ./...
       - name: Run tests (32 bit)
         if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
         uses: protocol/multiple-go-modules@v1.2
