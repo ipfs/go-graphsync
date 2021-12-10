@@ -100,7 +100,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 		gsmsg.CancelRequest(td.requestID),
 	}
 	responseManager.ProcessRequests(td.ctx, td.p, cancelRequests)
-	responseManager.Synchronize()
+	responseManager.synchronize()
 	close(waitForCancel)
 
 	testutil.AssertDoesReceive(td.ctx, t, cancelledListenerCalled, "should call cancelled listener")
@@ -149,7 +149,7 @@ func TestEarlyCancellation(t *testing.T) {
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
-	responseManager.Synchronize()
+	responseManager.synchronize()
 	td.connManager.AssertProtectedWithTags(t, td.p, td.requests[0].ID().Tag())
 
 	// send a cancellation
@@ -158,7 +158,7 @@ func TestEarlyCancellation(t *testing.T) {
 	}
 	responseManager.ProcessRequests(td.ctx, td.p, cancelRequests)
 
-	responseManager.Synchronize()
+	responseManager.synchronize()
 
 	td.assertNoResponses()
 	td.connManager.RefuteProtected(t, td.p)
@@ -634,7 +634,7 @@ func TestValidationAndExtensions(t *testing.T) {
 				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 				testutil.AssertDoesReceive(td.ctx, t, sent, "sends blocks")
 				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
-				responseManager.Synchronize()
+				responseManager.synchronize()
 				close(wait)
 				td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 				td.assertReceiveExtensionResponse()
@@ -704,7 +704,7 @@ func TestValidationAndExtensions(t *testing.T) {
 				responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 				testutil.AssertDoesReceive(td.ctx, t, sent, "sends blocks")
 				responseManager.ProcessRequests(td.ctx, td.p, td.updateRequests)
-				responseManager.Synchronize()
+				responseManager.synchronize()
 				close(wait)
 				td.assertCompleteRequestWith(graphsync.RequestFailedUnknown)
 			})

@@ -200,7 +200,7 @@ func (rm *ResponseManager) CancelResponse(p peer.ID, requestID graphsync.Request
 }
 
 // Synchronize is a utility method that blocks until all current messages are processed
-func (rm *ResponseManager) Synchronize() {
+func (rm *ResponseManager) synchronize() {
 	sync := make(chan error)
 	rm.send(&synchronizeMessage{sync}, nil)
 	select {
