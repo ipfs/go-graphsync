@@ -55,7 +55,6 @@ type GraphSync struct {
 	requestQueue                       taskqueue.TaskQueue
 	requestExecutor                    *executor.Executor
 	responseAssembler                  *responseassembler.ResponseAssembler
-	peerTaskQueue                      *peertaskqueue.PeerTaskQueue
 	peerManager                        *peermanager.PeerMessageManager
 	incomingRequestQueuedHooks         *responderhooks.IncomingRequestQueuedHooks
 	incomingRequestHooks               *responderhooks.IncomingRequestHooks
@@ -240,8 +239,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	if gsConfig.maxInProgressIncomingRequestsPerPeer > 0 {
 		ptqopts = append(ptqopts, peertaskqueue.MaxOutstandingWorkPerPeer(int(gsConfig.maxInProgressIncomingRequestsPerPeer)))
 	}
-	peerTaskQueue := peertaskqueue.New(ptqopts...)
-	responseQueue := taskqueue.NewTaskQueue(ctx)
+	responseQueue := taskqueue.NewTaskQueue(ctx, ptqopts...)
 	responseManager := responsemanager.New(
 		ctx,
 		linkSystem,
@@ -275,7 +273,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestQueue:                requestQueue,
 		requestExecutor:             requestExecutor,
 		responseAssembler:           responseAssembler,
-		peerTaskQueue:               peerTaskQueue,
 		peerManager:                 peerManager,
 		incomingRequestQueuedHooks:  requestQueuedHooks,
 		incomingRequestHooks:        incomingRequestHooks,
@@ -441,13 +438,7 @@ func (gs *GraphSync) CancelRequest(ctx context.Context, requestID graphsync.Requ
 // Stats produces insight on the current state of a graphsync exchange
 func (gs *GraphSync) Stats() graphsync.Stats {
 	outgoingRequestStats := gs.requestQueue.Stats()
-
-	ptqstats := gs.peerTaskQueue.Stats()
-	incomingRequestStats := graphsync.RequestStats{
-		TotalPeers: uint64(ptqstats.NumPeers),
-		Active:     uint64(ptqstats.NumActive),
-		Pending:    uint64(ptqstats.NumPending),
-	}
+	incomingRequestStats := gs.responseQueue.Stats()
 	outgoingResponseStats := gs.responseAllocator.Stats()
 
 	return graphsync.Stats{
