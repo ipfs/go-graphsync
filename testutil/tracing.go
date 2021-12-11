@@ -77,13 +77,13 @@ func (c Collector) tracesToString(trace string, spans tracetest.SpanStubs, match
 // identified by its trace string as described in TracesToStrings. Note that
 // this string can also be a partial of a complete trace, e.g. just `"foo(0)"`
 // without any children to fetch the parent span.
-func (c Collector) FindSpanByTraceString(trace string) tracetest.SpanStub {
-	var found tracetest.SpanStub
+func (c Collector) FindSpanByTraceString(trace string) *tracetest.SpanStub {
+	var found *tracetest.SpanStub
 	c.tracesToString("", c.FindParentSpans(), trace, func(span tracetest.SpanStub) {
-		if found.Name != "" {
+		if found != nil && found.Name != "" {
 			panic("found more than one span with the same trace string")
 		}
-		found = span
+		found = &span
 	})
 	return found
 }
@@ -121,7 +121,7 @@ func (c Collector) SingleExceptionEvent(t *testing.T, trace string, typeRe strin
 	// has ContextCancelError exception recorded in the right place
 	et := c.FindSpanByTraceString(trace)
 	require.Len(t, et.Events, 1, "expected one event in span %v", trace)
-	ex := EventAsException(t, EventInTraceSpan(t, et, "exception"))
+	ex := EventAsException(t, EventInTraceSpan(t, *et, "exception"))
 	require.Regexp(t, typeRe, ex.Type)
 	require.Regexp(t, messageRe, ex.Message)
 	if errorCode {
