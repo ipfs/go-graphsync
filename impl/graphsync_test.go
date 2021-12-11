@@ -378,8 +378,6 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 		"request(0)->terminateRequest(0)",
 	}, tracing.TracesToStrings())
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)")
-	require.False(t, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "isUpdate").AsBool())
-	require.False(t, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "isCancel").AsBool())
 	require.Equal(t, int64(0), testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "priority").AsInt64())
 	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "extensions").AsStringSlice())
 }
@@ -818,9 +816,6 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 	}, tracing.TracesToStrings())
 	// make sure the attributes are what we expect
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
-	require.True(t, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "isUpdate").AsBool())
-	require.False(t, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "isCancel").AsBool())
-	require.Equal(t, int64(0), testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "priority").AsInt64())
 	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "extensions").AsStringSlice())
 	// pause recorded
 	tracing.SingleExceptionEvent(t, "response(0)->executeTask(0)", "github.com/ipfs/go-graphsync/responsemanager/hooks.ErrPaused", hooks.ErrPaused{}.Error(), false)
@@ -904,9 +899,6 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 	}, tracing.TracesToStrings())
 	// make sure the attributes are what we expect
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
-	require.True(t, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "isUpdate").AsBool())
-	require.False(t, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "isCancel").AsBool())
-	require.Equal(t, int64(0), testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "priority").AsInt64())
 	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "extensions").AsStringSlice())
 	// pause recorded
 	tracing.SingleExceptionEvent(t, "response(0)->executeTask(0)", "github.com/ipfs/go-graphsync/responsemanager/hooks.ErrPaused", hooks.ErrPaused{}.Error(), false)
