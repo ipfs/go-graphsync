@@ -1,5 +1,21 @@
 # go-graphsync changelog
 
+# go-graphsync v0.10.9
+
+HOTFIX branch merges v0.11.x series changes without context data store change
+
+### Changelog
+
+Generating Changelog for github.com/ipfs/go-graphsync v0.11.2..ad16dd4bd2cc88a1e08539a555a6152b5e9f2159
+- github.com/ipfs/go-graphsync:
+  - Merge updates from 0.11.x series
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +305/-108 | 10 |
+
 # go-graphsync v0.10.8
 
 HOTFIX branch merges v0.11.x series changes without context data store change
