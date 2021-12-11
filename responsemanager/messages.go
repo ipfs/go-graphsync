@@ -15,6 +15,10 @@ type processRequestMessage struct {
 	requests []gsmsg.GraphSyncRequest
 }
 
+func (prm *processRequestMessage) handle(rm *ResponseManager) {
+	rm.processRequests(prm.p, prm.requests)
+}
+
 type pauseRequestMessage struct {
 	p         peer.ID
 	requestID graphsync.RequestID
@@ -109,10 +113,6 @@ func (str *startTaskRequest) handle(rm *ResponseManager) {
 	case <-rm.ctx.Done():
 	case str.taskDataChan <- taskData:
 	}
-}
-
-func (prm *processRequestMessage) handle(rm *ResponseManager) {
-	rm.processRequests(prm.p, prm.requests)
 }
 
 type peerStateMessage struct {

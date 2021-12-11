@@ -90,7 +90,7 @@ func TestMakeRequestToNetwork(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, td.extensionData, returnedData, "Failed to encode extension")
 
-	graphSync.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(graphSync)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
@@ -101,14 +101,10 @@ func TestMakeRequestToNetwork(t *testing.T) {
 
 	// make sure the attributes are what we expect
 	requestSpans := tracing.FindSpans("request")
-	peerIdAttr := testutil.AttributeValueInTraceSpan(t, requestSpans[0], "peerID")
-	require.Equal(t, td.host2.ID().Pretty(), peerIdAttr.AsString())
-	rootAttr := testutil.AttributeValueInTraceSpan(t, requestSpans[0], "root")
-	require.Equal(t, blockChain.TipLink.String(), rootAttr.AsString())
-	extensionsAttr := testutil.AttributeValueInTraceSpan(t, requestSpans[0], "extensions")
-	require.Equal(t, []string{string(td.extensionName)}, extensionsAttr.AsStringSlice())
-	requestIdAttr := testutil.AttributeValueInTraceSpan(t, requestSpans[0], "requestID")
-	require.Equal(t, int64(0), requestIdAttr.AsInt64())
+	require.Equal(t, td.host2.ID().Pretty(), testutil.AttributeValueInTraceSpan(t, requestSpans[0], "peerID").AsString())
+	require.Equal(t, blockChain.TipLink.String(), testutil.AttributeValueInTraceSpan(t, requestSpans[0], "root").AsString())
+	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, requestSpans[0], "extensions").AsStringSlice())
+	require.Equal(t, int64(0), testutil.AttributeValueInTraceSpan(t, requestSpans[0], "requestID").AsInt64())
 }
 
 func TestSendResponseToIncomingRequest(t *testing.T) {
@@ -188,8 +184,8 @@ func TestRejectRequestsByDefault(t *testing.T) {
 
 	requestor := td.GraphSyncHost1()
 	// setup responder to disable default validation, meaning all requests are rejected
-	_ = td.GraphSyncHost2(RejectAllRequestsByDefault())
-
+	responder := td.GraphSyncHost2(RejectAllRequestsByDefault())
+	assertComplete := assertCompletionFunction(responder, 1)
 	blockChainLength := 5
 	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 5, blockChainLength)
 
@@ -199,16 +195,21 @@ func TestRejectRequestsByDefault(t *testing.T) {
 	testutil.VerifyEmptyResponse(ctx, t, progressChan)
 	testutil.VerifySingleTerminalError(ctx, t, errChan)
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
+		"response(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	}, tracing.TracesToStrings())
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
+	// RejectAllRequestsByDefault() causes no request validator to be set, so they are all invalid
+	tracing.SingleExceptionEvent(t, "response(0)", "github.com/ipfs/go-graphsync/responsemanager.errorString", "request not valid", true)
 }
 
 func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
@@ -229,8 +230,8 @@ func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
 	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
-	td.GraphSyncHost2()
-
+	responder := td.GraphSyncHost2()
+	assertCancelOrComplete := assertCancelOrCompleteFunction(responder, 1)
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
 	// response budgets don't include the root block, so total links traverse with be one more than expected
@@ -238,16 +239,24 @@ func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
 	testutil.VerifySingleTerminalError(ctx, t, errChan)
 	require.Len(t, td.blockStore1, int(linksToTraverse), "did not store all blocks")
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	wasCancelled := assertCancelOrComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	if wasCancelled {
+		require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
+	}
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
 	// has ErrBudgetExceeded exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrBudgetExceeded", "traversal budget exceeded", true)
+	if wasCancelled {
+		tracing.SingleExceptionEvent(t, "response(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), true)
+	}
 }
 
 func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
@@ -268,7 +277,8 @@ func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
 	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
-	td.GraphSyncHost2(MaxLinksPerIncomingRequests(linksToTraverse))
+	responder := td.GraphSyncHost2(MaxLinksPerIncomingRequests(linksToTraverse))
+	assertComplete := assertCompletionFunction(responder, 1)
 
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
@@ -277,10 +287,13 @@ func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
 	testutil.VerifySingleTerminalError(ctx, t, errChan)
 	require.Len(t, td.blockStore1, int(linksToTraverse), "did not store all blocks")
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
@@ -308,6 +321,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
+	assertComplete := assertCompletionFunction(responder, 1)
 
 	var receivedResponseData []byte
 	var receivedRequestData []byte
@@ -352,14 +366,20 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
 	require.Equal(t, graphsync.RequestCompletedFull, finalResponseStatus)
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	}, tracing.TracesToStrings())
+	processUpdateSpan := tracing.FindSpanByTraceString("response(0)")
+	require.Equal(t, int64(0), testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "priority").AsInt64())
+	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "extensions").AsStringSlice())
 }
 
 func TestGraphsyncRoundTripPartial(t *testing.T) {
@@ -383,6 +403,7 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
+	assertComplete := assertCompletionFunction(responder, 1)
 
 	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
 	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
@@ -412,10 +433,13 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
 	require.Equal(t, graphsync.RequestCompletedPartial, finalResponseStatus)
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
@@ -453,6 +477,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
+	assertComplete := assertCompletionFunction(responder, 1)
 
 	totalSent := 0
 	totalSentOnWire := 0
@@ -472,10 +497,13 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 	require.Equal(t, blockChainLength, totalSent)
 	require.Equal(t, blockChainLength-set.Len(), totalSentOnWire)
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
@@ -512,7 +540,7 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
-
+	assertComplete := assertCompletionFunction(responder, 1)
 	totalSent := 0
 	totalSentOnWire := 0
 	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
@@ -534,10 +562,13 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 	require.Equal(t, blockChainLength, totalSent)
 	require.Equal(t, blockChainLength-50, totalSentOnWire)
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
@@ -581,7 +612,7 @@ func TestPauseResume(t *testing.T) {
 			hookActions.TerminateWithError(errors.New("should have sent extension"))
 		}
 	})
-
+	assertOneRequestCompletes := assertCompletionFunction(responder, 1)
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
 	blockChain.VerifyResponseRange(ctx, progressChan, 0, stopPoint)
@@ -615,14 +646,19 @@ func TestPauseResume(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
 	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertOneRequestCompletes(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(1)")
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	// pause recorded
+	tracing.SingleExceptionEvent(t, "response(0)->executeTask(0)", "github.com/ipfs/go-graphsync/responsemanager/hooks.ErrPaused", hooks.ErrPaused{}.Error(), false)
 }
 
 func TestPauseResumeRequest(t *testing.T) {
@@ -643,7 +679,8 @@ func TestPauseResumeRequest(t *testing.T) {
 	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, uint64(blockSize), blockChainLength)
 
 	// initialize graphsync on second node to response to requests
-	_ = td.GraphSyncHost2()
+	responder := td.GraphSyncHost2()
+	assertCancelOrComplete := assertCancelOrCompleteFunction(responder, 2)
 
 	stopPoint := 50
 	blocksReceived := 0
@@ -673,15 +710,30 @@ func TestPauseResumeRequest(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
 	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	// the request may actually only get sent onces -- it depends
+	// on whether the responder completes its send before getting the cancel
+	// signal. even if the request pauses before the request is over,
+	// it may not make another graphsync request if it
+	// ingested the blocks into the temporary cache
+	wasCancelled := assertCancelOrComplete(ctx, t)
+	if wasCancelled {
+		// should get max 1 cancel
+		require.False(t, assertCancelOrComplete(ctx, t))
+	}
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->executeTask(1)",
-		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	if wasCancelled {
+		require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
+		require.Contains(t, traceStrings, "response(1)->executeTask(0)")
+	}
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(1)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
 	// has ErrPaused exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrPaused", hooks.ErrPaused{}.Error(), false)
 }
@@ -737,6 +789,7 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 			hookActions.UnpauseResponse()
 		}
 	})
+	assertComplete := assertCompletionFunction(responder, 1)
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
 	blockChain.VerifyWholeChain(ctx, progressChan)
@@ -746,14 +799,26 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 	require.Equal(t, td.extensionResponseData, receivedReponseData, "did not receive correct extension response data")
 	require.Equal(t, td.extensionUpdateData, receivedUpdateData, "did not receive correct extension update data")
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
+	// j, _ := json.MarshalIndent(tracing.FindSpans("executeTask"), "", "  ")
+	// fmt.Println(string(j))
 	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
+		"response(0)->processUpdate(0)",
+		"response(0)->executeTask(1)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	}, tracing.TracesToStrings())
+	// make sure the attributes are what we expect
+	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
+	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "extensions").AsStringSlice())
+	// pause recorded
+	tracing.SingleExceptionEvent(t, "response(0)->executeTask(0)", "github.com/ipfs/go-graphsync/responsemanager/hooks.ErrPaused", hooks.ErrPaused{}.Error(), false)
 }
 
 func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
@@ -809,6 +874,7 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 			hookActions.UnpauseResponse()
 		}
 	})
+	assertComplete := assertCompletionFunction(responder, 1)
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
 
 	blockChain.VerifyWholeChain(ctx, progressChan)
@@ -818,14 +884,24 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 	require.Equal(t, td.extensionResponseData, receivedReponseData, "did not receive correct extension response data")
 	require.Equal(t, td.extensionUpdateData, receivedUpdateData, "did not receive correct extension update data")
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
+		"response(0)->processUpdate(0)",
+		"response(0)->executeTask(1)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	}, tracing.TracesToStrings())
+	// make sure the attributes are what we expect
+	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
+	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "extensions").AsStringSlice())
+	// pause recorded
+	tracing.SingleExceptionEvent(t, "response(0)->executeTask(0)", "github.com/ipfs/go-graphsync/responsemanager/hooks.ErrPaused", hooks.ErrPaused{}.Error(), false)
 }
 
 func TestNetworkDisconnect(t *testing.T) {
@@ -900,14 +976,17 @@ func TestNetworkDisconnect(t *testing.T) {
 	require.EqualError(t, err, graphsync.RequestClientCancelledErr{}.Error())
 	testutil.AssertReceive(ctx, t, receiverError, &err, "should receive an error on receiver side")
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	// may contain multiple abortRequest traces as the network error can bubble up >1 times
+	// but these will only record if the request is still executing
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
 }
@@ -948,7 +1027,7 @@ func TestConnectFail(t *testing.T) {
 	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
 	require.EqualError(t, err, graphsync.RequestClientCancelledErr{}.Error())
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
@@ -974,6 +1053,7 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
+	assertCancelOrComplete := assertCancelOrCompleteFunction(responder, 1)
 
 	// alternate storing location for responder
 	altStore1 := make(map[ipld.Link][]byte)
@@ -1026,18 +1106,23 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	require.Len(t, td.blockStore1, 0, "should store no blocks in normal store")
 	require.Len(t, altStore1, blockChainLength, "did not store all blocks in alternate store")
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	wasCancelled := assertCancelOrComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	// two complete request traces expected
-	require.ElementsMatch(t, []string{
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-		"request(1)->newRequest(0)",
-		"request(1)->executeTask(0)",
-		"request(1)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	// may or may not contain a second response trace: "response(1)->executeTask(0)""
+	if wasCancelled {
+		require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
+	}
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "request(1)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(1)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(1)->terminateRequest(0)")
 	// TODO(rvagg): this is randomly either a SkipMe or a ipldutil.ContextCancelError; confirm this is sane
 	// tracing.SingleExceptionEvent(t, "request(0)->newRequest(0)","request(0)->executeTask(0)", "SkipMe", traversal.SkipMe{}.Error(), true)
 }
@@ -1055,7 +1140,8 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 	requestor := td.GraphSyncHost1()
 
 	// initialize graphsync on second node to response to requests
-	_ = td.GraphSyncHost2()
+	responder := td.GraphSyncHost2()
+	assertComplete := assertCompletionFunction(responder, 2)
 
 	// alternate storing location for responder
 	altStore1 := make(map[ipld.Link][]byte)
@@ -1107,18 +1193,21 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, errChan2)
 	require.Len(t, altStore1, blockChainLength, "did not store all blocks in alternate store 2")
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
 	// two complete request traces expected
-	require.ElementsMatch(t, []string{
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-		"request(1)->newRequest(0)",
-		"request(1)->executeTask(0)",
-		"request(1)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	// may or may not contain a second response "response(1)->executeTask(0)"
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "request(1)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(1)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(1)->terminateRequest(0)")
 }
 
 // TestRoundTripLargeBlocksSlowNetwork test verifies graphsync continues to work
@@ -1152,17 +1241,20 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 	blockChain := testutil.SetupBlockChain(ctx, t, blockChainPersistence, 200000, blockChainLength)
 
 	// initialize graphsync on second node to response to requests
-	td.GraphSyncHost2()
-
+	responder := td.GraphSyncHost2()
+	assertComplete := assertCompletionFunction(responder, 1)
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector())
 
 	blockChain.VerifyWholeChain(ctx, progressChan)
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
@@ -1240,6 +1332,7 @@ func TestUnixFSFetch(t *testing.T) {
 	td := newGsTestData(ctx, t)
 	requestor := New(ctx, td.gsnet1, persistence1)
 	responder := New(ctx, td.gsnet2, persistence2)
+	assertComplete := assertCompletionFunction(responder, 1)
 	extensionName := graphsync.ExtensionName("Free for all")
 	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		hookActions.ValidateRequest()
@@ -1289,10 +1382,13 @@ func TestUnixFSFetch(t *testing.T) {
 	// verify original bytes match final bytes!
 	require.Equal(t, origBytes, finalBytes, "should have gotten same bytes written as read but didn't")
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
@@ -1317,6 +1413,7 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 
 	// initialize graphsync on second node to response to requests
 	responder := td.GraphSyncHost2()
+	assertComplete := assertCompletionFunction(responder, 1)
 
 	// register hooks to count blocks in various stages
 	blocksSent := 0
@@ -1380,10 +1477,13 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 	require.Equal(t, blockChainLength, blocksIncoming)
 	require.Equal(t, blockChainLength, blocksSent)
 
-	requestor.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
@@ -1406,6 +1506,43 @@ type gsTestData struct {
 	extensionResponse          graphsync.ExtensionData
 	extensionUpdateData        []byte
 	extensionUpdate            graphsync.ExtensionData
+}
+
+func drain(gs graphsync.GraphExchange) {
+	gs.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+	gs.(*GraphSync).responseQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+}
+
+func assertCompletionFunction(gs graphsync.GraphExchange, completedRequestCount int) func(context.Context, *testing.T) {
+	completedResponse := make(chan struct{}, completedRequestCount)
+	gs.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+		completedResponse <- struct{}{}
+	})
+	return func(ctx context.Context, t *testing.T) {
+		testutil.AssertDoesReceive(ctx, t, completedResponse, "request never completed")
+	}
+}
+
+func assertCancelOrCompleteFunction(gs graphsync.GraphExchange, requestCount int) func(context.Context, *testing.T) bool {
+	completedResponse := make(chan struct{}, requestCount)
+	gs.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+		completedResponse <- struct{}{}
+	})
+	cancelledResponse := make(chan struct{}, requestCount)
+	gs.RegisterRequestorCancelledListener(func(p peer.ID, request graphsync.RequestData) {
+		cancelledResponse <- struct{}{}
+	})
+	return func(ctx context.Context, t *testing.T) bool {
+		select {
+		case <-ctx.Done():
+			require.FailNow(t, "request did not cancel or complete")
+			return false
+		case <-completedResponse:
+			return false
+		case <-cancelledResponse:
+			return true
+		}
+	}
 }
 
 func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {

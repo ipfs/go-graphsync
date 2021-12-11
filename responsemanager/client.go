@@ -9,6 +9,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
@@ -30,6 +31,7 @@ var log = logging.Logger("graphsync")
 
 type inProgressResponseStatus struct {
 	ctx        context.Context
+	span       trace.Span
 	cancelFn   func()
 	request    gsmsg.GraphSyncRequest
 	loader     ipld.BlockReadOpener
@@ -197,7 +199,7 @@ func (rm *ResponseManager) CancelResponse(p peer.ID, requestID graphsync.Request
 	}
 }
 
-// this is a test utility method to force all messages to get processed
+// Synchronize is a utility method that blocks until all current messages are processed
 func (rm *ResponseManager) synchronize() {
 	sync := make(chan error)
 	rm.send(&synchronizeMessage{sync}, nil)
