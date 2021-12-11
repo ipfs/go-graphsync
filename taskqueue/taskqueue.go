@@ -42,12 +42,12 @@ type WorkerTaskQueue struct {
 }
 
 // NewTaskQueue initializes a new queue
-func NewTaskQueue(ctx context.Context) *WorkerTaskQueue {
+func NewTaskQueue(ctx context.Context, ptqopts ...peertaskqueue.Option) *WorkerTaskQueue {
 	ctx, cancelFn := context.WithCancel(ctx)
 	return &WorkerTaskQueue{
 		ctx:           ctx,
 		cancelFn:      cancelFn,
-		PeerTaskQueue: peertaskqueue.New(),
+		PeerTaskQueue: peertaskqueue.New(ptqopts...),
 		workSignal:    make(chan struct{}, 1),
 		noTaskCond:    sync.NewCond(&sync.Mutex{}),
 		ticker:        time.NewTicker(thawSpeed),
