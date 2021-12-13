@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"testing"
 	"time"
 
@@ -1039,9 +1038,12 @@ func readNNetworkRequests(ctx context.Context,
 	}
 	// because of the simultaneous request queues it's possible for the requests to go to the network layer out of order
 	// if the requests are queued at a near identical time
-	sort.Slice(requestRecords, func(i, j int) bool {
-		return requestRecords[i].gsr.ID() < requestRecords[j].gsr.ID()
-	})
+	// TODO: howdo?
+	/*
+		sort.Slice(requestRecords, func(i, j int) bool {
+			return requestRecords[i].gsr.ID() < requestRecords[j].gsr.ID()
+		})
+	*/
 	return requestRecords
 }
 

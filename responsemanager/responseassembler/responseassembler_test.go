@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -27,9 +26,9 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
-	requestID3 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
+	requestID3 := graphsync.NewRequestID()
 
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
@@ -139,7 +138,7 @@ func TestResponseAssemblerCloseStream(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -175,7 +174,7 @@ func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -222,7 +221,7 @@ func TestResponseAssemblerSendsResponsesInTransaction(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -261,8 +260,8 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -336,8 +335,8 @@ func TestResponseAssemblerSkipFirstBlocks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -427,9 +426,9 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
-	requestID3 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
+	requestID3 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {

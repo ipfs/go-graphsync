@@ -39,7 +39,7 @@ func TestStartupAndShutdown(t *testing.T) {
 
 	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
@@ -77,7 +77,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 
 	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
@@ -128,7 +128,7 @@ func TestProcessingNotification(t *testing.T) {
 	waitGroup.Add(1)
 	blks := testutil.GenerateBlocksOfSize(3, 128)
 
-	responseID := graphsync.RequestID(rand.Int31())
+	responseID := graphsync.NewRequestID()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
@@ -199,7 +199,7 @@ func TestDedupingMessages(t *testing.T) {
 	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
 	waitGroup.Add(1)
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
@@ -210,11 +210,11 @@ func TestDedupingMessages(t *testing.T) {
 	})
 	// wait for send attempt
 	waitGroup.Wait()
-	id2 := graphsync.RequestID(rand.Int31())
+	id2 := graphsync.NewRequestID()
 	priority2 := graphsync.Priority(rand.Int31())
 	selector2 := ssb.ExploreAll(ssb.Matcher()).Node()
 	root2 := testutil.GenerateCids(1)[0]
-	id3 := graphsync.RequestID(rand.Int31())
+	id3 := graphsync.NewRequestID()
 	priority3 := graphsync.Priority(rand.Int31())
 	selector3 := ssb.ExploreIndex(0, ssb.Matcher()).Node()
 	root3 := testutil.GenerateCids(1)[0]
@@ -385,8 +385,8 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
 	messageSender := &fakeMessageSender{nil, fullClosedChan, resetChan, messagesSent}
 	var waitGroup sync.WaitGroup
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}

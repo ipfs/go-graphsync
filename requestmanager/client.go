@@ -96,7 +96,6 @@ type RequestManager struct {
 	maxLinksPerRequest uint64
 
 	// dont touch out side of run loop
-	nextRequestID                      graphsync.RequestID
 	inProgressRequestStatuses          map[graphsync.RequestID]*inProgressRequestStatus
 	requestHooks                       RequestHooks
 	responseHooks                      ResponseHooks

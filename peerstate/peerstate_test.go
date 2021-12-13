@@ -2,7 +2,6 @@ package peerstate_test
 
 import (
 	"fmt"
-	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,7 +13,7 @@ import (
 func TestDiagnostics(t *testing.T) {
 	requestIDs := make([]graphsync.RequestID, 0, 5)
 	for i := 0; i < 5; i++ {
-		requestIDs = append(requestIDs, graphsync.RequestID(rand.Int31()))
+		requestIDs = append(requestIDs, graphsync.NewRequestID())
 	}
 	testCases := map[string]struct {
 		requestStates       graphsync.RequestStates

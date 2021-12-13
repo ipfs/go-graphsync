@@ -3,7 +3,6 @@ package loadattemptqueue
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -31,7 +30,7 @@ func TestAsyncLoadInitialLoadSucceeds(t *testing.T) {
 
 	link := testutil.NewTestLink()
 	linkContext := ipld.LinkContext{}
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	p := testutil.GeneratePeers(1)[0]
 
 	resultChan := make(chan types.AsyncLoadResult, 1)
@@ -61,7 +60,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 
 	link := testutil.NewTestLink()
 	linkContext := ipld.LinkContext{}
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	p := testutil.GeneratePeers(1)[0]
 
@@ -95,7 +94,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryFalse(t *testing.T) {
 
 	link := testutil.NewTestLink()
 	linkContext := ipld.LinkContext{}
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	p := testutil.GeneratePeers(1)[0]
 
 	resultChan := make(chan types.AsyncLoadResult, 1)
@@ -130,7 +129,7 @@ func TestAsyncLoadInitialLoadIndeterminateRetryTrueThenRetriedSuccess(t *testing
 
 	link := testutil.NewTestLink()
 	linkContext := ipld.LinkContext{}
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	p := testutil.GeneratePeers(1)[0]
 	lr := NewLoadRequest(p, requestID, link, linkContext, resultChan)
@@ -167,7 +166,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 
 	link := testutil.NewTestLink()
 	linkContext := ipld.LinkContext{}
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	resultChan := make(chan types.AsyncLoadResult, 1)
 	p := testutil.GeneratePeers(1)[0]
 	lr := NewLoadRequest(p, requestID, link, linkContext, resultChan)

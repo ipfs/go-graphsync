@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 
+	"github.com/google/uuid"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -326,7 +327,7 @@ func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
 			}
 		}
 		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
-			Id:         int32(request.ID),
+			Id:         request.ID[:],
 			Root:       request.Root.Bytes(),
 			Selector:   selector,
 			Priority:   int32(request.Priority),
@@ -339,7 +340,7 @@ func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
 	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.Responses))
 	for _, response := range gsm.Responses {
 		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
-			Id:         int32(response.ID),
+			Id:         response.ID[:],
 			Status:     int32(response.Status),
 			Extensions: toProtoExtensions(response.Extensions),
 		})

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
@@ -12,11 +13,21 @@ import (
 )
 
 // RequestID is a unique identifier for a GraphSync request.
-type RequestID int32
+type RequestID uuid.UUID
 
 // Tag returns an easy way to identify this request id as a graphsync request (for libp2p connections)
 func (r RequestID) Tag() string {
-	return fmt.Sprintf("graphsync-request-%d", r)
+	return r.String()
+}
+
+// String form of a RequestID (should be a well-formed UUIDv4 string)
+func (r RequestID) String() string {
+	return uuid.UUID(r).String()
+}
+
+// Create a new, random RequestID (should be a UUIDv4)
+func NewRequestID() RequestID {
+	return RequestID(uuid.New())
 }
 
 // Priority a priority for a GraphSync request.

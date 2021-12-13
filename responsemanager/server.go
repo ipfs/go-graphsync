@@ -68,7 +68,7 @@ func (rm *ResponseManager) processUpdate(ctx context.Context, key responseKey, u
 		"processUpdate",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithAttributes(
-			attribute.Int("id", int(update.ID())),
+			attribute.String("id", update.ID().String()),
 			attribute.StringSlice("extensions", update.ExtensionNames()),
 		))
 
@@ -200,7 +200,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			"response",
 			trace.WithLinks(trace.LinkFromContext(ctx)),
 			trace.WithAttributes(
-				attribute.Int("id", int(request.ID())),
+				attribute.String("id", request.ID().String()),
 				attribute.Int("priority", int(request.Priority())),
 				attribute.String("root", request.Root().String()),
 				attribute.StringSlice("extensions", request.ExtensionNames()),
