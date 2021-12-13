@@ -10,6 +10,9 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
@@ -38,6 +41,7 @@ type ResponseTask struct {
 	Empty      bool
 	Subscriber *notifications.TopicDataSubscriber
 	Ctx        context.Context
+	Span       trace.Span
 	Request    gsmsg.GraphSyncRequest
 	Loader     ipld.BlockReadOpener
 	Traverser  ipldutil.Traverser
@@ -97,8 +101,17 @@ func (qe *QueryExecutor) ExecuteTask(ctx context.Context, pid peer.ID, task *pee
 		return false
 	}
 
+	_, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(qe.ctx, rt.Span), "executeTask")
+	defer span.End()
+
 	log.Debugw("beginning response execution", "id", rt.Request.ID(), "peer", pid.String(), "root_cid", rt.Request.Root().String())
 	err := qe.executeQuery(pid, rt)
+	if err != nil {
+		span.RecordError(err)
+		if _, isPaused := err.(hooks.ErrPaused); !isPaused {
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}
 	qe.manager.FinishTask(task, err)
 	log.Debugw("finishing response execution", "id", rt.Request.ID(), "peer", pid.String(), "root_cid", rt.Request.Root().String())
 	return false

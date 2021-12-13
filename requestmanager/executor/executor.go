@@ -82,14 +82,16 @@ func (e *Executor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.
 
 	log.Debugw("beginning request execution", "id", requestTask.Request.ID(), "peer", pid.String(), "root_cid", requestTask.Request.Root().String())
 	err := e.traverse(requestTask)
-	span.RecordError(err)
-	if err != nil && !ipldutil.IsContextCancelErr(err) {
-		e.manager.SendRequest(requestTask.P, gsmsg.CancelRequest(requestTask.Request.ID()))
-		if !isPausedErr(err) {
-			span.SetStatus(codes.Error, err.Error())
-			select {
-			case <-requestTask.Ctx.Done():
-			case requestTask.InProgressErr <- err:
+	if err != nil {
+		span.RecordError(err)
+		if !ipldutil.IsContextCancelErr(err) {
+			e.manager.SendRequest(requestTask.P, gsmsg.CancelRequest(requestTask.Request.ID()))
+			if !isPausedErr(err) {
+				span.SetStatus(codes.Error, err.Error())
+				select {
+				case <-requestTask.Ctx.Done():
+				case requestTask.InProgressErr <- err:
+				}
 			}
 		}
 	}

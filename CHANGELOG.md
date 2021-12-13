@@ -1,5 +1,24 @@
 # go-graphsync changelog
 
+# go-graphsync v0.11.3
+
+Minor bug fix for stats + merge of response tracing
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Merge tag 'v0.10.9'
+  - feat: add basic tracing for responses (#291) ([ipfs/go-graphsync#291](https://github.com/ipfs/go-graphsync/pull/291))
+  - fix(impl): remove accidental legacy field (#310) ([ipfs/go-graphsync#310](https://github.com/ipfs/go-graphsync/pull/310))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 2 | +309/-121 | 12 |
+| Rod Vagg | 1 | +301/-95 | 8 |
+| hannahhoward | 1 | +16/-0 | 1 |
+
 # go-graphsync v0.11.2
 
 Improvements to diagnostics and new CompletingSend state
@@ -64,6 +83,22 @@ Breaking update to new go-datastore interfaces
 | Contributor | Commits | Lines ± | Files Changed |
 |-------------|---------|---------|---------------|
 | Whyrusleeping | 1 | +895/-111 | 3 |
+
+# go-graphsync v0.10.9
+
+HOTFIX branch merges v0.11.x series changes without context data store change
+
+### Changelog
+
+Generating Changelog for github.com/ipfs/go-graphsync v0.11.2..ad16dd4bd2cc88a1e08539a555a6152b5e9f2159
+- github.com/ipfs/go-graphsync:
+  - Merge updates from 0.11.x series
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +305/-108 | 10 |
 
 # go-graphsync v0.10.8
 
