@@ -7,7 +7,7 @@ option go_package = ".;graphsync_message_pb";
 message Message {
 
   message Request {
-    int32 id = 1;       // unique id set on the requester side
+    bytes id = 1;       // unique id set on the requester side
     bytes root = 2;     // a CID for the root node in the query
     bytes selector = 3; // ipld selector to retrieve
     map<string, bytes> extensions = 4;    // aux information. useful for other protocols
@@ -17,7 +17,7 @@ message Message {
   }
 
   message Response {
-    int32 id = 1;     // the request id
+    bytes id = 1;     // the request id
     int32 status = 2; // a status code.
     map<string, bytes> extensions = 3; // additional data
   }

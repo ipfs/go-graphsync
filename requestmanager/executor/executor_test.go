@@ -179,7 +179,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			persistence := testutil.NewTestStore(make(map[ipld.Link][]byte))
 			tbc := testutil.SetupBlockChain(ctx, t, persistence, 100, 10)
 			fal := testloader.NewFakeAsyncLoader()
-			requestID := graphsync.RequestID(rand.Int31())
+			requestID := graphsync.NewRequestID()
 			p := testutil.GeneratePeers(1)[0]
 			configureLoader := data.configureLoader
 			if configureLoader == nil {

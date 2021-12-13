@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/google/uuid"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -162,7 +163,12 @@ func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
 		if exts == nil {
 			exts = make(map[string][]byte)
 		}
-		requests[graphsync.RequestID(req.Id)] = newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts)
+		uid, err := uuid.FromBytes(req.Id)
+		if err != nil {
+			return GraphSyncMessage{}, err
+		}
+		id := graphsync.RequestID(uid)
+		requests[id] = newRequest(id, root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts)
 	}
 
 	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(pbm.GetResponses()))
@@ -174,7 +180,12 @@ func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
 		if exts == nil {
 			exts = make(map[string][]byte)
 		}
-		responses[graphsync.RequestID(res.Id)] = newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), exts)
+		uid, err := uuid.FromBytes(res.Id)
+		if err != nil {
+			return GraphSyncMessage{}, err
+		}
+		id := graphsync.RequestID(uid)
+		responses[id] = newResponse(id, graphsync.ResponseStatusCode(res.Status), exts)
 	}
 
 	blks := make(map[cid.Cid]blocks.Block, len(pbm.GetData()))
@@ -278,7 +289,7 @@ func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
 			}
 		}
 		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
-			Id:         int32(request.id),
+			Id:         request.id[:],
 			Root:       request.root.Bytes(),
 			Selector:   selector,
 			Priority:   int32(request.priority),
@@ -291,7 +302,7 @@ func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
 	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.responses))
 	for _, response := range gsm.responses {
 		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
-			Id:         int32(response.requestID),
+			Id:         response.requestID[:],
 			Status:     int32(response.status),
 			Extensions: response.extensions,
 		})

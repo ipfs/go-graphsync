@@ -8,7 +8,6 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
@@ -134,7 +133,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	blockChainLength := 100
 	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 
 	builder := gsmsg.NewBuilder()
 	builder.AddRequest(gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), td.extension))

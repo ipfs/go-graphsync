@@ -26,7 +26,7 @@ func TestAppendingRequests(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 
 	builder := NewBuilder()
@@ -51,7 +51,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.NoError(t, err)
 
 	pbRequest := pbMessage.Requests[0]
-	require.Equal(t, int32(id), pbRequest.Id)
+	require.Equal(t, id[:], pbRequest.Id)
 	require.Equal(t, int32(priority), pbRequest.Priority)
 	require.False(t, pbRequest.Cancel)
 	require.False(t, pbRequest.Update)
@@ -82,7 +82,7 @@ func TestAppendingResponses(t *testing.T) {
 		Name: extensionName,
 		Data: testutil.RandomBytes(100),
 	}
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	status := graphsync.RequestAcknowledged
 
 	builder := NewBuilder()
@@ -102,7 +102,7 @@ func TestAppendingResponses(t *testing.T) {
 	pbMessage, err := gsm.ToProto()
 	require.NoError(t, err, "serialize to protobuf errored")
 	pbResponse := pbMessage.Responses[0]
-	require.Equal(t, int32(requestID), pbResponse.Id)
+	require.Equal(t, requestID[:], pbResponse.Id)
 	require.Equal(t, int32(status), pbResponse.Status)
 	require.Equal(t, extension.Data, pbResponse.Extensions["graphsync/awesome"])
 
@@ -154,7 +154,7 @@ func contains(strs []string, x string) bool {
 func TestRequestCancel(t *testing.T) {
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	root := testutil.GenerateCids(1)[0]
 
@@ -184,7 +184,7 @@ func TestRequestCancel(t *testing.T) {
 
 func TestRequestUpdate(t *testing.T) {
 
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
@@ -235,7 +235,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 		Name: extensionName,
 		Data: testutil.RandomBytes(100),
 	}
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	status := graphsync.RequestAcknowledged
 
@@ -325,7 +325,7 @@ func TestMergeExtensions(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	defaultRequest := NewRequest(id, root, selector, priority, initialExtensions...)
 	t.Run("when merging into empty", func(t *testing.T) {

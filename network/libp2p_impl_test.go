@@ -77,7 +77,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 		Name: extensionName,
 		Data: testutil.RandomBytes(100),
 	}
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	status := graphsync.RequestAcknowledged
 

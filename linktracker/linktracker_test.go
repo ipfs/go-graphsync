@@ -1,7 +1,6 @@
 package linktracker
 
 import (
-	"math/rand"
 	"testing"
 
 	"github.com/ipld/go-ipld-prime"
@@ -74,7 +73,7 @@ func TestBlockRefCount(t *testing.T) {
 			linkTracker := New()
 			link := testutil.NewTestLink()
 			for _, rq := range data.requests {
-				requestID := graphsync.RequestID(rand.Int31())
+				requestID := graphsync.NewRequestID()
 				for _, present := range rq.traversals {
 					linkTracker.RecordLinkTraversal(requestID, link, present)
 				}
@@ -116,7 +115,7 @@ func TestFinishRequest(t *testing.T) {
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
 			linkTracker := New()
-			requestID := graphsync.RequestID(rand.Int31())
+			requestID := graphsync.NewRequestID()
 			for _, lt := range data.linksTraversed {
 				linkTracker.RecordLinkTraversal(requestID, lt.link, lt.blockPresent)
 			}
@@ -151,7 +150,7 @@ func TestIsKnownMissingLink(t *testing.T) {
 		t.Run(testCase, func(t *testing.T) {
 			linkTracker := New()
 			link := testutil.NewTestLink()
-			requestID := graphsync.RequestID(rand.Int31())
+			requestID := graphsync.NewRequestID()
 			for _, present := range data.traversals {
 				linkTracker.RecordLinkTraversal(requestID, link, present)
 			}

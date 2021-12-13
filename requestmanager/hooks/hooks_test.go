@@ -2,7 +2,6 @@ package hooks_test
 
 import (
 	"errors"
-	"math/rand"
 	"testing"
 
 	"github.com/ipld/go-ipld-prime"
@@ -29,7 +28,7 @@ func TestRequestHookProcessing(t *testing.T) {
 	}
 
 	root := testutil.GenerateCids(1)[0]
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
 	p := testutil.GeneratePeers(1)[0]
@@ -111,7 +110,7 @@ func TestBlockHookProcessing(t *testing.T) {
 		Name: extensionName,
 		Data: extensionUpdateData,
 	}
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	response := gsmsg.NewResponse(requestID, graphsync.PartialResponse, extensionResponse)
 
 	p := testutil.GeneratePeers(1)[0]
@@ -208,7 +207,7 @@ func TestResponseHookProcessing(t *testing.T) {
 		Name: extensionName,
 		Data: extensionUpdateData,
 	}
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	response := gsmsg.NewResponse(requestID, graphsync.PartialResponse, extensionResponse)
 
 	p := testutil.GeneratePeers(1)[0]

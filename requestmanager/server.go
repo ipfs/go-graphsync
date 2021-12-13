@@ -56,10 +56,9 @@ func (rm *RequestManager) cleanupInProcessRequests() {
 }
 
 func (rm *RequestManager) newRequest(parentSpan trace.Span, p peer.ID, root ipld.Link, selector ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, chan graphsync.ResponseProgress, chan error) {
-	requestID := rm.nextRequestID
-	rm.nextRequestID++
+	requestID := graphsync.NewRequestID()
 
-	parentSpan.SetAttributes(attribute.Int("requestID", int(requestID)))
+	parentSpan.SetAttributes(attribute.String("requestID", requestID.String()))
 	ctx, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, parentSpan), "newRequest")
 	defer span.End()
 

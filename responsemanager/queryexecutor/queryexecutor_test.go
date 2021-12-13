@@ -274,7 +274,7 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td.manager = &fauxManager{ctx: ctx, t: t, expectedStartTask: td.task}
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()
-	td.requestID = graphsync.RequestID(rand.Int31())
+	td.requestID = graphsync.NewRequestID()
 	td.requestCid, _ = cid.Decode("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	td.requestSelector = basicnode.NewInt(rand.Int63())
 	td.extensionData = testutil.RandomBytes(100)

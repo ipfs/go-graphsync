@@ -67,7 +67,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 
 	tp := testutil.GeneratePeers(5)
 
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	root := testutil.GenerateCids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)

@@ -3,7 +3,6 @@ package responsecache
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -59,8 +58,8 @@ func (ubs *fakeUnverifiedBlockStore) blocks() []blocks.Block {
 
 func TestResponseCacheManagingLinks(t *testing.T) {
 	blks := testutil.GenerateBlocksOfSize(5, 100)
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
 
 	request1Metadata := metadata.Metadata{
 		metadata.Item{

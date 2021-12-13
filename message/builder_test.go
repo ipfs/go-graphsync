@@ -2,7 +2,6 @@ package message
 
 import (
 	"io"
-	"math/rand"
 	"testing"
 
 	"github.com/ipld/go-ipld-prime"
@@ -20,6 +19,7 @@ func TestMessageBuilding(t *testing.T) {
 	for _, block := range blocks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
+
 	extensionData1 := testutil.RandomBytes(100)
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
 	extension1 := graphsync.ExtensionData{
@@ -32,10 +32,10 @@ func TestMessageBuilding(t *testing.T) {
 		Name: extensionName2,
 		Data: extensionData2,
 	}
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
-	requestID3 := graphsync.RequestID(rand.Int31())
-	requestID4 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
+	requestID3 := graphsync.NewRequestID()
+	requestID4 := graphsync.NewRequestID()
 	closer := io.NopCloser(nil)
 	testCases := map[string]struct {
 		build           func(*Builder)

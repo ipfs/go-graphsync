@@ -3,7 +3,6 @@ package asyncloader
 import (
 	"context"
 	"io"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -23,7 +22,7 @@ func TestAsyncLoadInitialLoadSucceedsLocallyPresent(t *testing.T) {
 	st := newStore()
 	link := st.Store(t, block)
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
-		requestID := graphsync.RequestID(rand.Int31())
+		requestID := graphsync.NewRequestID()
 		p := testutil.GeneratePeers(1)[0]
 		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 		assertSuccessResponse(ctx, t, resultChan)
@@ -38,7 +37,7 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 
 	st := newStore()
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
-		requestID := graphsync.RequestID(rand.Int31())
+		requestID := graphsync.NewRequestID()
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: {
 				metadata.Item{
@@ -61,7 +60,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 	st := newStore()
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		link := testutil.NewTestLink()
-		requestID := graphsync.RequestID(rand.Int31())
+		requestID := graphsync.NewRequestID()
 
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: {
@@ -84,7 +83,7 @@ func TestAsyncLoadInitialLoadIndeterminateWhenRequestNotInProgress(t *testing.T)
 	st := newStore()
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		link := testutil.NewTestLink()
-		requestID := graphsync.RequestID(rand.Int31())
+		requestID := graphsync.NewRequestID()
 		p := testutil.GeneratePeers(1)[0]
 		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 		assertFailResponse(ctx, t, resultChan)
@@ -100,7 +99,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 	st := newStore()
 
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
-		requestID := graphsync.RequestID(rand.Int31())
+		requestID := graphsync.NewRequestID()
 		err := asyncLoader.StartRequest(requestID, "")
 		require.NoError(t, err)
 		p := testutil.GeneratePeers(1)[0]
@@ -128,7 +127,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		link := testutil.NewTestLink()
-		requestID := graphsync.RequestID(rand.Int31())
+		requestID := graphsync.NewRequestID()
 		err := asyncLoader.StartRequest(requestID, "")
 		require.NoError(t, err)
 		p := testutil.GeneratePeers(1)[0]
@@ -154,7 +153,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenRequestFinishes(t *testing.T) {
 	st := newStore()
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		link := testutil.NewTestLink()
-		requestID := graphsync.RequestID(rand.Int31())
+		requestID := graphsync.NewRequestID()
 		err := asyncLoader.StartRequest(requestID, "")
 		require.NoError(t, err)
 		p := testutil.GeneratePeers(1)[0]
@@ -172,7 +171,7 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 	link := cidlink.Link{Cid: block.Cid()}
 	st := newStore()
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
-		requestID := graphsync.RequestID(rand.Int31())
+		requestID := graphsync.NewRequestID()
 		responses := map[graphsync.RequestID]metadata.Metadata{
 			requestID: {
 				metadata.Item{
@@ -203,13 +202,13 @@ func TestRegisterUnregister(t *testing.T) {
 	link1 := otherSt.Store(t, blocks[0])
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 
-		requestID1 := graphsync.RequestID(rand.Int31())
+		requestID1 := graphsync.NewRequestID()
 		err := asyncLoader.StartRequest(requestID1, "other")
 		require.EqualError(t, err, "unknown persistence option")
 
 		err = asyncLoader.RegisterPersistenceOption("other", otherSt.lsys)
 		require.NoError(t, err)
-		requestID2 := graphsync.RequestID(rand.Int31())
+		requestID2 := graphsync.NewRequestID()
 		err = asyncLoader.StartRequest(requestID2, "other")
 		require.NoError(t, err)
 		p := testutil.GeneratePeers(1)[0]
@@ -222,7 +221,7 @@ func TestRegisterUnregister(t *testing.T) {
 		err = asyncLoader.UnregisterPersistenceOption("other")
 		require.NoError(t, err)
 
-		requestID3 := graphsync.RequestID(rand.Int31())
+		requestID3 := graphsync.NewRequestID()
 		err = asyncLoader.StartRequest(requestID3, "other")
 		require.EqualError(t, err, "unknown persistence option")
 	})
@@ -235,11 +234,11 @@ func TestRequestSplittingLoadLocallyFromBlockstore(t *testing.T) {
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		err := asyncLoader.RegisterPersistenceOption("other", otherSt.lsys)
 		require.NoError(t, err)
-		requestID1 := graphsync.RequestID(rand.Int31())
+		requestID1 := graphsync.NewRequestID()
 		p := testutil.GeneratePeers(1)[0]
 
 		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link, ipld.LinkContext{})
-		requestID2 := graphsync.RequestID(rand.Int31())
+		requestID2 := graphsync.NewRequestID()
 		err = asyncLoader.StartRequest(requestID2, "other")
 		require.NoError(t, err)
 		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link, ipld.LinkContext{})
@@ -259,8 +258,8 @@ func TestRequestSplittingSameBlockTwoStores(t *testing.T) {
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		err := asyncLoader.RegisterPersistenceOption("other", otherSt.lsys)
 		require.NoError(t, err)
-		requestID1 := graphsync.RequestID(rand.Int31())
-		requestID2 := graphsync.RequestID(rand.Int31())
+		requestID1 := graphsync.NewRequestID()
+		requestID2 := graphsync.NewRequestID()
 		err = asyncLoader.StartRequest(requestID1, "")
 		require.NoError(t, err)
 		err = asyncLoader.StartRequest(requestID2, "other")
@@ -300,8 +299,8 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		err := asyncLoader.RegisterPersistenceOption("other", otherSt.lsys)
 		require.NoError(t, err)
-		requestID1 := graphsync.RequestID(rand.Int31())
-		requestID2 := graphsync.RequestID(rand.Int31())
+		requestID1 := graphsync.NewRequestID()
+		requestID2 := graphsync.NewRequestID()
 		err = asyncLoader.StartRequest(requestID1, "")
 		require.NoError(t, err)
 		err = asyncLoader.StartRequest(requestID2, "other")
