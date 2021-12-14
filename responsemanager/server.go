@@ -178,14 +178,14 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			rm.processUpdate(key, request)
 			continue
 		}
-		ctx, responseSpan := otel.Tracer("graphsync").Start(rm.ctx, "response", trace.WithAttributes(
+		rm.connManager.Protect(p, request.ID().Tag())
+		ctx := rm.requestQueuedHooks.ProcessRequestQueuedHooks(p, request, rm.ctx)
+		ctx, responseSpan := otel.Tracer("graphsync").Start(ctx, "response", trace.WithAttributes(
 			attribute.Int("id", int(request.ID())),
 			attribute.Int("priority", int(request.Priority())),
 			attribute.String("root", request.Root().String()),
 			attribute.StringSlice("extensions", request.ExtensionNames()),
 		))
-		rm.connManager.Protect(p, request.ID().Tag())
-		rm.requestQueuedHooks.ProcessRequestQueuedHooks(p, request)
 		ctx, cancelFn := context.WithCancel(ctx)
 		sub := notifications.NewTopicDataSubscriber(&subscriber{
 			p:                     key.p,

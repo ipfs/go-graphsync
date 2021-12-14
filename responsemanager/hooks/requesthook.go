@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"context"
 	"errors"
 
 	"github.com/hannahhoward/go-pubsub"
@@ -24,12 +25,13 @@ type IncomingRequestQueuedHooks struct {
 type internalRequestQueuedHookEvent struct {
 	p       peer.ID
 	request graphsync.RequestData
+	rha     *requestQueuedHookActions
 }
 
 func requestQueuedHookDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
 	ie := event.(internalRequestQueuedHookEvent)
 	hook := subscriberFn.(graphsync.OnIncomingRequestQueuedHook)
-	hook(ie.p, ie.request)
+	hook(ie.p, ie.request, ie.rha)
 	return nil
 }
 
@@ -46,8 +48,10 @@ func NewRequestQueuedHooks() *IncomingRequestQueuedHooks {
 }
 
 // ProcessRequestQueuedHooks runs request hooks against an incoming queued request.
-func (rqh *IncomingRequestQueuedHooks) ProcessRequestQueuedHooks(p peer.ID, request graphsync.RequestData) {
-	_ = rqh.pubSub.Publish(internalRequestQueuedHookEvent{p, request})
+func (rqh *IncomingRequestQueuedHooks) ProcessRequestQueuedHooks(p peer.ID, request graphsync.RequestData, reqCtx context.Context) context.Context {
+	qha := &requestQueuedHookActions{ctx: reqCtx}
+	_ = rqh.pubSub.Publish(internalRequestQueuedHookEvent{p, request, qha})
+	return qha.result()
 }
 
 // IncomingRequestHooks is a set of incoming request hooks that can be processed
@@ -99,6 +103,18 @@ func (irh *IncomingRequestHooks) ProcessRequestHooks(p peer.ID, request graphsyn
 	}
 	_ = irh.pubSub.Publish(internalRequestHookEvent{p, request, ha})
 	return ha.result()
+}
+
+type requestQueuedHookActions struct {
+	ctx context.Context
+}
+
+func (qha *requestQueuedHookActions) result() context.Context {
+	return qha.ctx
+}
+
+func (qha *requestQueuedHookActions) AugmentContext(augment func(reqCtx context.Context) context.Context) {
+	qha.ctx = augment(qha.ctx)
 }
 
 type requestHookActions struct {

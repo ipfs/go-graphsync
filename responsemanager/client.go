@@ -55,7 +55,7 @@ type RequestHooks interface {
 
 // RequestQueuedHooks is an interface for processing request queued hooks
 type RequestQueuedHooks interface {
-	ProcessRequestQueuedHooks(p peer.ID, request graphsync.RequestData)
+	ProcessRequestQueuedHooks(p peer.ID, request graphsync.RequestData, reqCtx context.Context) context.Context
 }
 
 // UpdateHooks is an interface for processing update hooks

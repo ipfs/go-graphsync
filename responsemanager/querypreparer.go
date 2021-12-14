@@ -37,9 +37,13 @@ type queryPreparer struct {
 	maxLinksPerRequest uint64
 }
 
-func (qe *queryPreparer) prepareQuery(ctx context.Context,
+func (qe *queryPreparer) prepareQuery(
+	ctx context.Context,
 	p peer.ID,
-	request gsmsg.GraphSyncRequest, signals queryexecutor.ResponseSignals, sub *notifications.TopicDataSubscriber) (ipld.BlockReadOpener, ipldutil.Traverser, bool, error) {
+	request gsmsg.GraphSyncRequest,
+	signals queryexecutor.ResponseSignals,
+	sub *notifications.TopicDataSubscriber) (ipld.BlockReadOpener, ipldutil.Traverser, bool, error) {
+
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
 	var isPaused bool
 	failNotifee := notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: sub}

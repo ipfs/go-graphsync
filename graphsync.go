@@ -229,9 +229,15 @@ type RequestUpdatedHookActions interface {
 	UnpauseResponse()
 }
 
+// RequestQueuedHookActions are actions that can be taken in a request queued hook to
+// change execution of the response
+type RequestQueuedHookActions interface {
+	AugmentContext(func(reqCtx context.Context) context.Context)
+}
+
 // OnIncomingRequestQueuedHook is a hook that runs each time a new incoming request is added to the responder's task queue.
 // It receives the peer that sent the request and all data about the request.
-type OnIncomingRequestQueuedHook func(p peer.ID, request RequestData)
+type OnIncomingRequestQueuedHook func(p peer.ID, request RequestData, hookActions RequestQueuedHookActions)
 
 // OnIncomingRequestHook is a hook that runs each time a new request is received.
 // It receives the peer that sent the request and all data about the request.

@@ -804,8 +804,6 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	// j, _ := json.MarshalIndent(tracing.FindSpans("executeTask"), "", "  ")
-	// fmt.Println(string(j))
 	require.ElementsMatch(t, []string{
 		"response(0)->executeTask(0)",
 		"response(0)->processUpdate(0)",
