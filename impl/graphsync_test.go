@@ -1846,8 +1846,8 @@ func processResponsesTraces(t *testing.T, tracing *testutil.Collector, responseC
 	traces := testutil.RepeatTraceStrings("processResponses({})->loaderProcess(0)->cacheProcess(0)", responseCount-1)
 	finalStub := tracing.FindSpanByTraceString(fmt.Sprintf("processResponses(%d)->loaderProcess(0)", responseCount-1))
 	require.NotNil(t, finalStub)
-	if len(testutil.AttributeValueInTraceSpan(t, *finalStub, "requestIDs").AsInt64Slice()) == 0 {
-		return append(traces, fmt.Sprintf("processResponses(%d)->loaderProcess(0)", responseCount-1))
+	if len(testutil.AttributeValueInTraceSpan(t, *finalStub, "requestIDs").AsStringSlice()) == 0 {
+		return append(traces, fmt.Sprintf("responseMessage(%d)->loaderProcess(0)", responseCount-1))
 	}
 	return append(traces, fmt.Sprintf("processResponses(%d)->loaderProcess(0)->cacheProcess(0)", responseCount-1))
 }

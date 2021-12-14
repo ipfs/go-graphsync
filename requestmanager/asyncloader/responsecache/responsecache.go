@@ -91,7 +91,7 @@ func (rc *ResponseCache) ProcessResponse(
 
 	for requestID, md := range responses {
 		for _, item := range md {
-			log.Debugf("Traverse link %s on request ID %d", item.Link.String(), requestID)
+			log.Debugf("Traverse link %s on request ID %s", item.Link.String(), requestID.String())
 			rc.linkTracker.RecordLinkTraversal(requestID, cidlink.Link{Cid: item.Link}, item.BlockPresent)
 		}
 	}
