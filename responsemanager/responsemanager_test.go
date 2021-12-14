@@ -17,6 +17,8 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
@@ -36,20 +38,31 @@ import (
 )
 
 func TestIncomingQuery(t *testing.T) {
+	collectTracing := testutil.SetupTracing()
+
 	td := newTestData(t)
 	defer td.cancel()
 	blks := td.blockChain.AllBlocks()
 
 	responseManager := td.newResponseManager()
 
+	completedResponse := make(chan struct{}, 1)
+	td.completedListeners.Register(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+		completedResponse <- struct{}{}
+	})
+
+	_, testSpan := otel.Tracer("graphsync").Start(td.ctx, "TestIncomingQuery")
+
 	type queuedHook struct {
 		p       peer.ID
 		request graphsync.RequestData
 	}
-
 	qhc := make(chan *queuedHook, 1)
-	td.requestQueuedHooks.Register(func(p peer.ID, request graphsync.RequestData) {
+	td.requestQueuedHooks.Register(func(p peer.ID, request graphsync.RequestData, hookActions graphsync.RequestQueuedHookActions) {
 		td.connManager.AssertProtectedWithTags(t, p, request.ID().Tag())
+		hookActions.AugmentContext(func(reqCtx context.Context) context.Context {
+			return trace.ContextWithSpan(reqCtx, testSpan)
+		})
 		qhc <- &queuedHook{
 			p:       p,
 			request: request,
@@ -64,11 +77,20 @@ func TestIncomingQuery(t *testing.T) {
 	}
 	td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 
+	testSpan.End()
+	td.taskqueue.WaitForNoActiveTasks()
+	testutil.AssertDoesReceive(td.ctx, t, completedResponse, "request never completed")
+
 	// ensure request queued hook fires.
 	out := <-qhc
 	require.Equal(t, td.p, out.p)
 	require.Equal(t, out.request.ID(), td.requestID)
 	td.connManager.RefuteProtected(t, td.p)
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"TestIncomingQuery(0)->response(0)->executeTask(0)",
+	}, tracing.TracesToStrings())
 }
 
 func TestCancellationQueryInProgress(t *testing.T) {
@@ -575,7 +597,6 @@ func TestValidationAndExtensions(t *testing.T) {
 	})
 
 	t.Run("test update hook processing", func(t *testing.T) {
-
 		t.Run("can pause/unpause", func(t *testing.T) {
 			td := newTestData(t)
 			defer td.cancel()
