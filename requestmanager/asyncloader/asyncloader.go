@@ -111,12 +111,12 @@ func (al *AsyncLoader) ProcessResponse(
 	responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
 
-	requestIds := make([]int, 0, len(responses))
+	requestIds := make([]string, 0, len(responses))
 	for requestID := range responses {
-		requestIds = append(requestIds, int(requestID))
+		requestIds = append(requestIds, requestID.String())
 	}
 	ctx, span := otel.Tracer("graphsync").Start(ctx, "loaderProcess", trace.WithAttributes(
-		attribute.IntSlice("requestIDs", requestIds),
+		attribute.StringSlice("requestIDs", requestIds),
 	))
 	defer span.End()
 

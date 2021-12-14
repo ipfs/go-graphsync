@@ -62,7 +62,7 @@ func (rm *RequestManager) newRequest(parentSpan trace.Span, p peer.ID, root ipld
 	ctx, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, parentSpan), "newRequest")
 	defer span.End()
 
-	log.Infow("graphsync request initiated", "request id", requestID, "peer", p, "root", root)
+	log.Infow("graphsync request initiated", "request id", requestID.String(), "peer", p, "root", root)
 
 	request, hooksResult, err := rm.validateRequest(requestID, p, root, selector, extensions)
 	if err != nil {
@@ -114,7 +114,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 	if !ok {
 		return executor.RequestTask{Empty: true}
 	}
-	log.Infow("graphsync request processing begins", "request id", requestID, "peer", ipr.p, "total time", time.Since(ipr.startTime))
+	log.Infow("graphsync request processing begins", "request id", requestID.String(), "peer", ipr.p, "total time", time.Since(ipr.startTime))
 
 	var initialRequest bool
 	if ipr.traverser == nil {
@@ -227,7 +227,7 @@ func (rm *RequestManager) releaseRequestTask(p peer.ID, task *peertask.Task, err
 		ipr.state = graphsync.Paused
 		return
 	}
-	log.Infow("graphsync request complete", "request id", requestID, "peer", ipr.p, "total time", time.Since(ipr.startTime))
+	log.Infow("graphsync request complete", "request id", requestID.String(), "peer", ipr.p, "total time", time.Since(ipr.startTime))
 	rm.terminateRequest(requestID, ipr)
 }
 
@@ -263,13 +263,13 @@ func (rm *RequestManager) cancelOnError(requestID graphsync.RequestID, ipr *inPr
 
 func (rm *RequestManager) processResponses(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block) {
 	log.Debugf("beginning processing responses for peer %s", p)
-	requestIds := make([]int, 0, len(responses))
+	requestIds := make([]string, 0, len(responses))
 	for _, r := range responses {
-		requestIds = append(requestIds, int(r.RequestID()))
+		requestIds = append(requestIds, r.RequestID().String())
 	}
 	ctx, span := otel.Tracer("graphsync").Start(rm.ctx, "processResponses", trace.WithAttributes(
 		attribute.String("peerID", p.Pretty()),
-		attribute.IntSlice("requestIDs", requestIds),
+		attribute.StringSlice("requestIDs", requestIds),
 	))
 	defer span.End()
 	filteredResponses := rm.processExtensions(responses, p)

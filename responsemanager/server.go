@@ -59,7 +59,7 @@ func (rm *ResponseManager) terminateRequest(key responseKey) {
 func (rm *ResponseManager) processUpdate(ctx context.Context, key responseKey, update gsmsg.GraphSyncRequest) {
 	response, ok := rm.inProgressResponses[key]
 	if !ok || response.state == graphsync.CompletingSend {
-		log.Warnf("received update for non existent request, peer %s, request ID %d", key.p.Pretty(), key.requestID)
+		log.Warnf("received update for non existent request, peer %s, request ID %s", key.p.Pretty(), key.requestID.String())
 		return
 	}
 
@@ -215,10 +215,10 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			networkErrorListeners: rm.networkErrorListeners,
 			connManager:           rm.connManager,
 		}
-		log.Infow("graphsync request initiated", "request id", request.ID(), "peer", p, "root", request.Root())
+		log.Infow("graphsync request initiated", "request id", request.ID().String(), "peer", p, "root", request.Root())
 		ipr, ok := rm.inProgressResponses[key]
 		if ok && ipr.state == graphsync.Running {
-			log.Warnf("there is an identical request already in progress", "request id", request.ID(), "peer", p)
+			log.Warnf("there is an identical request already in progress", "request id", request.ID().String(), "peer", p)
 		}
 
 		rm.inProgressResponses[key] =
@@ -247,7 +247,7 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.Respons
 	if !hasResponse || response.state == graphsync.CompletingSend {
 		return queryexecutor.ResponseTask{Empty: true}
 	}
-	log.Infow("graphsync response processing begins", "request id", key.requestID, "peer", key.p, "total time", time.Since(response.startTime))
+	log.Infow("graphsync response processing begins", "request id", key.requestID.String(), "peer", key.p, "total time", time.Since(response.startTime))
 
 	if response.loader == nil || response.traverser == nil {
 		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.linkSystem, rm.maxLinksPerRequest}).prepareQuery(response.ctx, key.p, response.request, response.responseStream, response.signals)
@@ -298,7 +298,7 @@ func (rm *ResponseManager) finishTask(task *peertask.Task, err error) {
 		response.state = graphsync.Paused
 		return
 	}
-	log.Infow("graphsync response processing complete (messages stil sending)", "request id", key.requestID, "peer", key.p, "total time", time.Since(response.startTime))
+	log.Infow("graphsync response processing complete (messages stil sending)", "request id", key.requestID.String(), "peer", key.p, "total time", time.Since(response.startTime))
 
 	if err != nil {
 		response.span.RecordError(err)
