@@ -87,6 +87,27 @@ func (b *Builder) Empty() bool {
 	return len(b.requests) == 0 && len(b.outgoingBlocks) == 0 && len(b.outgoingResponses) == 0
 }
 
+// ScrubResponse removes a response from a message and any blocks only referenced by that response
+func (b *Builder) ScrubResponse(requestID graphsync.RequestID) {
+	delete(b.completedResponses, requestID)
+	delete(b.extensions, requestID)
+	delete(b.outgoingResponses, requestID)
+	newBlkSize := uint64(0)
+	savedBlocks := make(map[cid.Cid]blocks.Block, len(b.outgoingBlocks))
+	for _, metadata := range b.outgoingResponses {
+		for _, item := range metadata {
+			block, willSendBlock := b.outgoingBlocks[item.Link]
+			_, alreadySavedBlock := savedBlocks[item.Link]
+			if item.BlockPresent && willSendBlock && !alreadySavedBlock {
+				savedBlocks[item.Link] = block
+				newBlkSize += uint64(len(block.RawData()))
+			}
+		}
+	}
+	b.blkSize = newBlkSize
+	b.outgoingBlocks = savedBlocks
+}
+
 // Build assembles and encodes message data from the added requests, links, and blocks.
 func (b *Builder) Build() (GraphSyncMessage, error) {
 	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(b.outgoingResponses))
