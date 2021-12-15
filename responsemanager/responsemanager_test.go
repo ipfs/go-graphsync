@@ -855,23 +855,32 @@ type fakeResponseAssembler struct {
 	missingBlock         bool
 }
 
-func (fra *fakeResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
-	fra.transactionLk.Lock()
-	defer fra.transactionLk.Unlock()
-	frb := &fakeResponseBuilder{requestID, fra,
-		fra.notifeePublisher}
+func (fra *fakeResponseAssembler) NewStream(p peer.ID, requestID graphsync.RequestID) responseassembler.ResponseStream {
+	return &fakeResponseStream{fra, requestID}
+}
+
+type fakeResponseStream struct {
+	fra       *fakeResponseAssembler
+	requestID graphsync.RequestID
+}
+
+func (frs *fakeResponseStream) Transaction(transaction responseassembler.Transaction) error {
+	frs.fra.transactionLk.Lock()
+	defer frs.fra.transactionLk.Unlock()
+	frb := &fakeResponseBuilder{frs.requestID, frs.fra,
+		frs.fra.notifeePublisher}
 	return transaction(frb)
 }
 
-func (fra *fakeResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link) {
-	fra.ignoredLinks <- links
+func (frs *fakeResponseStream) IgnoreBlocks(links []ipld.Link) {
+	frs.fra.ignoredLinks <- links
 }
 
-func (fra *fakeResponseAssembler) SkipFirstBlocks(p peer.ID, requestID graphsync.RequestID, skipCount int64) {
-	fra.skippedFirstBlocks <- skipCount
+func (frs *fakeResponseStream) SkipFirstBlocks(skipCount int64) {
+	frs.fra.skippedFirstBlocks <- skipCount
 }
-func (fra *fakeResponseAssembler) DedupKey(p peer.ID, requestID graphsync.RequestID, key string) {
-	fra.dedupKeys <- key
+func (frs *fakeResponseStream) DedupKey(key string) {
+	frs.fra.dedupKeys <- key
 }
 
 type sentResponse struct {
@@ -1159,7 +1168,7 @@ func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 }
 
 func (td *testData) newQueryExecutor(manager queryexecutor.Manager) *queryexecutor.QueryExecutor {
-	return queryexecutor.New(td.ctx, manager, td.blockHooks, td.updateHooks, td.responseAssembler)
+	return queryexecutor.New(td.ctx, manager, td.blockHooks, td.updateHooks)
 }
 
 func (td *testData) assertPausedRequest() {

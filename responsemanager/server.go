@@ -79,7 +79,7 @@ func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSync
 		return
 	} // else this is a paused response, so the update needs to be handled here and not in the executor
 	result := rm.updateHooks.ProcessUpdateHooks(key.p, response.request, update)
-	_ = rm.responseAssembler.Transaction(key.p, key.requestID, func(rb responseassembler.ResponseBuilder) error {
+	_ = response.responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 		for _, extension := range result.Extensions {
 			rb.SendExtensionData(extension)
 		}
@@ -116,7 +116,7 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	}
 	inProgressResponse.state = graphsync.Queued
 	if len(extensions) > 0 {
-		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
+		_ = inProgressResponse.responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 			for _, extension := range extensions {
 				rb.SendExtensionData(extension)
 			}
@@ -143,7 +143,7 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 	response.span.SetStatus(codes.Error, err.Error())
 
 	if response.state != graphsync.Running {
-		_ = rm.responseAssembler.Transaction(p, requestID, func(rb responseassembler.ResponseBuilder) error {
+		_ = response.responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 			if ipldutil.IsContextCancelErr(err) {
 				rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
 				rb.ClearRequest()
@@ -214,8 +214,9 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 					UpdateSignal: make(chan struct{}, 1),
 					ErrSignal:    make(chan error, 1),
 				},
-				state:     graphsync.Queued,
-				startTime: time.Now(),
+				state:          graphsync.Queued,
+				startTime:      time.Now(),
+				responseStream: rm.responseAssembler.NewStream(key.p, key.requestID),
 			}
 		// TODO: Use a better work estimation metric.
 
@@ -231,7 +232,7 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.Respons
 	log.Infow("graphsync response processing begins", "request id", key.requestID, "peer", key.p, "total time", time.Since(response.startTime))
 
 	if response.loader == nil || response.traverser == nil {
-		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.responseAssembler, rm.linkSystem, rm.maxLinksPerRequest}).prepareQuery(response.ctx, key.p, response.request, response.signals, response.subscriber)
+		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.linkSystem, rm.maxLinksPerRequest}).prepareQuery(response.ctx, key.p, response.request, response.responseStream, response.signals, response.subscriber)
 		if err != nil {
 			response.state = graphsync.CompletingSend
 			response.span.RecordError(err)
@@ -247,14 +248,15 @@ func (rm *ResponseManager) taskDataForKey(key responseKey) queryexecutor.Respons
 	}
 	response.state = graphsync.Running
 	return queryexecutor.ResponseTask{
-		Ctx:        response.ctx,
-		Span:       response.span,
-		Empty:      false,
-		Subscriber: response.subscriber,
-		Request:    response.request,
-		Loader:     response.loader,
-		Traverser:  response.traverser,
-		Signals:    response.signals,
+		Ctx:            response.ctx,
+		Span:           response.span,
+		Empty:          false,
+		Subscriber:     response.subscriber,
+		Request:        response.request,
+		Loader:         response.loader,
+		Traverser:      response.traverser,
+		Signals:        response.signals,
+		ResponseStream: response.responseStream,
 	}
 }
 

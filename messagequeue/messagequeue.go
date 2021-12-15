@@ -98,24 +98,6 @@ func (mq *MessageQueue) AllocateAndBuildMessage(size uint64, buildMessageFn func
 	}
 }
 
-type responseStream struct {
-	requestID graphsync.RequestID
-	closed    bool
-	closedLk  sync.RWMutex
-}
-
-func (r *responseStream) close() {
-	r.closedLk.Lock()
-	r.closed = true
-	r.closedLk.Unlock()
-}
-
-func (r *responseStream) isClosed() bool {
-	r.closedLk.RLock()
-	defer r.closedLk.RUnlock()
-	return r.closed
-}
-
 func (mq *MessageQueue) buildMessage(size uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) bool {
 	mq.buildersLk.Lock()
 	defer mq.buildersLk.Unlock()

@@ -9,6 +9,7 @@ package responseassembler
 
 import (
 	"context"
+	"sync"
 
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -61,7 +62,6 @@ type PeerMessageHandler interface {
 type ResponseAssembler struct {
 	*peermanager.PeerManager
 	peerHandler PeerMessageHandler
-	ctx         context.Context
 }
 
 // New generates a new ResponseAssembler for sending responses
@@ -70,46 +70,89 @@ func New(ctx context.Context, peerHandler PeerMessageHandler) *ResponseAssembler
 		PeerManager: peermanager.New(ctx, func(ctx context.Context, p peer.ID) peermanager.PeerHandler {
 			return newTracker()
 		}),
-		ctx:         ctx,
 		peerHandler: peerHandler,
 	}
 }
 
+func (ra *ResponseAssembler) NewStream(p peer.ID, requestID graphsync.RequestID) ResponseStream {
+	return &responseStream{
+		requestID:      requestID,
+		p:              p,
+		messageSenders: ra.peerHandler,
+		linkTrackers:   ra.PeerManager,
+	}
+}
+
+type responseStream struct {
+	requestID      graphsync.RequestID
+	p              peer.ID
+	closed         bool
+	closedLk       sync.RWMutex
+	messageSenders PeerMessageHandler
+	linkTrackers   *peermanager.PeerManager
+}
+
+func (r *responseStream) Close() error {
+	r.closedLk.Lock()
+	r.closed = true
+	r.closedLk.Unlock()
+	return nil
+}
+
+func (r *responseStream) isClosed() bool {
+	r.closedLk.RLock()
+	defer r.closedLk.RUnlock()
+	return r.closed
+}
+
+type ResponseStream interface {
+	Transaction(transaction Transaction) error
+	DedupKey(key string)
+	IgnoreBlocks(links []ipld.Link)
+	SkipFirstBlocks(skipFirstBlocks int64)
+}
+
 // DedupKey indicates that outgoing blocks should be deduplicated in a seperate bucket (only with requests that share
 // supplied key string)
-func (ra *ResponseAssembler) DedupKey(p peer.ID, requestID graphsync.RequestID, key string) {
-	ra.GetProcess(p).(*peerLinkTracker).DedupKey(requestID, key)
+func (rs *responseStream) DedupKey(key string) {
+	rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker).DedupKey(rs.requestID, key)
 }
 
 // IgnoreBlocks indicates that a list of keys should be ignored when sending blocks
-func (ra *ResponseAssembler) IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link) {
-	ra.GetProcess(p).(*peerLinkTracker).IgnoreBlocks(requestID, links)
+func (rs *responseStream) IgnoreBlocks(links []ipld.Link) {
+	rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker).IgnoreBlocks(rs.requestID, links)
 }
 
 // SkipFirstBlocks tells the assembler for the given request to not send the first N blocks
-func (ra *ResponseAssembler) SkipFirstBlocks(p peer.ID, requestID graphsync.RequestID, skipFirstBlocks int64) {
-	ra.GetProcess(p).(*peerLinkTracker).SkipFirstBlocks(requestID, skipFirstBlocks)
+func (rs *responseStream) SkipFirstBlocks(skipFirstBlocks int64) {
+	rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker).SkipFirstBlocks(rs.requestID, skipFirstBlocks)
 }
 
-// Transaction builds a response, and queues it for sending in the next outgoing message
-func (ra *ResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction Transaction) error {
+func (rs *responseStream) Transaction(transaction Transaction) error {
 	rb := &responseBuilder{
-		requestID:   requestID,
-		linkTracker: ra.GetProcess(p).(*peerLinkTracker),
+		requestID:   rs.requestID,
+		linkTracker: rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker),
 	}
 	err := transaction(rb)
-	ra.execute(p, rb.operations, rb.notifees)
+	rs.execute(rb.operations, rb.notifees)
 	return err
 }
 
-func (ra *ResponseAssembler) execute(p peer.ID, operations []responseOperation, notifees []notifications.Notifee) {
+func (rs *responseStream) execute(operations []responseOperation, notifees []notifications.Notifee) {
 	size := uint64(0)
 	for _, op := range operations {
 		size += op.size()
 	}
-	ra.peerHandler.AllocateAndBuildMessage(p, size, func(builder *gsmsg.Builder) {
+	if rs.isClosed() {
+		return
+	}
+	rs.messageSenders.AllocateAndBuildMessage(rs.p, size, func(builder *gsmsg.Builder) {
+		if rs.isClosed() {
+			return
+		}
 		for _, op := range operations {
 			op.build(builder)
 		}
+		builder.AddResponseStream(rs.requestID, rs)
 	}, notifees)
 }

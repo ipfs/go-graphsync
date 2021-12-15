@@ -38,14 +38,15 @@ const ErrFirstBlockLoad = errorString("Unable to load first block")
 
 // ResponseTask returns all information needed to execute a given response
 type ResponseTask struct {
-	Empty      bool
-	Subscriber *notifications.TopicDataSubscriber
-	Ctx        context.Context
-	Span       trace.Span
-	Request    gsmsg.GraphSyncRequest
-	Loader     ipld.BlockReadOpener
-	Traverser  ipldutil.Traverser
-	Signals    ResponseSignals
+	Empty          bool
+	Subscriber     *notifications.TopicDataSubscriber
+	Ctx            context.Context
+	Span           trace.Span
+	Request        gsmsg.GraphSyncRequest
+	Loader         ipld.BlockReadOpener
+	Traverser      ipldutil.Traverser
+	Signals        ResponseSignals
+	ResponseStream ResponseStream
 }
 
 // ResponseSignals are message channels to communicate between the manager and the QueryExecutor
@@ -57,11 +58,10 @@ type ResponseSignals struct {
 
 // QueryExecutor is responsible for performing individual requests by executing their traversals
 type QueryExecutor struct {
-	ctx               context.Context
-	manager           Manager
-	blockHooks        BlockHooks
-	updateHooks       UpdateHooks
-	responseAssembler ResponseAssembler
+	ctx         context.Context
+	manager     Manager
+	blockHooks  BlockHooks
+	updateHooks UpdateHooks
 }
 
 // New creates a new QueryExecutor
@@ -69,14 +69,12 @@ func New(ctx context.Context,
 	manager Manager,
 	blockHooks BlockHooks,
 	updateHooks UpdateHooks,
-	responseAssembler ResponseAssembler,
 ) *QueryExecutor {
 	qm := &QueryExecutor{
-		blockHooks:        blockHooks,
-		updateHooks:       updateHooks,
-		responseAssembler: responseAssembler,
-		manager:           manager,
-		ctx:               ctx,
+		blockHooks:  blockHooks,
+		updateHooks: updateHooks,
+		manager:     manager,
+		ctx:         ctx,
 	}
 	return qm
 }
@@ -124,7 +122,7 @@ func (qe *QueryExecutor) executeQuery(
 	err := qe.runTraversal(p, rt)
 
 	// Close out the response, either temporarily (pause) or permanently (cancel, fail, complete)
-	return qe.responseAssembler.Transaction(p, rt.Request.ID(), func(rb responseassembler.ResponseBuilder) error {
+	return rt.ResponseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 		var code graphsync.ResponseStatusCode
 		if err != nil {
 			_, isPaused := err.(hooks.ErrPaused)
@@ -245,7 +243,7 @@ func (qe *QueryExecutor) nextBlock(taskData ResponseTask) (ipld.Link, []byte, er
 
 func (qe *QueryExecutor) sendResponse(p peer.ID, taskData ResponseTask, link ipld.Link, data []byte) error {
 	// Execute a transaction for this block, including any other queued operations
-	return qe.responseAssembler.Transaction(p, taskData.Request.ID(), func(rb responseassembler.ResponseBuilder) error {
+	return taskData.ResponseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 		// Ensure that any updates that have occurred till now are integrated into the response
 		err := qe.checkForUpdates(p, taskData, rb)
 		// On any error other than a pause, we bail, if it's a pause then we continue processing _this_ block
@@ -287,7 +285,7 @@ type UpdateHooks interface {
 	ProcessUpdateHooks(p peer.ID, request graphsync.RequestData, update graphsync.RequestData) hooks.UpdateResult
 }
 
-// ResponseAssembler is an interface that returns sender interfaces for peer responses.
-type ResponseAssembler interface {
-	Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error
+// ResponseStream is an interface that returns sender interfaces for peer responses.
+type ResponseStream interface {
+	Transaction(transaction responseassembler.Transaction) error
 }

@@ -3,6 +3,7 @@ package responseassembler
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/rand"
 	"testing"
 	"time"
@@ -41,8 +42,12 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 
 	var bd1, bd2 graphsync.BlockData
 
+	stream1 := responseAssembler.NewStream(p, requestID1)
+	stream2 := responseAssembler.NewStream(p, requestID2)
+	stream3 := responseAssembler.NewStream(p, requestID3)
+
 	// send block 0 for request 1
-	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+	require.NoError(t, stream1.Transaction(func(b ResponseBuilder) error {
 		b.AddNotifee(sendResponseNotifee1)
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
@@ -51,9 +56,9 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	fph.AssertBlocks(blks[0])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 	fph.AssertNotifees(sendResponseNotifee1)
-
+	fph.AssertResponseStream(requestID1, stream1)
 	// send block 0 for request 2 (duplicate block should not be sent)
-	require.NoError(t, responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
+	require.NoError(t, stream2.Transaction(func(b ResponseBuilder) error {
 		b.AddNotifee(sendResponseNotifee2)
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
@@ -61,9 +66,10 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	assertSentNotOnWire(t, bd1, blks[0])
 	fph.AssertResponses(expectedResponses{requestID2: graphsync.PartialResponse})
 	fph.AssertNotifees(sendResponseNotifee2)
+	fph.AssertResponseStream(requestID2, stream2)
 
 	// send more to request 1 and finish request
-	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+	require.NoError(t, stream1.Transaction(func(b ResponseBuilder) error {
 		// send block 1
 		bd1 = b.SendResponse(links[1], blks[1].RawData())
 		// block 2 is not found. Assert not sent
@@ -77,9 +83,10 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	fph.AssertResponses(expectedResponses{
 		requestID1: graphsync.RequestCompletedPartial,
 	})
+	fph.AssertResponseStream(requestID1, stream1)
 
 	// send more to request 2
-	require.NoError(t, responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
+	require.NoError(t, stream2.Transaction(func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[3], blks[3].RawData())
 		b.FinishRequest()
 		return nil
@@ -88,9 +95,10 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	fph.AssertResponses(expectedResponses{
 		requestID2: graphsync.RequestCompletedFull,
 	})
+	fph.AssertResponseStream(requestID2, stream2)
 
 	// send to request 3
-	require.NoError(t, responseAssembler.Transaction(p, requestID3, func(b ResponseBuilder) error {
+	require.NoError(t, stream3.Transaction(func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[4], blks[4].RawData())
 		return nil
 	}))
@@ -98,9 +106,10 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	fph.AssertResponses(expectedResponses{
 		requestID3: graphsync.PartialResponse,
 	})
+	fph.AssertResponseStream(requestID3, stream3)
 
 	// send 2 more to request 3
-	require.NoError(t, responseAssembler.Transaction(p, requestID3, func(b ResponseBuilder) error {
+	require.NoError(t, stream3.Transaction(func(b ResponseBuilder) error {
 		b.AddNotifee(sendResponseNotifee3)
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		bd1 = b.SendResponse(links[4], blks[4].RawData())
@@ -109,8 +118,43 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 
 	fph.AssertBlocks(blks[0])
 	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
+	fph.AssertResponseStream(requestID3, stream3)
 }
 
+func TestResponseAssemblerCloseStream(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	p := testutil.GeneratePeers(1)[0]
+	requestID1 := graphsync.RequestID(rand.Int31())
+	blks := testutil.GenerateBlocksOfSize(5, 100)
+	links := make([]ipld.Link, 0, len(blks))
+	for _, block := range blks {
+		links = append(links, cidlink.Link{Cid: block.Cid()})
+	}
+	fph := newFakePeerHandler(ctx, t)
+	responseAssembler := New(ctx, fph)
+
+	stream1 := responseAssembler.NewStream(p, requestID1)
+	require.NoError(t, stream1.Transaction(func(b ResponseBuilder) error {
+		b.SendResponse(links[0], blks[0].RawData())
+		return nil
+	}))
+	fph.AssertBlocks(blks[0])
+	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
+	fph.AssertResponseStream(requestID1, stream1)
+
+	// close the response stream
+	fph.CloseResponseStream(requestID1)
+	fph.Clear()
+
+	require.NoError(t, stream1.Transaction(func(b ResponseBuilder) error {
+		b.SendResponse(links[1], blks[1].RawData())
+		return nil
+	}))
+	fph.RefuteBlocks()
+	fph.RefuteResponses()
+}
 func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -125,7 +169,8 @@ func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 	fph := newFakePeerHandler(ctx, t)
 	responseAssembler := New(ctx, fph)
 
-	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+	stream1 := responseAssembler.NewStream(p, requestID1)
+	require.NoError(t, stream1.Transaction(func(b ResponseBuilder) error {
 		b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	}))
@@ -145,7 +190,7 @@ func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 		Name: extensionName2,
 		Data: extensionData2,
 	}
-	require.NoError(t, responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+	require.NoError(t, stream1.Transaction(func(b ResponseBuilder) error {
 		b.SendResponse(links[1], blks[1].RawData())
 		b.SendExtensionData(extension1)
 		b.SendExtensionData(extension2)
@@ -170,7 +215,8 @@ func TestResponseAssemblerSendsResponsesInTransaction(t *testing.T) {
 	fph := newFakePeerHandler(ctx, t)
 	responseAssembler := New(ctx, fph)
 	notifee, _ := testutil.NewTestNotifee("transaction", 10)
-	err := responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+	stream1 := responseAssembler.NewStream(p, requestID1)
+	err := stream1.Transaction(func(b ResponseBuilder) error {
 		bd := b.SendResponse(links[0], blks[0].RawData())
 		assertSentOnWire(t, bd, blks[0])
 
@@ -207,11 +253,14 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 	}
 	fph := newFakePeerHandler(ctx, t)
 	responseAssembler := New(ctx, fph)
+	stream1 := responseAssembler.NewStream(p, requestID1)
+	stream2 := responseAssembler.NewStream(p, requestID2)
 
-	responseAssembler.IgnoreBlocks(p, requestID1, links)
+	stream1.IgnoreBlocks(links)
 
 	var bd1, bd2, bd3 graphsync.BlockData
-	err := responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+
+	err := stream1.Transaction(func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	})
@@ -221,7 +270,7 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 	fph.RefuteBlocks()
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
+	err = stream2.Transaction(func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	})
@@ -230,7 +279,7 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 		requestID2: graphsync.PartialResponse,
 	})
 
-	err = responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+	err = stream1.Transaction(func(b ResponseBuilder) error {
 		bd2 = b.SendResponse(links[1], blks[1].RawData())
 		bd3 = b.SendResponse(links[2], blks[2].RawData())
 		b.FinishRequest()
@@ -247,7 +296,7 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 		requestID1: graphsync.RequestCompletedFull,
 	})
 
-	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
+	err = stream2.Transaction(func(b ResponseBuilder) error {
 		b.SendResponse(links[3], blks[3].RawData())
 		b.FinishRequest()
 		return nil
@@ -274,10 +323,14 @@ func TestResponseAssemblerSkipFirstBlocks(t *testing.T) {
 	fph := newFakePeerHandler(ctx, t)
 	responseAssembler := New(ctx, fph)
 
-	responseAssembler.SkipFirstBlocks(p, requestID1, 3)
+	stream1 := responseAssembler.NewStream(p, requestID1)
+	stream2 := responseAssembler.NewStream(p, requestID2)
+
+	stream1.SkipFirstBlocks(3)
 
 	var bd1, bd2, bd3, bd4, bd5 graphsync.BlockData
-	err := responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+
+	err := stream1.Transaction(func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	})
@@ -287,7 +340,7 @@ func TestResponseAssemblerSkipFirstBlocks(t *testing.T) {
 	fph.RefuteBlocks()
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
+	err = stream2.Transaction(func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	})
@@ -296,7 +349,7 @@ func TestResponseAssemblerSkipFirstBlocks(t *testing.T) {
 		requestID2: graphsync.PartialResponse,
 	})
 
-	err = responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+	err = stream1.Transaction(func(b ResponseBuilder) error {
 		bd2 = b.SendResponse(links[1], blks[1].RawData())
 		bd3 = b.SendResponse(links[2], blks[2].RawData())
 		return nil
@@ -311,7 +364,7 @@ func TestResponseAssemblerSkipFirstBlocks(t *testing.T) {
 	fph.AssertResponses(expectedResponses{
 		requestID1: graphsync.PartialResponse,
 	})
-	err = responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+	err = stream1.Transaction(func(b ResponseBuilder) error {
 		bd4 = b.SendResponse(links[3], blks[3].RawData())
 		bd5 = b.SendResponse(links[4], blks[4].RawData())
 		b.FinishRequest()
@@ -325,7 +378,7 @@ func TestResponseAssemblerSkipFirstBlocks(t *testing.T) {
 	fph.AssertBlocks(blks[3], blks[4])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.RequestCompletedFull})
 
-	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
+	err = stream2.Transaction(func(b ResponseBuilder) error {
 		b.SendResponse(links[3], blks[3].RawData())
 		b.FinishRequest()
 		return nil
@@ -352,12 +405,16 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	}
 	fph := newFakePeerHandler(ctx, t)
 	responseAssembler := New(ctx, fph)
+	stream1 := responseAssembler.NewStream(p, requestID1)
+	stream2 := responseAssembler.NewStream(p, requestID2)
+	stream3 := responseAssembler.NewStream(p, requestID3)
 
-	responseAssembler.DedupKey(p, requestID1, "applesauce")
-	responseAssembler.DedupKey(p, requestID3, "applesauce")
+	stream1.DedupKey("applesauce")
+	stream3.DedupKey("applesauce")
 
 	var bd1, bd2 graphsync.BlockData
-	err := responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+
+	err := stream1.Transaction(func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	})
@@ -367,14 +424,14 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	fph.AssertBlocks(blks[0])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
+	err = stream2.Transaction(func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
 		return nil
 	})
 	require.NoError(t, err)
 	assertSentOnWire(t, bd1, blks[0])
 
-	err = responseAssembler.Transaction(p, requestID1, func(b ResponseBuilder) error {
+	err = stream1.Transaction(func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[1], blks[1].RawData())
 		bd2 = b.SendResponse(links[2], nil)
 		return nil
@@ -386,7 +443,7 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	fph.AssertBlocks(blks[1])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	err = responseAssembler.Transaction(p, requestID2, func(b ResponseBuilder) error {
+	err = stream2.Transaction(func(b ResponseBuilder) error {
 		b.SendResponse(links[3], blks[3].RawData())
 		b.FinishRequest()
 		return nil
@@ -395,7 +452,7 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	fph.AssertBlocks(blks[3])
 	fph.AssertResponses(expectedResponses{requestID2: graphsync.RequestCompletedFull})
 
-	err = responseAssembler.Transaction(p, requestID3, func(b ResponseBuilder) error {
+	err = stream3.Transaction(func(b ResponseBuilder) error {
 		b.SendResponse(links[4], blks[4].RawData())
 		return nil
 	})
@@ -403,7 +460,7 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	fph.AssertBlocks(blks[4])
 	fph.AssertResponses(expectedResponses{requestID3: graphsync.PartialResponse})
 
-	err = responseAssembler.Transaction(p, requestID3, func(b ResponseBuilder) error {
+	err = stream3.Transaction(func(b ResponseBuilder) error {
 		b.SendResponse(links[0], blks[0].RawData())
 		b.SendResponse(links[4], blks[4].RawData())
 		return nil
@@ -445,19 +502,21 @@ func assertNotSent(t *testing.T, bd graphsync.BlockData, blk blocks.Block) {
 }
 
 type fakePeerHandler struct {
-	ctx           context.Context
-	t             *testing.T
-	lastBlocks    []blocks.Block
-	lastResponses []gsmsg.GraphSyncResponse
-	lastNotifiees []notifications.Notifee
-	sent          chan struct{}
+	ctx                 context.Context
+	t                   *testing.T
+	lastResponseStreams map[graphsync.RequestID]io.Closer
+	lastBlocks          []blocks.Block
+	lastResponses       []gsmsg.GraphSyncResponse
+	lastNotifiees       []notifications.Notifee
+	sent                chan struct{}
 }
 
 func newFakePeerHandler(ctx context.Context, t *testing.T) *fakePeerHandler {
 	t.Helper()
 	return &fakePeerHandler{
-		ctx: ctx,
-		t:   t,
+		lastResponseStreams: map[graphsync.RequestID]io.Closer{},
+		ctx:                 ctx,
+		t:                   t,
 	}
 }
 
@@ -475,6 +534,18 @@ func (fph *fakePeerHandler) AssertBlocks(blks ...blocks.Block) {
 
 func (fph *fakePeerHandler) RefuteBlocks() {
 	require.Empty(fph.t, fph.lastBlocks)
+}
+
+func (fph *fakePeerHandler) AssertResponseStream(requestID graphsync.RequestID, expected ResponseStream) {
+	actual, ok := fph.lastResponseStreams[requestID]
+	require.True(fph.t, ok)
+	require.Equal(fph.t, expected, actual)
+}
+
+func (fph *fakePeerHandler) CloseResponseStream(requestID graphsync.RequestID) {
+	actual, ok := fph.lastResponseStreams[requestID]
+	require.True(fph.t, ok)
+	actual.Close()
 }
 
 type expectedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
@@ -518,11 +589,19 @@ func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64, b
 	msg, err := builder.Build()
 	require.NoError(fph.t, err)
 
-	fph.sendResponse(p, msg.Responses(), msg.Blocks(), notifees...)
+	fph.sendResponse(p, msg.Responses(), msg.Blocks(), builder.ResponseStreams(), notifees...)
 }
 
-func (fph *fakePeerHandler) sendResponse(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block, notifees ...notifications.Notifee) {
+func (fph *fakePeerHandler) sendResponse(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block, responseStreams map[graphsync.RequestID]io.Closer, notifees ...notifications.Notifee) {
 	fph.lastResponses = responses
 	fph.lastBlocks = blks
 	fph.lastNotifiees = notifees
+	fph.lastResponseStreams = responseStreams
+}
+
+func (fph *fakePeerHandler) Clear() {
+	fph.lastResponses = nil
+	fph.lastNotifiees = nil
+	fph.lastResponseStreams = map[graphsync.RequestID]io.Closer{}
+	fph.lastBlocks = nil
 }

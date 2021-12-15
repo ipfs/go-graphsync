@@ -60,7 +60,7 @@ func TestSmallGraphTask(t *testing.T) {
 
 	transactionExpect := func(t *testing.T, td *testData, errorAt []int, errorStr string) {
 		var transactionCalls int
-		td.responseAssembler.transactionCb = func(e error) {
+		td.responseStream.transactionCb = func(e error) {
 			var erroredAt bool
 			for _, i := range errorAt {
 				if transactionCalls == i {
@@ -272,7 +272,7 @@ type testData struct {
 	blockStore        map[ipld.Link][]byte
 	persistence       ipld.LinkSystem
 	manager           *fauxManager
-	responseAssembler *fauxResponseAssembler
+	responseStream    *fauxResponseStream
 	responseBuilder   *fauxResponseBuilder
 	blockHooks        *hooks.OutgoingBlockHooks
 	updateHooks       *hooks.RequestUpdatedHooks
@@ -302,7 +302,6 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td.persistence = testutil.NewTestStore(td.blockStore)
 	td.task = &peertask.Task{}
 	td.manager = &fauxManager{ctx: ctx, t: t, expectedStartTask: td.task}
-	td.responseAssembler = &fauxResponseAssembler{}
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()
 	td.requestID = graphsync.RequestID(rand.Int31())
@@ -353,7 +352,7 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 		},
 	}
 
-	td.responseAssembler = &fauxResponseAssembler{
+	td.responseStream = &fauxResponseStream{
 		t:               t,
 		responseBuilder: td.responseBuilder,
 	}
@@ -375,13 +374,14 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	}
 
 	td.manager.responseTask = ResponseTask{
-		Request:    td.requests[0],
-		Loader:     loader,
-		Traverser:  expectedTraverser,
-		Signals:    *td.signals,
-		Subscriber: td.subscriber,
+		Request:        td.requests[0],
+		Loader:         loader,
+		Traverser:      expectedTraverser,
+		Signals:        *td.signals,
+		Subscriber:     td.subscriber,
+		ResponseStream: td.responseStream,
 	}
-	td.responseAssembler.responseBuilder.pauseCb = func() {
+	td.responseStream.responseBuilder.pauseCb = func() {
 		td.pauseCalls++
 	}
 
@@ -390,7 +390,6 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 		td.manager,
 		td.blockHooks,
 		td.updateHooks,
-		td.responseAssembler,
 	)
 	return td, qe
 }
@@ -418,13 +417,13 @@ func (fm *fauxManager) GetUpdates(p peer.ID, requestID graphsync.RequestID, upda
 func (fm *fauxManager) FinishTask(task *peertask.Task, err error) {
 }
 
-type fauxResponseAssembler struct {
+type fauxResponseStream struct {
 	t               *testing.T
 	responseBuilder *fauxResponseBuilder
 	transactionCb   func(error)
 }
 
-func (fra *fauxResponseAssembler) Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error {
+func (fra *fauxResponseStream) Transaction(transaction responseassembler.Transaction) error {
 	var err error
 	if fra.responseBuilder != nil {
 		err = transaction(fra.responseBuilder)
