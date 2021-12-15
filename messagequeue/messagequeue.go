@@ -352,7 +352,3 @@ func (mq *MessageQueue) publishError(metadata messageMetadata, err error) {
 	mq.eventPublisher.Publish(metadata.topic, Event{Name: Error, Err: err})
 	_ = mq.allocator.ReleaseBlockMemory(mq.p, metadata.msgSize)
 }
-
-func (mq *MessageQueue) close(metadata messageMetadata) {
-	mq.eventPublisher.Close(metadata.topic)
-}
