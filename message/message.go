@@ -3,7 +3,6 @@ package message
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"sort"
 

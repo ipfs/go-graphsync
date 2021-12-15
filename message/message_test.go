@@ -53,7 +53,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.NoError(t, err)
 
 	pbRequest := pbMessage.Requests[0]
-	require.Equal(t, id[:], pbRequest.Id)
+	require.Equal(t, []byte(id), pbRequest.Id)
 	require.Equal(t, int32(priority), pbRequest.Priority)
 	require.False(t, pbRequest.Cancel)
 	require.False(t, pbRequest.Update)
@@ -105,7 +105,7 @@ func TestAppendingResponses(t *testing.T) {
 	pbMessage, err := gsm.ToProto()
 	require.NoError(t, err, "serialize to protobuf errored")
 	pbResponse := pbMessage.Responses[0]
-	require.Equal(t, requestID[:], pbResponse.Id)
+	require.Equal(t, []byte(requestID), pbResponse.Id)
 	require.Equal(t, int32(status), pbResponse.Status)
 	require.Equal(t, extensionBytes, pbResponse.Extensions["graphsync/awesome"])
 
