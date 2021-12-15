@@ -1,6 +1,8 @@
 package message
 
 import (
+	"io"
+
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -21,6 +23,7 @@ type Builder struct {
 	outgoingResponses  map[graphsync.RequestID]metadata.Metadata
 	extensions         map[graphsync.RequestID][]graphsync.ExtensionData
 	requests           map[graphsync.RequestID]GraphSyncRequest
+	responseStreams    map[graphsync.RequestID]io.Closer
 }
 
 // Topic is an identifier for notifications about this response builder
@@ -35,7 +38,18 @@ func NewBuilder(topic Topic) *Builder {
 		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
 		outgoingResponses:  make(map[graphsync.RequestID]metadata.Metadata),
 		extensions:         make(map[graphsync.RequestID][]graphsync.ExtensionData),
+		responseStreams:    make(map[graphsync.RequestID]io.Closer),
 	}
+}
+
+// AddResponseStream adds a stream that can be closed if the message fails to send
+func (b *Builder) AddResponseStream(requestID graphsync.RequestID, responseStream io.Closer) {
+	b.responseStreams[requestID] = responseStream
+}
+
+// ResponseStreams returns related response streams for a given builder
+func (b *Builder) ResponseStreams() map[graphsync.RequestID]io.Closer {
+	return b.responseStreams
 }
 
 // AddRequest registers a new request to be added to the message.
@@ -88,10 +102,14 @@ func (b *Builder) Empty() bool {
 }
 
 // ScrubResponse removes a response from a message and any blocks only referenced by that response
-func (b *Builder) ScrubResponse(requestID graphsync.RequestID) {
-	delete(b.completedResponses, requestID)
-	delete(b.extensions, requestID)
-	delete(b.outgoingResponses, requestID)
+func (b *Builder) ScrubResponses(requestIDs []graphsync.RequestID) uint64 {
+	for _, requestID := range requestIDs {
+		delete(b.completedResponses, requestID)
+		delete(b.extensions, requestID)
+		delete(b.outgoingResponses, requestID)
+		delete(b.responseStreams, requestID)
+	}
+	oldSize := b.blkSize
 	newBlkSize := uint64(0)
 	savedBlocks := make(map[cid.Cid]blocks.Block, len(b.outgoingBlocks))
 	for _, metadata := range b.outgoingResponses {
@@ -106,6 +124,7 @@ func (b *Builder) ScrubResponse(requestID graphsync.RequestID) {
 	}
 	b.blkSize = newBlkSize
 	b.outgoingBlocks = savedBlocks
+	return oldSize - newBlkSize
 }
 
 // Build assembles and encodes message data from the added requests, links, and blocks.

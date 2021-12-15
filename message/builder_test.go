@@ -1,6 +1,7 @@
 package message
 
 import (
+	"io"
 	"math/rand"
 	"testing"
 
@@ -35,11 +36,12 @@ func TestMessageBuilding(t *testing.T) {
 	requestID2 := graphsync.RequestID(rand.Int31())
 	requestID3 := graphsync.RequestID(rand.Int31())
 	requestID4 := graphsync.RequestID(rand.Int31())
-
+	closer := io.NopCloser(nil)
 	testCases := map[string]struct {
-		build        func(*Builder)
-		expectedSize uint64
-		checkMsg     func(t *testing.T, message GraphSyncMessage)
+		build           func(*Builder)
+		expectedSize    uint64
+		expectedStreams map[graphsync.RequestID]io.Closer
+		checkMsg        func(t *testing.T, message GraphSyncMessage)
 	}{
 		"normal building": {
 			build: func(rb *Builder) {
@@ -65,8 +67,14 @@ func TestMessageBuilding(t *testing.T) {
 				for _, block := range blocks {
 					rb.AddBlock(block)
 				}
+				rb.AddResponseStream(requestID1, closer)
+				rb.AddResponseStream(requestID2, closer)
 			},
 			expectedSize: 300,
+			expectedStreams: map[graphsync.RequestID]io.Closer{
+				requestID1: closer,
+				requestID2: closer,
+			},
 			checkMsg: func(t *testing.T, message GraphSyncMessage) {
 
 				responses := message.Responses()
@@ -151,7 +159,7 @@ func TestMessageBuilding(t *testing.T) {
 				for _, block := range blocks {
 					rb.AddBlock(block)
 				}
-				rb.ScrubResponse(requestID1)
+				rb.ScrubResponses([]graphsync.RequestID{requestID1})
 			},
 			expectedSize: 200,
 			checkMsg: func(t *testing.T, message GraphSyncMessage) {
@@ -186,12 +194,59 @@ func TestMessageBuilding(t *testing.T) {
 
 			},
 		},
+		"scrub multiple responses": {
+			build: func(rb *Builder) {
+
+				rb.AddLink(requestID1, links[0], true)
+				rb.AddLink(requestID1, links[1], false)
+				rb.AddLink(requestID1, links[2], true)
+
+				rb.AddResponseCode(requestID1, graphsync.RequestCompletedPartial)
+
+				rb.AddLink(requestID2, links[1], true)
+				rb.AddLink(requestID2, links[2], true)
+				rb.AddLink(requestID2, links[1], true)
+
+				rb.AddResponseCode(requestID2, graphsync.RequestCompletedFull)
+
+				rb.AddLink(requestID3, links[1], true)
+
+				rb.AddResponseCode(requestID4, graphsync.RequestCompletedFull)
+				rb.AddExtensionData(requestID1, extension1)
+				rb.AddExtensionData(requestID3, extension2)
+				for _, block := range blocks {
+					rb.AddBlock(block)
+				}
+				rb.ScrubResponses([]graphsync.RequestID{requestID1, requestID2, requestID4})
+			},
+			expectedSize: 100,
+			checkMsg: func(t *testing.T, message GraphSyncMessage) {
+
+				responses := message.Responses()
+				sentBlocks := message.Blocks()
+				require.Len(t, responses, 1, "did not assemble correct number of responses")
+
+				response3 := findResponseForRequestID(t, responses, requestID3)
+				require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
+				assertMetadata(t, response3, metadata.Metadata{
+					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
+				})
+				assertExtension(t, response3, extension2)
+
+				testutil.AssertContainsBlock(t, sentBlocks, blocks[1])
+				testutil.RefuteContainsBlock(t, sentBlocks, blocks[2])
+				testutil.RefuteContainsBlock(t, sentBlocks, blocks[0])
+			},
+		},
 	}
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
 			b := NewBuilder(Topic(rand.Uint64()))
 			data.build(b)
 			require.Equal(t, data.expectedSize, b.BlockSize(), "did not calculate block size correctly")
+			if data.expectedStreams != nil {
+				require.Equal(t, data.expectedStreams, b.ResponseStreams())
+			}
 			message, err := b.Build()
 			require.NoError(t, err, "build message errored")
 			data.checkMsg(t, message)

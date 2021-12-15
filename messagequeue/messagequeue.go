@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
+	"github.com/ipfs/go-graphsync"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/peer"
 
@@ -96,6 +98,24 @@ func (mq *MessageQueue) AllocateAndBuildMessage(size uint64, buildMessageFn func
 	}
 }
 
+type responseStream struct {
+	requestID graphsync.RequestID
+	closed    bool
+	closedLk  sync.RWMutex
+}
+
+func (r *responseStream) close() {
+	r.closedLk.Lock()
+	r.closed = true
+	r.closedLk.Unlock()
+}
+
+func (r *responseStream) isClosed() bool {
+	r.closedLk.RLock()
+	defer r.closedLk.RUnlock()
+	return r.closed
+}
+
 func (mq *MessageQueue) buildMessage(size uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) bool {
 	mq.buildersLk.Lock()
 	defer mq.buildersLk.Unlock()
@@ -147,10 +167,10 @@ func (mq *MessageQueue) runQueue() {
 			select {
 			case <-mq.outgoingWork:
 				for {
-					_, publisher, err := mq.extractOutgoingMessage()
+					_, metadata, err := mq.extractOutgoingMessage()
 					if err == nil {
-						publisher.publishError(fmt.Errorf("message queue shutdown"))
-						publisher.close()
+						mq.publishError(metadata, fmt.Errorf("message queue shutdown"))
+						mq.eventPublisher.Close(metadata.topic)
 					} else {
 						break
 					}
@@ -179,12 +199,12 @@ func (mq *MessageQueue) signalWork() {
 
 var errEmptyMessage = errors.New("empty Message")
 
-func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, *messagePublisher, error) {
+func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, messageMetadata, error) {
 	// grab outgoing message
 	mq.buildersLk.Lock()
 	if len(mq.builders) == 0 {
 		mq.buildersLk.Unlock()
-		return gsmsg.GraphSyncMessage{}, nil, errEmptyMessage
+		return gsmsg.GraphSyncMessage{}, messageMetadata{}, errEmptyMessage
 	}
 	builder := mq.builders[0]
 	mq.builders = mq.builders[1:]
@@ -197,37 +217,69 @@ func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, *messa
 	}
 	mq.buildersLk.Unlock()
 	if builder.Empty() {
-		return gsmsg.GraphSyncMessage{}, nil, errEmptyMessage
+		return gsmsg.GraphSyncMessage{}, messageMetadata{}, errEmptyMessage
 	}
 	message, err := builder.Build()
-	return message, &messagePublisher{mq, builder.Topic(), builder.BlockSize()}, err
+	return message, messageMetadata{builder.Topic(), builder.ResponseStreams(), builder.BlockSize()}, err
 }
 
 func (mq *MessageQueue) sendMessage() {
-	message, publisher, err := mq.extractOutgoingMessage()
+	message, metadata, err := mq.extractOutgoingMessage()
 	if err != nil {
 		if err != errEmptyMessage {
 			log.Errorf("Unable to assemble GraphSync message: %s", err.Error())
 		}
 		return
 	}
-	publisher.publishQueued()
-	defer publisher.close()
+	mq.publishQueued(metadata)
+	defer mq.eventPublisher.Close(metadata.topic)
 
 	err = mq.initializeSender()
 	if err != nil {
 		log.Infof("cant open message sender to peer %s: %s", mq.p, err)
 		// TODO: cant connect, what now?
-		publisher.publishError(fmt.Errorf("cant open message sender to peer %s: %w", mq.p, err))
+		mq.publishError(metadata, fmt.Errorf("cant open message sender to peer %s: %w", mq.p, err))
 		return
 	}
 
 	for i := 0; i < mq.maxRetries; i++ { // try to send this message until we fail.
-		if mq.attemptSendAndRecovery(message, publisher) {
+		if mq.attemptSendAndRecovery(message, metadata) {
 			return
 		}
 	}
-	publisher.publishError(fmt.Errorf("expended retries on SendMsg(%s)", mq.p))
+	mq.publishError(metadata, fmt.Errorf("expended retries on SendMsg(%s)", mq.p))
+}
+
+func (mq *MessageQueue) scrubResponseStreams(responseStreams map[graphsync.RequestID]io.Closer) {
+	requestIDs := make([]graphsync.RequestID, 0, len(responseStreams))
+	for requestID, responseStream := range responseStreams {
+		_ = responseStream.Close()
+		requestIDs = append(requestIDs, requestID)
+	}
+	totalFreed := mq.scrubResponses(requestIDs)
+	if totalFreed > 0 {
+		err := mq.allocator.ReleaseBlockMemory(mq.p, totalFreed)
+		if err != nil {
+			log.Error(err)
+		}
+	}
+}
+
+// ScrubResponses removes the given response and associated blocks
+// from all pending messages in the queue
+func (mq *MessageQueue) scrubResponses(requestIDs []graphsync.RequestID) uint64 {
+	mq.buildersLk.Lock()
+	newBuilders := make([]*gsmsg.Builder, 0, len(mq.builders))
+	totalFreed := uint64(0)
+	for _, builder := range mq.builders {
+		totalFreed = builder.ScrubResponses(requestIDs)
+		if !builder.Empty() {
+			newBuilders = append(newBuilders, builder)
+		}
+	}
+	mq.builders = newBuilders
+	mq.buildersLk.Unlock()
+	return totalFreed
 }
 
 func (mq *MessageQueue) initializeSender() error {
@@ -242,10 +294,10 @@ func (mq *MessageQueue) initializeSender() error {
 	return nil
 }
 
-func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, publisher *messagePublisher) bool {
+func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, metadata messageMetadata) bool {
 	err := mq.sender.SendMsg(mq.ctx, message)
 	if err == nil {
-		publisher.publishSent()
+		mq.publishSent(metadata)
 		return true
 	}
 
@@ -255,10 +307,10 @@ func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, p
 
 	select {
 	case <-mq.done:
-		publisher.publishError(errors.New("queue shutdown"))
+		mq.publishError(metadata, errors.New("queue shutdown"))
 		return true
 	case <-mq.ctx.Done():
-		publisher.publishError(errors.New("context cancelled"))
+		mq.publishError(metadata, errors.New("context cancelled"))
 		return true
 	case <-time.After(time.Millisecond * 100):
 		// wait 100ms in case disconnect notifications are still propogating
@@ -272,7 +324,7 @@ func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, p
 		// I think the *right* answer is to probably put the message we're
 		// trying to send back, and then return to waiting for new work or
 		// a disconnect.
-		publisher.publishError(fmt.Errorf("couldnt open sender again after SendMsg(%s) failed: %w", mq.p, err))
+		mq.publishError(metadata, fmt.Errorf("couldnt open sender again after SendMsg(%s) failed: %w", mq.p, err))
 		return true
 	}
 
@@ -298,26 +350,27 @@ func openSender(ctx context.Context, network MessageNetwork, p peer.ID, sendTime
 	return nsender, nil
 }
 
-type messagePublisher struct {
-	mq      *MessageQueue
-	topic   gsmsg.Topic
-	msgSize uint64
+type messageMetadata struct {
+	topic           gsmsg.Topic
+	responseStreams map[graphsync.RequestID]io.Closer
+	msgSize         uint64
 }
 
-func (mp *messagePublisher) publishQueued() {
-	mp.mq.eventPublisher.Publish(mp.topic, Event{Name: Queued})
+func (mq *MessageQueue) publishQueued(metadata messageMetadata) {
+	mq.eventPublisher.Publish(metadata.topic, Event{Name: Queued})
 }
 
-func (mp *messagePublisher) publishSent() {
-	mp.mq.eventPublisher.Publish(mp.topic, Event{Name: Sent})
-	_ = mp.mq.allocator.ReleaseBlockMemory(mp.mq.p, mp.msgSize)
+func (mq *MessageQueue) publishSent(metadata messageMetadata) {
+	mq.eventPublisher.Publish(metadata.topic, Event{Name: Sent})
+	_ = mq.allocator.ReleaseBlockMemory(mq.p, metadata.msgSize)
 }
 
-func (mp *messagePublisher) publishError(err error) {
-	mp.mq.eventPublisher.Publish(mp.topic, Event{Name: Error, Err: err})
-	_ = mp.mq.allocator.ReleaseBlockMemory(mp.mq.p, mp.msgSize)
+func (mq *MessageQueue) publishError(metadata messageMetadata, err error) {
+	mq.scrubResponseStreams(metadata.responseStreams)
+	mq.eventPublisher.Publish(metadata.topic, Event{Name: Error, Err: err})
+	_ = mq.allocator.ReleaseBlockMemory(mq.p, metadata.msgSize)
 }
 
-func (mp *messagePublisher) close() {
-	mp.mq.eventPublisher.Close(mp.topic)
+func (mq *MessageQueue) close(metadata messageMetadata) {
+	mq.eventPublisher.Close(metadata.topic)
 }
