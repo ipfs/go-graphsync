@@ -1137,7 +1137,7 @@ func newTestData(t *testing.T) testData {
 }
 
 func (td *testData) newResponseManager() *ResponseManager {
-	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0, td.taskqueue)
+	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, td.connManager, 0, td.taskqueue)
 	queryExecutor := td.newQueryExecutor(rm)
 	td.taskqueue.Startup(6, queryExecutor)
 	return rm
@@ -1145,14 +1145,14 @@ func (td *testData) newResponseManager() *ResponseManager {
 
 func (td *testData) nullTaskQueueResponseManager() *ResponseManager {
 	ntq := nullTaskQueue{tasksQueued: make(map[peer.ID][]peertask.Topic)}
-	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0, ntq)
+	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, td.connManager, 0, ntq)
 	return rm
 }
 
 func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 	obs := make(map[ipld.Link][]byte)
 	persistence := testutil.NewTestStore(obs)
-	rm := New(td.ctx, persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, 6, td.connManager, 0, td.taskqueue)
+	rm := New(td.ctx, persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, td.connManager, 0, td.taskqueue)
 	queryExecutor := td.newQueryExecutor(rm)
 	td.taskqueue.Startup(6, queryExecutor)
 	return rm
