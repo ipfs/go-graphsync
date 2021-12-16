@@ -979,12 +979,13 @@ func TestNetworkDisconnect(t *testing.T) {
 
 	tracing := collectTracing(t)
 	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
-	require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
-	require.NotContains(t, traceStrings, "response(0)->abortRequest(1)")
-	// may contain multiple abortRequest traces as the network error can bubble up >1 times
-	// but these will only record if the request is still executing
-	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
+		"response(0)->abortRequest(1)",
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
 	// has ContextCancelError exception recorded in the right place
