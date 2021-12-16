@@ -13,7 +13,7 @@ import (
 )
 
 // RequestID is a unique identifier for a GraphSync request.
-type RequestID string
+type RequestID struct{ string }
 
 // Tag returns an easy way to identify this request id as a graphsync request (for libp2p connections)
 func (r RequestID) Tag() string {
@@ -22,13 +22,27 @@ func (r RequestID) Tag() string {
 
 // String form of a RequestID (should be a well-formed UUIDv4 string)
 func (r RequestID) String() string {
-	return uuid.Must(uuid.FromBytes([]byte(r))).String()
+	return uuid.Must(uuid.FromBytes([]byte(r.string))).String()
+}
+
+// Byte form of a RequestID
+func (r RequestID) Bytes() []byte {
+	return []byte(r.string)
 }
 
 // Create a new, random RequestID (should be a UUIDv4)
 func NewRequestID() RequestID {
 	u := uuid.New()
-	return RequestID(u[:])
+	return RequestID{string(u[:])}
+}
+
+// Create a RequestID from a byte slice
+func ParseRequestID(b []byte) (RequestID, error) {
+	_, err := uuid.FromBytes(b)
+	if err != nil {
+		return RequestID{}, err
+	}
+	return RequestID{string(b)}, nil
 }
 
 // Priority a priority for a GraphSync request.

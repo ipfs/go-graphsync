@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 
-	"github.com/google/uuid"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -162,11 +161,10 @@ func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
 		if exts == nil {
 			exts = make(map[string][]byte)
 		}
-		uid, err := uuid.FromBytes(req.Id)
+		id, err := graphsync.ParseRequestID(req.Id)
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		id := graphsync.RequestID(uid[:])
 		requests[id] = newRequest(id, root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts)
 	}
 
@@ -179,11 +177,10 @@ func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
 		if exts == nil {
 			exts = make(map[string][]byte)
 		}
-		uid, err := uuid.FromBytes(res.Id)
+		id, err := graphsync.ParseRequestID(res.Id)
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		id := graphsync.RequestID(uid[:])
 		responses[id] = newResponse(id, graphsync.ResponseStatusCode(res.Status), exts)
 	}
 
@@ -288,7 +285,7 @@ func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
 			}
 		}
 		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
-			Id:         []byte(request.id),
+			Id:         request.id.Bytes(),
 			Root:       request.root.Bytes(),
 			Selector:   selector,
 			Priority:   int32(request.priority),
@@ -301,7 +298,7 @@ func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
 	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.responses))
 	for _, response := range gsm.responses {
 		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
-			Id:         []byte(response.requestID),
+			Id:         response.requestID.Bytes(),
 			Status:     int32(response.status),
 			Extensions: response.extensions,
 		})
