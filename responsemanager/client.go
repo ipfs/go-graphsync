@@ -225,7 +225,12 @@ func (rm *ResponseManager) FinishTask(task *peertask.Task, err error) {
 
 // CloseWithNetworkError closes a request due to a network error
 func (rm *ResponseManager) CloseWithNetworkError(p peer.ID, requestID graphsync.RequestID) {
-	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrNetworkError, make(chan error, 1)}, nil)
+	done := make(chan error, 1)
+	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrNetworkError, done}, nil)
+	select {
+	case <-rm.ctx.Done():
+	case <-done:
+	}
 }
 
 // TerminateRequest indicates a request has finished sending data and should no longer be tracked
