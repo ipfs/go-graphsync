@@ -6,7 +6,6 @@ import (
 	"io"
 	"sort"
 
-	"github.com/google/uuid"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
