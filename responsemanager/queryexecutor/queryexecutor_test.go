@@ -24,7 +24,6 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/testutil"
@@ -261,7 +260,6 @@ type testData struct {
 	expectedBlocks    []*blockData
 	responseCode      graphsync.ResponseStatusCode
 	peer              peer.ID
-	subscriber        *notifications.TopicDataSubscriber
 }
 
 func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData, *QueryExecutor) {
@@ -283,7 +281,6 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.responseCode = graphsync.ResponseStatusCode(101)
 	td.peer = testutil.GeneratePeers(1)[0]
-	td.subscriber = &notifications.TopicDataSubscriber{}
 
 	td.extension = graphsync.ExtensionData{
 		Name: td.extensionName,

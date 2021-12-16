@@ -86,36 +86,6 @@ func (ts *TestSubscriber) ExpectCloses(ctx context.Context, t *testing.T, topics
 	}
 }
 
-type NotifeeVerifier struct {
-	expectedTopic notifications.Topic
-	subscriber    *TestSubscriber
-}
-
-func (nv *NotifeeVerifier) ExpectEvents(ctx context.Context, t *testing.T, events []notifications.Event) {
-	t.Helper()
-	dispatchedEvents := make([]DispatchedEvent, 0, len(events))
-	for _, ev := range events {
-		dispatchedEvents = append(dispatchedEvents, DispatchedEvent{nv.expectedTopic, ev})
-	}
-	nv.subscriber.ExpectEvents(ctx, t, dispatchedEvents)
-}
-
-func (nv *NotifeeVerifier) ExpectClose(ctx context.Context, t *testing.T) {
-	t.Helper()
-	nv.subscriber.ExpectCloses(ctx, t, []notifications.Topic{nv.expectedTopic})
-}
-
-func NewTestNotifee(data notifications.TopicData, bufferSize int) (notifications.Notifee, *NotifeeVerifier) {
-	subscriber := NewTestSubscriber(bufferSize)
-	return notifications.Notifee{
-			Data:       data,
-			Subscriber: notifications.NewTopicDataSubscriber(subscriber),
-		}, &NotifeeVerifier{
-			expectedTopic: data,
-			subscriber:    subscriber,
-		}
-}
-
 type MockPublisher struct {
 	subscribersLk sync.Mutex
 	subscribers   []notifications.Subscriber
