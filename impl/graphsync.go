@@ -251,7 +251,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestorCancelledListeners,
 		blockSentListeners,
 		networkErrorListeners,
-		gsConfig.maxInProgressIncomingRequests,
 		network.ConnectionManager(),
 		gsConfig.maxLinksPerIncomingRequest,
 		responseQueue)
