@@ -383,13 +383,8 @@ func (r *reqSubscriber) OnNext(_ notifications.Topic, event notifications.Event)
 	if !isMQEvt || mqEvt.Name != messagequeue.Error {
 		return
 	}
-
 	r.networkErrorListeners.NotifyNetworkErrorListeners(r.p, r.request, mqEvt.Err)
-	//r.re.networkError <- mqEvt.Err
-	//r.re.terminateRequest()
 }
 
 func (r reqSubscriber) OnClose(_ notifications.Topic) {
 }
-
-const requestNetworkError = "request_network_error"

@@ -165,7 +165,7 @@ func TestProcessingNotification(t *testing.T) {
 			responseID: status,
 		},
 		BlockData: map[graphsync.RequestID][]graphsync.BlockData{
-			responseID: []graphsync.BlockData{blkData},
+			responseID: {blkData},
 		},
 	}
 	subscriber.ExpectEventsAllTopics(ctx, t, []notifications.Event{
