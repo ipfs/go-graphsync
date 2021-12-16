@@ -39,7 +39,6 @@ type inProgressResponseStatus struct {
 	signals        queryexecutor.ResponseSignals
 	updates        []gsmsg.GraphSyncRequest
 	state          graphsync.RequestState
-	subscriber     *notifications.TopicDataSubscriber
 	startTime      time.Time
 	responseStream responseassembler.ResponseStream
 }
@@ -86,7 +85,7 @@ type NetworkErrorListeners interface {
 
 // ResponseAssembler is an interface that returns sender interfaces for peer responses.
 type ResponseAssembler interface {
-	NewStream(p peer.ID, requestID graphsync.RequestID) responseassembler.ResponseStream
+	NewStream(p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) responseassembler.ResponseStream
 }
 
 type responseManagerMessage interface {

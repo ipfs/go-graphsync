@@ -40,7 +40,6 @@ func TestEmptyTask(t *testing.T) {
 func TestOneBlockTask(t *testing.T) {
 	td, qe := newTestData(t, 1, 1)
 	defer td.cancel()
-	notifeeExpect(t, td, 1, td.responseCode)
 	require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 	require.Equal(t, 0, td.clearRequestCalls)
 }
@@ -78,7 +77,6 @@ func TestSmallGraphTask(t *testing.T) {
 	t.Run("full graph", func(t *testing.T) {
 		td, qe := newTestData(t, 10, 10)
 		defer td.cancel()
-		notifeeExpect(t, td, 10, td.responseCode) // AddNotifee called on all blocks
 		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 0, td.clearRequestCalls)
 	})
@@ -86,7 +84,6 @@ func TestSmallGraphTask(t *testing.T) {
 	t.Run("paused by hook", func(t *testing.T) {
 		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		notifeeExpect(t, td, 7, nil) // AddNotifee called on first 7 blocks
 		blockHookExpect(t, td, 6, func(hookActions graphsync.OutgoingBlockHookActions) {
 			hookActions.PauseResponse()
 		}, 6)
@@ -100,7 +97,6 @@ func TestSmallGraphTask(t *testing.T) {
 	t.Run("paused by signal", func(t *testing.T) {
 		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		notifeeExpect(t, td, 7, nil) // AddNotifee called on first 7 blocks
 		blockHookExpect(t, td, 5, func(hookActions graphsync.OutgoingBlockHookActions) {
 			select {
 			case td.signals.PauseSignal <- struct{}{}:
@@ -118,7 +114,6 @@ func TestSmallGraphTask(t *testing.T) {
 	t.Run("partial cancelled by hook", func(t *testing.T) {
 		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		notifeeExpect(t, td, 7, nil) // AddNotifee called on first 7 blocks
 		blockHookExpect(t, td, 6, func(hookActions graphsync.OutgoingBlockHookActions) {
 			hookActions.TerminateWithError(ipldutil.ContextCancelError{})
 		}, 6)
@@ -133,7 +128,6 @@ func TestSmallGraphTask(t *testing.T) {
 		// unlike via blockhooks which is run after the block is sent
 		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		notifeeExpect(t, td, 6, graphsync.RequestCancelled) // AddNotifee called on first 6 blocks
 		blockHookExpect(t, td, 5, func(hookActions graphsync.OutgoingBlockHookActions) {
 			select {
 			case td.signals.ErrSignal <- ErrCancelledByCommand:
@@ -153,7 +147,6 @@ func TestSmallGraphTask(t *testing.T) {
 		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
 		expectedErr := fmt.Errorf("derp")
-		notifeeExpect(t, td, 7, graphsync.RequestFailedUnknown) // AddNotifee called on first 7 blocks
 		blockHookExpect(t, td, 6, func(hookActions graphsync.OutgoingBlockHookActions) {
 			hookActions.TerminateWithError(expectedErr)
 		}, 6)
@@ -169,7 +162,6 @@ func TestSmallGraphTask(t *testing.T) {
 		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
 		expectedErr := fmt.Errorf("derp")
-		notifeeExpect(t, td, 6, graphsync.RequestFailedUnknown) // AddNotifee called on first 6 blocks
 		blockHookExpect(t, td, 5, func(hookActions graphsync.OutgoingBlockHookActions) {
 			select {
 			case td.signals.ErrSignal <- expectedErr:
@@ -187,7 +179,6 @@ func TestSmallGraphTask(t *testing.T) {
 		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
 		expectedErr := ErrNetworkError
-		notifeeExpect(t, td, 7, nil) // AddNotifee called on first 6 blocks
 		blockHookExpect(t, td, 6, func(hookActions graphsync.OutgoingBlockHookActions) {
 			hookActions.TerminateWithError(expectedErr)
 		}, 6)
@@ -203,7 +194,6 @@ func TestSmallGraphTask(t *testing.T) {
 		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
 		expectedErr := ErrNetworkError
-		notifeeExpect(t, td, 6, nil) // AddNotifee called on first 6 blocks
 		blockHookExpect(t, td, 5, func(hookActions graphsync.OutgoingBlockHookActions) {
 			select {
 			case td.signals.ErrSignal <- expectedErr:
@@ -220,7 +210,6 @@ func TestSmallGraphTask(t *testing.T) {
 	t.Run("first block wont load", func(t *testing.T) {
 		td, qe := newTestData(t, 10, 7)
 		defer td.cancel()
-		notifeeExpect(t, td, 0, graphsync.RequestFailedContentNotFound) // AddNotifee only called with error
 		td.manager.responseTask.Traverser = &skipMeTraverser{}
 		blockHookExpect(t, td, 0, func(hookActions graphsync.OutgoingBlockHookActions) {}, 0)
 		transactionExpect(t, td, []int{0}, ErrFirstBlockLoad.Error())
@@ -228,23 +217,6 @@ func TestSmallGraphTask(t *testing.T) {
 		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 0, td.clearRequestCalls)
 	})
-}
-
-func notifeeExpect(t *testing.T, td *testData, expectedCalls int, expectedFinalData notifications.TopicData) {
-	t.Helper()
-	notifeeCount := 1
-	td.responseBuilder.notifeeCb = func(n notifications.Notifee) {
-		require.Same(t, td.subscriber, n.Subscriber)
-		if notifeeCount <= expectedCalls {
-			require.Same(t, td.expectedBlocks[notifeeCount-1], n.Data)
-		} else if notifeeCount == expectedCalls+1 {
-			// may not reach here in some cases
-			require.Equal(t, expectedFinalData, n.Data)
-		} else {
-			require.Fail(t, "too many notifee calls")
-		}
-		notifeeCount++
-	}
 }
 
 func newRandomBlock(index int64) *blockData {
@@ -344,16 +316,16 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 		t:              t,
 		finishRequest:  td.responseCode,
 		sendResponseCb: sendResponseCb,
-		clearRequestCb: func() {
-			td.clearRequestCalls++
-		},
 		pauseCb: func() {
 			require.Fail(t, "should not have called ResponseBuilder#PauseRequest()")
 		},
 	}
 
 	td.responseStream = &fauxResponseStream{
-		t:               t,
+		t: t,
+		clearRequestCb: func() {
+			td.clearRequestCalls++
+		},
 		responseBuilder: td.responseBuilder,
 	}
 
@@ -378,7 +350,6 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 		Loader:         loader,
 		Traverser:      expectedTraverser,
 		Signals:        *td.signals,
-		Subscriber:     td.subscriber,
 		ResponseStream: td.responseStream,
 	}
 	td.responseStream.responseBuilder.pauseCb = func() {
@@ -421,8 +392,14 @@ type fauxResponseStream struct {
 	t               *testing.T
 	responseBuilder *fauxResponseBuilder
 	transactionCb   func(error)
+	clearRequestCb  func()
 }
 
+func (fra *fauxResponseStream) ClearRequest() {
+	if fra.clearRequestCb != nil {
+		fra.clearRequestCb()
+	}
+}
 func (fra *fauxResponseStream) Transaction(transaction responseassembler.Transaction) error {
 	var err error
 	if fra.responseBuilder != nil {
@@ -440,9 +417,7 @@ type fauxResponseBuilder struct {
 	t              *testing.T
 	sendResponseCb func(ipld.Link, []byte) graphsync.BlockData
 	finishRequest  graphsync.ResponseStatusCode
-	notifeeCb      func(n notifications.Notifee)
 	pauseCb        func()
-	clearRequestCb func()
 }
 
 func (rb fauxResponseBuilder) SendResponse(link ipld.Link, data []byte) graphsync.BlockData {
@@ -450,12 +425,6 @@ func (rb fauxResponseBuilder) SendResponse(link ipld.Link, data []byte) graphsyn
 }
 
 func (rb fauxResponseBuilder) SendExtensionData(ed graphsync.ExtensionData) {
-}
-
-func (rb fauxResponseBuilder) ClearRequest() {
-	if rb.clearRequestCb != nil {
-		rb.clearRequestCb()
-	}
 }
 
 func (rb fauxResponseBuilder) FinishRequest() graphsync.ResponseStatusCode {
@@ -468,12 +437,6 @@ func (rb fauxResponseBuilder) FinishWithError(status graphsync.ResponseStatusCod
 func (rb fauxResponseBuilder) PauseRequest() {
 	if rb.pauseCb != nil {
 		rb.pauseCb()
-	}
-}
-
-func (rb fauxResponseBuilder) AddNotifee(n notifications.Notifee) {
-	if rb.notifeeCb != nil {
-		rb.notifeeCb(n)
 	}
 }
 

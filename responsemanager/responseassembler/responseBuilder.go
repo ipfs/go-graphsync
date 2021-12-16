@@ -7,21 +7,19 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/messagequeue"
 )
 
 var log = logging.Logger("graphsync")
 
 type responseOperation interface {
-	build(builder *gsmsg.Builder)
+	build(builder *messagequeue.Builder)
 	size() uint64
 }
 
 type responseBuilder struct {
 	requestID   graphsync.RequestID
 	operations  []responseOperation
-	notifees    []notifications.Notifee
 	linkTracker *peerLinkTracker
 }
 
@@ -47,14 +45,6 @@ func (rb *responseBuilder) FinishWithError(status graphsync.ResponseStatusCode) 
 
 func (rb *responseBuilder) PauseRequest() {
 	rb.operations = append(rb.operations, statusOperation{rb.requestID, graphsync.RequestPaused})
-}
-
-func (rb *responseBuilder) ClearRequest() {
-	_ = rb.linkTracker.FinishTracking(rb.requestID)
-}
-
-func (rb *responseBuilder) AddNotifee(notifee notifications.Notifee) {
-	rb.notifees = append(rb.notifees, notifee)
 }
 
 func (rb *responseBuilder) setupBlockOperation(
@@ -87,7 +77,7 @@ type statusOperation struct {
 	status    graphsync.ResponseStatusCode
 }
 
-func (fo statusOperation) build(builder *gsmsg.Builder) {
+func (fo statusOperation) build(builder *messagequeue.Builder) {
 	builder.AddResponseCode(fo.requestID, fo.status)
 }
 
@@ -100,7 +90,7 @@ type extensionOperation struct {
 	extension graphsync.ExtensionData
 }
 
-func (eo extensionOperation) build(builder *gsmsg.Builder) {
+func (eo extensionOperation) build(builder *messagequeue.Builder) {
 	builder.AddExtensionData(eo.requestID, eo.extension)
 }
 
@@ -116,7 +106,7 @@ type blockOperation struct {
 	index     int64
 }
 
-func (bo blockOperation) build(builder *gsmsg.Builder) {
+func (bo blockOperation) build(builder *messagequeue.Builder) {
 	if bo.sendBlock {
 		cidLink := bo.link.(cidlink.Link)
 		block, err := blocks.NewBlockWithCid(bo.data, cidLink.Cid)
@@ -126,6 +116,7 @@ func (bo blockOperation) build(builder *gsmsg.Builder) {
 		builder.AddBlock(block)
 	}
 	builder.AddLink(bo.requestID, bo.link, bo.data != nil)
+	builder.AddBlockData(bo.requestID, bo.Block())
 }
 
 func (bo blockOperation) size() uint64 {

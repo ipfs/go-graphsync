@@ -17,7 +17,6 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 )
@@ -39,7 +38,6 @@ const ErrFirstBlockLoad = errorString("Unable to load first block")
 // ResponseTask returns all information needed to execute a given response
 type ResponseTask struct {
 	Empty          bool
-	Subscriber     *notifications.TopicDataSubscriber
 	Ctx            context.Context
 	Span           trace.Span
 	Request        gsmsg.GraphSyncRequest
@@ -121,30 +119,28 @@ func (qe *QueryExecutor) executeQuery(
 	// Execute the traversal operation, continue until we have reason to stop (error, pause, complete)
 	err := qe.runTraversal(p, rt)
 
+	_, isPaused := err.(hooks.ErrPaused)
+	if isPaused {
+		return err
+	}
+
+	if err == ErrNetworkError || ipldutil.IsContextCancelErr(err) {
+		rt.ResponseStream.ClearRequest()
+		return err
+	}
+
 	// Close out the response, either temporarily (pause) or permanently (cancel, fail, complete)
 	return rt.ResponseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
-		var code graphsync.ResponseStatusCode
-		if err != nil {
-			_, isPaused := err.(hooks.ErrPaused)
-			if isPaused {
-				return err
-			}
-			if err == ErrNetworkError || ipldutil.IsContextCancelErr(err) {
-				rb.ClearRequest()
-				return err
-			}
-			if err == ErrFirstBlockLoad {
-				code = graphsync.RequestFailedContentNotFound
-			} else if err == ErrCancelledByCommand {
-				code = graphsync.RequestCancelled
-			} else {
-				code = graphsync.RequestFailedUnknown
-			}
-			rb.FinishWithError(code)
-		} else {
-			code = rb.FinishRequest()
+		switch err {
+		case nil:
+			rb.FinishRequest()
+		case ErrFirstBlockLoad:
+			rb.FinishWithError(graphsync.RequestFailedContentNotFound)
+		case ErrCancelledByCommand:
+			rb.FinishWithError(graphsync.RequestCancelled)
+		default:
+			rb.FinishWithError(graphsync.RequestFailedUnknown)
 		}
-		rb.AddNotifee(notifications.Notifee{Data: code, Subscriber: rt.Subscriber})
 		return err
 	})
 }
@@ -251,7 +247,6 @@ func (qe *QueryExecutor) sendResponse(p peer.ID, taskData ResponseTask, link ipl
 			return err
 		}
 		blockData := rb.SendResponse(link, data)
-		rb.AddNotifee(notifications.Notifee{Data: blockData, Subscriber: taskData.Subscriber})
 		if blockData.BlockSize() > 0 {
 			result := qe.blockHooks.ProcessBlockHooks(p, taskData.Request, blockData)
 			for _, extension := range result.Extensions {
@@ -287,5 +282,6 @@ type UpdateHooks interface {
 
 // ResponseStream is an interface that returns sender interfaces for peer responses.
 type ResponseStream interface {
+	ClearRequest()
 	Transaction(transaction responseassembler.Transaction) error
 }

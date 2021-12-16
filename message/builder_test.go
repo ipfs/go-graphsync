@@ -67,8 +67,6 @@ func TestMessageBuilding(t *testing.T) {
 				for _, block := range blocks {
 					rb.AddBlock(block)
 				}
-				rb.AddResponseStream(requestID1, closer)
-				rb.AddResponseStream(requestID2, closer)
 			},
 			expectedSize: 300,
 			expectedStreams: map[graphsync.RequestID]io.Closer{
@@ -241,12 +239,9 @@ func TestMessageBuilding(t *testing.T) {
 	}
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
-			b := NewBuilder(Topic(rand.Uint64()))
+			b := NewBuilder()
 			data.build(b)
 			require.Equal(t, data.expectedSize, b.BlockSize(), "did not calculate block size correctly")
-			if data.expectedStreams != nil {
-				require.Equal(t, data.expectedStreams, b.ResponseStreams())
-			}
 			message, err := b.Build()
 			require.NoError(t, err, "build message errored")
 			data.checkMsg(t, message)

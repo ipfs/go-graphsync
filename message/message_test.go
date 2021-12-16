@@ -29,7 +29,7 @@ func TestAppendingRequests(t *testing.T) {
 	id := graphsync.RequestID(rand.Int31())
 	priority := graphsync.Priority(rand.Int31())
 
-	builder := NewBuilder(Topic(0))
+	builder := NewBuilder()
 	builder.AddRequest(NewRequest(id, root, selector, priority, extension))
 	gsm, err := builder.Build()
 	require.NoError(t, err)
@@ -85,7 +85,7 @@ func TestAppendingResponses(t *testing.T) {
 	requestID := graphsync.RequestID(rand.Int31())
 	status := graphsync.RequestAcknowledged
 
-	builder := NewBuilder(Topic(0))
+	builder := NewBuilder()
 	builder.AddResponseCode(requestID, status)
 	builder.AddExtensionData(requestID, extension)
 	gsm, err := builder.Build()
@@ -124,7 +124,7 @@ func TestAppendBlock(t *testing.T) {
 	strs = append(strs, "Celeritas")
 	strs = append(strs, "Incendia")
 
-	builder := NewBuilder(Topic(0))
+	builder := NewBuilder()
 	for _, str := range strs {
 		block := blocks.NewBlock([]byte(str))
 		builder.AddBlock(block)
@@ -158,7 +158,7 @@ func TestRequestCancel(t *testing.T) {
 	priority := graphsync.Priority(rand.Int31())
 	root := testutil.GenerateCids(1)[0]
 
-	builder := NewBuilder(Topic(0))
+	builder := NewBuilder()
 	builder.AddRequest(NewRequest(id, root, selector, priority))
 	builder.AddRequest(CancelRequest(id))
 	gsm, err := builder.Build()
@@ -191,7 +191,7 @@ func TestRequestUpdate(t *testing.T) {
 		Data: testutil.RandomBytes(100),
 	}
 
-	builder := NewBuilder(Topic(0))
+	builder := NewBuilder()
 	builder.AddRequest(UpdateRequest(id, extension))
 	gsm, err := builder.Build()
 	require.NoError(t, err)
@@ -239,7 +239,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	priority := graphsync.Priority(rand.Int31())
 	status := graphsync.RequestAcknowledged
 
-	builder := NewBuilder(Topic(0))
+	builder := NewBuilder()
 	builder.AddRequest(NewRequest(id, root, selector, priority, extension))
 	builder.AddResponseCode(id, status)
 	builder.AddExtensionData(id, extension)

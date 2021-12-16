@@ -135,7 +135,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 
 	requestID := graphsync.RequestID(rand.Int31())
 
-	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	builder := gsmsg.NewBuilder()
 	builder.AddRequest(gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), td.extension))
 	message, err := builder.Build()
 	require.NoError(t, err)

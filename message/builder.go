@@ -1,8 +1,6 @@
 package message
 
 import (
-	"io"
-
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -16,40 +14,23 @@ import (
 // requests for a given peer and then generates the corresponding
 // GraphSync message when ready to send
 type Builder struct {
-	topic              Topic
 	outgoingBlocks     map[cid.Cid]blocks.Block
 	blkSize            uint64
 	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
 	outgoingResponses  map[graphsync.RequestID]metadata.Metadata
 	extensions         map[graphsync.RequestID][]graphsync.ExtensionData
 	requests           map[graphsync.RequestID]GraphSyncRequest
-	responseStreams    map[graphsync.RequestID]io.Closer
 }
 
-// Topic is an identifier for notifications about this response builder
-type Topic uint64
-
 // NewBuilder generates a new Builder.
-func NewBuilder(topic Topic) *Builder {
+func NewBuilder() *Builder {
 	return &Builder{
-		topic:              topic,
 		requests:           make(map[graphsync.RequestID]GraphSyncRequest),
 		outgoingBlocks:     make(map[cid.Cid]blocks.Block),
 		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
 		outgoingResponses:  make(map[graphsync.RequestID]metadata.Metadata),
 		extensions:         make(map[graphsync.RequestID][]graphsync.ExtensionData),
-		responseStreams:    make(map[graphsync.RequestID]io.Closer),
 	}
-}
-
-// AddResponseStream adds a stream that can be closed if the message fails to send
-func (b *Builder) AddResponseStream(requestID graphsync.RequestID, responseStream io.Closer) {
-	b.responseStreams[requestID] = responseStream
-}
-
-// ResponseStreams returns related response streams for a given builder
-func (b *Builder) ResponseStreams() map[graphsync.RequestID]io.Closer {
-	return b.responseStreams
 }
 
 // AddRequest registers a new request to be added to the message.
@@ -107,7 +88,6 @@ func (b *Builder) ScrubResponses(requestIDs []graphsync.RequestID) uint64 {
 		delete(b.completedResponses, requestID)
 		delete(b.extensions, requestID)
 		delete(b.outgoingResponses, requestID)
-		delete(b.responseStreams, requestID)
 	}
 	oldSize := b.blkSize
 	newBlkSize := uint64(0)
@@ -145,11 +125,6 @@ func (b *Builder) Build() (GraphSyncMessage, error) {
 	return GraphSyncMessage{
 		b.requests, responses, b.outgoingBlocks,
 	}, nil
-}
-
-// Topic returns the identifier for notifications sent about this builder
-func (b *Builder) Topic() Topic {
-	return b.topic
 }
 
 func responseCode(status graphsync.ResponseStatusCode, isComplete bool) graphsync.ResponseStatusCode {

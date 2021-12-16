@@ -46,9 +46,9 @@ func TestStartupAndShutdown(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
 
 	waitGroup.Add(1)
-	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	}, []notifications.Notifee{})
+	})
 
 	testutil.AssertDoesReceive(ctx, t, messagesSent, "message was not sent")
 
@@ -85,9 +85,9 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 
 	// setup a message and advance as far as beginning to send it
 	waitGroup.Add(1)
-	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	}, []notifications.Notifee{})
+	})
 	waitGroup.Wait()
 
 	// now shut down
@@ -135,12 +135,14 @@ func TestProcessingNotification(t *testing.T) {
 		Data: testutil.RandomBytes(100),
 	}
 	status := graphsync.RequestCompletedFull
-	expectedTopic := "testTopic"
-	notifee, verifier := testutil.NewTestNotifee(expectedTopic, 5)
-	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
+	blkData := testutil.NewFakeBlockData()
+	subscriber := testutil.NewTestSubscriber(5)
+	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddResponseCode(responseID, status)
 		b.AddExtensionData(responseID, extension)
-	}, []notifications.Notifee{notifee})
+		b.AddBlockData(responseID, blkData)
+		b.SetSubscriber(responseID, subscriber)
+	})
 
 	// wait for send attempt
 	waitGroup.Wait()
@@ -158,11 +160,25 @@ func TestProcessingNotification(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	verifier.ExpectEvents(ctx, t, []notifications.Event{
-		Event{Name: Queued},
-		Event{Name: Sent},
+	expectedMetadata := Metadata{
+		ResponseCodes: map[graphsync.RequestID]graphsync.ResponseStatusCode{
+			responseID: status,
+		},
+		BlockData: map[graphsync.RequestID][]graphsync.BlockData{
+			responseID: []graphsync.BlockData{blkData},
+		},
+	}
+	subscriber.ExpectEventsAllTopics(ctx, t, []notifications.Event{
+		Event{
+			Name:     Queued,
+			Metadata: expectedMetadata,
+		},
+		Event{
+			Name:     Sent,
+			Metadata: expectedMetadata,
+		},
 	})
-	verifier.ExpectClose(ctx, t)
+	subscriber.ExpectNCloses(ctx, t, 1)
 }
 
 func TestDedupingMessages(t *testing.T) {
@@ -188,9 +204,9 @@ func TestDedupingMessages(t *testing.T) {
 	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
-	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	}, []notifications.Notifee{})
+	})
 	// wait for send attempt
 	waitGroup.Wait()
 	id2 := graphsync.RequestID(rand.Int31())
@@ -202,10 +218,10 @@ func TestDedupingMessages(t *testing.T) {
 	selector3 := ssb.ExploreIndex(0, ssb.Matcher()).Node()
 	root3 := testutil.GenerateCids(1)[0]
 
-	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))
 		b.AddRequest(gsmsg.NewRequest(id3, root3, selector3, priority3))
-	}, []notifications.Notifee{})
+	})
 
 	var message gsmsg.GraphSyncMessage
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
@@ -257,9 +273,9 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 
 	// generate large blocks before proceeding
 	blks := testutil.GenerateBlocksOfSize(5, 1000000)
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
 		b.AddBlock(blks[0])
-	}, []notifications.Notifee{})
+	})
 	waitGroup.Wait()
 	var message gsmsg.GraphSyncMessage
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
@@ -269,15 +285,15 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.True(t, blks[0].Cid().Equals(msgBlks[0].Cid()))
 
 	// Send 3 very large blocks
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *Builder) {
 		b.AddBlock(blks[1])
-	}, []notifications.Notifee{})
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *gsmsg.Builder) {
+	})
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *Builder) {
 		b.AddBlock(blks[2])
-	}, []notifications.Notifee{})
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *gsmsg.Builder) {
+	})
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *Builder) {
 		b.AddBlock(blks[3])
-	}, []notifications.Notifee{})
+	})
 
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
 	msgBlks = message.Blocks()
@@ -317,16 +333,16 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 
 	// start sending block that exceeds memory limit
 	blks := testutil.GenerateBlocksOfSize(2, 999)
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
 		b.AddBlock(blks[0])
-	}, []notifications.Notifee{})
+	})
 
 	finishes := make(chan string, 2)
 	go func() {
 		// attempt to send second block. Should block until memory is released
-		messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *gsmsg.Builder) {
+		messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *Builder) {
 			b.AddBlock(blks[1])
-		}, []notifications.Notifee{})
+		})
 		finishes <- "sent message"
 	}()
 
@@ -376,13 +392,13 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 
 	// generate large blocks before proceeding
 	blks := testutil.GenerateBlocksOfSize(5, 1000000)
-	expectedTopic := "testTopic"
-	notifee, verifier := testutil.NewTestNotifee(expectedTopic, 5)
+	subscriber := testutil.NewTestSubscriber(5)
 
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
 		b.AddBlock(blks[0])
 		b.AddLink(requestID1, cidlink.Link{Cid: blks[0].Cid()}, true)
-	}, []notifications.Notifee{notifee})
+		b.SetSubscriber(requestID1, subscriber)
+	})
 	waitGroup.Wait()
 	var message gsmsg.GraphSyncMessage
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
@@ -391,29 +407,35 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
 	require.True(t, blks[0].Cid().Equals(msgBlks[0].Cid()))
 
-	verifier.ExpectEvents(ctx, t, []notifications.Event{
-		Event{Name: Queued},
-		Event{Name: Sent},
+	expectedMetadata := Metadata{
+		ResponseCodes: map[graphsync.RequestID]graphsync.ResponseStatusCode{
+			requestID1: graphsync.PartialResponse,
+		},
+		BlockData: map[graphsync.RequestID][]graphsync.BlockData{},
+	}
+	subscriber.ExpectEventsAllTopics(ctx, t, []notifications.Event{
+		Event{Name: Queued, Metadata: expectedMetadata},
+		Event{Name: Sent, Metadata: expectedMetadata},
 	})
-	verifier.ExpectClose(ctx, t)
+	subscriber.ExpectNCloses(ctx, t, 1)
 	fc1 := &fakeCloser{fms: messageSender}
 	fc2 := &fakeCloser{fms: messageSender}
 	// Send 3 very large blocks
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *Builder) {
 		b.AddBlock(blks[1])
-		b.AddResponseStream(requestID1, fc1)
+		b.SetResponseStream(requestID1, fc1)
 		b.AddLink(requestID1, cidlink.Link{Cid: blks[1].Cid()}, true)
-	}, []notifications.Notifee{})
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *gsmsg.Builder) {
+	})
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *Builder) {
 		b.AddBlock(blks[2])
-		b.AddResponseStream(requestID1, fc1)
+		b.SetResponseStream(requestID1, fc1)
 		b.AddLink(requestID1, cidlink.Link{Cid: blks[2].Cid()}, true)
-	}, []notifications.Notifee{})
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *gsmsg.Builder) {
-		b.AddResponseStream(requestID2, fc2)
+	})
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *Builder) {
+		b.SetResponseStream(requestID2, fc2)
 		b.AddLink(requestID2, cidlink.Link{Cid: blks[3].Cid()}, true)
 		b.AddBlock(blks[3])
-	}, []notifications.Notifee{})
+	})
 
 	messageSender.sendError = errors.New("something went wrong")
 

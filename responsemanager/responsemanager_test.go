@@ -834,7 +834,7 @@ func TestNetworkErrors(t *testing.T) {
 		td.assertPausedRequest()
 		err := errors.New("something went wrong")
 		td.notifyBlockSendsNetworkError(err)
-		td.assertNetworkErrors(err, blockCount)
+		td.assertNetworkErrors(err, 1)
 		td.assertRequestCleared()
 		err = responseManager.UnpauseResponse(td.p, td.requestID, td.extensionResponse)
 		require.Error(t, err)
@@ -850,12 +850,16 @@ type fakeResponseAssembler struct {
 	clearedRequests      chan clearedRequest
 	ignoredLinks         chan []ipld.Link
 	skippedFirstBlocks   chan int64
-	notifeePublisher     *testutil.MockPublisher
-	dedupKeys            chan string
-	missingBlock         bool
+
+	completedNotifications map[graphsync.RequestID]graphsync.ResponseStatusCode
+	blkNotifications       map[graphsync.RequestID][]graphsync.BlockData
+	notifeePublisher       *testutil.MockPublisher
+	dedupKeys              chan string
+	missingBlock           bool
 }
 
-func (fra *fakeResponseAssembler) NewStream(p peer.ID, requestID graphsync.RequestID) responseassembler.ResponseStream {
+func (fra *fakeResponseAssembler) NewStream(p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) responseassembler.ResponseStream {
+	fra.notifeePublisher.AddSubscriber(subscriber)
 	return &fakeResponseStream{fra, requestID}
 }
 
@@ -867,8 +871,7 @@ type fakeResponseStream struct {
 func (frs *fakeResponseStream) Transaction(transaction responseassembler.Transaction) error {
 	frs.fra.transactionLk.Lock()
 	defer frs.fra.transactionLk.Unlock()
-	frb := &fakeResponseBuilder{frs.requestID, frs.fra,
-		frs.fra.notifeePublisher}
+	frb := &fakeResponseBuilder{frs.requestID, frs.fra}
 	return transaction(frb)
 }
 
@@ -881,6 +884,10 @@ func (frs *fakeResponseStream) SkipFirstBlocks(skipCount int64) {
 }
 func (frs *fakeResponseStream) DedupKey(key string) {
 	frs.fra.dedupKeys <- key
+}
+
+func (frs *fakeResponseStream) ClearRequest() {
+	frs.fra.clearRequest(frs.requestID)
 }
 
 type sentResponse struct {
@@ -936,7 +943,9 @@ func (fra *fakeResponseAssembler) sendResponse(
 	if data == nil {
 		fra.missingBlock = true
 	}
-	return fakeBlkData{link, uint64(len(data))}
+	blkData := fakeBlkData{link, uint64(len(data))}
+	fra.blkNotifications[requestID] = append(fra.blkNotifications[requestID], blkData)
+	return blkData
 }
 
 func (fra *fakeResponseAssembler) sendExtensionData(
@@ -952,13 +961,17 @@ func (fra *fakeResponseAssembler) finishRequest(requestID graphsync.RequestID) g
 		code = graphsync.RequestCompletedPartial
 	}
 	fra.missingBlock = false
-	fra.lastCompletedRequest <- completedRequest{requestID, code}
+	cr := completedRequest{requestID, code}
+	fra.lastCompletedRequest <- cr
+	fra.completedNotifications[requestID] = code
 	return code
 }
 
 func (fra *fakeResponseAssembler) finishWithError(requestID graphsync.RequestID, status graphsync.ResponseStatusCode) {
 	fra.missingBlock = false
-	fra.lastCompletedRequest <- completedRequest{requestID, status}
+	cr := completedRequest{requestID, status}
+	fra.lastCompletedRequest <- cr
+	fra.completedNotifications[requestID] = status
 }
 
 func (fra *fakeResponseAssembler) pauseRequest(requestID graphsync.RequestID) {
@@ -971,9 +984,8 @@ func (fra *fakeResponseAssembler) clearRequest(requestID graphsync.RequestID) {
 }
 
 type fakeResponseBuilder struct {
-	requestID        graphsync.RequestID
-	fra              *fakeResponseAssembler
-	notifeePublisher *testutil.MockPublisher
+	requestID graphsync.RequestID
+	fra       *fakeResponseAssembler
 }
 
 func (frb *fakeResponseBuilder) SendResponse(link ipld.Link, data []byte) graphsync.BlockData {
@@ -996,14 +1008,6 @@ func (frb *fakeResponseBuilder) PauseRequest() {
 	frb.fra.pauseRequest(frb.requestID)
 }
 
-func (frb *fakeResponseBuilder) ClearRequest() {
-	frb.fra.clearRequest(frb.requestID)
-}
-
-func (frb *fakeResponseBuilder) AddNotifee(notifee notifications.Notifee) {
-	frb.notifeePublisher.AddNotifees([]notifications.Notifee{notifee})
-}
-
 type testData struct {
 	ctx                       context.Context
 	t                         *testing.T
@@ -1017,6 +1021,8 @@ type testData struct {
 	sentExtensions            chan sentExtension
 	pausedRequests            chan pausedRequest
 	clearedRequests           chan clearedRequest
+	completedNotifications    map[graphsync.RequestID]graphsync.ResponseStatusCode
+	blkNotifications          map[graphsync.RequestID][]graphsync.BlockData
 	ignoredLinks              chan []ipld.Link
 	skippedFirstBlocks        chan int64
 	dedupKeys                 chan string
@@ -1076,17 +1082,21 @@ func newTestData(t *testing.T) testData {
 	td.networkErrorChan = make(chan error, td.blockChainLength*2)
 	td.notifeePublisher = testutil.NewMockPublisher()
 	td.transactionLk = &sync.Mutex{}
+	td.completedNotifications = make(map[graphsync.RequestID]graphsync.ResponseStatusCode)
+	td.blkNotifications = make(map[graphsync.RequestID][]graphsync.BlockData)
 	td.responseAssembler = &fakeResponseAssembler{
-		transactionLk:        td.transactionLk,
-		lastCompletedRequest: td.completedRequestChan,
-		sentResponses:        td.sentResponses,
-		sentExtensions:       td.sentExtensions,
-		pausedRequests:       td.pausedRequests,
-		clearedRequests:      td.clearedRequests,
-		ignoredLinks:         td.ignoredLinks,
-		skippedFirstBlocks:   td.skippedFirstBlocks,
-		dedupKeys:            td.dedupKeys,
-		notifeePublisher:     td.notifeePublisher,
+		transactionLk:          td.transactionLk,
+		lastCompletedRequest:   td.completedRequestChan,
+		sentResponses:          td.sentResponses,
+		sentExtensions:         td.sentExtensions,
+		pausedRequests:         td.pausedRequests,
+		clearedRequests:        td.clearedRequests,
+		ignoredLinks:           td.ignoredLinks,
+		skippedFirstBlocks:     td.skippedFirstBlocks,
+		dedupKeys:              td.dedupKeys,
+		notifeePublisher:       td.notifeePublisher,
+		blkNotifications:       td.blkNotifications,
+		completedNotifications: td.completedNotifications,
 	}
 
 	td.extensionData = testutil.RandomBytes(100)
@@ -1274,37 +1284,41 @@ func (td *testData) assertSkippedFirstBlocks(expectedSkipCount int64) {
 
 func (td *testData) notifyStatusMessagesSent() {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
-		_, isSn := data.(graphsync.ResponseStatusCode)
-		return isSn
-	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Sent}})
+	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int31), []notifications.Event{
+		messagequeue.Event{Name: messagequeue.Sent, Metadata: messagequeue.Metadata{ResponseCodes: td.completedNotifications}},
+	})
+	td.completedNotifications = make(map[graphsync.RequestID]graphsync.ResponseStatusCode)
+	td.responseAssembler.completedNotifications = td.completedNotifications
 	td.transactionLk.Unlock()
 }
 
 func (td *testData) notifyBlockSendsSent() {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
-		_, isBsn := data.(graphsync.BlockData)
-		return isBsn
-	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Sent}})
+	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int31), []notifications.Event{
+		messagequeue.Event{Name: messagequeue.Sent, Metadata: messagequeue.Metadata{BlockData: td.blkNotifications}},
+	})
+	td.blkNotifications = make(map[graphsync.RequestID][]graphsync.BlockData)
+	td.responseAssembler.blkNotifications = td.blkNotifications
 	td.transactionLk.Unlock()
 }
 
 func (td *testData) notifyStatusMessagesNetworkError(err error) {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
-		_, isSn := data.(graphsync.ResponseStatusCode)
-		return isSn
-	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Error, Err: err}})
+	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int31), []notifications.Event{
+		messagequeue.Event{Name: messagequeue.Error, Err: err, Metadata: messagequeue.Metadata{ResponseCodes: td.completedNotifications}},
+	})
+	td.completedNotifications = make(map[graphsync.RequestID]graphsync.ResponseStatusCode)
+	td.responseAssembler.completedNotifications = td.completedNotifications
 	td.transactionLk.Unlock()
 }
 
 func (td *testData) notifyBlockSendsNetworkError(err error) {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishMatchingEvents(func(data notifications.TopicData) bool {
-		_, isBsn := data.(graphsync.BlockData)
-		return isBsn
-	}, []notifications.Event{messagequeue.Event{Name: messagequeue.Error, Err: err}})
+	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int31), []notifications.Event{
+		messagequeue.Event{Name: messagequeue.Error, Err: err, Metadata: messagequeue.Metadata{BlockData: td.blkNotifications}},
+	})
+	td.blkNotifications = make(map[graphsync.RequestID][]graphsync.BlockData)
+	td.responseAssembler.blkNotifications = td.blkNotifications
 	td.transactionLk.Unlock()
 }
 

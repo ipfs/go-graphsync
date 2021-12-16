@@ -22,6 +22,8 @@ var log = logging.Logger("graphsync")
 // max block size is the maximum size for batching blocks in a single payload
 const maxBlockSize uint64 = 512 * 1024
 
+type Topic uint64
+
 type EventName uint64
 
 const (
@@ -30,9 +32,15 @@ const (
 	Error
 )
 
+type Metadata struct {
+	BlockData     map[graphsync.RequestID][]graphsync.BlockData
+	ResponseCodes map[graphsync.RequestID]graphsync.ResponseStatusCode
+}
+
 type Event struct {
-	Name EventName
-	Err  error
+	Name     EventName
+	Err      error
+	Metadata Metadata
 }
 
 // MessageNetwork is any network that can connect peers and generate a message
@@ -61,8 +69,8 @@ type MessageQueue struct {
 	sender             gsnet.MessageSender
 	eventPublisher     notifications.Publisher
 	buildersLk         sync.RWMutex
-	builders           []*gsmsg.Builder
-	nextBuilderTopic   gsmsg.Topic
+	builders           []*Builder
+	nextBuilderTopic   Topic
 	allocator          Allocator
 	maxRetries         int
 	sendMessageTimeout time.Duration
@@ -85,7 +93,7 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Alloc
 
 // AllocateAndBuildMessage allows you to work modify the next message that is sent in the queue.
 // If blkSize > 0, message building may block until enough memory has been freed from the queues to allocate the message.
-func (mq *MessageQueue) AllocateAndBuildMessage(size uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) {
+func (mq *MessageQueue) AllocateAndBuildMessage(size uint64, buildMessageFn func(*Builder)) {
 	if size > 0 {
 		select {
 		case <-mq.allocator.AllocateBlockMemory(mq.p, size):
@@ -93,28 +101,25 @@ func (mq *MessageQueue) AllocateAndBuildMessage(size uint64, buildMessageFn func
 			return
 		}
 	}
-	if mq.buildMessage(size, buildMessageFn, notifees) {
+	if mq.buildMessage(size, buildMessageFn) {
 		mq.signalWork()
 	}
 }
 
-func (mq *MessageQueue) buildMessage(size uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee) bool {
+func (mq *MessageQueue) buildMessage(size uint64, buildMessageFn func(*Builder)) bool {
 	mq.buildersLk.Lock()
 	defer mq.buildersLk.Unlock()
 	if shouldBeginNewResponse(mq.builders, size) {
 		topic := mq.nextBuilderTopic
 		mq.nextBuilderTopic++
-		mq.builders = append(mq.builders, gsmsg.NewBuilder(topic))
+		mq.builders = append(mq.builders, NewBuilder(topic))
 	}
 	builder := mq.builders[len(mq.builders)-1]
 	buildMessageFn(builder)
-	for _, notifee := range notifees {
-		notifications.SubscribeWithData(mq.eventPublisher, builder.Topic(), notifee)
-	}
 	return !builder.Empty()
 }
 
-func shouldBeginNewResponse(builders []*gsmsg.Builder, blkSize uint64) bool {
+func shouldBeginNewResponse(builders []*Builder, blkSize uint64) bool {
 	if len(builders) == 0 {
 		return true
 	}
@@ -181,12 +186,12 @@ func (mq *MessageQueue) signalWork() {
 
 var errEmptyMessage = errors.New("empty Message")
 
-func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, messageMetadata, error) {
+func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, internalMetadata, error) {
 	// grab outgoing message
 	mq.buildersLk.Lock()
 	if len(mq.builders) == 0 {
 		mq.buildersLk.Unlock()
-		return gsmsg.GraphSyncMessage{}, messageMetadata{}, errEmptyMessage
+		return gsmsg.GraphSyncMessage{}, internalMetadata{}, errEmptyMessage
 	}
 	builder := mq.builders[0]
 	mq.builders = mq.builders[1:]
@@ -199,10 +204,9 @@ func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, messag
 	}
 	mq.buildersLk.Unlock()
 	if builder.Empty() {
-		return gsmsg.GraphSyncMessage{}, messageMetadata{}, errEmptyMessage
+		return gsmsg.GraphSyncMessage{}, internalMetadata{}, errEmptyMessage
 	}
-	message, err := builder.Build()
-	return message, messageMetadata{builder.Topic(), builder.ResponseStreams(), builder.BlockSize()}, err
+	return builder.build(mq.eventPublisher)
 }
 
 func (mq *MessageQueue) sendMessage() {
@@ -251,7 +255,7 @@ func (mq *MessageQueue) scrubResponseStreams(responseStreams map[graphsync.Reque
 // from all pending messages in the queue
 func (mq *MessageQueue) scrubResponses(requestIDs []graphsync.RequestID) uint64 {
 	mq.buildersLk.Lock()
-	newBuilders := make([]*gsmsg.Builder, 0, len(mq.builders))
+	newBuilders := make([]*Builder, 0, len(mq.builders))
 	totalFreed := uint64(0)
 	for _, builder := range mq.builders {
 		totalFreed = builder.ScrubResponses(requestIDs)
@@ -276,7 +280,7 @@ func (mq *MessageQueue) initializeSender() error {
 	return nil
 }
 
-func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, metadata messageMetadata) bool {
+func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, metadata internalMetadata) bool {
 	err := mq.sender.SendMsg(mq.ctx, message)
 	if err == nil {
 		mq.publishSent(metadata)
@@ -332,23 +336,24 @@ func openSender(ctx context.Context, network MessageNetwork, p peer.ID, sendTime
 	return nsender, nil
 }
 
-type messageMetadata struct {
-	topic           gsmsg.Topic
-	responseStreams map[graphsync.RequestID]io.Closer
+type internalMetadata struct {
+	public          Metadata
+	topic           Topic
 	msgSize         uint64
+	responseStreams map[graphsync.RequestID]io.Closer
 }
 
-func (mq *MessageQueue) publishQueued(metadata messageMetadata) {
-	mq.eventPublisher.Publish(metadata.topic, Event{Name: Queued})
+func (mq *MessageQueue) publishQueued(metadata internalMetadata) {
+	mq.eventPublisher.Publish(metadata.topic, Event{Name: Queued, Metadata: metadata.public})
 }
 
-func (mq *MessageQueue) publishSent(metadata messageMetadata) {
-	mq.eventPublisher.Publish(metadata.topic, Event{Name: Sent})
+func (mq *MessageQueue) publishSent(metadata internalMetadata) {
+	mq.eventPublisher.Publish(metadata.topic, Event{Name: Sent, Metadata: metadata.public})
 	_ = mq.allocator.ReleaseBlockMemory(mq.p, metadata.msgSize)
 }
 
-func (mq *MessageQueue) publishError(metadata messageMetadata, err error) {
+func (mq *MessageQueue) publishError(metadata internalMetadata, err error) {
 	mq.scrubResponseStreams(metadata.responseStreams)
-	mq.eventPublisher.Publish(metadata.topic, Event{Name: Error, Err: err})
+	mq.eventPublisher.Publish(metadata.topic, Event{Name: Error, Err: err, Metadata: metadata.public})
 	_ = mq.allocator.ReleaseBlockMemory(mq.p, metadata.msgSize)
 }

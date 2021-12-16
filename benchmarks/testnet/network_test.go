@@ -33,7 +33,7 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 		fromWaiter peer.ID,
 		msgFromWaiter gsmsg.GraphSyncMessage) {
 
-		builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+		builder := gsmsg.NewBuilder()
 		builder.AddBlock(blocks.NewBlock([]byte(expectedStr)))
 		msgToWaiter, err := builder.Build()
 		require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 		}
 	}))
 
-	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	builder := gsmsg.NewBuilder()
 	builder.AddBlock(blocks.NewBlock([]byte("data")))
 	messageSentAsync, err := builder.Build()
 	require.NoError(t, err)

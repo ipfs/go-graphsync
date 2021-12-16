@@ -15,7 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/peermanager"
 )
@@ -35,9 +35,6 @@ type ResponseBuilder interface {
 	// SendExtensionData adds extension data to the transaction.
 	SendExtensionData(graphsync.ExtensionData)
 
-	// ClearRequest removes all tracking for this request.
-	ClearRequest()
-
 	// FinishRequest completes the response to a request.
 	FinishRequest() graphsync.ResponseStatusCode
 
@@ -46,15 +43,12 @@ type ResponseBuilder interface {
 
 	// PauseRequest temporarily halts responding to the request
 	PauseRequest()
-
-	// AddNotifee adds a notifee to be notified about the response to request.
-	AddNotifee(notifications.Notifee)
 }
 
 // PeerMessageHandler is an interface that can queue a response for a given peer to go out over the network
 // If blkSize > 0, message building may block until enough memory has been freed from the queues to allocate the message.
 type PeerMessageHandler interface {
-	AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildResponseFn func(*gsmsg.Builder), notifees []notifications.Notifee)
+	AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildResponseFn func(*messagequeue.Builder))
 }
 
 // ResponseAssembler manages assembling responses to go out over the network
@@ -74,12 +68,13 @@ func New(ctx context.Context, peerHandler PeerMessageHandler) *ResponseAssembler
 	}
 }
 
-func (ra *ResponseAssembler) NewStream(p peer.ID, requestID graphsync.RequestID) ResponseStream {
+func (ra *ResponseAssembler) NewStream(p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) ResponseStream {
 	return &responseStream{
 		requestID:      requestID,
 		p:              p,
 		messageSenders: ra.peerHandler,
 		linkTrackers:   ra.PeerManager,
+		subscriber:     subscriber,
 	}
 }
 
@@ -90,6 +85,7 @@ type responseStream struct {
 	closedLk       sync.RWMutex
 	messageSenders PeerMessageHandler
 	linkTrackers   *peermanager.PeerManager
+	subscriber     notifications.Subscriber
 }
 
 func (r *responseStream) Close() error {
@@ -110,6 +106,8 @@ type ResponseStream interface {
 	DedupKey(key string)
 	IgnoreBlocks(links []ipld.Link)
 	SkipFirstBlocks(skipFirstBlocks int64)
+	// ClearRequest removes all tracking for this request.
+	ClearRequest()
 }
 
 // DedupKey indicates that outgoing blocks should be deduplicated in a seperate bucket (only with requests that share
@@ -128,17 +126,22 @@ func (rs *responseStream) SkipFirstBlocks(skipFirstBlocks int64) {
 	rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker).SkipFirstBlocks(rs.requestID, skipFirstBlocks)
 }
 
+// ClearRequest removes all tracking for this request.
+func (rs *responseStream) ClearRequest() {
+	_ = rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker).FinishTracking(rs.requestID)
+}
+
 func (rs *responseStream) Transaction(transaction Transaction) error {
 	rb := &responseBuilder{
 		requestID:   rs.requestID,
 		linkTracker: rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker),
 	}
 	err := transaction(rb)
-	rs.execute(rb.operations, rb.notifees)
+	rs.execute(rb.operations)
 	return err
 }
 
-func (rs *responseStream) execute(operations []responseOperation, notifees []notifications.Notifee) {
+func (rs *responseStream) execute(operations []responseOperation) {
 	size := uint64(0)
 	for _, op := range operations {
 		size += op.size()
@@ -146,13 +149,14 @@ func (rs *responseStream) execute(operations []responseOperation, notifees []not
 	if rs.isClosed() {
 		return
 	}
-	rs.messageSenders.AllocateAndBuildMessage(rs.p, size, func(builder *gsmsg.Builder) {
+	rs.messageSenders.AllocateAndBuildMessage(rs.p, size, func(builder *messagequeue.Builder) {
 		if rs.isClosed() {
 			return
 		}
 		for _, op := range operations {
 			op.build(builder)
 		}
-		builder.AddResponseStream(rs.requestID, rs)
-	}, notifees)
+		builder.SetResponseStream(rs.requestID, rs)
+		builder.SetSubscriber(rs.requestID, rs.subscriber)
+	})
 }

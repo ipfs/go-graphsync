@@ -67,7 +67,7 @@ type inProgressRequestStatus struct {
 
 // PeerHandler is an interface that can send requests to peers
 type PeerHandler interface {
-	AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*gsmsg.Builder), notifees []notifications.Notifee)
+	AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*messagequeue.Builder))
 }
 
 // AsyncLoader is an interface for loading links asynchronously, returning
@@ -347,11 +347,11 @@ func (rm *RequestManager) PeerState(p peer.ID) peerstate.PeerState {
 
 // SendRequest sends a request to the message queue
 func (rm *RequestManager) SendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
-	sub := notifications.NewTopicDataSubscriber(&reqSubscriber{p, request, rm.networkErrorListeners})
-	failNotifee := notifications.Notifee{Data: requestNetworkError, Subscriber: sub}
-	rm.peerHandler.AllocateAndBuildMessage(p, 0, func(builder *gsmsg.Builder) {
+	sub := &reqSubscriber{p, request, rm.networkErrorListeners}
+	rm.peerHandler.AllocateAndBuildMessage(p, 0, func(builder *messagequeue.Builder) {
 		builder.AddRequest(request)
-	}, []notifications.Notifee{failNotifee})
+		builder.SetSubscriber(request.ID(), sub)
+	})
 }
 
 // Startup starts processing for the WantManager.
@@ -378,7 +378,7 @@ type reqSubscriber struct {
 	networkErrorListeners *listeners.NetworkErrorListeners
 }
 
-func (r *reqSubscriber) OnNext(topic notifications.Topic, event notifications.Event) {
+func (r *reqSubscriber) OnNext(_ notifications.Topic, event notifications.Event) {
 	mqEvt, isMQEvt := event.(messagequeue.Event)
 	if !isMQEvt || mqEvt.Name != messagequeue.Error {
 		return
@@ -389,7 +389,7 @@ func (r *reqSubscriber) OnNext(topic notifications.Topic, event notifications.Ev
 	//r.re.terminateRequest()
 }
 
-func (r reqSubscriber) OnClose(topic notifications.Topic) {
+func (r reqSubscriber) OnClose(_ notifications.Topic) {
 }
 
 const requestNetworkError = "request_network_error"
