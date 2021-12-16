@@ -978,16 +978,14 @@ func TestNetworkDisconnect(t *testing.T) {
 	drain(responder)
 
 	tracing := collectTracing(t)
-	traceStrings := tracing.TracesToStrings()
 	require.ElementsMatch(t, []string{
 		"response(0)->executeTask(0)",
-		"response(0)->abortRequest(1)",
+		"response(0)->abortRequest(0)",
+		"response(0)->executeTask(1)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	}, tracing.TracesToStrings())
-	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
-	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
 }
