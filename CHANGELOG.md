@@ -1,5 +1,34 @@
 # go-graphsync changelog
 
+# go-graphsync v0.11.4
+
+This update contains an important fix in graphsync's error handling behavior
+for faulty network connections. We no longer send a torrent of failed messages
+whent he network fails -- only one
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Scrub response errors (#320) ([ipfs/go-graphsync#320](https://github.com/ipfs/go-graphsync/pull/320))
+  - mod: bump to go-ipld-prime v0.14 (#321) ([ipfs/go-graphsync#321](https://github.com/ipfs/go-graphsync/pull/321))
+  - fix(responsemanager): remove unused maxInProcessRequests parameter (#319) ([ipfs/go-graphsync#319](https://github.com/ipfs/go-graphsync/pull/319))
+  - feat(responsemanager): allow ctx augmentation via queued request hook
+  - make go test with coverpkg=./...
+  - update .github/workflows/release-check.yml
+  - update .github/workflows/releaser.yml
+  - update .github/workflows/go-check.yml
+  - update .github/workflows/go-test.yml
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +1180/-837 | 29 |
+| Rod Vagg | 2 | +63/-22 | 10 |
+| Daniel Martí | 1 | +17/-8 | 2 |
+| web3-bot | 4 | +14/-5 | 4 |
+| galargh | 1 | +1/-0 | 1 |
+
 # go-graphsync v0.11.3
 
 Minor bug fix for stats + merge of response tracing
