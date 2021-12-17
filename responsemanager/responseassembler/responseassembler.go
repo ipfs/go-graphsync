@@ -142,12 +142,12 @@ func (rs *responseStream) Transaction(transaction Transaction) error {
 }
 
 func (rs *responseStream) execute(operations []responseOperation) {
+	if rs.isClosed() {
+		return
+	}
 	size := uint64(0)
 	for _, op := range operations {
 		size += op.size()
-	}
-	if rs.isClosed() {
-		return
 	}
 	rs.messageSenders.AllocateAndBuildMessage(rs.p, size, func(builder *messagequeue.Builder) {
 		if rs.isClosed() {
