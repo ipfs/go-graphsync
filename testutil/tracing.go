@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -202,4 +203,12 @@ func EventAsException(t *testing.T, evt trace.Event) ExceptionEvent {
 	require.NotEmpty(t, typ, "expected non-empty exception.type attribute for %v", evt.Name)
 	require.NotEmpty(t, msg, "expected non-empty exception.message attribute for %v", evt.Name)
 	return ExceptionEvent{Type: typ, Message: msg}
+}
+
+func RepeatTraceStrings(tmpl string, count int) []string {
+	res := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		res = append(res, strings.Replace(tmpl, "{}", fmt.Sprintf("%d", i), 1))
+	}
+	return res
 }

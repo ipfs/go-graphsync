@@ -8,6 +8,7 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -25,7 +26,7 @@ func TestVerifyBlockPresent(t *testing.T) {
 	require.Nil(t, data)
 	require.Error(t, err, "block should not be verifiable till it's added as an unverifiable block")
 
-	unverifiedBlockStore.AddUnverifiedBlock(cidlink.Link{Cid: block.Cid()}, block.RawData())
+	unverifiedBlockStore.AddUnverifiedBlock(trace.Link{}, cidlink.Link{Cid: block.Cid()}, block.RawData())
 	reader, err = lsys.StorageReadOpener(ipld.LinkContext{}, cidlink.Link{Cid: block.Cid()})
 	require.Nil(t, reader)
 	require.Error(t, err, "block should not be loadable till it's verified")

@@ -1,12 +1,16 @@
 package responsecache
 
 import (
+	"context"
 	"sync"
 
 	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/linktracker"
@@ -21,7 +25,7 @@ type UnverifiedBlockStore interface {
 	PruneBlocks(func(ipld.Link, uint64) bool)
 	PruneBlock(ipld.Link)
 	VerifyBlock(ipld.Link, ipld.LinkContext) ([]byte, error)
-	AddUnverifiedBlock(ipld.Link, []byte)
+	AddUnverifiedBlock(trace.Link, ipld.Link, []byte)
 }
 
 // ResponseCache maintains a store of unverified blocks and response
@@ -67,13 +71,26 @@ func (rc *ResponseCache) AttemptLoad(requestID graphsync.RequestID, link ipld.Li
 
 // ProcessResponse processes incoming response data, adding unverified blocks,
 // and tracking link metadata from a remote peer
-func (rc *ResponseCache) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
+func (rc *ResponseCache) ProcessResponse(
+	ctx context.Context,
+	responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
+
+	cids := make([]string, 0, len(blks))
+	for _, blk := range blks {
+		cids = append(cids, blk.Cid().String())
+	}
+	ctx, span := otel.Tracer("graphsync").Start(ctx, "cacheProcess", trace.WithAttributes(
+		attribute.StringSlice("blocks", cids),
+	))
+	traceLink := trace.LinkFromContext(ctx)
+	defer span.End()
+
 	rc.responseCacheLk.Lock()
 
 	for _, block := range blks {
 		log.Debugf("Received block from network: %s", block.Cid().String())
-		rc.unverifiedBlockStore.AddUnverifiedBlock(cidlink.Link{Cid: block.Cid()}, block.RawData())
+		rc.unverifiedBlockStore.AddUnverifiedBlock(traceLink, cidlink.Link{Cid: block.Cid()}, block.RawData())
 	}
 
 	for requestID, md := range responses {

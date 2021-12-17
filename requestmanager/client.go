@@ -74,7 +74,7 @@ type PeerHandler interface {
 // results as new responses are processed
 type AsyncLoader interface {
 	StartRequest(graphsync.RequestID, string) error
-	ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
+	ProcessResponse(ctx context.Context, responses map[graphsync.RequestID]metadata.Metadata,
 		blks []blocks.Block)
 	AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) <-chan types.AsyncLoadResult
 	CompleteResponsesFor(requestID graphsync.RequestID)
