@@ -3,6 +3,7 @@ package ipldutil
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -136,6 +137,33 @@ func TestTraverser(t *testing.T) {
 			},
 		}.Start(ctx)
 		checkTraverseSequence(ctx, t, traverser, []blocks.Block{}, &traversal.ErrBudgetExceeded{BudgetKind: "link", Link: blockChain.TipLink})
+	})
+
+	t.Run("started with shutdown context, then calls methods after done", func(t *testing.T) {
+		cancelledCtx, cancel := context.WithCancel(ctx)
+		cancel()
+		testdata := testutil.NewTestIPLDTree()
+		ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+		sel := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
+		traverser := TraversalBuilder{
+			Root:     testdata.RootNodeLnk,
+			Selector: sel,
+		}.Start(cancelledCtx)
+
+		var err error
+		// To ensure the state isn't broken, do multiple calls.
+		for i := 0; i < 3; i++ {
+			err = traverser.Advance(bytes.NewBuffer(nil))
+			require.Error(t, err)
+
+			traverser.Error(errors.New("foo"))
+
+			done, err := traverser.IsComplete()
+			require.True(t, done)
+			require.Error(t, err)
+
+			_, _ = traverser.CurrentRequest()
+		}
 	})
 }
 
