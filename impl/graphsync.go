@@ -259,7 +259,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		responseManager,
 		outgoingBlockHooks,
 		requestUpdatedHooks,
-		responseAssembler,
 	)
 	graphSync := &GraphSync{
 		network:                     network,

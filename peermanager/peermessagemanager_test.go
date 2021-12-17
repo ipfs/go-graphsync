@@ -13,7 +13,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -29,8 +29,8 @@ type fakePeer struct {
 	messagesSent chan messageSent
 }
 
-func (fp *fakePeer) AllocateAndBuildMessage(blkSize uint64, buildMessage func(b *gsmsg.Builder), notifees []notifications.Notifee) {
-	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+func (fp *fakePeer) AllocateAndBuildMessage(blkSize uint64, buildMessage func(b *messagequeue.Builder)) {
+	builder := messagequeue.NewBuilder(messagequeue.Topic(0))
 	buildMessage(builder)
 	message, err := builder.Build()
 	if err != nil {
@@ -76,16 +76,16 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	peerManager := NewMessageManager(ctx, peerQueueFactory)
 
 	request := gsmsg.NewRequest(id, root, selector, priority)
-	peerManager.AllocateAndBuildMessage(tp[0], 0, func(b *gsmsg.Builder) {
+	peerManager.AllocateAndBuildMessage(tp[0], 0, func(b *messagequeue.Builder) {
 		b.AddRequest(request)
-	}, []notifications.Notifee{})
-	peerManager.AllocateAndBuildMessage(tp[1], 0, func(b *gsmsg.Builder) {
+	})
+	peerManager.AllocateAndBuildMessage(tp[1], 0, func(b *messagequeue.Builder) {
 		b.AddRequest(request)
-	}, []notifications.Notifee{})
+	})
 	cancelRequest := gsmsg.CancelRequest(id)
-	peerManager.AllocateAndBuildMessage(tp[0], 0, func(b *gsmsg.Builder) {
+	peerManager.AllocateAndBuildMessage(tp[0], 0, func(b *messagequeue.Builder) {
 		b.AddRequest(cancelRequest)
-	}, []notifications.Notifee{})
+	})
 
 	var firstMessage messageSent
 	testutil.AssertReceive(ctx, t, messagesSent, &firstMessage, "first message did not send")

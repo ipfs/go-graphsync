@@ -218,6 +218,14 @@ func (gsm GraphSyncMessage) Requests() []GraphSyncRequest {
 	return requests
 }
 
+func (gsm GraphSyncMessage) ResponseCodes() map[graphsync.RequestID]graphsync.ResponseStatusCode {
+	codes := make(map[graphsync.RequestID]graphsync.ResponseStatusCode, len(gsm.responses))
+	for id, response := range gsm.responses {
+		codes[id] = response.Status()
+	}
+	return codes
+}
+
 func (gsm GraphSyncMessage) Responses() []GraphSyncResponse {
 	responses := make([]GraphSyncResponse, 0, len(gsm.responses))
 	for _, response := range gsm.responses {

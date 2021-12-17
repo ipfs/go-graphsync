@@ -17,7 +17,6 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 )
@@ -38,14 +37,14 @@ const ErrFirstBlockLoad = errorString("Unable to load first block")
 
 // ResponseTask returns all information needed to execute a given response
 type ResponseTask struct {
-	Empty      bool
-	Subscriber *notifications.TopicDataSubscriber
-	Ctx        context.Context
-	Span       trace.Span
-	Request    gsmsg.GraphSyncRequest
-	Loader     ipld.BlockReadOpener
-	Traverser  ipldutil.Traverser
-	Signals    ResponseSignals
+	Empty          bool
+	Ctx            context.Context
+	Span           trace.Span
+	Request        gsmsg.GraphSyncRequest
+	Loader         ipld.BlockReadOpener
+	Traverser      ipldutil.Traverser
+	Signals        ResponseSignals
+	ResponseStream ResponseStream
 }
 
 // ResponseSignals are message channels to communicate between the manager and the QueryExecutor
@@ -57,11 +56,10 @@ type ResponseSignals struct {
 
 // QueryExecutor is responsible for performing individual requests by executing their traversals
 type QueryExecutor struct {
-	ctx               context.Context
-	manager           Manager
-	blockHooks        BlockHooks
-	updateHooks       UpdateHooks
-	responseAssembler ResponseAssembler
+	ctx         context.Context
+	manager     Manager
+	blockHooks  BlockHooks
+	updateHooks UpdateHooks
 }
 
 // New creates a new QueryExecutor
@@ -69,14 +67,12 @@ func New(ctx context.Context,
 	manager Manager,
 	blockHooks BlockHooks,
 	updateHooks UpdateHooks,
-	responseAssembler ResponseAssembler,
 ) *QueryExecutor {
 	qm := &QueryExecutor{
-		blockHooks:        blockHooks,
-		updateHooks:       updateHooks,
-		responseAssembler: responseAssembler,
-		manager:           manager,
-		ctx:               ctx,
+		blockHooks:  blockHooks,
+		updateHooks: updateHooks,
+		manager:     manager,
+		ctx:         ctx,
 	}
 	return qm
 }
@@ -123,30 +119,28 @@ func (qe *QueryExecutor) executeQuery(
 	// Execute the traversal operation, continue until we have reason to stop (error, pause, complete)
 	err := qe.runTraversal(p, rt)
 
+	_, isPaused := err.(hooks.ErrPaused)
+	if isPaused {
+		return err
+	}
+
+	if err == ErrNetworkError || ipldutil.IsContextCancelErr(err) {
+		rt.ResponseStream.ClearRequest()
+		return err
+	}
+
 	// Close out the response, either temporarily (pause) or permanently (cancel, fail, complete)
-	return qe.responseAssembler.Transaction(p, rt.Request.ID(), func(rb responseassembler.ResponseBuilder) error {
-		var code graphsync.ResponseStatusCode
-		if err != nil {
-			_, isPaused := err.(hooks.ErrPaused)
-			if isPaused {
-				return err
-			}
-			if err == ErrNetworkError || ipldutil.IsContextCancelErr(err) {
-				rb.ClearRequest()
-				return err
-			}
-			if err == ErrFirstBlockLoad {
-				code = graphsync.RequestFailedContentNotFound
-			} else if err == ErrCancelledByCommand {
-				code = graphsync.RequestCancelled
-			} else {
-				code = graphsync.RequestFailedUnknown
-			}
-			rb.FinishWithError(code)
-		} else {
-			code = rb.FinishRequest()
+	return rt.ResponseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
+		switch err {
+		case nil:
+			rb.FinishRequest()
+		case ErrFirstBlockLoad:
+			rb.FinishWithError(graphsync.RequestFailedContentNotFound)
+		case ErrCancelledByCommand:
+			rb.FinishWithError(graphsync.RequestCancelled)
+		default:
+			rb.FinishWithError(graphsync.RequestFailedUnknown)
 		}
-		rb.AddNotifee(notifications.Notifee{Data: code, Subscriber: rt.Subscriber})
 		return err
 	})
 }
@@ -245,7 +239,7 @@ func (qe *QueryExecutor) nextBlock(taskData ResponseTask) (ipld.Link, []byte, er
 
 func (qe *QueryExecutor) sendResponse(p peer.ID, taskData ResponseTask, link ipld.Link, data []byte) error {
 	// Execute a transaction for this block, including any other queued operations
-	return qe.responseAssembler.Transaction(p, taskData.Request.ID(), func(rb responseassembler.ResponseBuilder) error {
+	return taskData.ResponseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 		// Ensure that any updates that have occurred till now are integrated into the response
 		err := qe.checkForUpdates(p, taskData, rb)
 		// On any error other than a pause, we bail, if it's a pause then we continue processing _this_ block
@@ -253,7 +247,6 @@ func (qe *QueryExecutor) sendResponse(p peer.ID, taskData ResponseTask, link ipl
 			return err
 		}
 		blockData := rb.SendResponse(link, data)
-		rb.AddNotifee(notifications.Notifee{Data: blockData, Subscriber: taskData.Subscriber})
 		if blockData.BlockSize() > 0 {
 			result := qe.blockHooks.ProcessBlockHooks(p, taskData.Request, blockData)
 			for _, extension := range result.Extensions {
@@ -287,7 +280,8 @@ type UpdateHooks interface {
 	ProcessUpdateHooks(p peer.ID, request graphsync.RequestData, update graphsync.RequestData) hooks.UpdateResult
 }
 
-// ResponseAssembler is an interface that returns sender interfaces for peer responses.
-type ResponseAssembler interface {
-	Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error
+// ResponseStream is an interface that returns sender interfaces for peer responses.
+type ResponseStream interface {
+	ClearRequest()
+	Transaction(transaction responseassembler.Transaction) error
 }

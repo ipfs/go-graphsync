@@ -14,7 +14,6 @@ import (
 // requests for a given peer and then generates the corresponding
 // GraphSync message when ready to send
 type Builder struct {
-	topic              Topic
 	outgoingBlocks     map[cid.Cid]blocks.Block
 	blkSize            uint64
 	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
@@ -23,13 +22,9 @@ type Builder struct {
 	requests           map[graphsync.RequestID]GraphSyncRequest
 }
 
-// Topic is an identifier for notifications about this response builder
-type Topic uint64
-
 // NewBuilder generates a new Builder.
-func NewBuilder(topic Topic) *Builder {
+func NewBuilder() *Builder {
 	return &Builder{
-		topic:              topic,
 		requests:           make(map[graphsync.RequestID]GraphSyncRequest),
 		outgoingBlocks:     make(map[cid.Cid]blocks.Block),
 		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
@@ -87,6 +82,31 @@ func (b *Builder) Empty() bool {
 	return len(b.requests) == 0 && len(b.outgoingBlocks) == 0 && len(b.outgoingResponses) == 0
 }
 
+// ScrubResponse removes a response from a message and any blocks only referenced by that response
+func (b *Builder) ScrubResponses(requestIDs []graphsync.RequestID) uint64 {
+	for _, requestID := range requestIDs {
+		delete(b.completedResponses, requestID)
+		delete(b.extensions, requestID)
+		delete(b.outgoingResponses, requestID)
+	}
+	oldSize := b.blkSize
+	newBlkSize := uint64(0)
+	savedBlocks := make(map[cid.Cid]blocks.Block, len(b.outgoingBlocks))
+	for _, metadata := range b.outgoingResponses {
+		for _, item := range metadata {
+			block, willSendBlock := b.outgoingBlocks[item.Link]
+			_, alreadySavedBlock := savedBlocks[item.Link]
+			if item.BlockPresent && willSendBlock && !alreadySavedBlock {
+				savedBlocks[item.Link] = block
+				newBlkSize += uint64(len(block.RawData()))
+			}
+		}
+	}
+	b.blkSize = newBlkSize
+	b.outgoingBlocks = savedBlocks
+	return oldSize - newBlkSize
+}
+
 // Build assembles and encodes message data from the added requests, links, and blocks.
 func (b *Builder) Build() (GraphSyncMessage, error) {
 	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(b.outgoingResponses))
@@ -105,11 +125,6 @@ func (b *Builder) Build() (GraphSyncMessage, error) {
 	return GraphSyncMessage{
 		b.requests, responses, b.outgoingBlocks,
 	}, nil
-}
-
-// Topic returns the identifier for notifications sent about this builder
-func (b *Builder) Topic() Topic {
-	return b.topic
 }
 
 func responseCode(status graphsync.ResponseStatusCode, isComplete bool) graphsync.ResponseStatusCode {

@@ -30,17 +30,17 @@ import (
 var log = logging.Logger("graphsync")
 
 type inProgressResponseStatus struct {
-	ctx        context.Context
-	span       trace.Span
-	cancelFn   func()
-	request    gsmsg.GraphSyncRequest
-	loader     ipld.BlockReadOpener
-	traverser  ipldutil.Traverser
-	signals    queryexecutor.ResponseSignals
-	updates    []gsmsg.GraphSyncRequest
-	state      graphsync.RequestState
-	subscriber *notifications.TopicDataSubscriber
-	startTime  time.Time
+	ctx            context.Context
+	span           trace.Span
+	cancelFn       func()
+	request        gsmsg.GraphSyncRequest
+	loader         ipld.BlockReadOpener
+	traverser      ipldutil.Traverser
+	signals        queryexecutor.ResponseSignals
+	updates        []gsmsg.GraphSyncRequest
+	state          graphsync.RequestState
+	startTime      time.Time
+	responseStream responseassembler.ResponseStream
 }
 
 type responseKey struct {
@@ -85,10 +85,7 @@ type NetworkErrorListeners interface {
 
 // ResponseAssembler is an interface that returns sender interfaces for peer responses.
 type ResponseAssembler interface {
-	DedupKey(p peer.ID, requestID graphsync.RequestID, key string)
-	IgnoreBlocks(p peer.ID, requestID graphsync.RequestID, links []ipld.Link)
-	SkipFirstBlocks(p peer.ID, requestID graphsync.RequestID, skipCount int64)
-	Transaction(p peer.ID, requestID graphsync.RequestID, transaction responseassembler.Transaction) error
+	NewStream(p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) responseassembler.ResponseStream
 }
 
 type responseManagerMessage interface {
@@ -228,7 +225,12 @@ func (rm *ResponseManager) FinishTask(task *peertask.Task, err error) {
 
 // CloseWithNetworkError closes a request due to a network error
 func (rm *ResponseManager) CloseWithNetworkError(p peer.ID, requestID graphsync.RequestID) {
-	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrNetworkError, make(chan error, 1)}, nil)
+	done := make(chan error, 1)
+	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrNetworkError, done}, nil)
+	select {
+	case <-rm.ctx.Done():
+	case <-done:
+	}
 }
 
 // TerminateRequest indicates a request has finished sending data and should no longer be tracked

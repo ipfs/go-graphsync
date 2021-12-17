@@ -12,15 +12,6 @@ import (
 func TestSubscribeWithData(t *testing.T) {
 	ctx := context.Background()
 	testCases := map[string]func(ctx context.Context, t *testing.T, ps notifications.Publisher){
-		"SubscribeWithData": func(ctx context.Context, t *testing.T, ps notifications.Publisher) {
-			destTopic := "t2"
-			notifee, verifier := testutil.NewTestNotifee(destTopic, 1)
-			notifications.SubscribeWithData(ps, "t1", notifee)
-			ps.Publish("t1", "hi")
-			ps.Shutdown()
-			verifier.ExpectEvents(ctx, t, []notifications.Event{"hi"})
-			verifier.ExpectClose(ctx, t)
-		},
 		"Add subscriptions": func(ctx context.Context, t *testing.T, ps notifications.Publisher) {
 			sub1 := testutil.NewTestSubscriber(3)
 			sub2 := testutil.NewTestSubscriber(3)

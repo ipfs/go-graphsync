@@ -135,7 +135,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 
 	requestID := graphsync.RequestID(rand.Int31())
 
-	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	builder := gsmsg.NewBuilder()
 	builder.AddRequest(gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), td.extension))
 	message, err := builder.Build()
 	require.NoError(t, err)
@@ -978,13 +978,14 @@ func TestNetworkDisconnect(t *testing.T) {
 	drain(responder)
 
 	tracing := collectTracing(t)
-	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
-	// may contain multiple abortRequest traces as the network error can bubble up >1 times
-	// but these will only record if the request is still executing
-	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
-	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
-	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.ElementsMatch(t, []string{
+		"response(0)->executeTask(0)",
+		"response(0)->abortRequest(0)",
+		"response(0)->executeTask(1)",
+		"request(0)->newRequest(0)",
+		"request(0)->executeTask(0)",
+		"request(0)->terminateRequest(0)",
+	}, tracing.TracesToStrings())
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
 }

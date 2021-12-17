@@ -2,12 +2,14 @@ package messagequeue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -20,42 +22,6 @@ import (
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/testutil"
 )
-
-const sendMessageTimeout = 10 * time.Minute
-const messageSendRetries = 10
-
-type fakeMessageNetwork struct {
-	connectError       error
-	messageSenderError error
-	messageSender      gsnet.MessageSender
-	wait               *sync.WaitGroup
-}
-
-func (fmn *fakeMessageNetwork) ConnectTo(context.Context, peer.ID) error {
-	return fmn.connectError
-}
-
-func (fmn *fakeMessageNetwork) NewMessageSender(context.Context, peer.ID, gsnet.MessageSenderOpts) (gsnet.MessageSender, error) {
-	fmn.wait.Done()
-	if fmn.messageSenderError == nil {
-		return fmn.messageSender, nil
-	}
-	return nil, fmn.messageSenderError
-}
-
-type fakeMessageSender struct {
-	sendError    error
-	fullClosed   chan<- struct{}
-	reset        chan<- struct{}
-	messagesSent chan<- gsmsg.GraphSyncMessage
-}
-
-func (fms *fakeMessageSender) SendMsg(ctx context.Context, msg gsmsg.GraphSyncMessage) error {
-	fms.messagesSent <- msg
-	return fms.sendError
-}
-func (fms *fakeMessageSender) Close() error { fms.fullClosed <- struct{}{}; return nil }
-func (fms *fakeMessageSender) Reset() error { fms.reset <- struct{}{}; return nil }
 
 func TestStartupAndShutdown(t *testing.T) {
 	ctx := context.Background()
@@ -80,9 +46,9 @@ func TestStartupAndShutdown(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
 
 	waitGroup.Add(1)
-	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	}, []notifications.Notifee{})
+	})
 
 	testutil.AssertDoesReceive(ctx, t, messagesSent, "message was not sent")
 
@@ -119,9 +85,9 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 
 	// setup a message and advance as far as beginning to send it
 	waitGroup.Add(1)
-	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	}, []notifications.Notifee{})
+	})
 	waitGroup.Wait()
 
 	// now shut down
@@ -169,12 +135,14 @@ func TestProcessingNotification(t *testing.T) {
 		Data: testutil.RandomBytes(100),
 	}
 	status := graphsync.RequestCompletedFull
-	expectedTopic := "testTopic"
-	notifee, verifier := testutil.NewTestNotifee(expectedTopic, 5)
-	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
+	blkData := testutil.NewFakeBlockData()
+	subscriber := testutil.NewTestSubscriber(5)
+	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddResponseCode(responseID, status)
 		b.AddExtensionData(responseID, extension)
-	}, []notifications.Notifee{notifee})
+		b.AddBlockData(responseID, blkData)
+		b.SetSubscriber(responseID, subscriber)
+	})
 
 	// wait for send attempt
 	waitGroup.Wait()
@@ -192,11 +160,25 @@ func TestProcessingNotification(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	verifier.ExpectEvents(ctx, t, []notifications.Event{
-		Event{Name: Queued},
-		Event{Name: Sent},
+	expectedMetadata := Metadata{
+		ResponseCodes: map[graphsync.RequestID]graphsync.ResponseStatusCode{
+			responseID: status,
+		},
+		BlockData: map[graphsync.RequestID][]graphsync.BlockData{
+			responseID: {blkData},
+		},
+	}
+	subscriber.ExpectEventsAllTopics(ctx, t, []notifications.Event{
+		Event{
+			Name:     Queued,
+			Metadata: expectedMetadata,
+		},
+		Event{
+			Name:     Sent,
+			Metadata: expectedMetadata,
+		},
 	})
-	verifier.ExpectClose(ctx, t)
+	subscriber.ExpectNCloses(ctx, t, 1)
 }
 
 func TestDedupingMessages(t *testing.T) {
@@ -222,9 +204,9 @@ func TestDedupingMessages(t *testing.T) {
 	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
-	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	}, []notifications.Notifee{})
+	})
 	// wait for send attempt
 	waitGroup.Wait()
 	id2 := graphsync.RequestID(rand.Int31())
@@ -236,10 +218,10 @@ func TestDedupingMessages(t *testing.T) {
 	selector3 := ssb.ExploreIndex(0, ssb.Matcher()).Node()
 	root3 := testutil.GenerateCids(1)[0]
 
-	messageQueue.AllocateAndBuildMessage(0, func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))
 		b.AddRequest(gsmsg.NewRequest(id3, root3, selector3, priority3))
-	}, []notifications.Notifee{})
+	})
 
 	var message gsmsg.GraphSyncMessage
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
@@ -291,9 +273,9 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 
 	// generate large blocks before proceeding
 	blks := testutil.GenerateBlocksOfSize(5, 1000000)
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
 		b.AddBlock(blks[0])
-	}, []notifications.Notifee{})
+	})
 	waitGroup.Wait()
 	var message gsmsg.GraphSyncMessage
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
@@ -303,15 +285,15 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.True(t, blks[0].Cid().Equals(msgBlks[0].Cid()))
 
 	// Send 3 very large blocks
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *Builder) {
 		b.AddBlock(blks[1])
-	}, []notifications.Notifee{})
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *gsmsg.Builder) {
+	})
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *Builder) {
 		b.AddBlock(blks[2])
-	}, []notifications.Notifee{})
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *gsmsg.Builder) {
+	})
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *Builder) {
 		b.AddBlock(blks[3])
-	}, []notifications.Notifee{})
+	})
 
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
 	msgBlks = message.Blocks()
@@ -351,16 +333,16 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 
 	// start sending block that exceeds memory limit
 	blks := testutil.GenerateBlocksOfSize(2, 999)
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *gsmsg.Builder) {
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
 		b.AddBlock(blks[0])
-	}, []notifications.Notifee{})
+	})
 
 	finishes := make(chan string, 2)
 	go func() {
 		// attempt to send second block. Should block until memory is released
-		messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *gsmsg.Builder) {
+		messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *Builder) {
 			b.AddBlock(blks[1])
-		}, []notifications.Notifee{})
+		})
 		finishes <- "sent message"
 	}()
 
@@ -385,4 +367,140 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 	case <-ctx2.Done():
 		t.Fatal("timeout waiting for transaction to complete")
 	}
+}
+
+func TestNetworkErrorClearResponses(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	peer := testutil.GeneratePeers(1)[0]
+	messagesSent := make(chan gsmsg.GraphSyncMessage)
+	resetChan := make(chan struct{}, 1)
+	fullClosedChan := make(chan struct{}, 1)
+	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID2 := graphsync.RequestID(rand.Int31())
+	messageSender := &fakeMessageSender{nil, fullClosedChan, resetChan, messagesSent}
+	var waitGroup sync.WaitGroup
+	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
+	allocator := allocator2.NewAllocator(1<<30, 1<<30)
+
+	// we use only a retry count of 1 to avoid multiple send attempts for each message
+	messageQueue := New(ctx, peer, messageNetwork, allocator, 1, sendMessageTimeout)
+	messageQueue.Startup()
+	waitGroup.Add(1)
+
+	// generate large blocks before proceeding
+	blks := testutil.GenerateBlocksOfSize(5, 1000000)
+	subscriber := testutil.NewTestSubscriber(5)
+
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
+		b.AddBlock(blks[0])
+		b.AddLink(requestID1, cidlink.Link{Cid: blks[0].Cid()}, true)
+		b.SetSubscriber(requestID1, subscriber)
+	})
+	waitGroup.Wait()
+	var message gsmsg.GraphSyncMessage
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
+
+	msgBlks := message.Blocks()
+	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
+	require.True(t, blks[0].Cid().Equals(msgBlks[0].Cid()))
+
+	expectedMetadata := Metadata{
+		ResponseCodes: map[graphsync.RequestID]graphsync.ResponseStatusCode{
+			requestID1: graphsync.PartialResponse,
+		},
+		BlockData: map[graphsync.RequestID][]graphsync.BlockData{},
+	}
+	subscriber.ExpectEventsAllTopics(ctx, t, []notifications.Event{
+		Event{Name: Queued, Metadata: expectedMetadata},
+		Event{Name: Sent, Metadata: expectedMetadata},
+	})
+	subscriber.ExpectNCloses(ctx, t, 1)
+	fc1 := &fakeCloser{fms: messageSender}
+	fc2 := &fakeCloser{fms: messageSender}
+	// Send 3 very large blocks
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *Builder) {
+		b.AddBlock(blks[1])
+		b.SetResponseStream(requestID1, fc1)
+		b.AddLink(requestID1, cidlink.Link{Cid: blks[1].Cid()}, true)
+	})
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *Builder) {
+		b.AddBlock(blks[2])
+		b.SetResponseStream(requestID1, fc1)
+		b.AddLink(requestID1, cidlink.Link{Cid: blks[2].Cid()}, true)
+	})
+	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *Builder) {
+		b.SetResponseStream(requestID2, fc2)
+		b.AddLink(requestID2, cidlink.Link{Cid: blks[3].Cid()}, true)
+		b.AddBlock(blks[3])
+	})
+
+	messageSender.sendError = errors.New("something went wrong")
+
+	// add one since the stream will get reopened
+	waitGroup.Add(1)
+
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
+	msgBlks = message.Blocks()
+	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
+	require.True(t, blks[1].Cid().Equals(msgBlks[0].Cid()))
+
+	// should skip block2 as it's linked to errored request
+	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
+	msgBlks = message.Blocks()
+	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
+	require.True(t, blks[3].Cid().Equals(msgBlks[0].Cid()))
+
+	require.True(t, fc1.closed)
+	require.False(t, fc2.closed)
+}
+
+const sendMessageTimeout = 10 * time.Minute
+const messageSendRetries = 10
+
+type fakeMessageNetwork struct {
+	connectError       error
+	messageSenderError error
+	messageSender      gsnet.MessageSender
+	wait               *sync.WaitGroup
+}
+
+func (fmn *fakeMessageNetwork) ConnectTo(context.Context, peer.ID) error {
+	return fmn.connectError
+}
+
+func (fmn *fakeMessageNetwork) NewMessageSender(context.Context, peer.ID, gsnet.MessageSenderOpts) (gsnet.MessageSender, error) {
+	fmn.wait.Done()
+	if fmn.messageSenderError == nil {
+		return fmn.messageSender, nil
+	}
+	return nil, fmn.messageSenderError
+}
+
+type fakeMessageSender struct {
+	sendError    error
+	fullClosed   chan<- struct{}
+	reset        chan<- struct{}
+	messagesSent chan<- gsmsg.GraphSyncMessage
+}
+
+func (fms *fakeMessageSender) SendMsg(ctx context.Context, msg gsmsg.GraphSyncMessage) error {
+	fms.messagesSent <- msg
+	return fms.sendError
+}
+func (fms *fakeMessageSender) Close() error { fms.fullClosed <- struct{}{}; return nil }
+func (fms *fakeMessageSender) Reset() error { fms.reset <- struct{}{}; return nil }
+
+type fakeCloser struct {
+	fms    *fakeMessageSender
+	closed bool
+}
+
+func (fc *fakeCloser) Close() error {
+	fc.closed = true
+	// clear error so the next send goes through
+	fc.fms.sendError = nil
+	return nil
 }

@@ -16,7 +16,6 @@ import (
 	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 )
@@ -30,9 +29,8 @@ func (e errorString) Error() string {
 const errInvalidRequest = errorString("request not valid")
 
 type queryPreparer struct {
-	requestHooks      RequestHooks
-	responseAssembler ResponseAssembler
-	linkSystem        ipld.LinkSystem
+	requestHooks RequestHooks
+	linkSystem   ipld.LinkSystem
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit=
 	maxLinksPerRequest uint64
 }
@@ -41,24 +39,19 @@ func (qe *queryPreparer) prepareQuery(
 	ctx context.Context,
 	p peer.ID,
 	request gsmsg.GraphSyncRequest,
-	signals queryexecutor.ResponseSignals,
-	sub *notifications.TopicDataSubscriber) (ipld.BlockReadOpener, ipldutil.Traverser, bool, error) {
-
+	responseStream responseassembler.ResponseStream,
+	signals queryexecutor.ResponseSignals) (ipld.BlockReadOpener, ipldutil.Traverser, bool, error) {
 	result := qe.requestHooks.ProcessRequestHooks(p, request)
 	var isPaused bool
-	failNotifee := notifications.Notifee{Data: graphsync.RequestFailedUnknown, Subscriber: sub}
-	rejectNotifee := notifications.Notifee{Data: graphsync.RequestRejected, Subscriber: sub}
-	err := qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
+	err := responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 		for _, extension := range result.Extensions {
 			rb.SendExtensionData(extension)
 		}
 		if result.Err != nil {
 			rb.FinishWithError(graphsync.RequestFailedUnknown)
-			rb.AddNotifee(failNotifee)
 			return result.Err
 		} else if !result.IsValidated {
 			rb.FinishWithError(graphsync.RequestRejected)
-			rb.AddNotifee(rejectNotifee)
 			return errInvalidRequest
 		} else if result.IsPaused {
 			rb.PauseRequest()
@@ -69,13 +62,13 @@ func (qe *queryPreparer) prepareQuery(
 	if err != nil {
 		return nil, nil, false, err
 	}
-	if err := qe.processDedupByKey(request, p, failNotifee); err != nil {
+	if err := processDedupByKey(request, responseStream); err != nil {
 		return nil, nil, false, err
 	}
-	if err := qe.processDoNoSendCids(request, p, failNotifee); err != nil {
+	if err := processDoNoSendCids(request, responseStream); err != nil {
 		return nil, nil, false, err
 	}
-	if err := qe.processDoNotSendFirstBlocks(request, p, failNotifee); err != nil {
+	if err := processDoNotSendFirstBlocks(request, responseStream); err != nil {
 		return nil, nil, false, err
 	}
 	rootLink := cidlink.Link{Cid: request.Root()}
@@ -101,34 +94,32 @@ func (qe *queryPreparer) prepareQuery(
 	return linkSystem.StorageReadOpener, traverser, isPaused, nil
 }
 
-func (qe *queryPreparer) processDedupByKey(request gsmsg.GraphSyncRequest, p peer.ID, failNotifee notifications.Notifee) error {
+func processDedupByKey(request gsmsg.GraphSyncRequest, responseStream responseassembler.ResponseStream) error {
 	dedupData, has := request.Extension(graphsync.ExtensionDeDupByKey)
 	if !has {
 		return nil
 	}
 	key, err := dedupkey.DecodeDedupKey(dedupData)
 	if err != nil {
-		_ = qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
+		_ = responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 			rb.FinishWithError(graphsync.RequestFailedUnknown)
-			rb.AddNotifee(failNotifee)
 			return nil
 		})
 		return err
 	}
-	qe.responseAssembler.DedupKey(p, request.ID(), key)
+	responseStream.DedupKey(key)
 	return nil
 }
 
-func (qe *queryPreparer) processDoNoSendCids(request gsmsg.GraphSyncRequest, p peer.ID, failNotifee notifications.Notifee) error {
+func processDoNoSendCids(request gsmsg.GraphSyncRequest, responseStream responseassembler.ResponseStream) error {
 	doNotSendCidsData, has := request.Extension(graphsync.ExtensionDoNotSendCIDs)
 	if !has {
 		return nil
 	}
 	cidSet, err := cidset.DecodeCidSet(doNotSendCidsData)
 	if err != nil {
-		_ = qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
+		_ = responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 			rb.FinishWithError(graphsync.RequestFailedUnknown)
-			rb.AddNotifee(failNotifee)
 			return nil
 		})
 		return err
@@ -141,24 +132,23 @@ func (qe *queryPreparer) processDoNoSendCids(request gsmsg.GraphSyncRequest, p p
 	if err != nil {
 		return err
 	}
-	qe.responseAssembler.IgnoreBlocks(p, request.ID(), links)
+	responseStream.IgnoreBlocks(links)
 	return nil
 }
 
-func (qe *queryPreparer) processDoNotSendFirstBlocks(request gsmsg.GraphSyncRequest, p peer.ID, failNotifee notifications.Notifee) error {
+func processDoNotSendFirstBlocks(request gsmsg.GraphSyncRequest, responseStream responseassembler.ResponseStream) error {
 	doNotSendFirstBlocksData, has := request.Extension(graphsync.ExtensionsDoNotSendFirstBlocks)
 	if !has {
 		return nil
 	}
 	skipCount, err := donotsendfirstblocks.DecodeDoNotSendFirstBlocks(doNotSendFirstBlocksData)
 	if err != nil {
-		_ = qe.responseAssembler.Transaction(p, request.ID(), func(rb responseassembler.ResponseBuilder) error {
+		_ = responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 			rb.FinishWithError(graphsync.RequestFailedUnknown)
-			rb.AddNotifee(failNotifee)
 			return nil
 		})
 		return err
 	}
-	qe.responseAssembler.SkipFirstBlocks(p, request.ID(), skipCount)
+	responseStream.SkipFirstBlocks(skipCount)
 	return nil
 }

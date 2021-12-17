@@ -29,20 +29,3 @@ type Publisher interface {
 	Startup()
 	Subscribable
 }
-
-// EventTransform if a fucntion transforms one kind of event to another
-type EventTransform func(Event) Event
-
-// Notifee is a topic data subscriber plus a set of data you want to add to any topics subscribed to
-// (used to call SubscribeWithData to inject data when events for a given topic emit)
-type Notifee struct {
-	Data       TopicData
-	Subscriber *TopicDataSubscriber
-}
-
-// SubscribeWithData subscribes to the given subscriber on the given topic, and adds the notifies
-// custom data into the list of data injected into callbacks when events occur on that topic
-func SubscribeWithData(p Subscribable, topic Topic, notifee Notifee) {
-	notifee.Subscriber.AddTopicData(topic, notifee.Data)
-	p.Subscribe(topic, notifee.Subscriber)
-}

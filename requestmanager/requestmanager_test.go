@@ -19,8 +19,8 @@ import (
 	"github.com/ipfs/go-graphsync/dedupkey"
 	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/metadata"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/testloader"
@@ -1014,8 +1014,8 @@ type fakePeerHandler struct {
 }
 
 func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64,
-	requestBuilder func(b *gsmsg.Builder), notifees []notifications.Notifee) {
-	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	requestBuilder func(b *messagequeue.Builder)) {
+	builder := messagequeue.NewBuilder(messagequeue.Topic(0))
 	requestBuilder(builder)
 	message, err := builder.Build()
 	if err != nil {

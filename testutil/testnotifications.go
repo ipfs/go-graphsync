@@ -43,6 +43,14 @@ func (ts *TestSubscriber) ExpectEvents(ctx context.Context, t *testing.T, events
 		require.Equal(t, expectedEvent, event)
 	}
 }
+func (ts *TestSubscriber) ExpectEventsAllTopics(ctx context.Context, t *testing.T, events []notifications.Event) {
+	t.Helper()
+	for _, expectedEvent := range events {
+		var event DispatchedEvent
+		AssertReceive(ctx, t, ts.receivedEvents, &event, "should receive another event")
+		require.Equal(t, expectedEvent, event.Event)
+	}
+}
 
 func (ts *TestSubscriber) NoEventsReceived(t *testing.T) {
 	t.Helper()
@@ -62,6 +70,13 @@ func (ts *TestSubscriber) ExpectClosesAnyOrder(ctx context.Context, t *testing.T
 	require.Equal(t, expectedTopics, receivedTopics)
 }
 
+func (ts *TestSubscriber) ExpectNCloses(ctx context.Context, t *testing.T, n int) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		AssertDoesReceive(ctx, t, ts.closed, "should receive another event")
+	}
+}
+
 func (ts *TestSubscriber) ExpectCloses(ctx context.Context, t *testing.T, topics []notifications.Topic) {
 	t.Helper()
 	for _, expectedTopic := range topics {
@@ -71,78 +86,27 @@ func (ts *TestSubscriber) ExpectCloses(ctx context.Context, t *testing.T, topics
 	}
 }
 
-type NotifeeVerifier struct {
-	expectedTopic notifications.Topic
-	subscriber    *TestSubscriber
-}
-
-func (nv *NotifeeVerifier) ExpectEvents(ctx context.Context, t *testing.T, events []notifications.Event) {
-	t.Helper()
-	dispatchedEvents := make([]DispatchedEvent, 0, len(events))
-	for _, ev := range events {
-		dispatchedEvents = append(dispatchedEvents, DispatchedEvent{nv.expectedTopic, ev})
-	}
-	nv.subscriber.ExpectEvents(ctx, t, dispatchedEvents)
-}
-
-func (nv *NotifeeVerifier) ExpectClose(ctx context.Context, t *testing.T) {
-	t.Helper()
-	nv.subscriber.ExpectCloses(ctx, t, []notifications.Topic{nv.expectedTopic})
-}
-
-func NewTestNotifee(data notifications.TopicData, bufferSize int) (notifications.Notifee, *NotifeeVerifier) {
-	subscriber := NewTestSubscriber(bufferSize)
-	return notifications.Notifee{
-			Data:       data,
-			Subscriber: notifications.NewTopicDataSubscriber(subscriber),
-		}, &NotifeeVerifier{
-			expectedTopic: data,
-			subscriber:    subscriber,
-		}
-}
-
 type MockPublisher struct {
-	notifeesLk sync.Mutex
-	notifees   []notifications.Notifee
+	subscribersLk sync.Mutex
+	subscribers   []notifications.Subscriber
 }
 
-func (mp *MockPublisher) AddNotifees(notifees []notifications.Notifee) {
-	mp.notifeesLk.Lock()
-	mp.notifees = append(mp.notifees, notifees...)
-	mp.notifeesLk.Unlock()
+func (mp *MockPublisher) AddSubscriber(subscriber notifications.Subscriber) {
+	mp.subscribersLk.Lock()
+	mp.subscribers = append(mp.subscribers, subscriber)
+	mp.subscribersLk.Unlock()
 }
 
-func (mp *MockPublisher) PublishMatchingEvents(shouldPublish func(notifications.TopicData) bool, events []notifications.Event) {
-	mp.notifeesLk.Lock()
-	var newNotifees []notifications.Notifee
-	for _, notifee := range mp.notifees {
-		if shouldPublish(notifee.Data) {
-			for _, ev := range events {
-				notifee.Subscriber.Subscriber.OnNext(notifee.Data, ev)
-			}
-			notifee.Subscriber.Subscriber.OnClose(notifee.Data)
-		} else {
-			newNotifees = append(newNotifees, notifee)
+func (mp *MockPublisher) PublishEvents(topic notifications.Topic, events []notifications.Event) {
+	mp.subscribersLk.Lock()
+	for _, subscriber := range mp.subscribers {
+
+		for _, ev := range events {
+			subscriber.OnNext(topic, ev)
 		}
+		subscriber.OnClose(topic)
 	}
-	mp.notifees = newNotifees
-	mp.notifeesLk.Unlock()
-}
-
-func (mp *MockPublisher) PublishEvents(events []notifications.Event) {
-	mp.PublishMatchingEvents(func(notifications.TopicData) bool { return true }, events)
-}
-
-func (mp *MockPublisher) PublishEventsOnTopicData(data []notifications.TopicData, events []notifications.Event) {
-	shouldPublish := func(topic notifications.TopicData) bool {
-		for _, testTopicData := range data {
-			if topic == testTopicData {
-				return true
-			}
-		}
-		return false
-	}
-	mp.PublishMatchingEvents(shouldPublish, events)
+	mp.subscribersLk.Unlock()
 }
 
 func NewMockPublisher() *MockPublisher {

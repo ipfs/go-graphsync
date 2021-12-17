@@ -81,7 +81,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	priority := graphsync.Priority(rand.Int31())
 	status := graphsync.RequestAcknowledged
 
-	builder := gsmsg.NewBuilder(gsmsg.Topic(0))
+	builder := gsmsg.NewBuilder()
 	builder.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 	builder.AddResponseCode(id, status)
 	builder.AddExtensionData(id, extension)
