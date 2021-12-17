@@ -2,9 +2,10 @@ package message
 
 import (
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-cid"
+	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/metadata"
@@ -18,7 +19,7 @@ type Builder struct {
 	blkSize            uint64
 	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
 	outgoingResponses  map[graphsync.RequestID]metadata.Metadata
-	extensions         map[graphsync.RequestID][]graphsync.ExtensionData
+	extensions         map[graphsync.RequestID][]NamedExtension
 	requests           map[graphsync.RequestID]GraphSyncRequest
 }
 
@@ -29,13 +30,13 @@ func NewBuilder() *Builder {
 		outgoingBlocks:     make(map[cid.Cid]blocks.Block),
 		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
 		outgoingResponses:  make(map[graphsync.RequestID]metadata.Metadata),
-		extensions:         make(map[graphsync.RequestID][]graphsync.ExtensionData),
+		extensions:         make(map[graphsync.RequestID][]NamedExtension),
 	}
 }
 
 // AddRequest registers a new request to be added to the message.
 func (b *Builder) AddRequest(request GraphSyncRequest) {
-	b.requests[request.ID()] = request
+	b.requests[request.ID] = request
 }
 
 // AddBlock adds the given block to the message.
@@ -45,7 +46,7 @@ func (b *Builder) AddBlock(block blocks.Block) {
 }
 
 // AddExtensionData adds the given extension data to to the message
-func (b *Builder) AddExtensionData(requestID graphsync.RequestID, extension graphsync.ExtensionData) {
+func (b *Builder) AddExtensionData(requestID graphsync.RequestID, extension NamedExtension) {
 	b.extensions[requestID] = append(b.extensions[requestID], extension)
 	// make sure this extension goes out in next response even if no links are sent
 	_, ok := b.outgoingResponses[requestID]
@@ -109,21 +110,30 @@ func (b *Builder) ScrubResponses(requestIDs []graphsync.RequestID) uint64 {
 
 // Build assembles and encodes message data from the added requests, links, and blocks.
 func (b *Builder) Build() (GraphSyncMessage, error) {
-	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(b.outgoingResponses))
+	requests := make([]GraphSyncRequest, 0, len(b.requests))
+	for _, request := range b.requests {
+		requests = append(requests, request)
+	}
+	responses := make([]GraphSyncResponse, 0, len(b.outgoingResponses))
 	for requestID, linkMap := range b.outgoingResponses {
 		mdRaw, err := metadata.EncodeMetadata(linkMap)
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		b.extensions[requestID] = append(b.extensions[requestID], graphsync.ExtensionData{
+		b.extensions[requestID] = append(b.extensions[requestID], NamedExtension{
 			Name: graphsync.ExtensionMetadata,
-			Data: mdRaw,
+			Data: basicnode.NewBytes(mdRaw), // TODO: likely wrong
 		})
 		status, isComplete := b.completedResponses[requestID]
-		responses[requestID] = NewResponse(requestID, responseCode(status, isComplete), b.extensions[requestID]...)
+		responses = append(responses, NewResponse(requestID, responseCode(status, isComplete), b.extensions[requestID]...))
 	}
+	blocks := make([]GraphSyncBlock, 0, len(b.outgoingBlocks))
+	for _, block := range b.outgoingBlocks {
+		blocks = append(blocks, FromBlockFormat(block))
+	}
+	// TODO: sort requests, responses, and blocks? map order is randomized
 	return GraphSyncMessage{
-		b.requests, responses, b.outgoingBlocks,
+		requests, responses, blocks,
 	}, nil
 }
 
