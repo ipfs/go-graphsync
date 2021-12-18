@@ -76,12 +76,8 @@ func (rc *ResponseCache) ProcessResponse(
 	responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
 
-	cids := make([]string, 0, len(blks))
-	for _, blk := range blks {
-		cids = append(cids, blk.Cid().String())
-	}
 	ctx, span := otel.Tracer("graphsync").Start(ctx, "cacheProcess", trace.WithAttributes(
-		attribute.StringSlice("blocks", cids),
+		attribute.Int("blockCount", len(blks)),
 	))
 	traceLink := trace.LinkFromContext(ctx)
 	defer span.End()

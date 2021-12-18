@@ -397,7 +397,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	// each verifyBlock span should link to a cacheProcess span that stored it
 
 	cacheProcessSpans := tracing.FindSpans("cacheProcess")
-	cacheProcessLinks := make(map[string]int)
+	cacheProcessLinks := make(map[string]int64)
 	verifyBlockSpans := tracing.FindSpans("verifyBlock")
 
 	for _, verifyBlockSpan := range verifyBlockSpans {
@@ -417,7 +417,7 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	// each cacheProcess span should be linked to one verifyBlock span per block it stored
 
 	for _, cacheProcessSpan := range cacheProcessSpans {
-		blockCount := len(testutil.AttributeValueInTraceSpan(t, cacheProcessSpan, "blocks").AsStringSlice())
+		blockCount := testutil.AttributeValueInTraceSpan(t, cacheProcessSpan, "blockCount").AsInt64()
 		require.Equal(t, cacheProcessLinks[cacheProcessSpan.SpanContext.SpanID().String()], blockCount, "cacheProcess span should be linked to one verifyBlock span per block it processed")
 	}
 }
