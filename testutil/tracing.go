@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 
@@ -25,6 +26,9 @@ type Collector struct {
 // ExportSpans receives the ReadOnlySpans from the batch provider
 func (c *Collector) ExportSpans(ctx context.Context, spans []trace.ReadOnlySpan) error {
 	c.Spans = tracetest.SpanStubsFromReadOnlySpans(spans)
+	sort.SliceStable(c.Spans, func(i, j int) bool {
+		return c.Spans[i].StartTime.Before(c.Spans[j].StartTime)
+	})
 	return nil
 }
 
