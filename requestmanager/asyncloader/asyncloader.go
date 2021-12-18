@@ -11,6 +11,8 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/metadata"
@@ -109,7 +111,13 @@ func (al *AsyncLoader) ProcessResponse(
 	responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
 
-	ctx, span := otel.Tracer("graphsync").Start(ctx, "loaderProcess")
+	requestIds := make([]int, 0, len(responses))
+	for requestID := range responses {
+		requestIds = append(requestIds, int(requestID))
+	}
+	ctx, span := otel.Tracer("graphsync").Start(ctx, "loaderProcess", trace.WithAttributes(
+		attribute.IntSlice("requestIDs", requestIds),
+	))
 	defer span.End()
 
 	al.stateLk.Lock()

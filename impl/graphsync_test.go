@@ -554,7 +554,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
-		testutil.RepeatTraceStrings("responseMessage({})->loaderProcess(0)->cacheProcess(0)", responseCount)...),
+		responseMessageTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)..., // half of the full chain
 	), tracing.TracesToStrings())
 }
@@ -627,7 +627,7 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
-		testutil.RepeatTraceStrings("responseMessage({})->loaderProcess(0)->cacheProcess(0)", responseCount)...),
+		responseMessageTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)..., // half of the full chain
 	), tracing.TracesToStrings())
 }
@@ -879,7 +879,7 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
-		testutil.RepeatTraceStrings("responseMessage({})->loaderProcess(0)->cacheProcess(0)", responseCount)...),
+		responseMessageTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
 	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
@@ -970,7 +970,7 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
-		testutil.RepeatTraceStrings("responseMessage({})->loaderProcess(0)->cacheProcess(0)", responseCount)...),
+		responseMessageTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
 	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
@@ -1350,7 +1350,7 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
-		testutil.RepeatTraceStrings("responseMessage({})->loaderProcess(0)->cacheProcess(0)", responseCount)...),
+		responseMessageTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
 	), tracing.TracesToStrings())
 }
@@ -1586,7 +1586,7 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 			"request(0)->executeTask(0)",
 			"request(0)->terminateRequest(0)",
 		},
-		testutil.RepeatTraceStrings("responseMessage({})->loaderProcess(0)->cacheProcess(0)", responseCount)...),
+		responseMessageTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 100)...,
 	), tracing.TracesToStrings())
 }
@@ -1723,4 +1723,14 @@ func (r *receiver) Connected(p peer.ID) {
 }
 
 func (r *receiver) Disconnected(p peer.ID) {
+}
+
+func responseMessageTraces(t *testing.T, tracing *testutil.Collector, responseCount int) []string {
+	traces := testutil.RepeatTraceStrings("responseMessage({})->loaderProcess(0)->cacheProcess(0)", responseCount-1)
+	finalStub := tracing.FindSpanByTraceString(fmt.Sprintf("responseMessage(%d)->loaderProcess(0)", responseCount-1))
+	require.NotNil(t, finalStub)
+	if len(testutil.AttributeValueInTraceSpan(t, *finalStub, "requestIDs").AsInt64Slice()) == 0 {
+		return append(traces, fmt.Sprintf("responseMessage(%d)->loaderProcess(0)", responseCount-1))
+	}
+	return append(traces, fmt.Sprintf("responseMessage(%d)->loaderProcess(0)->cacheProcess(0)", responseCount-1))
 }
