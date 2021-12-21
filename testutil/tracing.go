@@ -139,19 +139,19 @@ func (c Collector) SingleExceptionEvent(t *testing.T, trace string, typeRe strin
 // a Collector. The returned helper function should be called at the point in
 // a test where the spans are ready to be analyzed. Any spans not properly
 // completed at that point won't be represented in the Collector.
-func SetupTracing() func(t *testing.T) *Collector {
+func SetupTracing(ctx context.Context) (context.Context, func(t *testing.T) *Collector) {
 	collector := &Collector{}
 	tp := trace.NewTracerProvider(trace.WithBatcher(collector))
 	otel.SetTracerProvider(tp)
-
+	ctx, cancel := context.WithCancel(ctx)
 	collect := func(t *testing.T) *Collector {
 		t.Helper()
-
+		cancel()
 		require.NoError(t, tp.Shutdown(context.Background()))
 		return collector
 	}
 
-	return collect
+	return ctx, collect
 }
 
 // AttributeValueInTraceSpan is a test helper that asserts that at a span

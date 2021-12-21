@@ -51,10 +51,10 @@ import (
 )
 
 func TestMakeRequestToNetwork(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -174,10 +174,10 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 }
 
 func TestRejectRequestsByDefault(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -214,10 +214,10 @@ func TestRejectRequestsByDefault(t *testing.T) {
 }
 
 func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -265,10 +265,10 @@ func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
 }
 
 func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -312,10 +312,10 @@ func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
 }
 
 func TestGraphsyncRoundTrip(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -423,10 +423,10 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 }
 
 func TestGraphsyncRoundTripPartial(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -488,10 +488,10 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 }
 
 func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -560,10 +560,10 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 }
 
 func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(context.Background())
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -633,10 +633,10 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 }
 
 func TestPauseResume(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -723,10 +723,10 @@ func TestPauseResume(t *testing.T) {
 }
 
 func TestPauseResumeRequest(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -804,10 +804,10 @@ func TestPauseResumeRequest(t *testing.T) {
 }
 
 func TestPauseResumeViaUpdate(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -890,10 +890,10 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 }
 
 func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -981,10 +981,9 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 }
 
 func TestNetworkDisconnect(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
-
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -1072,10 +1071,10 @@ func TestNetworkDisconnect(t *testing.T) {
 }
 
 func TestConnectFail(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -1120,10 +1119,10 @@ func TestConnectFail(t *testing.T) {
 }
 
 func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -1212,10 +1211,10 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 }
 
 func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -1305,13 +1304,13 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 // backlog of blocks and then sending them in one giant network packet that can't
 // be decoded on the client side
 func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	if testing.Short() {
 		t.Skip()
 	}
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -1368,12 +1367,12 @@ func TestUnixFSFetch(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	collectTracing := testutil.SetupTracing()
 
 	const unixfsChunkSize uint64 = 1 << 10
 	const unixfsLinksPerLevel = 1024
 
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
@@ -1491,10 +1490,10 @@ func TestUnixFSFetch(t *testing.T) {
 }
 
 func TestGraphsyncBlockListeners(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
