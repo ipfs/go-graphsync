@@ -1,5 +1,23 @@
 # go-data-transfer changelog
 
+# go-data-transfer v1.12.1
+
+Add tracing diagnostics
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Add initial tracing architecture (#289) ([filecoin-project/go-data-transfer#289](https://github.com/filecoin-project/go-data-transfer/pull/289))
+  - Merge branch 'release/v1.11.7'
+  - Merge branch 'release/v1.12.0'
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 2 | +892/-64 | 22 |
+| hannahhoward | 1 | +53/-0 | 1 |
+
 # go-data-transfer 1.12.0
 
 new context data stores and improved diagnostics
