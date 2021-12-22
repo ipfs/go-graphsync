@@ -1,6 +1,7 @@
 package responsecache
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/metadata"
@@ -19,7 +21,7 @@ type fakeUnverifiedBlockStore struct {
 	inMemoryBlocks map[ipld.Link][]byte
 }
 
-func (ubs *fakeUnverifiedBlockStore) AddUnverifiedBlock(lnk ipld.Link, data []byte) {
+func (ubs *fakeUnverifiedBlockStore) AddUnverifiedBlock(_ trace.Link, lnk ipld.Link, data []byte) {
 	ubs.inMemoryBlocks[lnk] = data
 }
 
@@ -100,7 +102,7 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 	}
 	responseCache := New(fubs)
 
-	responseCache.ProcessResponse(responses, blks)
+	responseCache.ProcessResponse(context.Background(), responses, blks)
 
 	require.Len(t, fubs.blocks(), len(blks)-1, "should prune block with no references")
 	testutil.RefuteContainsBlock(t, fubs.blocks(), blks[2])

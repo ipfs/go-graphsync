@@ -130,7 +130,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 		// the traverser has its own context because we want to fail on block boundaries, in the executor,
 		// and make sure all blocks included up to the termination message
 		// are processed and passed in the response channel
-		ctx, cancel := context.WithCancel(rm.ctx)
+		ctx, cancel := context.WithCancel(trace.ContextWithSpan(rm.ctx, ipr.span))
 		ipr.traverserCancel = cancel
 		ipr.traverser = ipldutil.TraversalBuilder{
 			Root:     cidlink.Link{Cid: ipr.request.Root()},
@@ -264,11 +264,20 @@ func (rm *RequestManager) cancelOnError(requestID graphsync.RequestID, ipr *inPr
 
 func (rm *RequestManager) processResponseMessage(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block) {
 	log.Debugf("beging rocessing message for peer %s", p)
+	requestIds := make([]int, 0, len(responses))
+	for _, r := range responses {
+		requestIds = append(requestIds, int(r.RequestID()))
+	}
+	ctx, span := otel.Tracer("graphsync").Start(rm.ctx, "responseMessage", trace.WithAttributes(
+		attribute.String("peerID", p.Pretty()),
+		attribute.IntSlice("requestIDs", requestIds),
+	))
+	defer span.End()
 	filteredResponses := rm.processExtensions(responses, p)
 	filteredResponses = rm.filterResponsesForPeer(filteredResponses, p)
 	rm.updateLastResponses(filteredResponses)
 	responseMetadata := metadataForResponses(filteredResponses)
-	rm.asyncLoader.ProcessResponse(responseMetadata, blks)
+	rm.asyncLoader.ProcessResponse(ctx, responseMetadata, blks)
 	rm.processTerminations(filteredResponses)
 	log.Debugf("end processing message for peer %s", p)
 }

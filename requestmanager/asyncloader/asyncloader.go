@@ -10,6 +10,9 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/metadata"
@@ -103,8 +106,20 @@ func (al *AsyncLoader) StartRequest(requestID graphsync.RequestID, persistenceOp
 
 // ProcessResponse injests new responses and completes asynchronous loads as
 // neccesary
-func (al *AsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadata.Metadata,
+func (al *AsyncLoader) ProcessResponse(
+	ctx context.Context,
+	responses map[graphsync.RequestID]metadata.Metadata,
 	blks []blocks.Block) {
+
+	requestIds := make([]int, 0, len(responses))
+	for requestID := range responses {
+		requestIds = append(requestIds, int(requestID))
+	}
+	ctx, span := otel.Tracer("graphsync").Start(ctx, "loaderProcess", trace.WithAttributes(
+		attribute.IntSlice("requestIDs", requestIds),
+	))
+	defer span.End()
+
 	al.stateLk.Lock()
 	defer al.stateLk.Unlock()
 	byQueue := make(map[string][]graphsync.RequestID)
@@ -119,7 +134,7 @@ func (al *AsyncLoader) ProcessResponse(responses map[graphsync.RequestID]metadat
 		for _, requestID := range requestIDs {
 			queueResponses[requestID] = responses[requestID]
 		}
-		responseCache.ProcessResponse(queueResponses, blks)
+		responseCache.ProcessResponse(ctx, queueResponses, blks)
 		loadAttemptQueue.RetryLoads()
 	}
 }
@@ -178,7 +193,6 @@ func (al *AsyncLoader) getResponseCache(queue string) *responsecache.ResponseCac
 }
 
 func setupAttemptQueue(lsys ipld.LinkSystem) (*responsecache.ResponseCache, *loadattemptqueue.LoadAttemptQueue) {
-
 	unverifiedBlockStore := unverifiedblockstore.New(lsys.StorageWriteOpener)
 	responseCache := responsecache.New(unverifiedBlockStore)
 	loadAttemptQueue := loadattemptqueue.New(func(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) types.AsyncLoadResult {

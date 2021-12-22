@@ -3,6 +3,8 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,6 +26,9 @@ type Collector struct {
 // ExportSpans receives the ReadOnlySpans from the batch provider
 func (c *Collector) ExportSpans(ctx context.Context, spans []trace.ReadOnlySpan) error {
 	c.Spans = tracetest.SpanStubsFromReadOnlySpans(spans)
+	sort.SliceStable(c.Spans, func(i, j int) bool {
+		return c.Spans[i].StartTime.Before(c.Spans[j].StartTime)
+	})
 	return nil
 }
 
@@ -134,19 +139,19 @@ func (c Collector) SingleExceptionEvent(t *testing.T, trace string, typeRe strin
 // a Collector. The returned helper function should be called at the point in
 // a test where the spans are ready to be analyzed. Any spans not properly
 // completed at that point won't be represented in the Collector.
-func SetupTracing() func(t *testing.T) *Collector {
+func SetupTracing(ctx context.Context) (context.Context, func(t *testing.T) *Collector) {
 	collector := &Collector{}
 	tp := trace.NewTracerProvider(trace.WithBatcher(collector))
 	otel.SetTracerProvider(tp)
-
+	ctx, cancel := context.WithCancel(ctx)
 	collect := func(t *testing.T) *Collector {
 		t.Helper()
-
+		cancel()
 		require.NoError(t, tp.Shutdown(context.Background()))
 		return collector
 	}
 
-	return collect
+	return ctx, collect
 }
 
 // AttributeValueInTraceSpan is a test helper that asserts that at a span
@@ -202,4 +207,12 @@ func EventAsException(t *testing.T, evt trace.Event) ExceptionEvent {
 	require.NotEmpty(t, typ, "expected non-empty exception.type attribute for %v", evt.Name)
 	require.NotEmpty(t, msg, "expected non-empty exception.message attribute for %v", evt.Name)
 	return ExceptionEvent{Type: typ, Message: msg}
+}
+
+func RepeatTraceStrings(tmpl string, count int) []string {
+	res := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		res = append(res, strings.Replace(tmpl, "{}", fmt.Sprintf("%d", i), 1))
+	}
+	return res
 }

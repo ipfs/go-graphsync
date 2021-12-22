@@ -38,7 +38,6 @@ import (
 )
 
 func TestIncomingQuery(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	td := newTestData(t)
 	defer td.cancel()
@@ -87,7 +86,7 @@ func TestIncomingQuery(t *testing.T) {
 	require.Equal(t, out.request.ID(), td.requestID)
 	td.connManager.RefuteProtected(t, td.p)
 
-	tracing := collectTracing(t)
+	tracing := td.collectTracing(t)
 	require.ElementsMatch(t, []string{
 		"TestIncomingQuery(0)->response(0)->executeTask(0)",
 	}, tracing.TracesToStrings())
@@ -1055,6 +1054,7 @@ type testData struct {
 	connManager               *testutil.TestConnManager
 	transactionLk             *sync.Mutex
 	taskqueue                 *taskqueue.WorkerTaskQueue
+	collectTracing            func(t *testing.T) *testutil.Collector
 }
 
 func newTestData(t *testing.T) testData {
@@ -1062,6 +1062,7 @@ func newTestData(t *testing.T) testData {
 	ctx := context.Background()
 	td := testData{}
 	td.t = t
+	ctx, td.collectTracing = testutil.SetupTracing(ctx)
 	td.ctx, td.cancel = context.WithTimeout(ctx, 10*time.Second)
 
 	td.blockStore = make(map[ipld.Link][]byte)

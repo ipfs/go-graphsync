@@ -51,10 +51,10 @@ import (
 )
 
 func TestMakeRequestToNetwork(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -110,7 +110,7 @@ func TestMakeRequestToNetwork(t *testing.T) {
 func TestSendResponseToIncomingRequest(t *testing.T) {
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 	r := &receiver{
@@ -174,11 +174,11 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 }
 
 func TestRejectRequestsByDefault(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -205,6 +205,7 @@ func TestRejectRequestsByDefault(t *testing.T) {
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
+		"responseMessage(0)->loaderProcess(0)->cacheProcess(0)",
 	}, tracing.TracesToStrings())
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
@@ -213,11 +214,11 @@ func TestRejectRequestsByDefault(t *testing.T) {
 }
 
 func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -244,6 +245,7 @@ func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
 	wasCancelled := assertCancelOrComplete(ctx, t)
 
 	tracing := collectTracing(t)
+
 	traceStrings := tracing.TracesToStrings()
 	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
 	if wasCancelled {
@@ -252,6 +254,9 @@ func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+
 	// has ErrBudgetExceeded exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrBudgetExceeded", "traversal budget exceeded", true)
 	if wasCancelled {
@@ -260,11 +265,11 @@ func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
 }
 
 func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -292,23 +297,26 @@ func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"response(0)->executeTask(0)",
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+
 	// has ContextCancelError exception recorded in the right place
 	// the requester gets a cancel, the responder gets a ErrBudgetExceeded
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
 }
 
 func TestGraphsyncRoundTrip(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -325,9 +333,11 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 
 	var receivedResponseData []byte
 	var receivedRequestData []byte
+	var responseCount int
 
 	requestor.RegisterIncomingResponseHook(
 		func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+			responseCount = responseCount + 1
 			data, has := responseData.Extension(td.extensionName)
 			if has {
 				receivedResponseData = data
@@ -371,23 +381,53 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"response(0)->executeTask(0)",
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)")
 	require.Equal(t, int64(0), testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "priority").AsInt64())
 	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "extensions").AsStringSlice())
+
+	// each verifyBlock span should link to a cacheProcess span that stored it
+
+	cacheProcessSpans := tracing.FindSpans("cacheProcess")
+	cacheProcessLinks := make(map[string]int64)
+	verifyBlockSpans := tracing.FindSpans("verifyBlock")
+
+	for _, verifyBlockSpan := range verifyBlockSpans {
+		require.Len(t, verifyBlockSpan.Links, 1, "verifyBlock span should have one link")
+		found := false
+		for _, cacheProcessSpan := range cacheProcessSpans {
+			sid := cacheProcessSpan.SpanContext.SpanID().String()
+			if verifyBlockSpan.Links[0].SpanContext.SpanID().String() == sid {
+				found = true
+				cacheProcessLinks[sid] = cacheProcessLinks[sid] + 1
+				break
+			}
+		}
+		require.True(t, found, "verifyBlock should link to a known cacheProcess span")
+	}
+
+	// each cacheProcess span should be linked to one verifyBlock span per block it stored
+
+	for _, cacheProcessSpan := range cacheProcessSpans {
+		blockCount := testutil.AttributeValueInTraceSpan(t, cacheProcessSpan, "blockCount").AsInt64()
+		require.Equal(t, cacheProcessLinks[cacheProcessSpan.SpanContext.SpanID().String()], blockCount, "cacheProcess span should be linked to one verifyBlock span per block it processed")
+	}
 }
 
 func TestGraphsyncRoundTripPartial(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -438,25 +478,31 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"response(0)->executeTask(0)",
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
 }
 
 func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
+
+	var responseCount int
+	requestor.RegisterIncomingResponseHook(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+		responseCount = responseCount + 1
+	})
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
@@ -502,24 +548,32 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
+	require.ElementsMatch(t, append(append([]string{
 		"response(0)->executeTask(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	},
+		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)..., // half of the full chain
+	), tracing.TracesToStrings())
 }
 
 func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(context.Background())
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
+
+	var responseCount int
+	requestor.RegisterIncomingResponseHook(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+		responseCount = responseCount + 1
+	})
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
@@ -567,20 +621,23 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
+	require.ElementsMatch(t, append(append([]string{
 		"response(0)->executeTask(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	},
+		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)..., // half of the full chain
+	), tracing.TracesToStrings())
 }
 
 func TestPauseResume(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -651,22 +708,26 @@ func TestPauseResume(t *testing.T) {
 	assertOneRequestCompletes(ctx, t)
 
 	tracing := collectTracing(t)
+
 	traceStrings := tracing.TracesToStrings()
 	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "response(0)->executeTask(1)")
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+
 	// pause recorded
 	tracing.SingleExceptionEvent(t, "response(0)->executeTask(0)", "github.com/ipfs/go-graphsync/responsemanager/hooks.ErrPaused", hooks.ErrPaused{}.Error(), false)
 }
 
 func TestPauseResumeRequest(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -724,6 +785,7 @@ func TestPauseResumeRequest(t *testing.T) {
 	}
 
 	tracing := collectTracing(t)
+
 	traceStrings := tracing.TracesToStrings()
 	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
 	if wasCancelled {
@@ -734,16 +796,19 @@ func TestPauseResumeRequest(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(1)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+
 	// has ErrPaused exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrPaused", hooks.ErrPaused{}.Error(), false)
 }
 
 func TestPauseResumeViaUpdate(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -751,8 +816,10 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 	var receivedUpdateData []byte
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
+	var responseCount int
 
 	requestor.RegisterIncomingResponseHook(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+		responseCount = responseCount + 1
 		if response.Status() == graphsync.RequestPaused {
 			var has bool
 			receivedReponseData, has = response.Extension(td.extensionName)
@@ -804,14 +871,17 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
+	require.ElementsMatch(t, append(append([]string{
 		"response(0)->executeTask(0)",
 		"response(0)->processUpdate(0)",
 		"response(0)->executeTask(1)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	},
+		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
+	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
 	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "extensions").AsStringSlice())
@@ -820,11 +890,11 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 }
 
 func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -832,6 +902,11 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 	var receivedUpdateData []byte
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
+
+	var responseCount int
+	requestor.RegisterIncomingResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+		responseCount = responseCount + 1
+	})
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
@@ -887,14 +962,17 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
+	require.ElementsMatch(t, append(append([]string{
 		"response(0)->executeTask(0)",
 		"response(0)->processUpdate(0)",
 		"response(0)->executeTask(1)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	},
+		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
+	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
 	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "extensions").AsStringSlice())
@@ -903,11 +981,10 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 }
 
 func TestNetworkDisconnect(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
-
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -978,24 +1055,27 @@ func TestNetworkDisconnect(t *testing.T) {
 	drain(responder)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"response(0)->executeTask(0)",
-		"response(0)->abortRequest(0)",
-		"response(0)->executeTask(1)",
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(1)")
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
 }
 
 func TestConnectFail(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -1039,11 +1119,11 @@ func TestConnectFail(t *testing.T) {
 }
 
 func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -1110,6 +1190,7 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	wasCancelled := assertCancelOrComplete(ctx, t)
 
 	tracing := collectTracing(t)
+
 	traceStrings := tracing.TracesToStrings()
 	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
 	// may or may not contain a second response trace: "response(1)->executeTask(0)""
@@ -1122,16 +1203,19 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	require.Contains(t, traceStrings, "request(1)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(1)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(1)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(1)->verifyBlock(0)")                            // should have one of these per block (TODO: why request(1) and not (0)?)
+
 	// TODO(rvagg): this is randomly either a SkipMe or a ipldutil.ContextCancelError; confirm this is sane
 	// tracing.SingleExceptionEvent(t, "request(0)->newRequest(0)","request(0)->executeTask(0)", "SkipMe", traversal.SkipMe{}.Error(), true)
 }
 
 func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -1207,6 +1291,8 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 	require.Contains(t, traceStrings, "request(1)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(1)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(1)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
 }
 
 // TestRoundTripLargeBlocksSlowNetwork test verifies graphsync continues to work
@@ -1218,13 +1304,13 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 // backlog of blocks and then sending them in one giant network packet that can't
 // be decoded on the client side
 func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	if testing.Short() {
 		t.Skip()
 	}
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
@@ -1232,6 +1318,11 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
+
+	var responseCount int
+	requestor.RegisterIncomingResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+		responseCount = responseCount + 1
+	})
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 40
@@ -1252,12 +1343,15 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
+	require.ElementsMatch(t, append(append([]string{
 		"response(0)->executeTask(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	},
+		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
+	), tracing.TracesToStrings())
 }
 
 // What this test does:
@@ -1273,12 +1367,12 @@ func TestUnixFSFetch(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	collectTracing := testutil.SetupTracing()
 
 	const unixfsChunkSize uint64 = 1 << 10
 	const unixfsLinksPerLevel = 1024
 
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
@@ -1386,20 +1480,21 @@ func TestUnixFSFetch(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"response(0)->executeTask(0)",
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
 }
 
 func TestGraphsyncBlockListeners(t *testing.T) {
-	collectTracing := testutil.SetupTracing()
 
 	// create network
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, collectTracing := testutil.SetupTracing(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -1430,9 +1525,11 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 
 	var receivedResponseData []byte
 	var receivedRequestData []byte
+	var responseCount int
 
 	requestor.RegisterIncomingResponseHook(
 		func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+			responseCount = responseCount + 1
 			data, has := responseData.Extension(td.extensionName)
 			if has {
 				receivedResponseData = data
@@ -1481,12 +1578,16 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"response(0)->executeTask(0)",
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-	}, tracing.TracesToStrings())
+	require.ElementsMatch(t, append(append(
+		[]string{
+			"response(0)->executeTask(0)",
+			"request(0)->newRequest(0)",
+			"request(0)->executeTask(0)",
+			"request(0)->terminateRequest(0)",
+		},
+		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 100)...,
+	), tracing.TracesToStrings())
 }
 
 type gsTestData struct {
@@ -1621,4 +1722,14 @@ func (r *receiver) Connected(p peer.ID) {
 }
 
 func (r *receiver) Disconnected(p peer.ID) {
+}
+
+func responseMessageTraces(t *testing.T, tracing *testutil.Collector, responseCount int) []string {
+	traces := testutil.RepeatTraceStrings("responseMessage({})->loaderProcess(0)->cacheProcess(0)", responseCount-1)
+	finalStub := tracing.FindSpanByTraceString(fmt.Sprintf("responseMessage(%d)->loaderProcess(0)", responseCount-1))
+	require.NotNil(t, finalStub)
+	if len(testutil.AttributeValueInTraceSpan(t, *finalStub, "requestIDs").AsInt64Slice()) == 0 {
+		return append(traces, fmt.Sprintf("responseMessage(%d)->loaderProcess(0)", responseCount-1))
+	}
+	return append(traces, fmt.Sprintf("responseMessage(%d)->loaderProcess(0)->cacheProcess(0)", responseCount-1))
 }

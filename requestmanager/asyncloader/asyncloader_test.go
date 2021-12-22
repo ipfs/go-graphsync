@@ -48,7 +48,7 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 			},
 		}
 		p := testutil.GeneratePeers(1)[0]
-		asyncLoader.ProcessResponse(responses, blocks)
+		asyncLoader.ProcessResponse(context.Background(), responses, blocks)
 		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 
 		assertSuccessResponse(ctx, t, resultChan)
@@ -72,7 +72,7 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 			},
 		}
 		p := testutil.GeneratePeers(1)[0]
-		asyncLoader.ProcessResponse(responses, nil)
+		asyncLoader.ProcessResponse(context.Background(), responses, nil)
 
 		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 		assertFailResponse(ctx, t, resultChan)
@@ -116,7 +116,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 				},
 			},
 		}
-		asyncLoader.ProcessResponse(responses, blocks)
+		asyncLoader.ProcessResponse(context.Background(), responses, blocks)
 		assertSuccessResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 1)
 		st.AssertBlockStored(t, block)
@@ -144,7 +144,7 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 				},
 			},
 		}
-		asyncLoader.ProcessResponse(responses, nil)
+		asyncLoader.ProcessResponse(context.Background(), responses, nil)
 		assertFailResponse(ctx, t, resultChan)
 		st.AssertLocalLoads(t, 1)
 	})
@@ -182,7 +182,7 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 			},
 		}
 		p := testutil.GeneratePeers(1)[0]
-		asyncLoader.ProcessResponse(responses, blocks)
+		asyncLoader.ProcessResponse(context.Background(), responses, blocks)
 		resultChan := asyncLoader.AsyncLoad(p, requestID, link, ipld.LinkContext{})
 
 		assertSuccessResponse(ctx, t, resultChan)
@@ -282,7 +282,7 @@ func TestRequestSplittingSameBlockTwoStores(t *testing.T) {
 				},
 			},
 		}
-		asyncLoader.ProcessResponse(responses, blocks)
+		asyncLoader.ProcessResponse(context.Background(), responses, blocks)
 
 		assertSuccessResponse(ctx, t, resultChan1)
 		assertSuccessResponse(ctx, t, resultChan2)
@@ -317,7 +317,7 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 				},
 			},
 		}
-		asyncLoader.ProcessResponse(responses, blocks)
+		asyncLoader.ProcessResponse(context.Background(), responses, blocks)
 		asyncLoader.CompleteResponsesFor(requestID1)
 
 		assertFailResponse(ctx, t, resultChan1)
