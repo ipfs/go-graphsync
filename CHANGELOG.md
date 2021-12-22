@@ -1,5 +1,22 @@
 # go-graphsync changelog
 
+# go-graphsync v0.11.5
+
+Additional tracing, context hooks, improvements to IPLD traversal
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - feat(requestmanager): add tracing for response messages & block processing (#322) ([ipfs/go-graphsync#322](https://github.com/ipfs/go-graphsync/pull/322))
+  - ipldutil: simplify state synchronization, add docs (#300) ([ipfs/go-graphsync#300](https://github.com/ipfs/go-graphsync/pull/300))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Rod Vagg | 1 | +307/-122 | 12 |
+| Daniel Martí | 1 | +140/-97 | 2 |
+
 # go-graphsync v0.11.4
 
 This update contains an important fix in graphsync's error handling behavior
