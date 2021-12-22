@@ -593,7 +593,7 @@ func (t *Transport) gsOutgoingBlockHook(p peer.ID, request graphsync.RequestData
 }
 
 // gsReqQueuedHook is called when graphsync enqueues an incoming request for data
-func (t *Transport) gsReqQueuedHook(p peer.ID, request graphsync.RequestData) {
+func (t *Transport) gsReqQueuedHook(p peer.ID, request graphsync.RequestData, hookActions graphsync.RequestQueuedHookActions) {
 	msg, err := extension.GetTransferData(request, t.supportedExtensions)
 	if err != nil {
 		log.Errorf("failed GetTransferData, req=%+v, err=%s", request, err)
@@ -627,6 +627,10 @@ func (t *Transport) gsReqQueuedHook(p peer.ID, request graphsync.RequestData) {
 		} else {
 			log.Infof("%s, GS pull request queued in response to our restart push, req_id=%d", chid, request.ID())
 		}
+	}
+	augmentContext := t.events.OnContextAugment(chid)
+	if augmentContext != nil {
+		hookActions.AugmentContext(augmentContext)
 	}
 }
 

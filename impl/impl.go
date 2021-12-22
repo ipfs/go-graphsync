@@ -13,6 +13,10 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
@@ -23,6 +27,7 @@ import (
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/network"
 	"github.com/filecoin-project/go-data-transfer/registry"
+	"github.com/filecoin-project/go-data-transfer/tracing"
 )
 
 var log = logging.Logger("dt-impl")
@@ -43,6 +48,7 @@ type manager struct {
 	channelMonitor       *channelmonitor.Monitor
 	channelMonitorCfg    *channelmonitor.Config
 	transferIDGen        *timeCounter
+	spansIndex           *tracing.SpansIndex
 }
 
 type internalEvent struct {
@@ -100,6 +106,7 @@ func NewDataTransfer(ds datastore.Batching, cidListsDir string, dataTransferNetw
 		peerID:               dataTransferNetwork.ID(),
 		transport:            transport,
 		transferIDGen:        newTimeCounter(),
+		spansIndex:           tracing.NewSpansIndex(),
 	}
 
 	cidLists, err := cidlists.NewCIDLists(cidListsDir)
@@ -169,6 +176,7 @@ func (m *manager) OnReady(ready datatransfer.ReadyFunc) {
 func (m *manager) Stop(ctx context.Context) error {
 	log.Info("stop data-transfer module")
 	m.channelMonitor.Shutdown()
+	m.spansIndex.EndAll()
 	return m.transport.Shutdown(ctx)
 }
 
@@ -200,6 +208,7 @@ func (m *manager) OpenPushDataChannel(ctx context.Context, requestTo peer.ID, vo
 	if err != nil {
 		return chid, err
 	}
+	ctx, span := m.spansIndex.SpanForChannel(ctx, chid)
 	processor, has := m.transportConfigurers.Processor(voucher.Type())
 	if has {
 		transportConfigurer := processor.(datatransfer.TransportConfigurer)
@@ -209,6 +218,8 @@ func (m *manager) OpenPushDataChannel(ctx context.Context, requestTo peer.ID, vo
 	monitoredChan := m.channelMonitor.AddPushChannel(chid)
 	if err := m.dataTransferNetwork.SendMessage(ctx, requestTo, req); err != nil {
 		err = fmt.Errorf("Unable to send request: %w", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		_ = m.channels.Error(chid, err)
 
 		// If push channel monitoring is enabled, shutdown the monitor as it
@@ -238,6 +249,7 @@ func (m *manager) OpenPullDataChannel(ctx context.Context, requestTo peer.ID, vo
 	if err != nil {
 		return chid, err
 	}
+	ctx, span := m.spansIndex.SpanForChannel(ctx, chid)
 	processor, has := m.transportConfigurers.Processor(voucher.Type())
 	if has {
 		transportConfigurer := processor.(datatransfer.TransportConfigurer)
@@ -247,6 +259,8 @@ func (m *manager) OpenPullDataChannel(ctx context.Context, requestTo peer.ID, vo
 	monitoredChan := m.channelMonitor.AddPullChannel(chid)
 	if err := m.transport.OpenChannel(ctx, requestTo, chid, cidlink.Link{Cid: baseCid}, selector, nil, req); err != nil {
 		err = fmt.Errorf("Unable to send request: %w", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		_ = m.channels.Error(chid, err)
 
 		// If pull channel monitoring is enabled, shutdown the monitor as it
@@ -254,7 +268,6 @@ func (m *manager) OpenPullDataChannel(ctx context.Context, requestTo peer.ID, vo
 		if monitoredChan != nil {
 			monitoredChan.Shutdown()
 		}
-
 		return chid, err
 	}
 	return chid, nil
@@ -266,16 +279,29 @@ func (m *manager) SendVoucher(ctx context.Context, channelID datatransfer.Channe
 	if err != nil {
 		return err
 	}
+	ctx, _ = m.spansIndex.SpanForChannel(ctx, channelID)
+	ctx, span := otel.Tracer("data-transfer").Start(ctx, "sendVoucher", trace.WithAttributes(
+		attribute.String("channelID", channelID.String()),
+		attribute.String("voucherType", string(voucher.Type())),
+	))
+	defer span.End()
 	if channelID.Initiator != m.peerID {
-		return errors.New("cannot send voucher for request we did not initiate")
+		err := errors.New("cannot send voucher for request we did not initiate")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
 	}
 	updateRequest, err := message.VoucherRequest(channelID.ID, voucher.Type(), voucher)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 	if err := m.dataTransferNetwork.SendMessage(ctx, chst.OtherPeer(), updateRequest); err != nil {
 		err = fmt.Errorf("Unable to send request: %w", err)
 		_ = m.OnRequestDisconnected(channelID, err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 	return m.channels.NewVoucher(channelID, voucher)
@@ -289,10 +315,16 @@ func (m *manager) CloseDataTransferChannel(ctx context.Context, chid datatransfe
 	if err != nil {
 		return err
 	}
-
+	ctx, _ = m.spansIndex.SpanForChannel(ctx, chid)
+	ctx, span := otel.Tracer("data-transfer").Start(ctx, "closeChannel", trace.WithAttributes(
+		attribute.String("channelID", chid.String()),
+	))
+	defer span.End()
 	// Close the channel on the local transport
 	err = m.transport.CloseChannel(ctx, chid)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		log.Warnf("unable to close channel %s: %s", chid, err)
 	}
 
@@ -333,6 +365,11 @@ func (m *manager) CloseDataTransferChannelWithError(ctx context.Context, chid da
 	if err != nil {
 		return err
 	}
+	ctx, _ = m.spansIndex.SpanForChannel(ctx, chid)
+	ctx, span := otel.Tracer("data-transfer").Start(ctx, "closeChannel", trace.WithAttributes(
+		attribute.String("channelID", chid.String()),
+	))
+	defer span.End()
 
 	// Cancel the channel on the local transport
 	err = m.transport.CloseChannel(ctx, chid)
@@ -372,6 +409,8 @@ func (m *manager) PauseDataTransferChannel(ctx context.Context, chid datatransfe
 		return datatransfer.ErrUnsupported
 	}
 
+	ctx, _ = m.spansIndex.SpanForChannel(ctx, chid)
+
 	err := pausable.PauseChannel(ctx, chid)
 	if err != nil {
 		log.Warnf("Error attempting to pause at transport level: %s", err.Error())
@@ -394,6 +433,8 @@ func (m *manager) ResumeDataTransferChannel(ctx context.Context, chid datatransf
 	if !ok {
 		return datatransfer.ErrUnsupported
 	}
+
+	ctx, _ = m.spansIndex.SpanForChannel(ctx, chid)
 
 	err := pausable.ResumeChannel(ctx, m.resumeMessage(chid), chid)
 	if err != nil {
@@ -480,6 +521,11 @@ func (m *manager) RestartDataTransferChannel(ctx context.Context, chid datatrans
 		return m.channels.CompleteCleanupOnRestart(channel.ChannelID())
 	}
 
+	ctx, _ = m.spansIndex.SpanForChannel(ctx, chid)
+	ctx, span := otel.Tracer("data-transfer").Start(ctx, "restartChannel", trace.WithAttributes(
+		attribute.String("channelID", chid.String()),
+	))
+	defer span.End()
 	// initiate restart
 	chType := m.channelDataTransferType(channel)
 	switch chType {

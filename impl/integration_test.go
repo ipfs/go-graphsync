@@ -83,10 +83,34 @@ func TestRoundTrip(t *testing.T) {
 		isPull            bool
 		customSourceStore bool
 		customTargetStore bool
+		expectedTraces    []string
 	}{
-		"roundtrip for push requests": {},
+		"roundtrip for push requests": {
+			expectedTraces: []string{
+				// initiator: send push request
+				"transfer(0)->sendMessage(0)",
+				// initiator: receive GS request and execute response
+				"transfer(0)->response(0)->executeTask(0)",
+				// initiator: receive completion message from responder that they got all the data
+				"transfer(0)->receiveResponse(0)",
+				// responder: receive dt request, execute graphsync request in response
+				"transfer(1)->receiveRequest(0)->request(0)->executeTask(0)",
+				// responder: send message indicating we received all data
+				"transfer(1)->sendMessage(0)",
+			},
+		},
 		"roundtrip for pull requests": {
 			isPull: true,
+			expectedTraces: []string{
+				// initiator: execute outgoing graphsync request
+				"transfer(0)->request(0)->executeTask(0)",
+				// initiator: receive completion message from responder that they sent all the data
+				"transfer(0)->receiveResponse(0)",
+				// responder: receive GS request and execute response
+				"transfer(1)->response(0)->executeTask(0)",
+				// responder: send message indicating we sent all data
+				"transfer(1)->sendMessage(0)",
+			},
 		},
 		"custom source, push": {
 			customSourceStore: true,
@@ -115,6 +139,7 @@ func TestRoundTrip(t *testing.T) {
 	for testCase, data := range testCases {
 		for pname, ps := range protocolsForTest {
 			t.Run(testCase+pname, func(t *testing.T) {
+				ctx, collectTracing := testutil.SetupTracing(ctx)
 				ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 				defer cancel()
 
@@ -246,6 +271,10 @@ func TestRoundTrip(t *testing.T) {
 					assert.Equal(t, chid.Initiator, host2.ID())
 				} else {
 					assert.Equal(t, chid.Initiator, host1.ID())
+				}
+				traces := collectTracing(t).TracesToStrings()
+				for _, expectedTrace := range data.expectedTraces {
+					require.Contains(t, traces, expectedTrace)
 				}
 			})
 		}
@@ -1253,9 +1282,56 @@ func TestSimulatedRetrievalFlow(t *testing.T) {
 		unpauseRequestorDelay time.Duration
 		unpauseResponderDelay time.Duration
 		pausePoints           []uint64
+		expectedTraces        []string
 	}{
 		"fast unseal, payment channel ready": {
 			pausePoints: []uint64{1000, 3000, 6000, 10000, 15000},
+			expectedTraces: []string{
+				// initiator: execute outgoing graphsync request
+				"transfer(0)->request(0)->executeTask(0)",
+				// initiator: send first voucher
+				"transfer(0)->sendVoucher(0)->sendMessage(0)",
+				// initiator: send second voucher
+				"transfer(0)->sendVoucher(1)->sendMessage(0)",
+				// initiator: send third voucher
+				"transfer(0)->sendVoucher(2)->sendMessage(0)",
+				// initiator: send fourth voucher
+				"transfer(0)->sendVoucher(3)->sendMessage(0)",
+				// initiator: send fifth voucher
+				"transfer(0)->sendVoucher(4)->sendMessage(0)",
+				// initiator: receive completion message from responder with final voucher request
+				"transfer(0)->receiveResponse(0)",
+				// initiator: send final voucher
+				"transfer(0)->sendVoucher(5)->sendMessage(0)",
+				// initiator: receive confirmation of final voucher
+				"transfer(0)->receiveResponse(1)",
+				// responder: receive GS request and execute response up to pause
+				"transfer(1)->response(0)->executeTask(0)",
+				// responder: execute GS request up to second pause after first voucher
+				"transfer(1)->response(0)->executeTask(1)",
+				// responder: execute GS request up to third pause after second voucher
+				"transfer(1)->response(0)->executeTask(2)",
+				// responder: execute GS request up to fourth pause after third voucher
+				"transfer(1)->response(0)->executeTask(3)",
+				// responder: execute GS request up to fifth pause after fourth voucher
+				"transfer(1)->response(0)->executeTask(4)",
+				// responder: execute GS request to finish after fifth voucher
+				"transfer(1)->response(0)->executeTask(5)",
+				// responder: receive first voucher
+				"transfer(1)->receiveRequest(0)",
+				// responder: receive second voucher
+				"transfer(1)->receiveRequest(1)",
+				// responder: receive third voucher
+				"transfer(1)->receiveRequest(2)",
+				// responder: receive fourth voucher
+				"transfer(1)->receiveRequest(3)",
+				// responder: receive fifth voucher
+				"transfer(1)->receiveRequest(4)",
+				// responder: send message that we sent all data along with final voucher request
+				"transfer(1)->sendMessage(0)",
+				// responder: receive final voucher and send acceptance message
+				"transfer(1)->receiveRequest(5)->sendMessage(0)",
+			},
 		},
 		"fast unseal, payment channel not ready": {
 			unpauseRequestorDelay: 100 * time.Millisecond,
@@ -1268,6 +1344,7 @@ func TestSimulatedRetrievalFlow(t *testing.T) {
 	}
 	for testCase, config := range testCases {
 		t.Run(testCase, func(t *testing.T) {
+			ctx, collectTracing := testutil.SetupTracing(ctx)
 			ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 			defer cancel()
 
@@ -1369,6 +1446,10 @@ func TestSimulatedRetrievalFlow(t *testing.T) {
 			gsData.VerifyFileTransferred(t, root, true)
 			require.Equal(t, srv.providerPausePoint, len(config.pausePoints))
 			require.Equal(t, clientPausePoint, len(config.pausePoints))
+			traces := collectTracing(t).TracesToStrings()
+			for _, expectedTrace := range config.expectedTraces {
+				require.Contains(t, traces, expectedTrace)
+			}
 		})
 	}
 }
@@ -1771,7 +1852,7 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 			Name: extension.ExtensionDataTransfer1_1,
 			Data: extData,
 		})
-		builder := gsmsg.NewBuilder(0)
+		builder := gsmsg.NewBuilder()
 		builder.AddRequest(request)
 		gsmessage, err := builder.Build()
 		require.NoError(t, err)
@@ -1793,7 +1874,7 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 			Name: extension.ExtensionDataTransfer1_1,
 			Data: extData,
 		})
-		builder := gsmsg.NewBuilder(0)
+		builder := gsmsg.NewBuilder()
 		builder.AddRequest(request)
 		gsmessage, err := builder.Build()
 		require.NoError(t, err)
@@ -1850,7 +1931,7 @@ func TestResponseHookWhenExtensionNotFound(t *testing.T) {
 		}
 
 		request := gsmsg.NewRequest(graphsync.RequestID(rand.Int31()), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()))
-		builder := gsmsg.NewBuilder(0)
+		builder := gsmsg.NewBuilder()
 		builder.AddRequest(request)
 		gsmessage, err := builder.Build()
 		require.NoError(t, err)
@@ -1891,7 +1972,7 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 				})
 
 				// initiator requests data over graphsync network
-				builder := gsmsg.NewBuilder(0)
+				builder := gsmsg.NewBuilder()
 				builder.AddRequest(gsRequest)
 				gsmessage, err := builder.Build()
 				require.NoError(t, err)
@@ -1920,7 +2001,7 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 					Name: extension.ExtensionDataTransfer1_1,
 					Data: extData,
 				})
-				builder := gsmsg.NewBuilder(0)
+				builder := gsmsg.NewBuilder()
 				builder.AddRequest(request)
 				gsmessage, err := builder.Build()
 				require.NoError(t, err)

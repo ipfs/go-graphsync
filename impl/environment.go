@@ -24,4 +24,5 @@ func (ce *channelEnvironment) ID() peer.ID {
 
 func (ce *channelEnvironment) CleanupChannel(chid datatransfer.ChannelID) {
 	ce.m.transport.CleanupChannel(chid)
+	ce.m.spansIndex.EndChannelSpan(chid)
 }

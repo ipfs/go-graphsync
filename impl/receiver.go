@@ -5,6 +5,9 @@ import (
 
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/channels"
@@ -28,6 +31,17 @@ func (r *receiver) ReceiveRequest(
 
 func (r *receiver) receiveRequest(ctx context.Context, initiator peer.ID, incoming datatransfer.Request) error {
 	chid := datatransfer.ChannelID{Initiator: initiator, Responder: r.manager.peerID, ID: incoming.TransferID()}
+	ctx, _ = r.manager.spansIndex.SpanForChannel(ctx, chid)
+	ctx, span := otel.Tracer("data-transfer").Start(ctx, "receiveRequest", trace.WithAttributes(
+		attribute.String("channelID", chid.String()),
+		attribute.String("baseCid", incoming.BaseCid().String()),
+		attribute.Bool("isNew", incoming.IsNew()),
+		attribute.Bool("isRestart", incoming.IsRestart()),
+		attribute.Bool("isUpdate", incoming.IsUpdate()),
+		attribute.Bool("isCancel", incoming.IsCancel()),
+		attribute.Bool("isPaused", incoming.IsPaused()),
+	))
+	defer span.End()
 	response, receiveErr := r.manager.OnRequestReceived(chid, incoming)
 
 	if receiveErr == datatransfer.ErrResume {
@@ -91,6 +105,18 @@ func (r *receiver) receiveResponse(
 	sender peer.ID,
 	incoming datatransfer.Response) error {
 	chid := datatransfer.ChannelID{Initiator: r.manager.peerID, Responder: sender, ID: incoming.TransferID()}
+	ctx, _ = r.manager.spansIndex.SpanForChannel(ctx, chid)
+	ctx, span := otel.Tracer("data-transfer").Start(ctx, "receiveResponse", trace.WithAttributes(
+		attribute.String("channelID", chid.String()),
+		attribute.Bool("accepted", incoming.Accepted()),
+		attribute.Bool("isComplete", incoming.IsComplete()),
+		attribute.Bool("isNew", incoming.IsNew()),
+		attribute.Bool("isRestart", incoming.IsRestart()),
+		attribute.Bool("isUpdate", incoming.IsUpdate()),
+		attribute.Bool("isCancel", incoming.IsCancel()),
+		attribute.Bool("isPaused", incoming.IsPaused()),
+	))
+	defer span.End()
 	err := r.manager.OnResponseReceived(chid, incoming)
 	if err == datatransfer.ErrPause {
 		return r.manager.transport.(datatransfer.PauseableTransport).PauseChannel(ctx, chid)
@@ -119,6 +145,11 @@ func (r *receiver) ReceiveRestartExistingChannelRequest(ctx context.Context,
 		return
 	}
 
+	ctx, _ = r.manager.spansIndex.SpanForChannel(ctx, ch)
+	ctx, span := otel.Tracer("data-transfer").Start(ctx, "receiveRequest", trace.WithAttributes(
+		attribute.String("channelID", ch.String()),
+	))
+	defer span.End()
 	log.Infof("channel %s: received restart existing channel request from %s", ch, sender)
 
 	// validate channel exists -> in non-terminal state and that the sender matches

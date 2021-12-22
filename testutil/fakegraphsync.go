@@ -664,3 +664,13 @@ func (fa *FakeIncomingResponseHookActions) UpdateRequestWithExtensions(extension
 }
 
 var _ graphsync.IncomingResponseHookActions = &FakeIncomingResponseHookActions{}
+
+type FakeRequestQueuedHookActions struct {
+	ctxAugFuncs []func(context.Context) context.Context
+}
+
+func (fa *FakeRequestQueuedHookActions) AugmentContext(ctxAugFunc func(reqCtx context.Context) context.Context) {
+	fa.ctxAugFuncs = append(fa.ctxAugFuncs, ctxAugFunc)
+}
+
+var _ graphsync.RequestQueuedHookActions = &FakeRequestQueuedHookActions{}

@@ -1117,6 +1117,7 @@ func TestManager(t *testing.T) {
 				incomingRequestHookActions:  &testutil.FakeIncomingRequestHookActions{},
 				requestUpdatedHookActions:   &testutil.FakeRequestUpdatedActions{},
 				incomingResponseHookActions: &testutil.FakeIncomingResponseHookActions{},
+				requestQueuedHookActions:    &testutil.FakeRequestQueuedHookActions{},
 			}
 			require.NoError(t, transport.SetEventHandler(&data.events))
 			if data.action != nil {
@@ -1151,9 +1152,9 @@ type fakeEvents struct {
 	OnSendDataErrorChannelID    datatransfer.ChannelID
 	OnReceiveDataErrorCalled    bool
 	OnReceiveDataErrorChannelID datatransfer.ChannelID
-
-	TransferQueuedCalled    bool
-	TransferQueuedChannelID datatransfer.ChannelID
+	OnContextAugmentFunc        func(context.Context) context.Context
+	TransferQueuedCalled        bool
+	TransferQueuedChannelID     datatransfer.ChannelID
 
 	ChannelCompletedSuccess  bool
 	RequestReceivedRequest   datatransfer.Request
@@ -1238,6 +1239,10 @@ func (fe *fakeEvents) OnChannelCompleted(chid datatransfer.ChannelID, completeEr
 	return fe.OnChannelCompletedErr
 }
 
+func (fe *fakeEvents) OnContextAugment(chid datatransfer.ChannelID) func(context.Context) context.Context {
+	return fe.OnContextAugmentFunc
+}
+
 type harness struct {
 	outgoing                    datatransfer.Request
 	incoming                    datatransfer.Response
@@ -1258,6 +1263,7 @@ type harness struct {
 	incomingRequestHookActions  *testutil.FakeIncomingRequestHookActions
 	requestUpdatedHookActions   *testutil.FakeRequestUpdatedActions
 	incomingResponseHookActions *testutil.FakeIncomingResponseHookActions
+	requestQueuedHookActions    *testutil.FakeRequestQueuedHookActions
 }
 
 func (ha *harness) outgoingRequestHook() {
@@ -1280,7 +1286,7 @@ func (ha *harness) incomingRequestHook() {
 }
 
 func (ha *harness) incomingRequestQueuedHook() {
-	ha.fgs.IncomingRequestQueuedHook(ha.other, ha.request)
+	ha.fgs.IncomingRequestQueuedHook(ha.other, ha.request, ha.requestQueuedHookActions)
 }
 
 func (ha *harness) requestUpdatedHook() {

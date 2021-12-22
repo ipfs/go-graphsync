@@ -33,9 +33,10 @@ type peerError struct {
 
 func TestRestartPush(t *testing.T) {
 	tcs := map[string]struct {
-		stopAt    int
-		openPushF func(rh *restartHarness) datatransfer.ChannelID
-		restartF  func(rh *restartHarness, chId datatransfer.ChannelID, subFnc datatransfer.Subscriber)
+		stopAt         int
+		openPushF      func(rh *restartHarness) datatransfer.ChannelID
+		restartF       func(rh *restartHarness, chId datatransfer.ChannelID, subFnc datatransfer.Subscriber)
+		expectedTraces []string
 	}{
 		"Restart peer create push": {
 			stopAt: 20,
@@ -57,6 +58,29 @@ func TestRestartPush(t *testing.T) {
 				rh.dt1.SubscribeToEvents(subscriber)
 				require.NoError(rh.t, rh.dt1.RestartDataTransferChannel(rh.testCtx, chId))
 			},
+			expectedTraces: []string{
+				// initiator: send push request
+				"transfer(0)->sendMessage(0)",
+				// initiator: receive GS request and execute response
+				"transfer(0)->response(0)->executeTask(0)",
+				// initiator: abort GS response
+				"transfer(0)->response(0)->abortRequest(0)",
+				// initiator: send restart channel request to responder
+				"transfer(2)->restartChannel(0)->sendMessage(0)",
+				// initiator: receive second GS request in response to restart message
+				// and execute GS response
+				"transfer(2)->response(0)->executeTask(0)",
+				// initiator: receive completion message from responder that they got all the data
+				"transfer(2)->receiveResponse(0)",
+				// responder: receive dt request, execute graphsync request in response
+				"transfer(1)->receiveRequest(0)->request(0)->executeTask(0)",
+				// responder: terminate first GS request
+				"transfer(1)->receiveRequest(0)->request(0)->terminateRequest(0)",
+				// responder: execute second GS resquest in response to restart request
+				"transfer(1)->receiveRequest(1)->request(0)->newRequest(0)",
+				// responder: send message indicating we received all data
+				"transfer(1)->sendMessage(0)",
+			},
 		},
 		"Restart peer receive push": {
 			stopAt: 20,
@@ -77,6 +101,31 @@ func TestRestartPush(t *testing.T) {
 				testutil.StartAndWaitForReady(rh.testCtx, t, rh.dt2)
 				rh.dt2.SubscribeToEvents(subscriber)
 				require.NoError(rh.t, rh.dt2.RestartDataTransferChannel(rh.testCtx, chId))
+			},
+			expectedTraces: []string{
+				// initiator: send push request
+				"transfer(0)->sendMessage(0)",
+				// initiator: receive GS request and execute response
+				"transfer(0)->response(0)->executeTask(0)",
+				// initiator: abort GS response
+				"transfer(0)->response(0)->abortRequest(0)",
+				// initiator: receive restart request and send restart channel message
+				"transfer(0)->receiveRequest(0)->sendMessage(0)",
+				// initiator: receive second GS request in response to restart channel message
+				// and execute GS response
+				"transfer(0)->response(1)->executeTask(0)",
+				// initiator: receive completion message from responder that they got all the data
+				"transfer(0)->receiveResponse(0)",
+				// responder: receive dt request, execute graphsync request in response
+				"transfer(1)->receiveRequest(0)->request(0)->executeTask(0)",
+				// responder: terminate first GS request
+				"transfer(1)->receiveRequest(0)->request(0)->terminateRequest(0)",
+				// responder: send restart request to initiator
+				"transfer(2)->restartChannel(0)->sendMessage(0)",
+				// responder: execute second GS resquest in response to restart request
+				"transfer(2)->receiveRequest(0)->request(0)->newRequest(0)",
+				// responder: send message indicating we received all data
+				"transfer(2)->sendMessage(0)",
 			},
 		},
 	}
@@ -238,15 +287,20 @@ func TestRestartPush(t *testing.T) {
 			require.Equal(t, expectedTransferSize, int(sendChan.Queued()))
 			require.Equal(t, expectedTransferSize, int(sendChan.Sent()))
 			require.Equal(t, expectedTransferSize, int(recvChan.Received()))
+			traces := rh.collectTracing(t).TracesToStrings()
+			for _, expectedTrace := range tc.expectedTraces {
+				require.Contains(t, traces, expectedTrace)
+			}
 		})
 	}
 }
 
 func TestRestartPull(t *testing.T) {
 	tcs := map[string]struct {
-		stopAt    int
-		openPullF func(rh *restartHarness) datatransfer.ChannelID
-		restartF  func(rh *restartHarness, chId datatransfer.ChannelID, subFnc datatransfer.Subscriber)
+		stopAt         int
+		openPullF      func(rh *restartHarness) datatransfer.ChannelID
+		restartF       func(rh *restartHarness, chId datatransfer.ChannelID, subFnc datatransfer.Subscriber)
+		expectedTraces []string
 	}{
 		"Restart peer create pull": {
 			stopAt: 40,
@@ -268,6 +322,24 @@ func TestRestartPull(t *testing.T) {
 				rh.dt2.SubscribeToEvents(subscriber)
 				require.NoError(rh.t, rh.dt2.RestartDataTransferChannel(rh.testCtx, chId))
 			},
+			expectedTraces: []string{
+				// initiator: initial outgoing gs request
+				"transfer(0)->request(0)->executeTask(0)",
+				// initiator: initial outgoing gs request terminates
+				"transfer(0)->request(0)->terminateRequest(0)",
+				// initiator: restart request encoded in GS outgoing request
+				"transfer(2)->restartChannel(0)->request(0)->newRequest(0)",
+				// initiator: receive completion message from responder that they sent all the data
+				"transfer(2)->receiveResponse(0)",
+				// responder: receive GS request and execute response
+				"transfer(1)->response(0)->executeTask(0)",
+				// responder: abort GS request
+				"transfer(1)->response(0)->abortRequest(0)",
+				// responder: receive restart request encoded in GS request and execute response
+				"transfer(1)->response(1)->executeTask(0)",
+				// responder: send message indicating we sent all data
+				"transfer(1)->sendMessage(0)",
+			},
 		},
 		"Restart peer receive pull": {
 			stopAt: 40,
@@ -288,6 +360,27 @@ func TestRestartPull(t *testing.T) {
 				testutil.StartAndWaitForReady(rh.testCtx, t, rh.dt1)
 				rh.dt1.SubscribeToEvents(subscriber)
 				require.NoError(rh.t, rh.dt1.RestartDataTransferChannel(rh.testCtx, chId))
+			},
+			expectedTraces: []string{
+				// initiator: initial outgoing gs request
+				"transfer(0)->request(0)->executeTask(0)",
+				// initiator: initial outgoing gs request terminates
+				"transfer(0)->request(0)->terminateRequest(0)",
+				// initiator: respond to restart request and send second GS request
+				"transfer(0)->receiveRequest(0)->request(0)->newRequest(0)",
+				// initiator: receive completion message from responder that they sent all the data
+				"transfer(0)->receiveResponse(0)",
+				// responder: receive GS request and execute response
+				"transfer(1)->response(0)->executeTask(0)",
+				// responder: abort GS request
+				"transfer(1)->response(0)->abortRequest(0)",
+				// responder: send restart message to initiator
+				"transfer(2)->restartChannel(0)->sendMessage(0)",
+				// responder: receive second GS request in response to restart message
+				// and execute GS response
+				"transfer(2)->response(0)->executeTask(0)",
+				// responder: send message indicating we sent all data
+				"transfer(2)->sendMessage(0)",
 			},
 		},
 	}
@@ -445,17 +538,21 @@ func TestRestartPull(t *testing.T) {
 			require.Equal(t, expectedTransferSize, int(sendChan.Queued()))
 			require.Equal(t, expectedTransferSize, int(sendChan.Sent()))
 			require.Equal(t, expectedTransferSize, int(recvChan.Received()))
+			traces := rh.collectTracing(t).TracesToStrings()
+			for _, expectedTrace := range tc.expectedTraces {
+				require.Contains(t, traces, expectedTrace)
+			}
 		})
 	}
 }
 
 type restartHarness struct {
-	t       *testing.T
-	testCtx context.Context
-	cancel  context.CancelFunc
-
-	peer1 peer.ID
-	peer2 peer.ID
+	t              *testing.T
+	testCtx        context.Context
+	cancel         context.CancelFunc
+	collectTracing func(t *testing.T) *testutil.Collector
+	peer1          peer.ID
+	peer2          peer.ID
 
 	gsData *testutil.GraphsyncTestingData
 	dt1    datatransfer.Manager
@@ -470,6 +567,7 @@ type restartHarness struct {
 
 func newRestartHarness(t *testing.T) *restartHarness {
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 
 	// Setup host
@@ -501,9 +599,10 @@ func newRestartHarness(t *testing.T) *restartHarness {
 	destDagService := gsData.DagService2
 
 	return &restartHarness{
-		t:       t,
-		testCtx: ctx,
-		cancel:  cancel,
+		t:              t,
+		testCtx:        ctx,
+		cancel:         cancel,
+		collectTracing: collectTracing,
 
 		peer1: peer1,
 		peer2: peer2,
