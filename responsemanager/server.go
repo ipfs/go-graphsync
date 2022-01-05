@@ -56,17 +56,22 @@ func (rm *ResponseManager) terminateRequest(key responseKey) {
 	ipr.span.End()
 }
 
-func (rm *ResponseManager) processUpdate(key responseKey, update gsmsg.GraphSyncRequest) {
+func (rm *ResponseManager) processUpdate(ctx context.Context, key responseKey, update gsmsg.GraphSyncRequest) {
 	response, ok := rm.inProgressResponses[key]
 	if !ok || response.state == graphsync.CompletingSend {
 		log.Warnf("received update for non existent request, peer %s, request ID %d", key.p.Pretty(), key.requestID)
 		return
 	}
 
-	_, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, response.span), "processUpdate", trace.WithAttributes(
-		attribute.Int("id", int(update.ID())),
-		attribute.StringSlice("extensions", update.ExtensionNames()),
-	))
+	_, span := otel.Tracer("graphsync").Start(
+		trace.ContextWithSpan(ctx, response.span),
+		"processUpdate",
+		trace.WithLinks(trace.LinkFromContext(ctx)),
+		trace.WithAttributes(
+			attribute.Int("id", int(update.ID())),
+			attribute.StringSlice("extensions", update.ExtensionNames()),
+		))
+
 	defer span.End()
 
 	if response.state != graphsync.Paused {
@@ -125,7 +130,7 @@ func (rm *ResponseManager) unpauseRequest(p peer.ID, requestID graphsync.Request
 	return nil
 }
 
-func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID, err error) error {
+func (rm *ResponseManager) abortRequest(ctx context.Context, p peer.ID, requestID graphsync.RequestID, err error) error {
 	key := responseKey{p, requestID}
 	rm.responseQueue.Remove(key, key.p)
 	response, ok := rm.inProgressResponses[key]
@@ -133,7 +138,10 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 		return errors.New("could not find request")
 	}
 
-	_, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, response.span), "abortRequest")
+	_, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(ctx, response.span),
+		"abortRequest",
+		trace.WithLinks(trace.LinkFromContext(ctx)),
+	)
 	defer span.End()
 	span.RecordError(err)
 	span.SetStatus(codes.Error, err.Error())
@@ -166,25 +174,38 @@ func (rm *ResponseManager) abortRequest(p peer.ID, requestID graphsync.RequestID
 }
 
 func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSyncRequest) {
+	ctx, messageSpan := otel.Tracer("graphsync").Start(
+		rm.ctx,
+		"requestMessage",
+		trace.WithAttributes(attribute.String("peerID", p.Pretty())),
+	)
+	defer messageSpan.End()
+
 	for _, request := range requests {
 		key := responseKey{p: p, requestID: request.ID()}
 		if request.IsCancel() {
-			_ = rm.abortRequest(p, request.ID(), ipldutil.ContextCancelError{})
+			_ = rm.abortRequest(ctx, p, request.ID(), ipldutil.ContextCancelError{})
 			continue
 		}
 		if request.IsUpdate() {
-			rm.processUpdate(key, request)
+			rm.processUpdate(ctx, key, request)
 			continue
 		}
 		rm.connManager.Protect(p, request.ID().Tag())
-		ctx := rm.requestQueuedHooks.ProcessRequestQueuedHooks(p, request, rm.ctx)
-		ctx, responseSpan := otel.Tracer("graphsync").Start(ctx, "response", trace.WithAttributes(
-			attribute.Int("id", int(request.ID())),
-			attribute.Int("priority", int(request.Priority())),
-			attribute.String("root", request.Root().String()),
-			attribute.StringSlice("extensions", request.ExtensionNames()),
-		))
-		ctx, cancelFn := context.WithCancel(ctx)
+		// don't use `ctx` which has the "message" trace, but rm.ctx for a fresh trace which allows
+		// for a request hook to join this particular response up to an existing external trace
+		rctx := rm.requestQueuedHooks.ProcessRequestQueuedHooks(p, request, rm.ctx)
+		rctx, responseSpan := otel.Tracer("graphsync").Start(
+			rctx,
+			"response",
+			trace.WithLinks(trace.LinkFromContext(ctx)),
+			trace.WithAttributes(
+				attribute.Int("id", int(request.ID())),
+				attribute.Int("priority", int(request.Priority())),
+				attribute.String("root", request.Root().String()),
+				attribute.StringSlice("extensions", request.ExtensionNames()),
+			))
+		rctx, cancelFn := context.WithCancel(rctx)
 		sub := &subscriber{
 			p:                     key.p,
 			request:               request,
@@ -202,7 +223,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 
 		rm.inProgressResponses[key] =
 			&inProgressResponseStatus{
-				ctx:      ctx,
+				ctx:      rctx,
 				span:     responseSpan,
 				cancelFn: cancelFn,
 				request:  request,

@@ -41,7 +41,7 @@ type errorRequestMessage struct {
 }
 
 func (erm *errorRequestMessage) handle(rm *ResponseManager) {
-	err := rm.abortRequest(erm.p, erm.requestID, erm.err)
+	err := rm.abortRequest(rm.ctx, erm.p, erm.requestID, erm.err)
 	select {
 	case <-rm.ctx.Done():
 	case erm.response <- err:
