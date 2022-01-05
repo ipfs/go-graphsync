@@ -87,9 +87,10 @@ func TestIncomingQuery(t *testing.T) {
 	td.connManager.RefuteProtected(t, td.p)
 
 	tracing := td.collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"TestIncomingQuery(0)->response(0)->executeTask(0)",
-	}, tracing.TracesToStrings())
+	require.ElementsMatch(t, append(
+		testutil.RepeatTraceStrings("TestIncomingQuery(0)->response(0)->executeTask(0)->processBlock({})->loadBlock(0)", td.blockChainLength),
+		testutil.RepeatTraceStrings("TestIncomingQuery(0)->response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", td.blockChainLength)..., // half of the full chain
+	), tracing.TracesToStrings())
 }
 
 func TestCancellationQueryInProgress(t *testing.T) {

@@ -247,7 +247,8 @@ func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
 	tracing := collectTracing(t)
 
 	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
 	if wasCancelled {
 		require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
 	}
@@ -299,7 +300,8 @@ func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
 	tracing := collectTracing(t)
 
 	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
@@ -383,7 +385,8 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	tracing := collectTracing(t)
 
 	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
@@ -479,7 +482,8 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 
 	tracing := collectTracing(t)
 	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
@@ -548,14 +552,15 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append([]string{
-		"response(0)->executeTask(0)",
+	require.ElementsMatch(t, append(append(append(append([]string{
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
 		responseMessageTraces(t, tracing, responseCount)...),
-		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)..., // half of the full chain
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)...), // half of the full chain
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)...,
 	), tracing.TracesToStrings())
 }
 
@@ -621,14 +626,15 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append([]string{
-		"response(0)->executeTask(0)",
+	require.ElementsMatch(t, append(append(append(append([]string{
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
 		responseMessageTraces(t, tracing, responseCount)...),
-		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)..., // half of the full chain
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)..., // half of the full chain
 	), tracing.TracesToStrings())
 }
 
@@ -710,8 +716,10 @@ func TestPauseResume(t *testing.T) {
 	tracing := collectTracing(t)
 
 	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
-	require.Contains(t, traceStrings, "response(0)->executeTask(1)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(1)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(1)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
@@ -787,10 +795,12 @@ func TestPauseResumeRequest(t *testing.T) {
 	tracing := collectTracing(t)
 
 	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
 	if wasCancelled {
 		require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
-		require.Contains(t, traceStrings, "response(1)->executeTask(0)")
+		require.Contains(t, traceStrings, "response(1)->executeTask(0)->processBlock(0)->loadBlock(0)")
+		require.Contains(t, traceStrings, "response(1)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
 	}
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
@@ -871,16 +881,18 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append([]string{
-		"response(0)->executeTask(0)",
+	require.ElementsMatch(t, append(append(append(append(append(append([]string{
 		"response(0)->processUpdate(0)",
-		"response(0)->executeTask(1)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
 		responseMessageTraces(t, tracing, responseCount)...),
-		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", 50)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)...), // half of the full chain
+		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->loadBlock(0)", 50)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)..., // half of the full chain
 	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
@@ -962,16 +974,18 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append([]string{
-		"response(0)->executeTask(0)",
+	require.ElementsMatch(t, append(append(append(append(append(append([]string{
 		"response(0)->processUpdate(0)",
-		"response(0)->executeTask(1)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
 		responseMessageTraces(t, tracing, responseCount)...),
-		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", 50)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)...), // half of the full chain
+		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->loadBlock(0)", 50)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)..., // half of the full chain
 	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
@@ -1057,9 +1071,11 @@ func TestNetworkDisconnect(t *testing.T) {
 	tracing := collectTracing(t)
 
 	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
 	require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
-	require.Contains(t, traceStrings, "response(0)->executeTask(1)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(1)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(1)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
@@ -1192,7 +1208,8 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	tracing := collectTracing(t)
 
 	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)")
 	// may or may not contain a second response trace: "response(1)->executeTask(0)""
 	if wasCancelled {
 		require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
@@ -1283,7 +1300,8 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 	tracing := collectTracing(t)
 	// two complete request traces expected
 	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
 	// may or may not contain a second response "response(1)->executeTask(0)"
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
@@ -1343,14 +1361,15 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append([]string{
-		"response(0)->executeTask(0)",
+	require.ElementsMatch(t, append(append(append(append([]string{
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
 		responseMessageTraces(t, tracing, responseCount)...),
-		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)..., // half of the full chain
 	), tracing.TracesToStrings())
 }
 
@@ -1481,7 +1500,8 @@ func TestUnixFSFetch(t *testing.T) {
 
 	tracing := collectTracing(t)
 	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
@@ -1578,15 +1598,16 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append(
+	require.ElementsMatch(t, append(append(append(append(
 		[]string{
-			"response(0)->executeTask(0)",
 			"request(0)->newRequest(0)",
 			"request(0)->executeTask(0)",
 			"request(0)->terminateRequest(0)",
 		},
 		responseMessageTraces(t, tracing, responseCount)...),
-		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 100)...,
+		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)..., // half of the full chain
 	), tracing.TracesToStrings())
 }
 
