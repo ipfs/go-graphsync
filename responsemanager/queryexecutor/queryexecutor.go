@@ -249,11 +249,10 @@ func (qe *QueryExecutor) nextBlock(ctx context.Context, taskData ResponseTask) (
 }
 
 func (qe *QueryExecutor) sendResponse(ctx context.Context, p peer.ID, taskData ResponseTask, link ipld.Link, data []byte) error {
-	ctx, span := otel.Tracer("graphsync").Start(ctx, "sendBlock")
-	defer span.End()
-
 	// Execute a transaction for this block, including any other queued operations
 	return taskData.ResponseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
+		ctx, span := otel.Tracer("graphsync").Start(ctx, "sendBlock", trace.WithLinks(trace.LinkFromContext(rb.Context())))
+		defer span.End()
 		// Ensure that any updates that have occurred till now are integrated into the response
 		err := qe.checkForUpdates(p, taskData, rb)
 		// On any error other than a pause, we bail, if it's a pause then we continue processing _this_ block

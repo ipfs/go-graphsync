@@ -14,6 +14,7 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/messagequeue"
@@ -44,6 +45,9 @@ type ResponseBuilder interface {
 
 	// PauseRequest temporarily halts responding to the request
 	PauseRequest()
+
+	// Context returns the execution context for this transaction
+	Context() context.Context
 }
 
 // PeerMessageHandler is an interface that can queue a response for a given peer to go out over the network
@@ -138,6 +142,7 @@ func (rs *responseStream) Transaction(transaction Transaction) error {
 	ctx, span := otel.Tracer("graphsync").Start(rs.ctx, "transaction")
 	defer span.End()
 	rb := &responseBuilder{
+		ctx:         ctx,
 		requestID:   rs.requestID,
 		linkTracker: rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker),
 	}
@@ -158,7 +163,7 @@ func (rs *responseStream) execute(ctx context.Context, operations []responseOper
 		size += op.size()
 	}
 	rs.messageSenders.AllocateAndBuildMessage(rs.p, size, func(builder *messagequeue.Builder) {
-		_, span = otel.Tracer("graphsync").Start(ctx, "message-build")
+		_, span = otel.Tracer("graphsync").Start(ctx, "message-build", trace.WithLinks(trace.LinkFromContext(builder.Context())))
 		defer span.End()
 
 		if rs.isClosed() {

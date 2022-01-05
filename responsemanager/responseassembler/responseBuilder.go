@@ -1,6 +1,8 @@
 package responseassembler
 
 import (
+	"context"
+
 	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
@@ -18,6 +20,7 @@ type responseOperation interface {
 }
 
 type responseBuilder struct {
+	ctx         context.Context
 	requestID   graphsync.RequestID
 	operations  []responseOperation
 	linkTracker *peerLinkTracker
@@ -45,6 +48,10 @@ func (rb *responseBuilder) FinishWithError(status graphsync.ResponseStatusCode) 
 
 func (rb *responseBuilder) PauseRequest() {
 	rb.operations = append(rb.operations, statusOperation{rb.requestID, graphsync.RequestPaused})
+}
+
+func (rb *responseBuilder) Context() context.Context {
+	return rb.ctx
 }
 
 func (rb *responseBuilder) setupBlockOperation(

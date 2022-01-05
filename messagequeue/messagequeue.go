@@ -11,6 +11,10 @@ import (
 	"github.com/ipfs/go-graphsync"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
@@ -112,7 +116,10 @@ func (mq *MessageQueue) buildMessage(size uint64, buildMessageFn func(*Builder))
 	if shouldBeginNewResponse(mq.builders, size) {
 		topic := mq.nextBuilderTopic
 		mq.nextBuilderTopic++
-		mq.builders = append(mq.builders, NewBuilder(topic))
+		ctx, _ := otel.Tracer("graphsync").Start(mq.ctx, "message", trace.WithAttributes(
+			attribute.Int64("topic", int64(topic)),
+		))
+		mq.builders = append(mq.builders, NewBuilder(ctx, topic))
 	}
 	builder := mq.builders[len(mq.builders)-1]
 	buildMessageFn(builder)
@@ -156,6 +163,9 @@ func (mq *MessageQueue) runQueue() {
 				for {
 					_, metadata, err := mq.extractOutgoingMessage()
 					if err == nil {
+						span := trace.SpanFromContext(metadata.ctx)
+						span.SetStatus(codes.Error, "message queue shutdown")
+						span.End()
 						mq.publishError(metadata, fmt.Errorf("message queue shutdown"))
 						mq.eventPublisher.Close(metadata.topic)
 					} else {
@@ -211,12 +221,20 @@ func (mq *MessageQueue) extractOutgoingMessage() (gsmsg.GraphSyncMessage, intern
 
 func (mq *MessageQueue) sendMessage() {
 	message, metadata, err := mq.extractOutgoingMessage()
+
 	if err != nil {
 		if err != errEmptyMessage {
 			log.Errorf("Unable to assemble GraphSync message: %s", err.Error())
 		}
 		return
 	}
+	span := trace.SpanFromContext(metadata.ctx)
+	defer span.End()
+	_, sendSpan := otel.Tracer("graphsync").Start(metadata.ctx, "sendMessage", trace.WithAttributes(
+		attribute.Int64("topic", int64(metadata.topic)),
+		attribute.Int64("size", int64(metadata.msgSize)),
+	))
+	defer sendSpan.End()
 	mq.publishQueued(metadata)
 	defer mq.eventPublisher.Close(metadata.topic)
 
@@ -337,6 +355,7 @@ func openSender(ctx context.Context, network MessageNetwork, p peer.ID, sendTime
 }
 
 type internalMetadata struct {
+	ctx             context.Context
 	public          Metadata
 	topic           Topic
 	msgSize         uint64

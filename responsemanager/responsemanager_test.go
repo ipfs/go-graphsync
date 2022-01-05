@@ -1008,6 +1008,10 @@ func (frb *fakeResponseBuilder) PauseRequest() {
 	frb.fra.pauseRequest(frb.requestID)
 }
 
+func (frb *fakeResponseBuilder) Context() context.Context {
+	return context.TODO()
+}
+
 type testData struct {
 	ctx                       context.Context
 	t                         *testing.T
