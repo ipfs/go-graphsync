@@ -41,11 +41,11 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	var bd1, bd2 graphsync.BlockData
 
 	sub1 := testutil.NewTestSubscriber(10)
-	stream1 := responseAssembler.NewStream(p, requestID1, sub1)
+	stream1 := responseAssembler.NewStream(ctx, p, requestID1, sub1)
 	sub2 := testutil.NewTestSubscriber(10)
-	stream2 := responseAssembler.NewStream(p, requestID2, sub2)
+	stream2 := responseAssembler.NewStream(ctx, p, requestID2, sub2)
 	sub3 := testutil.NewTestSubscriber(10)
-	stream3 := responseAssembler.NewStream(p, requestID3, sub3)
+	stream3 := responseAssembler.NewStream(ctx, p, requestID3, sub3)
 
 	// send block 0 for request 1
 	require.NoError(t, stream1.Transaction(func(b ResponseBuilder) error {
@@ -138,7 +138,7 @@ func TestResponseAssemblerCloseStream(t *testing.T) {
 	responseAssembler := New(ctx, fph)
 
 	sub1 := testutil.NewTestSubscriber(10)
-	stream1 := responseAssembler.NewStream(p, requestID1, sub1)
+	stream1 := responseAssembler.NewStream(ctx, p, requestID1, sub1)
 	require.NoError(t, stream1.Transaction(func(b ResponseBuilder) error {
 		b.SendResponse(links[0], blks[0].RawData())
 		return nil
@@ -174,7 +174,7 @@ func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 	responseAssembler := New(ctx, fph)
 
 	sub1 := testutil.NewTestSubscriber(10)
-	stream1 := responseAssembler.NewStream(p, requestID1, sub1)
+	stream1 := responseAssembler.NewStream(ctx, p, requestID1, sub1)
 	require.NoError(t, stream1.Transaction(func(b ResponseBuilder) error {
 		b.SendResponse(links[0], blks[0].RawData())
 		return nil
@@ -220,7 +220,7 @@ func TestResponseAssemblerSendsResponsesInTransaction(t *testing.T) {
 	fph := newFakePeerHandler(ctx, t)
 	responseAssembler := New(ctx, fph)
 	sub1 := testutil.NewTestSubscriber(10)
-	stream1 := responseAssembler.NewStream(p, requestID1, sub1)
+	stream1 := responseAssembler.NewStream(ctx, p, requestID1, sub1)
 	var bd1, bd2, bd3 graphsync.BlockData
 	err := stream1.Transaction(func(b ResponseBuilder) error {
 		bd1 = b.SendResponse(links[0], blks[0].RawData())
@@ -260,9 +260,9 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 	fph := newFakePeerHandler(ctx, t)
 	responseAssembler := New(ctx, fph)
 	sub1 := testutil.NewTestSubscriber(10)
-	stream1 := responseAssembler.NewStream(p, requestID1, sub1)
+	stream1 := responseAssembler.NewStream(ctx, p, requestID1, sub1)
 	sub2 := testutil.NewTestSubscriber(10)
-	stream2 := responseAssembler.NewStream(p, requestID2, sub2)
+	stream2 := responseAssembler.NewStream(ctx, p, requestID2, sub2)
 
 	stream1.IgnoreBlocks(links)
 
@@ -336,9 +336,9 @@ func TestResponseAssemblerSkipFirstBlocks(t *testing.T) {
 	responseAssembler := New(ctx, fph)
 
 	sub1 := testutil.NewTestSubscriber(10)
-	stream1 := responseAssembler.NewStream(p, requestID1, sub1)
+	stream1 := responseAssembler.NewStream(ctx, p, requestID1, sub1)
 	sub2 := testutil.NewTestSubscriber(10)
-	stream2 := responseAssembler.NewStream(p, requestID2, sub2)
+	stream2 := responseAssembler.NewStream(ctx, p, requestID2, sub2)
 
 	stream1.SkipFirstBlocks(3)
 
@@ -427,11 +427,11 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	fph := newFakePeerHandler(ctx, t)
 	responseAssembler := New(ctx, fph)
 	sub1 := testutil.NewTestSubscriber(10)
-	stream1 := responseAssembler.NewStream(p, requestID1, sub1)
+	stream1 := responseAssembler.NewStream(ctx, p, requestID1, sub1)
 	sub2 := testutil.NewTestSubscriber(10)
-	stream2 := responseAssembler.NewStream(p, requestID2, sub2)
+	stream2 := responseAssembler.NewStream(ctx, p, requestID2, sub2)
 	sub3 := testutil.NewTestSubscriber(10)
-	stream3 := responseAssembler.NewStream(p, requestID3, sub3)
+	stream3 := responseAssembler.NewStream(ctx, p, requestID3, sub3)
 
 	stream1.DedupKey("applesauce")
 	stream3.DedupKey("applesauce")

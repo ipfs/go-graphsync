@@ -13,6 +13,7 @@ import (
 
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/messagequeue"
@@ -68,8 +69,9 @@ func New(ctx context.Context, peerHandler PeerMessageHandler) *ResponseAssembler
 	}
 }
 
-func (ra *ResponseAssembler) NewStream(p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) ResponseStream {
+func (ra *ResponseAssembler) NewStream(ctx context.Context, p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) ResponseStream {
 	return &responseStream{
+		ctx:            ctx,
 		requestID:      requestID,
 		p:              p,
 		messageSenders: ra.peerHandler,
@@ -79,6 +81,7 @@ func (ra *ResponseAssembler) NewStream(p peer.ID, requestID graphsync.RequestID,
 }
 
 type responseStream struct {
+	ctx            context.Context
 	requestID      graphsync.RequestID
 	p              peer.ID
 	closed         bool
@@ -132,16 +135,21 @@ func (rs *responseStream) ClearRequest() {
 }
 
 func (rs *responseStream) Transaction(transaction Transaction) error {
+	ctx, span := otel.Tracer("graphsync").Start(rs.ctx, "transaction")
+	defer span.End()
 	rb := &responseBuilder{
 		requestID:   rs.requestID,
 		linkTracker: rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker),
 	}
 	err := transaction(rb)
-	rs.execute(rb.operations)
+	rs.execute(ctx, rb.operations)
 	return err
 }
 
-func (rs *responseStream) execute(operations []responseOperation) {
+func (rs *responseStream) execute(ctx context.Context, operations []responseOperation) {
+	ctx, span := otel.Tracer("graphsync").Start(ctx, "execute")
+	defer span.End()
+
 	if rs.isClosed() {
 		return
 	}
@@ -150,6 +158,9 @@ func (rs *responseStream) execute(operations []responseOperation) {
 		size += op.size()
 	}
 	rs.messageSenders.AllocateAndBuildMessage(rs.p, size, func(builder *messagequeue.Builder) {
+		_, span = otel.Tracer("graphsync").Start(ctx, "message-build")
+		defer span.End()
+
 		if rs.isClosed() {
 			return
 		}

@@ -858,7 +858,7 @@ type fakeResponseAssembler struct {
 	missingBlock           bool
 }
 
-func (fra *fakeResponseAssembler) NewStream(p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) responseassembler.ResponseStream {
+func (fra *fakeResponseAssembler) NewStream(ctx context.Context, p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) responseassembler.ResponseStream {
 	fra.notifeePublisher.AddSubscriber(subscriber)
 	return &fakeResponseStream{fra, requestID}
 }

@@ -85,7 +85,7 @@ type NetworkErrorListeners interface {
 
 // ResponseAssembler is an interface that returns sender interfaces for peer responses.
 type ResponseAssembler interface {
-	NewStream(p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) responseassembler.ResponseStream
+	NewStream(ctx context.Context, p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) responseassembler.ResponseStream
 }
 
 type responseManagerMessage interface {
