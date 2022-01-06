@@ -83,7 +83,7 @@ func New(ctx context.Context,
 // and uses the ResponseAssembler to build and send a response, while also triggering any of
 // the QueryExecutor's BlockHooks. Traversal continues until complete, or a signal or hook
 // suggests we should stop or pause.
-func (qe *QueryExecutor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.Task) bool {
+func (qe *QueryExecutor) ExecuteTask(_ context.Context, pid peer.ID, task *peertask.Task) bool {
 	// StartTask lets us block until this task is at the top of the execution stack
 	responseTaskChan := make(chan ResponseTask)
 	var rt ResponseTask
