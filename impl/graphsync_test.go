@@ -97,6 +97,7 @@ func TestMakeRequestToNetwork(t *testing.T) {
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
+		"message(0)->sendMessage(0)",
 	}, tracing.TracesToStrings())
 
 	// make sure the attributes are what we expect
@@ -201,11 +202,13 @@ func TestRejectRequestsByDefault(t *testing.T) {
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
-		"response(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 		"responseMessage(0)->loaderProcess(0)->cacheProcess(0)",
+		"response(0)->transaction(0)->execute(0)->message-build(0)",
+		"message(0)->sendMessage(0)",
+		"message(1)->sendMessage(0)",
 	}, tracing.TracesToStrings())
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
@@ -552,15 +555,17 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append(append(append([]string{
+	require.ElementsMatch(t, append(append(append(append(append(append([]string{
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
 		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("message({})->sendMessage(0)", responseCount+1)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)...), // half of the full chain
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
-		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)...,
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+2)...,
 	), tracing.TracesToStrings())
 }
 
@@ -626,15 +631,17 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append(append(append([]string{
+	require.ElementsMatch(t, append(append(append(append(append(append([]string{
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
 		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("message({})->sendMessage(0)", responseCount+1)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
-		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)..., // half of the full chain
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+2)...,
 	), tracing.TracesToStrings())
 }
 
@@ -881,18 +888,20 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append(append(append(append(append([]string{
+	require.ElementsMatch(t, append(append(append(append(append(append(append(append([]string{
 		"response(0)->processUpdate(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
 		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("message({})->sendMessage(0)", responseCount+2)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", 50)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)...), // half of the full chain
 		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->loadBlock(0)", 50)...),
-		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)..., // half of the full chain
+		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)...), // half of the full chain
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+3)...,
 	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
@@ -974,18 +983,20 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append(append(append(append(append([]string{
+	require.ElementsMatch(t, append(append(append(append(append(append(append(append([]string{
 		"response(0)->processUpdate(0)",
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
 		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("message({})->sendMessage(0)", responseCount+2)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", 50)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)...), // half of the full chain
 		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->loadBlock(0)", 50)...),
-		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)..., // half of the full chain
+		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)...), // half of the full chain
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+3)...,
 	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
@@ -1129,6 +1140,7 @@ func TestConnectFail(t *testing.T) {
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
+		"message(0)->sendMessage(0)",
 	}, tracing.TracesToStrings())
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
@@ -1361,15 +1373,17 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append(append(append([]string{
+	require.ElementsMatch(t, append(append(append(append(append(append([]string{
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
 		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("message({})->sendMessage(0)", responseCount+1)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
-		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)..., // half of the full chain
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+2)...,
 	), tracing.TracesToStrings())
 }
 
@@ -1598,16 +1612,18 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 	assertComplete(ctx, t)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, append(append(append(append(
+	require.ElementsMatch(t, append(append(append(append(append(append(
 		[]string{
 			"request(0)->newRequest(0)",
 			"request(0)->executeTask(0)",
 			"request(0)->terminateRequest(0)",
 		},
 		responseMessageTraces(t, tracing, responseCount)...),
+		testutil.RepeatTraceStrings("message({})->sendMessage(0)", responseCount+1)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
-		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)..., // half of the full chain
+		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)...),
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+2)...,
 	), tracing.TracesToStrings())
 }
 
