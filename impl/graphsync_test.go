@@ -1136,12 +1136,11 @@ func TestConnectFail(t *testing.T) {
 	drain(requestor)
 
 	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-		"message(0)->sendMessage(0)",
-	}, tracing.TracesToStrings())
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+	require.Contains(t, traceStrings, "message(0)->sendMessage(0)")
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
 }
