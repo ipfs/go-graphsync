@@ -206,7 +206,7 @@ func TestRejectRequestsByDefault(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 		"responseMessage(0)->loaderProcess(0)->cacheProcess(0)",
-		"response(0)->transaction(0)->execute(0)->message-build(0)",
+		"response(0)->transaction(0)->execute(0)->buildMessage(0)",
 		"message(0)->sendMessage(0)",
 		"message(1)->sendMessage(0)",
 	}, tracing.TracesToStrings())
@@ -338,11 +338,9 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 
 	var receivedResponseData []byte
 	var receivedRequestData []byte
-	var responseCount int
 
 	requestor.RegisterIncomingResponseHook(
 		func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
-			responseCount = responseCount + 1
 			data, has := responseData.Extension(td.extensionName)
 			if has {
 				receivedResponseData = data
@@ -506,10 +504,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
 
-	var responseCount int
-	requestor.RegisterIncomingResponseHook(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
-		responseCount = responseCount + 1
-	})
+	assertAllResponsesReceived := assertAllResponsesReceivedFunction(requestor)
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
@@ -553,6 +548,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 	drain(requestor)
 	drain(responder)
 	assertComplete(ctx, t)
+	responseCount := assertAllResponsesReceived(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, append(append(append(append(append(append([]string{
@@ -565,7 +561,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)...), // half of the full chain
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)...),
-		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+2)...,
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->buildMessage(0)", blockChainLength+2)...,
 	), tracing.TracesToStrings())
 }
 
@@ -580,10 +576,7 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
 
-	var responseCount int
-	requestor.RegisterIncomingResponseHook(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
-		responseCount = responseCount + 1
-	})
+	assertAllResponsesReceived := assertAllResponsesReceivedFunction(requestor)
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
@@ -629,6 +622,7 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 	drain(requestor)
 	drain(responder)
 	assertComplete(ctx, t)
+	responseCount := assertAllResponsesReceived(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, append(append(append(append(append(append([]string{
@@ -641,7 +635,7 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)...),
-		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+2)...,
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->buildMessage(0)", blockChainLength+2)...,
 	), tracing.TracesToStrings())
 }
 
@@ -833,10 +827,9 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 	var receivedUpdateData []byte
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
-	var responseCount int
+	assertAllResponsesReceived := assertAllResponsesReceivedFunction(requestor)
 
 	requestor.RegisterIncomingResponseHook(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
-		responseCount = responseCount + 1
 		if response.Status() == graphsync.RequestPaused {
 			var has bool
 			receivedReponseData, has = response.Extension(td.extensionName)
@@ -886,6 +879,7 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 	drain(requestor)
 	drain(responder)
 	assertComplete(ctx, t)
+	responseCount := assertAllResponsesReceived(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, append(append(append(append(append(append(append(append([]string{
@@ -901,7 +895,7 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)...), // half of the full chain
 		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->loadBlock(0)", 50)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)...), // half of the full chain
-		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+3)...,
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->buildMessage(0)", blockChainLength+3)...,
 	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
@@ -924,10 +918,7 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
 
-	var responseCount int
-	requestor.RegisterIncomingResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
-		responseCount = responseCount + 1
-	})
+	assertAllResponsesReceived := assertAllResponsesReceivedFunction(requestor)
 
 	// setup receiving peer to just record message coming in
 	blockChainLength := 100
@@ -981,6 +972,7 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 	drain(requestor)
 	drain(responder)
 	assertComplete(ctx, t)
+	responseCount := assertAllResponsesReceived(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, append(append(append(append(append(append(append(append([]string{
@@ -996,7 +988,7 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)...), // half of the full chain
 		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->loadBlock(0)", 50)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(1)->processBlock({})->sendBlock(0)->processBlockHooks(0)", 50)...), // half of the full chain
-		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+3)...,
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->buildMessage(0)", blockChainLength+3)...,
 	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)->processUpdate(0)")
@@ -1347,12 +1339,7 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
-
-	var responseCount int
-	requestor.RegisterIncomingResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
-		responseCount = responseCount + 1
-	})
-
+	assertAllResponsesReceived := assertAllResponsesReceivedFunction(requestor)
 	// setup receiving peer to just record message coming in
 	blockChainLength := 40
 	blockChainPersistence := td.persistence1
@@ -1370,6 +1357,7 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 	drain(requestor)
 	drain(responder)
 	assertComplete(ctx, t)
+	responseCount := assertAllResponsesReceived(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, append(append(append(append(append(append([]string{
@@ -1382,7 +1370,7 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)...),
-		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+2)...,
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->buildMessage(0)", blockChainLength+2)...,
 	), tracing.TracesToStrings())
 }
 
@@ -1558,16 +1546,15 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 
 	var receivedResponseData []byte
 	var receivedRequestData []byte
-	var responseCount int
 
 	requestor.RegisterIncomingResponseHook(
 		func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
-			responseCount = responseCount + 1
 			data, has := responseData.Extension(td.extensionName)
 			if has {
 				receivedResponseData = data
 			}
 		})
+	assertAllResponsesReceived := assertAllResponsesReceivedFunction(requestor)
 
 	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		var has bool
@@ -1609,6 +1596,7 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 	drain(requestor)
 	drain(responder)
 	assertComplete(ctx, t)
+	responseCount := assertAllResponsesReceived(ctx, t)
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, append(append(append(append(append(append(
@@ -1622,7 +1610,7 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", blockChainLength)...),
-		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->message-build(0)", blockChainLength+2)...,
+		testutil.RepeatTraceStrings("response(0)->transaction({})->execute(0)->buildMessage(0)", blockChainLength+2)...,
 	), tracing.TracesToStrings())
 }
 
@@ -1647,6 +1635,24 @@ type gsTestData struct {
 func drain(gs graphsync.GraphExchange) {
 	gs.(*GraphSync).requestQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
 	gs.(*GraphSync).responseQueue.(*taskqueue.WorkerTaskQueue).WaitForNoActiveTasks()
+}
+
+func assertAllResponsesReceivedFunction(gs graphsync.GraphExchange) func(context.Context, *testing.T) int {
+	var responseCount int
+	finalResponseStatusChanRequestor := make(chan graphsync.ResponseStatusCode, 1)
+	gs.RegisterIncomingResponseHook(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+		if response.Status().IsTerminal() {
+			select {
+			case finalResponseStatusChanRequestor <- response.Status():
+			default:
+			}
+		}
+		responseCount = responseCount + 1
+	})
+	return func(ctx context.Context, t *testing.T) int {
+		testutil.AssertDoesReceive(ctx, t, finalResponseStatusChanRequestor, "final response never received")
+		return responseCount
+	}
 }
 
 func assertCompletionFunction(gs graphsync.GraphExchange, completedRequestCount int) func(context.Context, *testing.T) {

@@ -163,7 +163,7 @@ func (rs *responseStream) execute(ctx context.Context, operations []responseOper
 		size += op.size()
 	}
 	rs.messageSenders.AllocateAndBuildMessage(rs.p, size, func(builder *messagequeue.Builder) {
-		_, span = otel.Tracer("graphsync").Start(ctx, "message-build", trace.WithLinks(trace.LinkFromContext(builder.Context())))
+		_, span = otel.Tracer("graphsync").Start(ctx, "buildMessage", trace.WithLinks(trace.LinkFromContext(builder.Context())))
 		defer span.End()
 
 		if rs.isClosed() {

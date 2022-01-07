@@ -196,11 +196,11 @@ func (qe *QueryExecutor) runTraversal(ctx context.Context, p peer.ID, taskData R
 			}
 			return err
 		}
-		lnk, _ := taskData.Traverser.CurrentRequest()
+		lnk, lnkCtx := taskData.Traverser.CurrentRequest()
 		ctx, span := otel.Tracer("graphsync").Start(ctx, "processBlock", trace.WithAttributes(
 			attribute.String("cid", lnk.String()),
 		))
-		lnk, data, err := qe.nextBlock(ctx, taskData)
+		data, err := qe.loadBlock(ctx, taskData, lnk, lnkCtx)
 		if err != nil {
 			span.End()
 			return err
@@ -214,18 +214,17 @@ func (qe *QueryExecutor) runTraversal(ctx context.Context, p peer.ID, taskData R
 	}
 }
 
-func (qe *QueryExecutor) nextBlock(ctx context.Context, taskData ResponseTask) (ipld.Link, []byte, error) {
+func (qe *QueryExecutor) loadBlock(ctx context.Context, taskData ResponseTask, lnk ipld.Link, lnkCtx ipld.LinkContext) ([]byte, error) {
 	_, span := otel.Tracer("graphsync").Start(ctx, "loadBlock")
 	defer span.End()
 
-	lnk, lnkCtx := taskData.Traverser.CurrentRequest()
 	log.Debugf("will load link=%s", lnk)
 	result, err := taskData.Loader(lnkCtx, lnk)
 
 	if err != nil {
 		log.Errorf("failed to load link=%s, nBlocksRead=%d, err=%s", lnk, taskData.Traverser.NBlocksTraversed(), err)
 		taskData.Traverser.Error(traversal.SkipMe{})
-		return lnk, nil, nil
+		return nil, nil
 	}
 
 	blockBuffer, ok := result.(*bytes.Buffer)
@@ -235,17 +234,17 @@ func (qe *QueryExecutor) nextBlock(ctx context.Context, taskData ResponseTask) (
 		if err != nil {
 			log.Errorf("failed to write to buffer, link=%s, nBlocksRead=%d, err=%s", lnk, taskData.Traverser.NBlocksTraversed(), err)
 			taskData.Traverser.Error(err)
-			return lnk, nil, err
+			return nil, err
 		}
 	}
 	data := blockBuffer.Bytes()
 	err = taskData.Traverser.Advance(blockBuffer)
 	if err != nil {
 		log.Errorf("failed to advance traversal, link=%s, nBlocksRead=%d, err=%s", lnk, taskData.Traverser.NBlocksTraversed(), err)
-		return lnk, data, err
+		return data, err
 	}
 	log.Debugf("successfully loaded link=%s, nBlocksRead=%d", lnk, taskData.Traverser.NBlocksTraversed())
-	return lnk, data, nil
+	return data, nil
 }
 
 func (qe *QueryExecutor) sendResponse(ctx context.Context, p peer.ID, taskData ResponseTask, link ipld.Link, data []byte) error {

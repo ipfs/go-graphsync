@@ -125,12 +125,12 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 
 	tracing := collectTracing(t)
 	require.ElementsMatch(t, []string{
-		"transaction(0)->execute(0)->message-build(0)",
-		"transaction(1)->execute(0)->message-build(0)",
-		"transaction(2)->execute(0)->message-build(0)",
-		"transaction(3)->execute(0)->message-build(0)",
-		"transaction(4)->execute(0)->message-build(0)",
-		"transaction(5)->execute(0)->message-build(0)",
+		"transaction(0)->execute(0)->buildMessage(0)",
+		"transaction(1)->execute(0)->buildMessage(0)",
+		"transaction(2)->execute(0)->buildMessage(0)",
+		"transaction(3)->execute(0)->buildMessage(0)",
+		"transaction(4)->execute(0)->buildMessage(0)",
+		"transaction(5)->execute(0)->buildMessage(0)",
 	}, tracing.TracesToStrings())
 }
 
