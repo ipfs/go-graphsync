@@ -262,13 +262,13 @@ func (rm *RequestManager) cancelOnError(requestID graphsync.RequestID, ipr *inPr
 	}
 }
 
-func (rm *RequestManager) processResponseMessage(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block) {
-	log.Debugf("beging rocessing message for peer %s", p)
+func (rm *RequestManager) processResponses(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block) {
+	log.Debugf("beginning processing responses for peer %s", p)
 	requestIds := make([]int, 0, len(responses))
 	for _, r := range responses {
 		requestIds = append(requestIds, int(r.RequestID()))
 	}
-	ctx, span := otel.Tracer("graphsync").Start(rm.ctx, "responseMessage", trace.WithAttributes(
+	ctx, span := otel.Tracer("graphsync").Start(rm.ctx, "processResponses", trace.WithAttributes(
 		attribute.String("peerID", p.Pretty()),
 		attribute.IntSlice("requestIDs", requestIds),
 	))
@@ -279,7 +279,7 @@ func (rm *RequestManager) processResponseMessage(p peer.ID, responses []gsmsg.Gr
 	responseMetadata := metadataForResponses(filteredResponses)
 	rm.asyncLoader.ProcessResponse(ctx, responseMetadata, blks)
 	rm.processTerminations(filteredResponses)
-	log.Debugf("end processing message for peer %s", p)
+	log.Debugf("end processing responses for peer %s", p)
 }
 
 func (rm *RequestManager) filterResponsesForPeer(responses []gsmsg.GraphSyncResponse, p peer.ID) []gsmsg.GraphSyncResponse {
