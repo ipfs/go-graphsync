@@ -152,16 +152,17 @@ func (e *Executor) traverse(rt RequestTask) error {
 			}
 		}
 		log.Debugf("successfully loaded link=%s, nBlocksRead=%d", lnk, rt.Traverser.NBlocksTraversed())
+
+		// check for interrupts and run block hooks
+		processErr := e.processResult(rt, lnk, result)
+
 		// advance the traversal based on results
 		err = e.advanceTraversal(rt, result)
 		if err != nil {
 			return err
 		}
-
-		// check for interrupts and run block hooks
-		err = e.processResult(rt, lnk, result)
-		if err != nil {
-			return err
+		if processErr != nil {
+			return processErr
 		}
 
 	}
@@ -204,7 +205,7 @@ func (e *Executor) advanceTraversal(rt RequestTask, result types.AsyncLoadResult
 func (e *Executor) processResult(rt RequestTask, link ipld.Link, result types.AsyncLoadResult) error {
 	var err error
 	if result.Err == nil {
-		err = e.onNewBlock(rt, &blockData{link, result.Local, uint64(len(result.Data)), int64(rt.Traverser.NBlocksTraversed())})
+		err = e.onNewBlock(rt, &blockData{link, result.Local, uint64(len(result.Data)), int64(rt.Traverser.NBlocksTraversed()+1)})
 	}
 	select {
 	case <-rt.PauseMessages:
