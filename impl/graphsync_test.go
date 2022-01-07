@@ -556,7 +556,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
-    processResponsesTraces(t, tracing, responseCount)...),
+		processResponsesTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("message({})->sendMessage(0)", responseCount+1)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)...), // half of the full chain
 		testutil.RepeatTraceStrings("response(0)->executeTask(0)->processBlock({})->loadBlock(0)", blockChainLength)...),
