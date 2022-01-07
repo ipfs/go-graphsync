@@ -1,6 +1,7 @@
 package messagequeue
 
 import (
+	"context"
 	"io"
 
 	"github.com/ipfs/go-graphsync"
@@ -11,6 +12,7 @@ import (
 // Builder wraps a message builder with additional functions related to metadata
 // and notifications in the message queue
 type Builder struct {
+	ctx context.Context
 	*gsmsg.Builder
 	topic           Topic
 	responseStreams map[graphsync.RequestID]io.Closer
@@ -19,14 +21,19 @@ type Builder struct {
 }
 
 // NewBuilder sets up a new builder for the given topic
-func NewBuilder(topic Topic) *Builder {
+func NewBuilder(ctx context.Context, topic Topic) *Builder {
 	return &Builder{
+		ctx:             ctx,
 		Builder:         gsmsg.NewBuilder(),
 		topic:           topic,
 		responseStreams: make(map[graphsync.RequestID]io.Closer),
 		subscribers:     make(map[graphsync.RequestID]notifications.Subscriber),
 		blockData:       make(map[graphsync.RequestID][]graphsync.BlockData),
 	}
+}
+
+func (b *Builder) Context() context.Context {
+	return b.ctx
 }
 
 // SetResponseStream sets the given response stream to close should the message fail to send
@@ -82,6 +89,7 @@ func (b *Builder) build(publisher notifications.Publisher) (gsmsg.GraphSyncMessa
 			BlockData:     b.blockData,
 			ResponseCodes: message.ResponseCodes(),
 		},
+		ctx:             b.ctx,
 		topic:           b.topic,
 		msgSize:         b.BlockSize(),
 		responseStreams: b.responseStreams,

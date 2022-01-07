@@ -87,9 +87,10 @@ func TestIncomingQuery(t *testing.T) {
 	td.connManager.RefuteProtected(t, td.p)
 
 	tracing := td.collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"TestIncomingQuery(0)->response(0)->executeTask(0)",
-	}, tracing.TracesToStrings())
+	require.ElementsMatch(t, append(
+		testutil.RepeatTraceStrings("TestIncomingQuery(0)->response(0)->executeTask(0)->processBlock({})->loadBlock(0)", td.blockChainLength),
+		testutil.RepeatTraceStrings("TestIncomingQuery(0)->response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", td.blockChainLength)..., // half of the full chain
+	), tracing.TracesToStrings())
 }
 
 func TestCancellationQueryInProgress(t *testing.T) {
@@ -857,7 +858,7 @@ type fakeResponseAssembler struct {
 	missingBlock           bool
 }
 
-func (fra *fakeResponseAssembler) NewStream(p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) responseassembler.ResponseStream {
+func (fra *fakeResponseAssembler) NewStream(ctx context.Context, p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) responseassembler.ResponseStream {
 	fra.notifeePublisher.AddSubscriber(subscriber)
 	return &fakeResponseStream{fra, requestID}
 }
@@ -1005,6 +1006,10 @@ func (frb *fakeResponseBuilder) FinishWithError(status graphsync.ResponseStatusC
 
 func (frb *fakeResponseBuilder) PauseRequest() {
 	frb.fra.pauseRequest(frb.requestID)
+}
+
+func (frb *fakeResponseBuilder) Context() context.Context {
+	return context.TODO()
 }
 
 type testData struct {

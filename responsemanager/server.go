@@ -213,7 +213,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 				},
 				state:          graphsync.Queued,
 				startTime:      time.Now(),
-				responseStream: rm.responseAssembler.NewStream(key.p, key.requestID, sub),
+				responseStream: rm.responseAssembler.NewStream(ctx, key.p, key.requestID, sub),
 			}
 		// TODO: Use a better work estimation metric.
 

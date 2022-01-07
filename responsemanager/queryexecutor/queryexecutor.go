@@ -11,6 +11,7 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
@@ -82,7 +83,7 @@ func New(ctx context.Context,
 // and uses the ResponseAssembler to build and send a response, while also triggering any of
 // the QueryExecutor's BlockHooks. Traversal continues until complete, or a signal or hook
 // suggests we should stop or pause.
-func (qe *QueryExecutor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.Task) bool {
+func (qe *QueryExecutor) ExecuteTask(_ context.Context, pid peer.ID, task *peertask.Task) bool {
 	// StartTask lets us block until this task is at the top of the execution stack
 	responseTaskChan := make(chan ResponseTask)
 	var rt ResponseTask
@@ -97,11 +98,11 @@ func (qe *QueryExecutor) ExecuteTask(ctx context.Context, pid peer.ID, task *pee
 		return false
 	}
 
-	_, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(qe.ctx, rt.Span), "executeTask")
+	ctx, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(qe.ctx, rt.Span), "executeTask")
 	defer span.End()
 
 	log.Debugw("beginning response execution", "id", rt.Request.ID(), "peer", pid.String(), "root_cid", rt.Request.Root().String())
-	err := qe.executeQuery(pid, rt)
+	err := qe.executeQuery(ctx, pid, rt)
 	if err != nil {
 		span.RecordError(err)
 		if _, isPaused := err.(hooks.ErrPaused); !isPaused {
@@ -114,10 +115,10 @@ func (qe *QueryExecutor) ExecuteTask(ctx context.Context, pid peer.ID, task *pee
 }
 
 func (qe *QueryExecutor) executeQuery(
-	p peer.ID, rt ResponseTask) error {
+	ctx context.Context, p peer.ID, rt ResponseTask) error {
 
 	// Execute the traversal operation, continue until we have reason to stop (error, pause, complete)
-	err := qe.runTraversal(p, rt)
+	err := qe.runTraversal(ctx, p, rt)
 
 	_, isPaused := err.(hooks.ErrPaused)
 	if isPaused {
@@ -180,7 +181,7 @@ func (qe *QueryExecutor) checkForUpdates(
 	}
 }
 
-func (qe *QueryExecutor) runTraversal(p peer.ID, taskData ResponseTask) error {
+func (qe *QueryExecutor) runTraversal(ctx context.Context, p peer.ID, taskData ResponseTask) error {
 	for {
 		traverser := taskData.Traverser
 		isComplete, err := traverser.IsComplete()
@@ -195,26 +196,35 @@ func (qe *QueryExecutor) runTraversal(p peer.ID, taskData ResponseTask) error {
 			}
 			return err
 		}
-		lnk, data, err := qe.nextBlock(taskData)
+		lnk, lnkCtx := taskData.Traverser.CurrentRequest()
+		ctx, span := otel.Tracer("graphsync").Start(ctx, "processBlock", trace.WithAttributes(
+			attribute.String("cid", lnk.String()),
+		))
+		data, err := qe.loadBlock(ctx, taskData, lnk, lnkCtx)
 		if err != nil {
+			span.End()
 			return err
 		}
-		err = qe.sendResponse(p, taskData, lnk, data)
+		err = qe.sendResponse(ctx, p, taskData, lnk, data)
 		if err != nil {
+			span.End()
 			return err
 		}
+		span.End()
 	}
 }
 
-func (qe *QueryExecutor) nextBlock(taskData ResponseTask) (ipld.Link, []byte, error) {
-	lnk, lnkCtx := taskData.Traverser.CurrentRequest()
+func (qe *QueryExecutor) loadBlock(ctx context.Context, taskData ResponseTask, lnk ipld.Link, lnkCtx ipld.LinkContext) ([]byte, error) {
+	_, span := otel.Tracer("graphsync").Start(ctx, "loadBlock")
+	defer span.End()
+
 	log.Debugf("will load link=%s", lnk)
 	result, err := taskData.Loader(lnkCtx, lnk)
 
 	if err != nil {
 		log.Errorf("failed to load link=%s, nBlocksRead=%d, err=%s", lnk, taskData.Traverser.NBlocksTraversed(), err)
 		taskData.Traverser.Error(traversal.SkipMe{})
-		return lnk, nil, nil
+		return nil, nil
 	}
 
 	blockBuffer, ok := result.(*bytes.Buffer)
@@ -224,22 +234,24 @@ func (qe *QueryExecutor) nextBlock(taskData ResponseTask) (ipld.Link, []byte, er
 		if err != nil {
 			log.Errorf("failed to write to buffer, link=%s, nBlocksRead=%d, err=%s", lnk, taskData.Traverser.NBlocksTraversed(), err)
 			taskData.Traverser.Error(err)
-			return lnk, nil, err
+			return nil, err
 		}
 	}
 	data := blockBuffer.Bytes()
 	err = taskData.Traverser.Advance(blockBuffer)
 	if err != nil {
 		log.Errorf("failed to advance traversal, link=%s, nBlocksRead=%d, err=%s", lnk, taskData.Traverser.NBlocksTraversed(), err)
-		return lnk, data, err
+		return data, err
 	}
 	log.Debugf("successfully loaded link=%s, nBlocksRead=%d", lnk, taskData.Traverser.NBlocksTraversed())
-	return lnk, data, nil
+	return data, nil
 }
 
-func (qe *QueryExecutor) sendResponse(p peer.ID, taskData ResponseTask, link ipld.Link, data []byte) error {
+func (qe *QueryExecutor) sendResponse(ctx context.Context, p peer.ID, taskData ResponseTask, link ipld.Link, data []byte) error {
 	// Execute a transaction for this block, including any other queued operations
 	return taskData.ResponseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
+		ctx, span := otel.Tracer("graphsync").Start(ctx, "sendBlock", trace.WithLinks(trace.LinkFromContext(rb.Context())))
+		defer span.End()
 		// Ensure that any updates that have occurred till now are integrated into the response
 		err := qe.checkForUpdates(p, taskData, rb)
 		// On any error other than a pause, we bail, if it's a pause then we continue processing _this_ block
@@ -248,7 +260,9 @@ func (qe *QueryExecutor) sendResponse(p peer.ID, taskData ResponseTask, link ipl
 		}
 		blockData := rb.SendResponse(link, data)
 		if blockData.BlockSize() > 0 {
+			_, span := otel.Tracer("graphsync").Start(ctx, "processBlockHooks")
 			result := qe.blockHooks.ProcessBlockHooks(p, taskData.Request, blockData)
+			span.End()
 			for _, extension := range result.Extensions {
 				rb.SendExtensionData(extension)
 			}

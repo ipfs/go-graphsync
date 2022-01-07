@@ -437,6 +437,10 @@ func (rb fauxResponseBuilder) PauseRequest() {
 	}
 }
 
+func (rb fauxResponseBuilder) Context() context.Context {
+	return context.TODO()
+}
+
 var _ responseassembler.ResponseBuilder = &fauxResponseBuilder{}
 
 type blockData struct {
