@@ -1641,13 +1641,13 @@ func assertAllResponsesReceivedFunction(gs graphsync.GraphExchange) func(context
 	var responseCount int
 	finalResponseStatusChanRequestor := make(chan graphsync.ResponseStatusCode, 1)
 	gs.RegisterIncomingResponseHook(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+		responseCount = responseCount + 1
 		if response.Status().IsTerminal() {
 			select {
 			case finalResponseStatusChanRequestor <- response.Status():
 			default:
 			}
 		}
-		responseCount = responseCount + 1
 	})
 	return func(ctx context.Context, t *testing.T) int {
 		testutil.AssertDoesReceive(ctx, t, finalResponseStatusChanRequestor, "final response never received")
