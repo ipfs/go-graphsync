@@ -1015,7 +1015,7 @@ type fakePeerHandler struct {
 
 func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64,
 	requestBuilder func(b *messagequeue.Builder)) {
-	builder := messagequeue.NewBuilder(messagequeue.Topic(0))
+	builder := messagequeue.NewBuilder(context.TODO(), messagequeue.Topic(0))
 	requestBuilder(builder)
 	message, err := builder.Build()
 	if err != nil {

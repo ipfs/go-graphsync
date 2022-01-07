@@ -183,6 +183,7 @@ func TestProcessingNotification(t *testing.T) {
 
 func TestDedupingMessages(t *testing.T) {
 	ctx := context.Background()
+	ctx, collectTracing := testutil.SetupTracing(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
@@ -251,6 +252,12 @@ func TestDedupingMessages(t *testing.T) {
 			t.Fatal("incorrect request added to message")
 		}
 	}
+
+	tracing := collectTracing(t)
+	require.ElementsMatch(t, []string{
+		"message(0)->sendMessage(0)",
+		"message(1)->sendMessage(0)",
+	}, tracing.TracesToStrings())
 }
 
 func TestSendsVeryLargeBlocksResponses(t *testing.T) {
