@@ -164,9 +164,11 @@ func (mq *MessageQueue) runQueue() {
 					_, metadata, err := mq.extractOutgoingMessage()
 					if err == nil {
 						span := trace.SpanFromContext(metadata.ctx)
-						span.SetStatus(codes.Error, "message queue shutdown")
+						err := fmt.Errorf("message queue shutdown")
+						span.RecordError(err)
+						span.SetStatus(codes.Error, err.Error())
 						span.End()
-						mq.publishError(metadata, fmt.Errorf("message queue shutdown"))
+						mq.publishError(metadata, err)
 						mq.eventPublisher.Close(metadata.topic)
 					} else {
 						break
