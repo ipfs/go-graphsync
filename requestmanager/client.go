@@ -290,7 +290,7 @@ func (rm *RequestManager) CancelRequest(ctx context.Context, requestID graphsync
 // and updates the in progress requests based on those responses.
 func (rm *RequestManager) ProcessResponses(p peer.ID, responses []gsmsg.GraphSyncResponse,
 	blks []blocks.Block) {
-	rm.send(&processResponseMessage{p, responses, blks}, nil)
+	rm.send(&processResponsesMessage{p, responses, blks}, nil)
 }
 
 // UnpauseRequest unpauses a request that was paused in a block hook based request ID

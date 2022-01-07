@@ -40,14 +40,14 @@ func (urm *unpauseRequestMessage) handle(rm *RequestManager) {
 	}
 }
 
-type processResponseMessage struct {
+type processResponsesMessage struct {
 	p         peer.ID
 	responses []gsmsg.GraphSyncResponse
 	blks      []blocks.Block
 }
 
-func (prm *processResponseMessage) handle(rm *RequestManager) {
-	rm.processResponseMessage(prm.p, prm.responses, prm.blks)
+func (prm *processResponsesMessage) handle(rm *RequestManager) {
+	rm.processResponses(prm.p, prm.responses, prm.blks)
 }
 
 type cancelRequestMessage struct {

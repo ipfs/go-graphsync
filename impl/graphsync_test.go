@@ -205,7 +205,7 @@ func TestRejectRequestsByDefault(t *testing.T) {
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
-		"responseMessage(0)->loaderProcess(0)->cacheProcess(0)",
+		"processResponses(0)->loaderProcess(0)->cacheProcess(0)",
 	}, tracing.TracesToStrings())
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
@@ -254,8 +254,8 @@ func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
 
 	// has ErrBudgetExceeded exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrBudgetExceeded", "traversal budget exceeded", true)
@@ -303,8 +303,8 @@ func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
 
 	// has ContextCancelError exception recorded in the right place
 	// the requester gets a cancel, the responder gets a ErrBudgetExceeded
@@ -387,8 +387,8 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
 
 	processUpdateSpan := tracing.FindSpanByTraceString("response(0)")
 	require.Equal(t, int64(0), testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "priority").AsInt64())
@@ -483,8 +483,8 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
 }
 
 func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
@@ -554,7 +554,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
-		responseMessageTraces(t, tracing, responseCount)...),
+		processResponsesTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)..., // half of the full chain
 	), tracing.TracesToStrings())
 }
@@ -627,7 +627,7 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
-		responseMessageTraces(t, tracing, responseCount)...),
+		processResponsesTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 50)..., // half of the full chain
 	), tracing.TracesToStrings())
 }
@@ -715,8 +715,8 @@ func TestPauseResume(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
 
 	// pause recorded
 	tracing.SingleExceptionEvent(t, "response(0)->executeTask(0)", "github.com/ipfs/go-graphsync/responsemanager/hooks.ErrPaused", hooks.ErrPaused{}.Error(), false)
@@ -796,8 +796,8 @@ func TestPauseResumeRequest(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(1)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
 
 	// has ErrPaused exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrPaused", hooks.ErrPaused{}.Error(), false)
@@ -879,7 +879,7 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
-		responseMessageTraces(t, tracing, responseCount)...),
+		processResponsesTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
 	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
@@ -970,7 +970,7 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
-		responseMessageTraces(t, tracing, responseCount)...),
+		processResponsesTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
 	), tracing.TracesToStrings())
 	// make sure the attributes are what we expect
@@ -1063,8 +1063,8 @@ func TestNetworkDisconnect(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
 
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
@@ -1203,8 +1203,8 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	require.Contains(t, traceStrings, "request(1)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(1)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(1)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(1)->verifyBlock(0)")                            // should have one of these per block (TODO: why request(1) and not (0)?)
+	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(1)->verifyBlock(0)")                             // should have one of these per block (TODO: why request(1) and not (0)?)
 
 	// TODO(rvagg): this is randomly either a SkipMe or a ipldutil.ContextCancelError; confirm this is sane
 	// tracing.SingleExceptionEvent(t, "request(0)->newRequest(0)","request(0)->executeTask(0)", "SkipMe", traversal.SkipMe{}.Error(), true)
@@ -1291,8 +1291,8 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 	require.Contains(t, traceStrings, "request(1)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(1)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(1)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
 }
 
 // TestRoundTripLargeBlocksSlowNetwork test verifies graphsync continues to work
@@ -1349,7 +1349,7 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
 	},
-		responseMessageTraces(t, tracing, responseCount)...),
+		processResponsesTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", blockChainLength)...,
 	), tracing.TracesToStrings())
 }
@@ -1485,8 +1485,8 @@ func TestUnixFSFetch(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "responseMessage(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                            // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
 }
 
 func TestGraphsyncBlockListeners(t *testing.T) {
@@ -1585,7 +1585,7 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 			"request(0)->executeTask(0)",
 			"request(0)->terminateRequest(0)",
 		},
-		responseMessageTraces(t, tracing, responseCount)...),
+		processResponsesTraces(t, tracing, responseCount)...),
 		testutil.RepeatTraceStrings("request(0)->verifyBlock({})", 100)...,
 	), tracing.TracesToStrings())
 }
@@ -1724,12 +1724,12 @@ func (r *receiver) Connected(p peer.ID) {
 func (r *receiver) Disconnected(p peer.ID) {
 }
 
-func responseMessageTraces(t *testing.T, tracing *testutil.Collector, responseCount int) []string {
-	traces := testutil.RepeatTraceStrings("responseMessage({})->loaderProcess(0)->cacheProcess(0)", responseCount-1)
-	finalStub := tracing.FindSpanByTraceString(fmt.Sprintf("responseMessage(%d)->loaderProcess(0)", responseCount-1))
+func processResponsesTraces(t *testing.T, tracing *testutil.Collector, responseCount int) []string {
+	traces := testutil.RepeatTraceStrings("processResponses({})->loaderProcess(0)->cacheProcess(0)", responseCount-1)
+	finalStub := tracing.FindSpanByTraceString(fmt.Sprintf("processResponses(%d)->loaderProcess(0)", responseCount-1))
 	require.NotNil(t, finalStub)
 	if len(testutil.AttributeValueInTraceSpan(t, *finalStub, "requestIDs").AsInt64Slice()) == 0 {
-		return append(traces, fmt.Sprintf("responseMessage(%d)->loaderProcess(0)", responseCount-1))
+		return append(traces, fmt.Sprintf("processResponses(%d)->loaderProcess(0)", responseCount-1))
 	}
-	return append(traces, fmt.Sprintf("responseMessage(%d)->loaderProcess(0)->cacheProcess(0)", responseCount-1))
+	return append(traces, fmt.Sprintf("processResponses(%d)->loaderProcess(0)->cacheProcess(0)", responseCount-1))
 }
