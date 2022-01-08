@@ -259,6 +259,7 @@ func (rm *RequestManager) cancelOnError(requestID graphsync.RequestID, ipr *inPr
 		rm.terminateRequest(requestID, ipr)
 	} else {
 		ipr.cancelFn()
+		rm.asyncLoader.CompleteResponsesFor(requestID)
 	}
 }
 
