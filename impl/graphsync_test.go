@@ -19,25 +19,6 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
-	chunker "github.com/ipfs/go-ipfs-chunker"
-	offline "github.com/ipfs/go-ipfs-exchange-offline"
-	files "github.com/ipfs/go-ipfs-files"
-	ipldformat "github.com/ipfs/go-ipld-format"
-	"github.com/ipfs/go-merkledag"
-	unixfile "github.com/ipfs/go-unixfs/file"
-	"github.com/ipfs/go-unixfs/importer/balanced"
-	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
-	ipld "github.com/ipld/go-ipld-prime"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipld/go-ipld-prime/node/basicnode"
-	"github.com/ipld/go-ipld-prime/traversal/selector"
-	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/peer"
-	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
-	"github.com/stretchr/testify/require"
-
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
@@ -48,6 +29,25 @@ import (
 	"github.com/ipfs/go-graphsync/storeutil"
 	"github.com/ipfs/go-graphsync/taskqueue"
 	"github.com/ipfs/go-graphsync/testutil"
+	bstore "github.com/ipfs/go-ipfs-blockstore"
+	chunker "github.com/ipfs/go-ipfs-chunker"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	files "github.com/ipfs/go-ipfs-files"
+	ipldformat "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-merkledag"
+	unixfile "github.com/ipfs/go-unixfs/file"
+	"github.com/ipfs/go-unixfs/importer/balanced"
+	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
+	unixfsbuilder "github.com/ipfs/go-unixfsnode/data/builder"
+	ipld "github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/peer"
+	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMakeRequestToNetwork(t *testing.T) {
@@ -1389,14 +1389,87 @@ func TestRoundTripLargeBlocksSlowNetwork(t *testing.T) {
 }
 
 // What this test does:
-// - Construct a blockstore + dag service
-// - Import a file to UnixFS v1
+// - Import a directory via UnixFSV1
 // - setup a graphsync request from one node to the other
-// for the file
+// for a file inside of the a subdirectory, using a UnixFS ADL
 // - Load the file from the new block store on the other node
-// using the
-// existing UnixFS v1 file reader
+// using the existing UnixFS v1 file reader
 // - Verify the bytes match the original
+func TestUnixFSADLFetch(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	const unixfsChunkSize uint64 = 1 << 10
+	const unixfsLinksPerLevel = 1024
+	// make a blockstore and dag service
+	bs1 := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
+
+	// make a second blockstore
+	bs2 := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
+
+	// setup an IPLD loader/storer for blockstore 1
+	persistence1 := storeutil.LinkSystemForBlockstore(bs1)
+
+	// setup an IPLD loader/storer for blockstore 2
+	persistence2 := storeutil.LinkSystemForBlockstore(bs2)
+
+	path, err := filepath.Abs(filepath.Join("fixtures", "loremfolder"))
+	require.NoError(t, err, "unable to create path for fixture file")
+
+	loremFilePath, err := filepath.Abs(filepath.Join("fixtures", "loremfolder", "subfolder", "lorem.txt"))
+	require.NoError(t, err)
+	loremFile, err := os.Open(loremFilePath)
+	require.NoError(t, err)
+	origBytes, err := ioutil.ReadAll(loremFile)
+	require.NoError(t, err)
+	err = loremFile.Close()
+	require.NoError(t, err)
+
+	link, _, err := unixfsbuilder.BuildUnixFSRecursive(path, &persistence2)
+	require.NoError(t, err)
+
+	td := newGsTestData(ctx, t)
+	requestor := New(ctx, td.gsnet1, persistence1)
+	responder := New(ctx, td.gsnet2, persistence2)
+
+	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		hookActions.ValidateRequest()
+	})
+
+	// create a selector for the whole UnixFS dag
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+
+	selector := ssb.ExploreInterpretAs("unixfs",
+		ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
+			efsb.Insert("subfolder",
+				ssb.ExploreInterpretAs("unixfs", ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
+					efsb.Insert("lorem.txt", ssb.ExploreInterpretAs("unixfs", ssb.Matcher()))
+				})),
+			)
+		}),
+	).Node()
+
+	// execute the traversal
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), link, selector)
+
+	var sawCorrectPath bool
+	for response := range progressChan {
+		if response.Path.String() == "subfolder/lorem.txt" {
+			sawCorrectPath = true
+			finalBytes, err := response.Node.AsBytes()
+			require.NoError(t, err)
+			require.Equal(t, origBytes, finalBytes)
+		}
+	}
+	require.True(t, sawCorrectPath)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+}
+
 func TestUnixFSFetch(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
