@@ -136,15 +136,10 @@ func TestCancellationQueryInProgress(t *testing.T) {
 	td.assertRequestCleared()
 
 	tracing := td.collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"processRequests(0)",
-		"response(0)->executeTask(0)->processBlock(0)->loadBlock(0)",
-		"response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)",
-		"response(0)->executeTask(0)->processBlock(1)->loadBlock(0)",
-		"response(0)->executeTask(0)->processBlock(1)->sendBlock(0)",
-		"response(0)->abortRequest(0)",
-		"processRequests(1)",
-	}, tracing.TracesToStrings())
+	traceStrings := tracing.TracesToStrings()
+	require.Contains(t, traceStrings, "processRequests(0)")
+	require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
+	require.Contains(t, traceStrings, "processRequests(1)")
 	message0Span := tracing.FindSpanByTraceString("processRequests(0)")
 	message1Span := tracing.FindSpanByTraceString("processRequests(1)")
 	responseSpan := tracing.FindSpanByTraceString("response(0)")
