@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 
-	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-msgio"
@@ -129,6 +130,17 @@ func toExtensionsMap(extensions []NamedExtension) (m GraphSyncExtensions) {
 	return m
 }
 
+func fromProtoExtensions(protoExts map[string][]byte) GraphSyncExtensions {
+	var exts []NamedExtension
+	for name, data := range protoExts {
+		exts = append(exts, NamedExtension{name, basicnode.NewBytes(data)})
+	}
+	// Iterating over the map above is non-deterministic,
+	// so sort by the unique names to ensure determinism.
+	sort.Slice(exts, func(i, j int) bool { return exts[i].Name < exts[j].Name })
+	return toExtensionsMap(exts)
+}
+
 func newRequest(id graphsync.RequestID,
 	root cid.Cid,
 	selector ipld.Node,
@@ -185,11 +197,10 @@ func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
 				return GraphSyncMessage{}, err
 			}
 		}
-		exts := req.GetExtensions()
-		if exts == nil {
-			exts = make(map[string][]byte)
-		}
-		requests[i] = newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts)
+		// TODO: we likely need to turn some "core" extensions to fields,
+		// as some of those got moved to proper fields in the new protocol.
+		// Same for responses above, as well as the "to proto" funcs.
+		requests[i] = newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, fromProtoExtensions(req.GetExtensions()))
 	}
 
 	responses := make([]GraphSyncResponse, len(pbm.GetResponses()))
@@ -197,11 +208,7 @@ func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
 		if res == nil {
 			return GraphSyncMessage{}, errors.New("response is nil")
 		}
-		exts := res.GetExtensions()
-		if exts == nil {
-			exts = make(map[string][]byte)
-		}
-		responses[i] = newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), exts)
+		responses[i] = newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), fromProtoExtensions(res.GetExtensions()))
 	}
 
 	blks := make([]GraphSyncBlock, len(pbm.GetData()))
@@ -226,8 +233,8 @@ func (gsm GraphSyncMessage) Empty() bool {
 
 func (gsm GraphSyncMessage) ResponseCodes() map[graphsync.RequestID]graphsync.ResponseStatusCode {
 	codes := make(map[graphsync.RequestID]graphsync.ResponseStatusCode, len(gsm.Responses))
-	for id, response := range gsm.Responses {
-		codes[id] = response.Status()
+	for _, response := range gsm.Responses {
+		codes[response.ID] = response.Status
 	}
 	return codes
 }
@@ -261,38 +268,37 @@ func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
 	for _, request := range gsm.Requests {
 		var selector []byte
 		var err error
-		if request.selector != nil {
-			selector, err = ipldutil.EncodeNode(request.selector)
+		if request.Selector != nil {
+			selector, err = ipldutil.EncodeNode(request.Selector)
 			if err != nil {
 				return nil, err
 			}
 		}
 		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
-			Id:         int32(request.id),
-			Root:       request.root.Bytes(),
-			Selector:   selector,
-			Priority:   int32(request.priority),
-			Cancel:     request.isCancel,
-			Update:     request.isUpdate,
-			Extensions: request.extensions,
+			Id:       int32(request.ID),
+			Root:     request.Root.Bytes(),
+			Selector: selector,
+			Priority: int32(request.Priority),
+			Cancel:   request.Cancel,
+			Update:   request.Update,
+			// Extensions: request.Extensions, TODO
 		})
 	}
 
 	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.Responses))
 	for _, response := range gsm.Responses {
 		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
-			Id:         int32(response.requestID),
-			Status:     int32(response.status),
-			Extensions: response.extensions,
+			Id:     int32(response.ID),
+			Status: int32(response.Status),
+			// Extensions: response.Extensions, TODO
 		})
 	}
 
-	blocks := gsm.Blocks()
-	pbm.Data = make([]*pb.Message_Block, 0, len(blocks))
-	for _, b := range blocks {
+	pbm.Data = make([]*pb.Message_Block, 0, len(gsm.Blocks))
+	for _, b := range gsm.Blocks {
 		pbm.Data = append(pbm.Data, &pb.Message_Block{
-			Data:   b.RawData(),
-			Prefix: b.Cid().Prefix().Bytes(),
+			Prefix: b.Prefix,
+			Data:   b.Data,
 		})
 	}
 	return pbm, nil
@@ -333,28 +339,16 @@ func (gsm GraphSyncMessage) Loggable() map[string]interface{} {
 }
 
 func (gsm GraphSyncMessage) Clone() GraphSyncMessage {
-	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(gsm.Requests))
-	for id, request := range gsm.Requests {
-		requests[id] = request
-	}
-	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(gsm.Responses))
-	for id, response := range gsm.Responses {
-		responses[id] = response
-	}
-	blocks := make(map[cid.Cid]blocks.Block, len(gsm.blocks))
-	for cid, block := range gsm.blocks {
-		blocks[cid] = block
-	}
+	requests := append([]GraphSyncRequest{}, gsm.Requests...)
+	responses := append([]GraphSyncResponse{}, gsm.Responses...)
+	blocks := append([]GraphSyncBlock{}, gsm.Blocks...)
 	return GraphSyncMessage{requests, responses, blocks}
 }
 
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
-func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) ([]byte, bool) {
-	if gsr.extensions == nil {
-		return nil, false
-	}
-	val, ok := gsr.extensions[string(name)]
+func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) (ipld.Node, bool) {
+	val, ok := gsr.Extensions.Values[string(name)]
 	if !ok {
 		return nil, false
 	}
@@ -363,20 +357,13 @@ func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) ([]byte, boo
 
 // ExtensionNames returns the names of the extensions included in this request
 func (gsr GraphSyncRequest) ExtensionNames() []string {
-	var extNames []string
-	for ext := range gsr.extensions {
-		extNames = append(extNames, ext)
-	}
-	return extNames
+	return gsr.Extensions.Keys
 }
 
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
-func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) ([]byte, bool) {
-	if gsr.extensions == nil {
-		return nil, false
-	}
-	val, ok := gsr.extensions[string(name)]
+func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) (ipld.Node, bool) {
+	val, ok := gsr.Extensions.Values[string(name)]
 	if !ok {
 		return nil, false
 	}
@@ -385,18 +372,14 @@ func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) ([]byte, bo
 
 // ExtensionNames returns the names of the extensions included in this request
 func (gsr GraphSyncResponse) ExtensionNames() []string {
-	var extNames []string
-	for ext := range gsr.extensions {
-		extNames = append(extNames, ext)
-	}
-	return extNames
+	return gsr.Extensions.Keys
 }
 
 // ReplaceExtensions merges the extensions given extensions into the request to create a new request,
 // but always uses new data
-func (gsr GraphSyncRequest) ReplaceExtensions(extensions []graphsync.ExtensionData) GraphSyncRequest {
-	req, _ := gsr.MergeExtensions(extensions, func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error) {
-		return newData, nil
+func (gsr GraphSyncRequest) ReplaceExtensions(extensions []NamedExtension) GraphSyncRequest {
+	req, _ := gsr.MergeExtensions(extensions, func(name graphsync.ExtensionName, oldNode, newNode ipld.Node) (ipld.Node, error) {
+		return newNode, nil
 	})
 	return req
 }
@@ -404,31 +387,32 @@ func (gsr GraphSyncRequest) ReplaceExtensions(extensions []graphsync.ExtensionDa
 // MergeExtensions merges the given list of extensions to produce a new request with the combination of the old request
 // plus the new extensions. When an old extension and a new extension are both present, mergeFunc is called to produce
 // the result
-func (gsr GraphSyncRequest) MergeExtensions(extensions []graphsync.ExtensionData, mergeFunc func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error)) (GraphSyncRequest, error) {
-	if gsr.extensions == nil {
-		return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.isCancel, gsr.isUpdate, toExtensionsMap(extensions)), nil
+func (gsr GraphSyncRequest) MergeExtensions(extensions []NamedExtension, mergeFunc func(name graphsync.ExtensionName, oldNode, newNode ipld.Node) (ipld.Node, error)) (GraphSyncRequest, error) {
+	if len(gsr.Extensions.Keys) == 0 {
+		return newRequest(gsr.ID, gsr.Root, gsr.Selector, gsr.Priority, gsr.Cancel, gsr.Update, toExtensionsMap(extensions)), nil
 	}
-	newExtensionMap := toExtensionsMap(extensions)
-	combinedExtensions := make(map[string][]byte)
-	for name, newData := range newExtensionMap {
-		oldData, ok := gsr.extensions[name]
+	combinedExtensions := make(map[string]ipld.Node)
+	for _, newExt := range extensions {
+		oldNode, ok := gsr.Extensions.Values[newExt.Name]
 		if !ok {
-			combinedExtensions[name] = newData
+			combinedExtensions[newExt.Name] = newExt.Data
 			continue
 		}
-		resultData, err := mergeFunc(graphsync.ExtensionName(name), oldData, newData)
+		resultNode, err := mergeFunc(graphsync.ExtensionName(newExt.Name), oldNode, newExt.Data)
 		if err != nil {
 			return GraphSyncRequest{}, err
 		}
-		combinedExtensions[name] = resultData
+		combinedExtensions[newExt.Name] = resultNode
 	}
 
-	for name, oldData := range gsr.extensions {
+	for name, oldNode := range gsr.Extensions.Values {
 		_, ok := combinedExtensions[name]
 		if ok {
 			continue
 		}
-		combinedExtensions[name] = oldData
+		combinedExtensions[name] = oldNode
 	}
-	return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.isCancel, gsr.isUpdate, combinedExtensions), nil
+	extNames := make([]string, len(combinedExtensions))
+	sort.Strings(extNames) // for reproducibility
+	return newRequest(gsr.ID, gsr.Root, gsr.Selector, gsr.Priority, gsr.Cancel, gsr.Update, GraphSyncExtensions{extNames, combinedExtensions}), nil
 }
