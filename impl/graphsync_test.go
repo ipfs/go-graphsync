@@ -1404,8 +1404,6 @@ func TestUnixFSADLFetch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
-	const unixfsChunkSize uint64 = 1 << 10
-	const unixfsLinksPerLevel = 1024
 	// make a blockstore and dag service
 	bs1 := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
 
