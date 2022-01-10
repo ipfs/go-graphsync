@@ -1,5 +1,7 @@
 package ipldcbor
 
+import "github.com/ipld/go-ipld-prime/datamodel"
+
 type Map struct {
 	Keys   []string
 	Values map[string]datamodel.Node
