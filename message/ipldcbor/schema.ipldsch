@@ -1,16 +1,3 @@
-# TODO(mvdan): upstream must support Any sooner than later
-type Any union {
-	| Bool   bool
-	| Int    int
-	| Float  float
-	| String string
-	| Bytes  bytes
-	# TODO(mvdan): these are missing from upstream because of Any, too
-	# | Map    map
-	# | List   list
-	# | Link   link
-} representation kinded
-
 type GraphSyncExtensions {String:Any}
 type GraphSyncRequestID int
 type GraphSyncPriority int

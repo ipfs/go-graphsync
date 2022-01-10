@@ -44,3 +44,5 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	google.golang.org/protobuf v1.27.1
 )
+
+replace github.com/ipld/go-ipld-prime => ../../src/ipld
