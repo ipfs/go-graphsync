@@ -25,7 +25,7 @@ require (
 	github.com/ipfs/go-peertaskqueue v0.7.1
 	github.com/ipfs/go-unixfs v0.2.4
 	github.com/ipld/go-codec-dagpb v1.3.0
-	github.com/ipld/go-ipld-prime v0.14.4-0.20211217152141-008fd70fc96f
+	github.com/ipld/go-ipld-prime v0.14.4-0.20220110161855-fc09d6b768e9
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-libp2p v0.16.0
@@ -44,5 +44,3 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	google.golang.org/protobuf v1.27.1
 )
-
-replace github.com/ipld/go-ipld-prime => ../../src/ipld
