@@ -154,7 +154,7 @@ func New(ctx context.Context,
 
 // ProcessRequests processes incoming requests for the given peer
 func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, requests []gsmsg.GraphSyncRequest) {
-	rm.send(&processRequestMessage{p, requests}, ctx.Done())
+	rm.send(&processRequestsMessage{p, requests}, ctx.Done())
 }
 
 // UnpauseResponse unpauses a response that was previously paused

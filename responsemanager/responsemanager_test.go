@@ -87,11 +87,12 @@ func TestIncomingQuery(t *testing.T) {
 	td.connManager.RefuteProtected(t, td.p)
 
 	tracing := td.collectTracing(t)
-	require.ElementsMatch(t, append(
-		testutil.RepeatTraceStrings("TestIncomingQuery(0)->response(0)->executeTask(0)->processBlock({})->loadBlock(0)", td.blockChainLength),
+	require.ElementsMatch(t, append(append(
+		[]string{"processRequests(0)"},
+		testutil.RepeatTraceStrings("TestIncomingQuery(0)->response(0)->executeTask(0)->processBlock({})->loadBlock(0)", td.blockChainLength)...),
 		testutil.RepeatTraceStrings("TestIncomingQuery(0)->response(0)->executeTask(0)->processBlock({})->sendBlock(0)->processBlockHooks(0)", td.blockChainLength)..., // half of the full chain
 	), tracing.TracesToStrings())
-	messageSpan := tracing.FindSpanByTraceString("requestMessage(0)")
+	messageSpan := tracing.FindSpanByTraceString("processRequests(0)")
 	responseSpan := tracing.FindSpanByTraceString("TestIncomingQuery(0)->response(0)")
 	require.Len(t, responseSpan.Links, 1)
 	require.Equal(t, responseSpan.Links[0].SpanContext.SpanID(), messageSpan.SpanContext.SpanID())
@@ -136,19 +137,22 @@ func TestCancellationQueryInProgress(t *testing.T) {
 
 	tracing := td.collectTracing(t)
 	require.ElementsMatch(t, []string{
-		"requestMessage(0)",
-		"response(0)->executeTask(0)",
+		"processRequests(0)",
+		"response(0)->executeTask(0)->processBlock(0)->loadBlock(0)",
+		"response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)",
+		"response(0)->executeTask(0)->processBlock(1)->loadBlock(0)",
+		"response(0)->executeTask(0)->processBlock(1)->sendBlock(0)",
 		"response(0)->abortRequest(0)",
-		"requestMessage(1)",
+		"processRequests(1)",
 	}, tracing.TracesToStrings())
-	message0Span := tracing.FindSpanByTraceString("requestMessage(0)")
-	message1Span := tracing.FindSpanByTraceString("requestMessage(1)")
+	message0Span := tracing.FindSpanByTraceString("processRequests(0)")
+	message1Span := tracing.FindSpanByTraceString("processRequests(1)")
 	responseSpan := tracing.FindSpanByTraceString("response(0)")
 	abortRequestSpan := tracing.FindSpanByTraceString("response(0)->abortRequest(0)")
-	// response(0) originates in requestMessage(0)
+	// response(0) originates in processRequests(0)
 	require.Len(t, responseSpan.Links, 1)
 	require.Equal(t, responseSpan.Links[0].SpanContext.SpanID(), message0Span.SpanContext.SpanID())
-	// response(0)->abortRequest(0) occurs thanks to requestMessage(1)
+	// response(0)->abortRequest(0) occurs thanks to processRequests(1)
 	require.Len(t, abortRequestSpan.Links, 1)
 	require.Equal(t, abortRequestSpan.Links[0].SpanContext.SpanID(), message1Span.SpanContext.SpanID())
 }

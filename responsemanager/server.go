@@ -176,7 +176,7 @@ func (rm *ResponseManager) abortRequest(ctx context.Context, p peer.ID, requestI
 func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSyncRequest) {
 	ctx, messageSpan := otel.Tracer("graphsync").Start(
 		rm.ctx,
-		"requestMessage",
+		"processRequests",
 		trace.WithAttributes(attribute.String("peerID", p.Pretty())),
 	)
 	defer messageSpan.End()

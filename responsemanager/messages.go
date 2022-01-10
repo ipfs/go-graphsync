@@ -10,12 +10,12 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 )
 
-type processRequestMessage struct {
+type processRequestsMessage struct {
 	p        peer.ID
 	requests []gsmsg.GraphSyncRequest
 }
 
-func (prm *processRequestMessage) handle(rm *ResponseManager) {
+func (prm *processRequestsMessage) handle(rm *ResponseManager) {
 	rm.processRequests(prm.p, prm.requests)
 }
 
