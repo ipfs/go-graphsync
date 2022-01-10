@@ -17,6 +17,7 @@ func TestGenerate(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Fprintf(f, "package ipldcbor\n\n")
+	fmt.Fprintf(f, "import \"github.com/ipld/go-ipld-prime/datamodel\"\n\n")
 	if err := bindnode.ProduceGoTypes(f, schemaTypeSystem); err != nil {
 		t.Fatal(err)
 	}

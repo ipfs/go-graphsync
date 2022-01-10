@@ -16,10 +16,11 @@ type GraphSyncMetadatum struct {
 	BlockPresent bool
 }
 type GraphSyncMetadata []GraphSyncMetadatum
-type GraphSyncResponseCode string
+type GraphSyncResponseStatusCode string
 type GraphSyncRequest struct {
 	Id         int
 	Root       datamodel.Link
+	Selector   datamodel.Node
 	Extensions GraphSyncExtensions
 	Priority   int
 	Cancel     bool
@@ -27,6 +28,7 @@ type GraphSyncRequest struct {
 }
 type GraphSyncResponse struct {
 	Id         int
+	Status     GraphSyncResponseStatusCode
 	Metadata   GraphSyncMetadata
 	Extensions GraphSyncExtensions
 }
