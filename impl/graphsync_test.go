@@ -38,6 +38,7 @@ import (
 	unixfile "github.com/ipfs/go-unixfs/file"
 	"github.com/ipfs/go-unixfs/importer/balanced"
 	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
+	"github.com/ipfs/go-unixfsnode"
 	unixfsbuilder "github.com/ipfs/go-unixfsnode/data/builder"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -1440,17 +1441,7 @@ func TestUnixFSADLFetch(t *testing.T) {
 	})
 
 	// create a selector for the whole UnixFS dag
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
-
-	selector := ssb.ExploreInterpretAs("unixfs",
-		ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
-			efsb.Insert("subfolder",
-				ssb.ExploreInterpretAs("unixfs", ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
-					efsb.Insert("lorem.txt", ssb.ExploreInterpretAs("unixfs", ssb.Matcher()))
-				})),
-			)
-		}),
-	).Node()
+	selector := unixfsnode.UnixFSPathSelector("subfolder/lorem.txt")
 
 	// execute the traversal
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), link, selector)

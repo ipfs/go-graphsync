@@ -9,7 +9,6 @@ import (
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipfs/go-unixfsnode"
 	ipld "github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
@@ -44,9 +43,7 @@ func LinkSystemForBlockstore(bs bstore.Blockstore) ipld.LinkSystem {
 		}
 		return &buffer, committer, nil
 	}
-	lsys.KnownReifiers = map[string]linking.NodeReifier{
-		"unixfs": unixfsnode.Reify,
-	}
+	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
 	return lsys
 }
 

@@ -443,8 +443,8 @@ github.com/ipfs/go-peertaskqueue v0.7.1 h1:7PLjon3RZwRQMgOTvYccZ+mjzkmds/7YzSWKF
 github.com/ipfs/go-peertaskqueue v0.7.1/go.mod h1:M/akTIE/z1jGNXMU7kFB4TeSEFvj68ow0Rrb04donIU=
 github.com/ipfs/go-unixfs v0.3.1 h1:LrfED0OGfG98ZEegO4/xiprx2O+yS+krCMQSp7zLVv8=
 github.com/ipfs/go-unixfs v0.3.1/go.mod h1:h4qfQYzghiIc8ZNFKiLMFWOTzrWIAtzYQ59W/pCFf1o=
-github.com/ipfs/go-unixfsnode v1.1.4-0.20220110204839-1b00a5a75ce5 h1:+rOYtgXeehixGcJjHBETodo0FnBUoUCH3wMiVjfvpGg=
-github.com/ipfs/go-unixfsnode v1.1.4-0.20220110204839-1b00a5a75ce5/go.mod h1:Tuf5vaN6Tcl80PBglAYN1aR0jtDrI7EojIjXp90birA=
+github.com/ipfs/go-unixfsnode v1.1.4-0.20220110213426-c487b3de0a4e h1:txVaCKylFMW+R+NJN7YQHvK/nW7KEGAxJYj4bJq/inI=
+github.com/ipfs/go-unixfsnode v1.1.4-0.20220110213426-c487b3de0a4e/go.mod h1:Tuf5vaN6Tcl80PBglAYN1aR0jtDrI7EojIjXp90birA=
 github.com/ipfs/go-verifcid v0.0.1 h1:m2HI7zIuR5TFyQ1b79Da5N9dnnCP1vcu2QqawmWlK2E=
 github.com/ipfs/go-verifcid v0.0.1/go.mod h1:5Hrva5KBeIog4A+UpqlaIU+DEstipcJYQQZc0g37pY0=
 github.com/ipld/go-car/v2 v2.1.1 h1:saaKz4nC0AdfCGHLYKeXLGn8ivoPC54fyS55uyOLKwA=
