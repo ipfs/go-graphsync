@@ -3,6 +3,7 @@ module github.com/ipfs/go-graphsync
 go 1.16
 
 require (
+	github.com/gopherjs/gopherjs v0.0.0-20190430165422-3e4dfb77656c // indirect
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20200817222906-ea96cece81f1
 	github.com/hannahhoward/go-pubsub v0.0.0-20200423002714-8d62886cc36e
 	github.com/ipfs/go-block-format v0.0.3
@@ -23,9 +24,10 @@ require (
 	github.com/ipfs/go-log/v2 v2.3.0
 	github.com/ipfs/go-merkledag v0.5.1
 	github.com/ipfs/go-peertaskqueue v0.7.1
-	github.com/ipfs/go-unixfs v0.2.4
+	github.com/ipfs/go-unixfs v0.3.1
+	github.com/ipfs/go-unixfsnode v1.1.2-0.20220110180128-0aa7653b4021 // indirect
 	github.com/ipld/go-codec-dagpb v1.3.0
-	github.com/ipld/go-ipld-prime v0.14.3
+	github.com/ipld/go-ipld-prime v0.14.4-0.20220110161855-fc09d6b768e9
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-libp2p v0.16.0
@@ -33,10 +35,13 @@ require (
 	github.com/libp2p/go-libp2p-netutil v0.1.0
 	github.com/libp2p/go-libp2p-testing v0.5.0
 	github.com/libp2p/go-msgio v0.1.0
+	github.com/libp2p/go-testutil v0.1.0 // indirect
+	github.com/mattn/go-colorable v0.1.2 // indirect
 	github.com/multiformats/go-multiaddr v0.4.0
 	github.com/multiformats/go-multihash v0.1.0
 	github.com/stretchr/testify v1.7.0
 	github.com/whyrusleeping/cbor-gen v0.0.0-20210219115102-f37d292932f2
+	github.com/whyrusleeping/go-notifier v0.0.0-20170827234753-097c5d47330f // indirect
 	go.opentelemetry.io/otel v1.2.0
 	go.opentelemetry.io/otel/sdk v1.2.0
 	go.opentelemetry.io/otel/trace v1.2.0
