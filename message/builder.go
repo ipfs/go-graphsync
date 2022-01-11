@@ -124,11 +124,8 @@ func (b *Builder) Build() (GraphSyncMessage, error) {
 	}
 	// TODO: sort responses?
 	blocks := make([]GraphSyncBlock, len(b.outgoingBlocks))
-	for cid, block := range b.outgoingBlocks {
-		blocks = append(blocks, GraphSyncBlock{
-			Prefix: cid.Prefix().Bytes(),
-			Data:   block.RawData(),
-		})
+	for _, block := range b.outgoingBlocks {
+		blocks = append(blocks, FromBlockFormat(block))
 	}
 	// TODO: sort blocks?
 	return GraphSyncMessage{

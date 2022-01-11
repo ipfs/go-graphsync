@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -84,6 +85,39 @@ type GraphSyncResponse struct {
 type GraphSyncBlock struct {
 	Prefix []byte
 	Data   []byte
+}
+
+func FromBlockFormat(block blocks.Block) GraphSyncBlock {
+	return GraphSyncBlock{
+		Prefix: block.Cid().Prefix().Bytes(),
+		Data:   block.RawData(),
+	}
+}
+
+func (b GraphSyncBlock) BlockFormat() *blocks.BasicBlock {
+	pref, err := cid.PrefixFromBytes(b.Prefix)
+	if err != nil {
+		panic(err) // should never happen
+	}
+
+	c, err := pref.Sum(b.Data)
+	if err != nil {
+		panic(err) // should never happen
+	}
+
+	block, err := blocks.NewBlockWithCid(b.Data, c)
+	if err != nil {
+		panic(err) // should never happen
+	}
+	return block
+}
+
+func BlockFormatSlice(bs []GraphSyncBlock) []blocks.Block {
+	blks := make([]blocks.Block, len(bs))
+	for i, b := range bs {
+		blks[i] = b.BlockFormat()
+	}
+	return blks
 }
 
 type GraphSyncMessage struct {

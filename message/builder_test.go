@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"io"
 	"math/rand"
 	"testing"
@@ -14,6 +15,27 @@ import (
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/testutil"
 )
+
+// Like the funcs in testutil above, but using blocks at the protocol level.
+// We can't put them there right away, due to import cycles.
+// We need to refactor these tests to be external, i.e. "package message_test".
+
+func ContainsGraphSyncBlock(blks []GraphSyncBlock, block GraphSyncBlock) bool {
+	for _, blk := range blks {
+		if bytes.Equal(blk.Prefix, block.Prefix) && bytes.Equal(blk.Data, block.Data) {
+			return true
+		}
+	}
+	return false
+}
+func AssertContainsGraphSyncBlock(t testing.TB, blks []GraphSyncBlock, block GraphSyncBlock) {
+	t.Helper()
+	require.True(t, ContainsGraphSyncBlock(blks, block), "given block should be in list")
+}
+func RefuteContainsGraphSyncBlock(t testing.TB, blks []GraphSyncBlock, block GraphSyncBlock) {
+	t.Helper()
+	require.False(t, ContainsGraphSyncBlock(blks, block), "given block should not be in list")
+}
 
 func TestMessageBuilding(t *testing.T) {
 	blocks := testutil.GenerateBlocksOfSize(3, 100)
@@ -77,7 +99,7 @@ func TestMessageBuilding(t *testing.T) {
 			checkMsg: func(t *testing.T, message GraphSyncMessage) {
 
 				responses := message.Responses
-				sentBlocks := message.Blocks
+				sentBlocks := BlockFormatSlice(message.Blocks)
 				require.Len(t, responses, 4, "did not assemble correct number of responses")
 
 				response1 := findResponseForRequestID(t, responses, requestID1)
@@ -164,7 +186,7 @@ func TestMessageBuilding(t *testing.T) {
 			checkMsg: func(t *testing.T, message GraphSyncMessage) {
 
 				responses := message.Responses
-				sentBlocks := message.Blocks
+				sentBlocks := BlockFormatSlice(message.Blocks)
 				require.Len(t, responses, 3, "did not assemble correct number of responses")
 
 				response2 := findResponseForRequestID(t, responses, requestID2)
@@ -222,7 +244,7 @@ func TestMessageBuilding(t *testing.T) {
 			checkMsg: func(t *testing.T, message GraphSyncMessage) {
 
 				responses := message.Responses
-				sentBlocks := message.Blocks
+				sentBlocks := BlockFormatSlice(message.Blocks)
 				require.Len(t, responses, 1, "did not assemble correct number of responses")
 
 				response3 := findResponseForRequestID(t, responses, requestID3)
@@ -267,8 +289,10 @@ func assertExtension(t *testing.T, response GraphSyncResponse, extension NamedEx
 }
 
 func assertMetadata(t *testing.T, response GraphSyncResponse, expectedMetadata metadata.Metadata) {
-	responseMetadataRaw, found := response.Extension(graphsync.ExtensionMetadata)
+	responseMetadataNode, found := response.Extension(graphsync.ExtensionMetadata)
 	require.True(t, found, "Metadata should be included in response")
+	responseMetadataRaw, err := responseMetadataNode.AsBytes()
+	require.NoError(t, err)
 	responseMetadata, err := metadata.DecodeMetadata(responseMetadataRaw)
 	require.NoError(t, err)
 	require.Equal(t, expectedMetadata, responseMetadata, "incorrect metadata included in response")
