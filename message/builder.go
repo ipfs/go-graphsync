@@ -2,6 +2,7 @@ package message
 
 import (
 	blocks "github.com/ipfs/go-block-format"
+	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
@@ -14,7 +15,7 @@ import (
 // requests for a given peer and then generates the corresponding
 // GraphSync message when ready to send
 type Builder struct {
-	outgoingBlocks     []GraphSyncBlock
+	outgoingBlocks     map[cid.Cid]blocks.Block
 	blkSize            uint64
 	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
 	outgoingResponses  map[graphsync.RequestID]metadata.Metadata
@@ -25,6 +26,7 @@ type Builder struct {
 // NewBuilder generates a new Builder.
 func NewBuilder() *Builder {
 	return &Builder{
+		outgoingBlocks:     make(map[cid.Cid]blocks.Block),
 		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
 		outgoingResponses:  make(map[graphsync.RequestID]metadata.Metadata),
 		extensions:         make(map[graphsync.RequestID][]NamedExtension),
@@ -39,10 +41,7 @@ func (b *Builder) AddRequest(request GraphSyncRequest) {
 // AddBlock adds the given block to the message.
 func (b *Builder) AddBlock(block blocks.Block) {
 	b.blkSize += uint64(len(block.RawData()))
-	b.outgoingBlocks = append(b.outgoingBlocks, GraphSyncBlock{
-		Prefix: block.Cid().Prefix().Bytes(),
-		Data:   block.RawData(),
-	})
+	b.outgoingBlocks[block.Cid()] = block
 }
 
 // AddExtensionData adds the given extension data to to the message
@@ -85,7 +84,6 @@ func (b *Builder) Empty() bool {
 
 // ScrubResponse removes a response from a message and any blocks only referenced by that response
 func (b *Builder) ScrubResponses(requestIDs []graphsync.RequestID) uint64 {
-	/* TODO
 	for _, requestID := range requestIDs {
 		delete(b.completedResponses, requestID)
 		delete(b.extensions, requestID)
@@ -107,8 +105,6 @@ func (b *Builder) ScrubResponses(requestIDs []graphsync.RequestID) uint64 {
 	b.blkSize = newBlkSize
 	b.outgoingBlocks = savedBlocks
 	return oldSize - newBlkSize
-	*/
-	return 0
 }
 
 // Build assembles and encodes message data from the added requests, links, and blocks.
@@ -127,8 +123,16 @@ func (b *Builder) Build() (GraphSyncMessage, error) {
 		responses = append(responses, NewResponse(requestID, responseCode(status, isComplete), b.extensions[requestID]...))
 	}
 	// TODO: sort responses?
+	blocks := make([]GraphSyncBlock, len(b.outgoingBlocks))
+	for cid, block := range b.outgoingBlocks {
+		blocks = append(blocks, GraphSyncBlock{
+			Prefix: cid.Prefix().Bytes(),
+			Data:   block.RawData(),
+		})
+	}
+	// TODO: sort blocks?
 	return GraphSyncMessage{
-		b.requests, responses, b.outgoingBlocks,
+		b.requests, responses, blocks,
 	}, nil
 }
 
