@@ -1,8 +1,8 @@
 package message
 
 import (
-	"encoding/binary"
-	"errors"
+	"bytes"
+	"fmt"
 	"io"
 	"sort"
 
@@ -17,7 +17,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	pb "github.com/ipfs/go-graphsync/message/pb"
 )
 
@@ -71,6 +70,25 @@ type GraphSyncMetadatum struct {
 	BlockPresent bool
 }
 
+// String returns a human-readable form of a GraphSyncRequest
+func (gsr GraphSyncRequest) String() string {
+	var buf bytes.Buffer
+	dagjson.Encode(gsr.selector, &buf)
+	ext := make([]string, 0)
+	for s := range gsr.extensions {
+		ext = append(ext, s)
+	}
+	return fmt.Sprintf("GraphSyncRequest<root=%s, selector=%s, priority=%d, id=%s, cancel=%v, update=%v, exts=%s>",
+		gsr.root.String(),
+		buf.String(),
+		gsr.priority,
+		gsr.id.String(),
+		gsr.isCancel,
+		gsr.isUpdate,
+		strings.Join(ext, "|"),
+	)
+}
+
 // GraphSyncResponse is an struct to capture data on a response sent back
 // in a GraphSyncMessage.
 type GraphSyncResponse struct {
@@ -119,10 +137,41 @@ func BlockFormatSlice(bs []GraphSyncBlock) []blocks.Block {
 	return blks
 }
 
+// String returns a human-readable form of a GraphSyncResponse
+func (gsr GraphSyncResponse) String() string {
+	ext := make([]string, 0)
+	for s := range gsr.extensions {
+		ext = append(ext, s)
+	}
+	return fmt.Sprintf("GraphSyncResponse<id=%s, status=%d, exts=%s>",
+		gsr.requestID.String(),
+		gsr.status,
+		strings.Join(ext, "|"),
+	)
+}
+
+// GraphSyncMessage is the internal representation form of a message sent or
+// received over the wire
 type GraphSyncMessage struct {
 	Requests  []GraphSyncRequest
 	Responses []GraphSyncResponse
 	Blocks    []GraphSyncBlock
+}
+
+// String returns a human-readable (multi-line) form of a GraphSyncMessage and
+// its contents
+func (gsm GraphSyncMessage) String() string {
+	cts := make([]string, 0)
+	for _, req := range gsm.requests {
+		cts = append(cts, req.String())
+	}
+	for _, resp := range gsm.responses {
+		cts = append(cts, resp.String())
+	}
+	for c := range gsm.blocks {
+		cts = append(cts, fmt.Sprintf("Block<%s>", c.String()))
+	}
+	return fmt.Sprintf("GraphSyncMessage<\n\t%s\n>", strings.Join(cts, ",\n\t"))
 }
 
 // NewRequest builds a new Graphsync request
@@ -208,62 +257,23 @@ func newResponse(requestID graphsync.RequestID,
 	}
 }
 
-func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
-	requests := make([]GraphSyncRequest, len(pbm.GetRequests()))
-	for i, req := range pbm.Requests {
-		if req == nil {
-			return GraphSyncMessage{}, errors.New("request is nil")
-		}
-		var root cid.Cid
-		var err error
-		if !req.Cancel && !req.Update {
-			root, err = cid.Cast(req.Root)
-			if err != nil {
-				return GraphSyncMessage{}, err
-			}
-		}
-
-		var selector ipld.Node
-		if !req.Cancel && !req.Update {
-			selector, err = ipldutil.DecodeNode(req.Selector)
-			if err != nil {
-				return GraphSyncMessage{}, err
-			}
-		}
-		// TODO: we likely need to turn some "core" extensions to fields,
-		// as some of those got moved to proper fields in the new protocol.
-		// Same for responses above, as well as the "to proto" funcs.
-		requests[i] = newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, fromProtoExtensions(req.GetExtensions()))
-	}
-
-	responses := make([]GraphSyncResponse, len(pbm.GetResponses()))
-	for i, res := range pbm.Responses {
-		if res == nil {
-			return GraphSyncMessage{}, errors.New("response is nil")
-		}
-		responses[i] = newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), fromProtoExtensions(res.GetExtensions()))
-	}
-
-	blks := make([]GraphSyncBlock, len(pbm.GetData()))
-	for i, b := range pbm.GetData() {
-		if b == nil {
-			return GraphSyncMessage{}, errors.New("block is nil")
-		}
-		blks[i] = GraphSyncBlock{
-			Prefix: b.GetPrefix(),
-			Data:   b.GetData(),
-		}
-	}
-
-	return GraphSyncMessage{
-		requests, responses, blks,
-	}, nil
-}
-
+// Empty returns true if this message has no actionable content
 func (gsm GraphSyncMessage) Empty() bool {
 	return len(gsm.Blocks) == 0 && len(gsm.Requests) == 0 && len(gsm.Responses) == 0
 }
 
+// Requests returns a copy of the list of GraphSyncRequests in this
+// GraphSyncMessage
+func (gsm GraphSyncMessage) Requests() []GraphSyncRequest {
+	requests := make([]GraphSyncRequest, 0, len(gsm.requests))
+	for _, request := range gsm.requests {
+		requests = append(requests, request)
+	}
+	return requests
+}
+
+// ResponseCodes returns a list of ResponseStatusCodes contained in the
+// responses in this GraphSyncMessage
 func (gsm GraphSyncMessage) ResponseCodes() map[graphsync.RequestID]graphsync.ResponseStatusCode {
 	codes := make(map[graphsync.RequestID]graphsync.ResponseStatusCode, len(gsm.Responses))
 	for _, response := range gsm.Responses {
@@ -272,107 +282,26 @@ func (gsm GraphSyncMessage) ResponseCodes() map[graphsync.RequestID]graphsync.Re
 	return codes
 }
 
-// FromNet can read a network stream to deserialized a GraphSyncMessage
-func FromNet(r io.Reader) (GraphSyncMessage, error) {
-	reader := msgio.NewVarintReaderSize(r, network.MessageSizeMax)
-	return FromMsgReader(reader)
+// Responses returns a copy of the list of GraphSyncResponses in this
+// GraphSyncMessage
+func (gsm GraphSyncMessage) Responses() []GraphSyncResponse {
+	responses := make([]GraphSyncResponse, 0, len(gsm.responses))
+	for _, response := range gsm.responses {
+		responses = append(responses, response)
+	}
+	return responses
 }
 
-// FromMsgReader can deserialize a protobuf message into a GraphySyncMessage.
-func FromMsgReader(r msgio.Reader) (GraphSyncMessage, error) {
-	msg, err := r.ReadMsg()
-	if err != nil {
-		return GraphSyncMessage{}, err
+// Blocks returns a copy of the list of Blocks in this GraphSyncMessage
+func (gsm GraphSyncMessage) Blocks() []blocks.Block {
+	bs := make([]blocks.Block, 0, len(gsm.blocks))
+	for _, block := range gsm.blocks {
+		bs = append(bs, block)
 	}
-
-	var pb pb.Message
-	err = proto.Unmarshal(msg, &pb)
-	r.ReleaseMsg(msg)
-	if err != nil {
-		return GraphSyncMessage{}, err
-	}
-
-	return newMessageFromProto(&pb)
+	return bs
 }
 
-func toProtoExtensions(m GraphSyncExtensions) map[string][]byte {
-	protoExts := make(map[string][]byte, len(m.Values))
-	for name, node := range m.Values {
-		// Only keep those which are plain bytes,
-		// as those are the only ones that the older protocol clients understand.
-		if node.Kind() != ipld.Kind_Bytes {
-			continue
-		}
-		raw, err := node.AsBytes()
-		if err != nil {
-			panic(err) // shouldn't happen
-		}
-		protoExts[name] = raw
-	}
-	return protoExts
-}
-
-func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
-	pbm := new(pb.Message)
-	pbm.Requests = make([]*pb.Message_Request, 0, len(gsm.Requests))
-	for _, request := range gsm.Requests {
-		var selector []byte
-		var err error
-		if request.Selector != nil {
-			selector, err = ipldutil.EncodeNode(request.Selector)
-			if err != nil {
-				return nil, err
-			}
-		}
-		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
-			Id:         request.ID[:],
-			Root:       request.Root.Bytes(),
-			Selector:   selector,
-			Priority:   int32(request.Priority),
-			Cancel:     request.Cancel,
-			Update:     request.Update,
-			Extensions: toProtoExtensions(request.Extensions),
-		})
-	}
-
-	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.Responses))
-	for _, response := range gsm.Responses {
-		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
-			Id:         response.ID[:],
-			Status:     int32(response.Status),
-			Extensions: toProtoExtensions(response.Extensions),
-		})
-	}
-
-	pbm.Data = make([]*pb.Message_Block, 0, len(gsm.Blocks))
-	for _, b := range gsm.Blocks {
-		pbm.Data = append(pbm.Data, &pb.Message_Block{
-			Prefix: b.Prefix,
-			Data:   b.Data,
-		})
-	}
-	return pbm, nil
-}
-
-func (gsm GraphSyncMessage) ToNet(w io.Writer) error {
-	msg, err := gsm.ToProto()
-	if err != nil {
-		return err
-	}
-	size := proto.Size(msg)
-	buf := pool.Get(size + binary.MaxVarintLen64)
-	defer pool.Put(buf)
-
-	n := binary.PutUvarint(buf, uint64(size))
-
-	out, err := proto.MarshalOptions{}.MarshalAppend(buf[:n], msg)
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(out)
-	return err
-}
-
+// Loggable returns a simplified, single-line log form of this GraphSyncMessage
 func (gsm GraphSyncMessage) Loggable() map[string]interface{} {
 	requests := make([]string, 0, len(gsm.Requests))
 	for _, request := range gsm.Requests {
@@ -388,6 +317,7 @@ func (gsm GraphSyncMessage) Loggable() map[string]interface{} {
 	}
 }
 
+// Clone returns a shallow copy of this GraphSyncMessage
 func (gsm GraphSyncMessage) Clone() GraphSyncMessage {
 	requests := append([]GraphSyncRequest{}, gsm.Requests...)
 	responses := append([]GraphSyncResponse{}, gsm.Responses...)

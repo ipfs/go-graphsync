@@ -47,7 +47,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	pbMessage, err := gsm.ToProto()
+	pbMessage, err := NewMessageHandler().ToProto(gsm)
 	require.NoError(t, err, "serialize to protobuf errored")
 	selectorEncoded, err := ipldutil.EncodeNode(selector)
 	require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.Equal(t, selectorEncoded, pbRequest.Selector)
 	require.Equal(t, map[string][]byte{"graphsync/awesome": extensionBytes}, pbRequest.Extensions)
 
-	deserialized, err := newMessageFromProto(pbMessage)
+	deserialized, err := NewMessageHandler().newMessageFromProto(pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedRequests := deserialized.Requests
 	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
@@ -102,14 +102,14 @@ func TestAppendingResponses(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	pbMessage, err := gsm.ToProto()
+	pbMessage, err := NewMessageHandler().ToProto(gsm)
 	require.NoError(t, err, "serialize to protobuf errored")
 	pbResponse := pbMessage.Responses[0]
 	require.Equal(t, requestID.Bytes(), pbResponse.Id)
 	require.Equal(t, int32(status), pbResponse.Status)
 	require.Equal(t, extensionBytes, pbResponse.Extensions["graphsync/awesome"])
 
-	deserialized, err := newMessageFromProto(pbMessage)
+	deserialized, err := NewMessageHandler().newMessageFromProto(pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedResponses := deserialized.Responses
 	require.Len(t, deserializedResponses, 1, "did not add response to deserialized message")
@@ -135,7 +135,7 @@ func TestAppendBlock(t *testing.T) {
 	m, err := builder.Build()
 	require.NoError(t, err)
 
-	pbMessage, err := m.ToProto()
+	pbMessage, err := NewMessageHandler().ToProto(m)
 	require.NoError(t, err, "serializing to protobuf errored")
 
 	// assert strings are in proto message
@@ -174,9 +174,9 @@ func TestRequestCancel(t *testing.T) {
 	require.True(t, request.Cancel)
 
 	buf := new(bytes.Buffer)
-	err = gsm.ToNet(buf)
+	err = NewMessageHandler().ToNet(gsm, buf)
 	require.NoError(t, err, "did not serialize protobuf message")
-	deserialized, err := FromNet(buf)
+	deserialized, err := NewMessageHandler().FromNet(buf)
 	require.NoError(t, err, "did not deserialize protobuf message")
 	deserializedRequests := deserialized.Requests
 	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
@@ -210,9 +210,9 @@ func TestRequestUpdate(t *testing.T) {
 	require.Equal(t, extension.Data, extensionData)
 
 	buf := new(bytes.Buffer)
-	err = gsm.ToNet(buf)
+	err = NewMessageHandler().ToNet(gsm, buf)
 	require.NoError(t, err, "did not serialize protobuf message")
-	deserialized, err := FromNet(buf)
+	deserialized, err := NewMessageHandler().FromNet(buf)
 	require.NoError(t, err, "did not deserialize protobuf message")
 
 	deserializedRequests := deserialized.Requests
@@ -254,9 +254,9 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	require.NoError(t, err)
 
 	buf := new(bytes.Buffer)
-	err = gsm.ToNet(buf)
+	err = NewMessageHandler().ToNet(gsm, buf)
 	require.NoError(t, err, "did not serialize protobuf message")
-	deserialized, err := FromNet(buf)
+	deserialized, err := NewMessageHandler().FromNet(buf)
 	require.NoError(t, err, "did not deserialize protobuf message")
 
 	requests := gsm.Requests
@@ -411,15 +411,15 @@ func TestKnownFuzzIssues(t *testing.T) {
 	for _, input := range inputs {
 		//inputAsBytes, err := hex.DecodeString(input)
 		///require.NoError(t, err)
-		msg1, err := FromNet(bytes.NewReader([]byte(input)))
+		msg1, err := NewMessageHandler().FromNet(bytes.NewReader([]byte(input)))
 		if err != nil {
 			continue
 		}
 		buf2 := new(bytes.Buffer)
-		err = msg1.ToNet(buf2)
+		err = NewMessageHandler().ToNet(msg1, buf2)
 		require.NoError(t, err)
 
-		msg2, err := FromNet(buf2)
+		msg2, err := NewMessageHandler().FromNet(buf2)
 		require.NoError(t, err)
 
 		require.Equal(t, msg1, msg2)
