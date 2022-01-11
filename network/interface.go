@@ -12,7 +12,8 @@ import (
 
 var (
 	// ProtocolGraphsync is the protocol identifier for graphsync messages
-	ProtocolGraphsync protocol.ID = "/ipfs/graphsync/1.0.0"
+	ProtocolGraphsync_1_0_0 protocol.ID = "/ipfs/graphsync/1.0.0"
+	ProtocolGraphsync_1_1_0 protocol.ID = "/ipfs/graphsync/1.1.0"
 )
 
 // GraphSyncNetwork provides network connectivity for GraphSync.
