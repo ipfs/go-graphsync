@@ -1,6 +1,4 @@
-package ipldcbor
-
-//go:generate go test -run=Generate -vet=off -tags=bindnodegen
+package message
 
 import (
 	_ "embed"
@@ -8,8 +6,6 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/node/bindnode"
 	"github.com/ipld/go-ipld-prime/schema"
-
-	"github.com/ipfs/go-graphsync/message"
 )
 
 //go:embed schema.ipldsch
@@ -28,5 +24,5 @@ func init() {
 	}
 	schemaTypeSystem = ts
 
-	Prototype.Message = bindnode.Prototype((*message.GraphSyncMessage)(nil), ts.TypeByName("GraphSyncMessage"))
+	Prototype.Message = bindnode.Prototype((*GraphSyncMessage)(nil), ts.TypeByName("GraphSyncMessage"))
 }
