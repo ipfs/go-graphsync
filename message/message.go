@@ -114,7 +114,7 @@ func UpdateRequest(id graphsync.RequestID, extensions ...NamedExtension) GraphSy
 
 // NamedExtension exists just for the purpose of the constructors.
 type NamedExtension struct {
-	Name string
+	Name graphsync.ExtensionName
 	Data ipld.Node
 }
 
@@ -123,8 +123,8 @@ func toExtensionsMap(extensions []NamedExtension) (m GraphSyncExtensions) {
 		m.Keys = make([]string, len(extensions))
 		m.Values = make(map[string]ipld.Node, len(extensions))
 		for i, ext := range extensions {
-			m.Keys[i] = ext.Name
-			m.Values[ext.Name] = ext.Data
+			m.Keys[i] = string(ext.Name)
+			m.Values[string(ext.Name)] = ext.Data
 		}
 	}
 	return m
@@ -133,7 +133,7 @@ func toExtensionsMap(extensions []NamedExtension) (m GraphSyncExtensions) {
 func fromProtoExtensions(protoExts map[string][]byte) GraphSyncExtensions {
 	var exts []NamedExtension
 	for name, data := range protoExts {
-		exts = append(exts, NamedExtension{name, basicnode.NewBytes(data)})
+		exts = append(exts, NamedExtension{graphsync.ExtensionName(name), basicnode.NewBytes(data)})
 	}
 	// Iterating over the map above is non-deterministic,
 	// so sort by the unique names to ensure determinism.
@@ -393,16 +393,16 @@ func (gsr GraphSyncRequest) MergeExtensions(extensions []NamedExtension, mergeFu
 	}
 	combinedExtensions := make(map[string]ipld.Node)
 	for _, newExt := range extensions {
-		oldNode, ok := gsr.Extensions.Values[newExt.Name]
+		oldNode, ok := gsr.Extensions.Values[string(newExt.Name)]
 		if !ok {
-			combinedExtensions[newExt.Name] = newExt.Data
+			combinedExtensions[string(newExt.Name)] = newExt.Data
 			continue
 		}
 		resultNode, err := mergeFunc(graphsync.ExtensionName(newExt.Name), oldNode, newExt.Data)
 		if err != nil {
 			return GraphSyncRequest{}, err
 		}
-		combinedExtensions[newExt.Name] = resultNode
+		combinedExtensions[string(newExt.Name)] = resultNode
 	}
 
 	for name, oldNode := range gsr.Extensions.Values {

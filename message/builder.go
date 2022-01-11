@@ -120,7 +120,7 @@ func (b *Builder) Build() (GraphSyncMessage, error) {
 			return GraphSyncMessage{}, err
 		}
 		b.extensions[requestID] = append(b.extensions[requestID], NamedExtension{
-			Name: string(graphsync.ExtensionMetadata),
+			Name: graphsync.ExtensionMetadata,
 			Data: basicnode.NewBytes(mdRaw), // TODO: likely wrong
 		})
 		status, isComplete := b.completedResponses[requestID]
