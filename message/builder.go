@@ -2,7 +2,6 @@ package message
 
 import (
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
@@ -86,6 +85,7 @@ func (b *Builder) Empty() bool {
 
 // ScrubResponse removes a response from a message and any blocks only referenced by that response
 func (b *Builder) ScrubResponses(requestIDs []graphsync.RequestID) uint64 {
+	/* TODO
 	for _, requestID := range requestIDs {
 		delete(b.completedResponses, requestID)
 		delete(b.extensions, requestID)
@@ -107,6 +107,8 @@ func (b *Builder) ScrubResponses(requestIDs []graphsync.RequestID) uint64 {
 	b.blkSize = newBlkSize
 	b.outgoingBlocks = savedBlocks
 	return oldSize - newBlkSize
+	*/
+	return 0
 }
 
 // Build assembles and encodes message data from the added requests, links, and blocks.
