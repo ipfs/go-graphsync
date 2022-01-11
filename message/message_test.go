@@ -20,9 +20,10 @@ import (
 
 func TestAppendingRequests(t *testing.T) {
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
+	extensionBytes := testutil.RandomBytes(100)
 	extension := NamedExtension{
 		Name: extensionName,
-		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
+		Data: basicnode.NewBytes(extensionBytes),
 	}
 	root := testutil.GenerateCids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
@@ -58,7 +59,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.False(t, pbRequest.Update)
 	require.Equal(t, root.Bytes(), pbRequest.Root)
 	require.Equal(t, selectorEncoded, pbRequest.Selector)
-	require.Equal(t, map[string]ipld.Node{"graphsync/awesome": extension.Data}, pbRequest.Extensions)
+	require.Equal(t, map[string][]byte{"graphsync/awesome": extensionBytes}, pbRequest.Extensions)
 
 	deserialized, err := newMessageFromProto(pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
@@ -79,9 +80,10 @@ func TestAppendingRequests(t *testing.T) {
 
 func TestAppendingResponses(t *testing.T) {
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
+	extensionBytes := testutil.RandomBytes(100)
 	extension := NamedExtension{
 		Name: extensionName,
-		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
+		Data: basicnode.NewBytes(extensionBytes),
 	}
 	requestID := graphsync.RequestID(rand.Int31())
 	status := graphsync.RequestAcknowledged
@@ -105,7 +107,7 @@ func TestAppendingResponses(t *testing.T) {
 	pbResponse := pbMessage.Responses[0]
 	require.Equal(t, int32(requestID), pbResponse.Id)
 	require.Equal(t, int32(status), pbResponse.Status)
-	require.Equal(t, extension.Data, pbResponse.Extensions["graphsync/awesome"])
+	require.Equal(t, extensionBytes, pbResponse.Extensions["graphsync/awesome"])
 
 	deserialized, err := newMessageFromProto(pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")

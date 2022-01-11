@@ -20,12 +20,13 @@ type Builder struct {
 	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
 	outgoingResponses  map[graphsync.RequestID]metadata.Metadata
 	extensions         map[graphsync.RequestID][]NamedExtension
-	requests           []GraphSyncRequest
+	requests           map[graphsync.RequestID]GraphSyncRequest
 }
 
 // NewBuilder generates a new Builder.
 func NewBuilder() *Builder {
 	return &Builder{
+		requests:           make(map[graphsync.RequestID]GraphSyncRequest),
 		outgoingBlocks:     make(map[cid.Cid]blocks.Block),
 		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
 		outgoingResponses:  make(map[graphsync.RequestID]metadata.Metadata),
@@ -35,7 +36,7 @@ func NewBuilder() *Builder {
 
 // AddRequest registers a new request to be added to the message.
 func (b *Builder) AddRequest(request GraphSyncRequest) {
-	b.requests = append(b.requests, request)
+	b.requests[request.ID] = request
 }
 
 // AddBlock adds the given block to the message.
@@ -109,6 +110,10 @@ func (b *Builder) ScrubResponses(requestIDs []graphsync.RequestID) uint64 {
 
 // Build assembles and encodes message data from the added requests, links, and blocks.
 func (b *Builder) Build() (GraphSyncMessage, error) {
+	requests := make([]GraphSyncRequest, 0, len(b.requests))
+	for _, request := range b.requests {
+		requests = append(requests, request)
+	}
 	responses := make([]GraphSyncResponse, 0, len(b.outgoingResponses))
 	for requestID, linkMap := range b.outgoingResponses {
 		mdRaw, err := metadata.EncodeMetadata(linkMap)
@@ -122,14 +127,13 @@ func (b *Builder) Build() (GraphSyncMessage, error) {
 		status, isComplete := b.completedResponses[requestID]
 		responses = append(responses, NewResponse(requestID, responseCode(status, isComplete), b.extensions[requestID]...))
 	}
-	// TODO: sort responses?
 	blocks := make([]GraphSyncBlock, 0, len(b.outgoingBlocks))
 	for _, block := range b.outgoingBlocks {
 		blocks = append(blocks, FromBlockFormat(block))
 	}
-	// TODO: sort blocks?
+	// TODO: sort requests, responses, and blocks? map order is randomized
 	return GraphSyncMessage{
-		b.requests, responses, blocks,
+		requests, responses, blocks,
 	}, nil
 }
 
