@@ -123,7 +123,7 @@ func (b *Builder) Build() (GraphSyncMessage, error) {
 		responses = append(responses, NewResponse(requestID, responseCode(status, isComplete), b.extensions[requestID]...))
 	}
 	// TODO: sort responses?
-	blocks := make([]GraphSyncBlock, len(b.outgoingBlocks))
+	blocks := make([]GraphSyncBlock, 0, len(b.outgoingBlocks))
 	for _, block := range b.outgoingBlocks {
 		blocks = append(blocks, FromBlockFormat(block))
 	}

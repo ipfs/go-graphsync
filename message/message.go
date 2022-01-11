@@ -296,6 +296,23 @@ func FromMsgReader(r msgio.Reader) (GraphSyncMessage, error) {
 	return newMessageFromProto(&pb)
 }
 
+func toProtoExtensions(m GraphSyncExtensions) map[string][]byte {
+	protoExts := make(map[string][]byte, len(m.Values))
+	for name, node := range m.Values {
+		// Only keep those which are plain bytes,
+		// as those are the only ones that the older protocol clients understand.
+		if node.Kind() != ipld.Kind_Bytes {
+			continue
+		}
+		raw, err := node.AsBytes()
+		if err != nil {
+			panic(err) // shouldn't happen
+		}
+		protoExts[name] = raw
+	}
+	return protoExts
+}
+
 func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
 	pbm := new(pb.Message)
 	pbm.Requests = make([]*pb.Message_Request, 0, len(gsm.Requests))
@@ -309,22 +326,22 @@ func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
 			}
 		}
 		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
-			Id:       int32(request.ID),
-			Root:     request.Root.Bytes(),
-			Selector: selector,
-			Priority: int32(request.Priority),
-			Cancel:   request.Cancel,
-			Update:   request.Update,
-			// Extensions: request.Extensions, TODO
+			Id:         int32(request.ID),
+			Root:       request.Root.Bytes(),
+			Selector:   selector,
+			Priority:   int32(request.Priority),
+			Cancel:     request.Cancel,
+			Update:     request.Update,
+			Extensions: toProtoExtensions(request.Extensions),
 		})
 	}
 
 	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.Responses))
 	for _, response := range gsm.Responses {
 		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
-			Id:     int32(response.ID),
-			Status: int32(response.Status),
-			// Extensions: response.Extensions, TODO
+			Id:         int32(response.ID),
+			Status:     int32(response.Status),
+			Extensions: toProtoExtensions(response.Extensions),
 		})
 	}
 
