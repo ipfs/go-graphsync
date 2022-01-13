@@ -308,7 +308,7 @@ func (gsm GraphSyncMessage) ToIPLD() (*ipldbind.GraphSyncMessage, error) {
 	ibm.Requests = make([]ipldbind.GraphSyncRequest, 0, len(gsm.requests))
 	for _, request := range gsm.requests {
 		ibm.Requests = append(ibm.Requests, ipldbind.GraphSyncRequest{
-			ID:       request.id,
+			Id:       request.id,
 			Root:     request.root,
 			Selector: request.selector,
 			Priority: request.priority,
@@ -321,7 +321,7 @@ func (gsm GraphSyncMessage) ToIPLD() (*ipldbind.GraphSyncMessage, error) {
 	ibm.Responses = make([]ipldbind.GraphSyncResponse, 0, len(gsm.responses))
 	for _, response := range gsm.responses {
 		ibm.Responses = append(ibm.Responses, ipldbind.GraphSyncResponse{
-			ID:     response.requestID,
+			Id:     response.requestID,
 			Status: response.status,
 			// Extensions: response.extensions,
 		})
@@ -342,13 +342,13 @@ func messageFromIPLD(ibm *ipldbind.GraphSyncMessage) (GraphSyncMessage, error) {
 	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(ibm.Requests))
 	for _, req := range ibm.Requests {
 		// exts := req.Extensions
-		requests[graphsync.RequestID(req.ID)] = newRequest(graphsync.RequestID(req.ID), req.Root, req.Selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, nil)
+		requests[graphsync.RequestID(req.Id)] = newRequest(graphsync.RequestID(req.Id), req.Root, req.Selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, nil)
 	}
 
 	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(ibm.Responses))
 	for _, res := range ibm.Responses {
 		// exts := res.Extensions
-		responses[graphsync.RequestID(res.ID)] = newResponse(graphsync.RequestID(res.ID), graphsync.ResponseStatusCode(res.Status), nil)
+		responses[graphsync.RequestID(res.Id)] = newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), nil)
 	}
 
 	blks := make(map[cid.Cid]blocks.Block, len(ibm.Blocks))
