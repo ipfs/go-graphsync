@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
-	pool "github.com/libp2p/go-buffer-pool"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-msgio"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/ipfs/go-graphsync"
 	pb "github.com/ipfs/go-graphsync/message/pb"
@@ -73,19 +71,15 @@ type GraphSyncMetadatum struct {
 // String returns a human-readable form of a GraphSyncRequest
 func (gsr GraphSyncRequest) String() string {
 	var buf bytes.Buffer
-	dagjson.Encode(gsr.selector, &buf)
-	ext := make([]string, 0)
-	for s := range gsr.extensions {
-		ext = append(ext, s)
-	}
+	dagjson.Encode(gsr.Selector, &buf)
 	return fmt.Sprintf("GraphSyncRequest<root=%s, selector=%s, priority=%d, id=%s, cancel=%v, update=%v, exts=%s>",
-		gsr.root.String(),
+		gsr.Root.String(),
 		buf.String(),
-		gsr.priority,
-		gsr.id.String(),
-		gsr.isCancel,
-		gsr.isUpdate,
-		strings.Join(ext, "|"),
+		gsr.Priority,
+		gsr.ID.String(),
+		gsr.Cancel,
+		gsr.Update,
+		strings.Join(gsr.ExtensionNames(), "|"),
 	)
 }
 
@@ -139,14 +133,10 @@ func BlockFormatSlice(bs []GraphSyncBlock) []blocks.Block {
 
 // String returns a human-readable form of a GraphSyncResponse
 func (gsr GraphSyncResponse) String() string {
-	ext := make([]string, 0)
-	for s := range gsr.extensions {
-		ext = append(ext, s)
-	}
 	return fmt.Sprintf("GraphSyncResponse<id=%s, status=%d, exts=%s>",
-		gsr.requestID.String(),
-		gsr.status,
-		strings.Join(ext, "|"),
+		gsr.ID.String(),
+		gsr.Status,
+		strings.Join(gsr.ExtensionNames(), "|"),
 	)
 }
 
@@ -162,14 +152,14 @@ type GraphSyncMessage struct {
 // its contents
 func (gsm GraphSyncMessage) String() string {
 	cts := make([]string, 0)
-	for _, req := range gsm.requests {
+	for _, req := range gsm.Requests {
 		cts = append(cts, req.String())
 	}
-	for _, resp := range gsm.responses {
+	for _, resp := range gsm.Responses {
 		cts = append(cts, resp.String())
 	}
-	for c := range gsm.blocks {
-		cts = append(cts, fmt.Sprintf("Block<%s>", c.String()))
+	for _, c := range gsm.Blocks {
+		cts = append(cts, fmt.Sprintf("Block<%s>", c.BlockFormat().Cid().String()))
 	}
 	return fmt.Sprintf("GraphSyncMessage<\n\t%s\n>", strings.Join(cts, ",\n\t"))
 }
@@ -262,16 +252,6 @@ func (gsm GraphSyncMessage) Empty() bool {
 	return len(gsm.Blocks) == 0 && len(gsm.Requests) == 0 && len(gsm.Responses) == 0
 }
 
-// Requests returns a copy of the list of GraphSyncRequests in this
-// GraphSyncMessage
-func (gsm GraphSyncMessage) Requests() []GraphSyncRequest {
-	requests := make([]GraphSyncRequest, 0, len(gsm.requests))
-	for _, request := range gsm.requests {
-		requests = append(requests, request)
-	}
-	return requests
-}
-
 // ResponseCodes returns a list of ResponseStatusCodes contained in the
 // responses in this GraphSyncMessage
 func (gsm GraphSyncMessage) ResponseCodes() map[graphsync.RequestID]graphsync.ResponseStatusCode {
@@ -282,34 +262,15 @@ func (gsm GraphSyncMessage) ResponseCodes() map[graphsync.RequestID]graphsync.Re
 	return codes
 }
 
-// Responses returns a copy of the list of GraphSyncResponses in this
-// GraphSyncMessage
-func (gsm GraphSyncMessage) Responses() []GraphSyncResponse {
-	responses := make([]GraphSyncResponse, 0, len(gsm.responses))
-	for _, response := range gsm.responses {
-		responses = append(responses, response)
-	}
-	return responses
-}
-
-// Blocks returns a copy of the list of Blocks in this GraphSyncMessage
-func (gsm GraphSyncMessage) Blocks() []blocks.Block {
-	bs := make([]blocks.Block, 0, len(gsm.blocks))
-	for _, block := range gsm.blocks {
-		bs = append(bs, block)
-	}
-	return bs
-}
-
 // Loggable returns a simplified, single-line log form of this GraphSyncMessage
 func (gsm GraphSyncMessage) Loggable() map[string]interface{} {
 	requests := make([]string, 0, len(gsm.Requests))
 	for _, request := range gsm.Requests {
-		requests = append(requests, fmt.Sprintf("%d", request.ID))
+		requests = append(requests, request.ID.String())
 	}
 	responses := make([]string, 0, len(gsm.Responses))
 	for _, response := range gsm.Responses {
-		responses = append(responses, fmt.Sprintf("%d", response.ID))
+		responses = append(responses, response.ID.String())
 	}
 	return map[string]interface{}{
 		"requests":  requests,

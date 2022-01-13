@@ -25,7 +25,7 @@ func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
 		Name: extensionName,
 		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
 	}
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	status := graphsync.RequestAcknowledged
 
@@ -48,10 +48,10 @@ func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
 			for pb.Next() {
 				buf.Reset()
 
-				err := gsm.ToNet(buf)
+				err := message.NewMessageHandler().ToNet(gsm, buf)
 				require.NoError(b, err)
 
-				gsm2, err := message.FromNet(buf)
+				gsm2, err := message.NewMessageHandler().FromNet(buf)
 				require.NoError(b, err)
 				require.Equal(b, gsm, gsm2)
 			}

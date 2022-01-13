@@ -1,5 +1,5 @@
 type GraphSyncExtensions {String:Any}
-type GraphSyncRequestID int
+type GraphSyncRequestID bytes
 type GraphSyncPriority int
 
 type GraphSyncMetadatum struct {

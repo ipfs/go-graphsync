@@ -49,4 +49,4 @@ require (
 	google.golang.org/protobuf v1.27.1
 )
 
-replace github.com/ipld/go-ipld-prime => ../../src/ipld
+replace github.com/ipld/go-ipld-prime => ../../ipld/go-ipld-prime
