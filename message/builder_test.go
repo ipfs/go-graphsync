@@ -1,13 +1,11 @@
 package message
 
 import (
-	"bytes"
 	"io"
 	"testing"
 
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
@@ -15,42 +13,21 @@ import (
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
-// Like the funcs in testutil above, but using blocks at the protocol level.
-// We can't put them there right away, due to import cycles.
-// We need to refactor these tests to be external, i.e. "package message_test".
-
-func ContainsGraphSyncBlock(blks []GraphSyncBlock, block GraphSyncBlock) bool {
-	for _, blk := range blks {
-		if bytes.Equal(blk.Prefix, block.Prefix) && bytes.Equal(blk.Data, block.Data) {
-			return true
-		}
-	}
-	return false
-}
-func AssertContainsGraphSyncBlock(t testing.TB, blks []GraphSyncBlock, block GraphSyncBlock) {
-	t.Helper()
-	require.True(t, ContainsGraphSyncBlock(blks, block), "given block should be in list")
-}
-func RefuteContainsGraphSyncBlock(t testing.TB, blks []GraphSyncBlock, block GraphSyncBlock) {
-	t.Helper()
-	require.False(t, ContainsGraphSyncBlock(blks, block), "given block should not be in list")
-}
-
 func TestMessageBuilding(t *testing.T) {
 	blocks := testutil.GenerateBlocksOfSize(3, 100)
 	links := make([]ipld.Link, 0, len(blocks))
 	for _, block := range blocks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	extensionData1 := basicnode.NewBytes(testutil.RandomBytes(100))
+	extensionData1 := testutil.RandomBytes(100)
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
-	extension1 := NamedExtension{
+	extension1 := graphsync.ExtensionData{
 		Name: extensionName1,
 		Data: extensionData1,
 	}
-	extensionData2 := basicnode.NewBytes(testutil.RandomBytes(100))
+	extensionData2 := testutil.RandomBytes(100)
 	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
-	extension2 := NamedExtension{
+	extension2 := graphsync.ExtensionData{
 		Name: extensionName2,
 		Data: extensionData2,
 	}
@@ -97,12 +74,12 @@ func TestMessageBuilding(t *testing.T) {
 			},
 			checkMsg: func(t *testing.T, message GraphSyncMessage) {
 
-				responses := message.Responses
-				sentBlocks := BlockFormatSlice(message.Blocks)
+				responses := message.Responses()
+				sentBlocks := message.Blocks()
 				require.Len(t, responses, 4, "did not assemble correct number of responses")
 
 				response1 := findResponseForRequestID(t, responses, requestID1)
-				require.Equal(t, graphsync.RequestCompletedPartial, response1.Status, "did not generate completed partial response")
+				require.Equal(t, graphsync.RequestCompletedPartial, response1.Status(), "did not generate completed partial response")
 				assertMetadata(t, response1, metadata.Metadata{
 					metadata.Item{Link: links[0].(cidlink.Link).Cid, BlockPresent: true},
 					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: false},
@@ -111,7 +88,7 @@ func TestMessageBuilding(t *testing.T) {
 				assertExtension(t, response1, extension1)
 
 				response2 := findResponseForRequestID(t, responses, requestID2)
-				require.Equal(t, graphsync.RequestCompletedFull, response2.Status, "did not generate completed full response")
+				require.Equal(t, graphsync.RequestCompletedFull, response2.Status(), "did not generate completed full response")
 				assertMetadata(t, response2, metadata.Metadata{
 					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
 					metadata.Item{Link: links[2].(cidlink.Link).Cid, BlockPresent: true},
@@ -119,7 +96,7 @@ func TestMessageBuilding(t *testing.T) {
 				})
 
 				response3 := findResponseForRequestID(t, responses, requestID3)
-				require.Equal(t, graphsync.PartialResponse, response3.Status, "did not generate partial response")
+				require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
 				assertMetadata(t, response3, metadata.Metadata{
 					metadata.Item{Link: links[0].(cidlink.Link).Cid, BlockPresent: true},
 					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
@@ -127,7 +104,7 @@ func TestMessageBuilding(t *testing.T) {
 				assertExtension(t, response3, extension2)
 
 				response4 := findResponseForRequestID(t, responses, requestID4)
-				require.Equal(t, graphsync.RequestCompletedFull, response4.Status, "did not generate completed full response")
+				require.Equal(t, graphsync.RequestCompletedFull, response4.Status(), "did not generate completed full response")
 
 				require.Equal(t, len(blocks), len(sentBlocks), "did not send all blocks")
 
@@ -143,15 +120,15 @@ func TestMessageBuilding(t *testing.T) {
 			},
 			expectedSize: 0,
 			checkMsg: func(t *testing.T, message GraphSyncMessage) {
-				responses := message.Responses
+				responses := message.Responses()
 
 				response1 := findResponseForRequestID(t, responses, requestID1)
-				require.Equal(t, graphsync.PartialResponse, response1.Status, "did not generate partial response")
+				require.Equal(t, graphsync.PartialResponse, response1.Status(), "did not generate partial response")
 				assertMetadata(t, response1, nil)
 				assertExtension(t, response1, extension1)
 
 				response2 := findResponseForRequestID(t, responses, requestID2)
-				require.Equal(t, graphsync.PartialResponse, response2.Status, "did not generate partial response")
+				require.Equal(t, graphsync.PartialResponse, response2.Status(), "did not generate partial response")
 				assertMetadata(t, response2, nil)
 				assertExtension(t, response2, extension2)
 			},
@@ -184,12 +161,12 @@ func TestMessageBuilding(t *testing.T) {
 			expectedSize: 200,
 			checkMsg: func(t *testing.T, message GraphSyncMessage) {
 
-				responses := message.Responses
-				sentBlocks := BlockFormatSlice(message.Blocks)
+				responses := message.Responses()
+				sentBlocks := message.Blocks()
 				require.Len(t, responses, 3, "did not assemble correct number of responses")
 
 				response2 := findResponseForRequestID(t, responses, requestID2)
-				require.Equal(t, graphsync.RequestCompletedFull, response2.Status, "did not generate completed full response")
+				require.Equal(t, graphsync.RequestCompletedFull, response2.Status(), "did not generate completed full response")
 				assertMetadata(t, response2, metadata.Metadata{
 					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
 					metadata.Item{Link: links[2].(cidlink.Link).Cid, BlockPresent: true},
@@ -197,14 +174,14 @@ func TestMessageBuilding(t *testing.T) {
 				})
 
 				response3 := findResponseForRequestID(t, responses, requestID3)
-				require.Equal(t, graphsync.PartialResponse, response3.Status, "did not generate partial response")
+				require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
 				assertMetadata(t, response3, metadata.Metadata{
 					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
 				})
 				assertExtension(t, response3, extension2)
 
 				response4 := findResponseForRequestID(t, responses, requestID4)
-				require.Equal(t, graphsync.RequestCompletedFull, response4.Status, "did not generate completed full response")
+				require.Equal(t, graphsync.RequestCompletedFull, response4.Status(), "did not generate completed full response")
 
 				require.Equal(t, len(blocks)-1, len(sentBlocks), "did not send all blocks")
 
@@ -242,12 +219,12 @@ func TestMessageBuilding(t *testing.T) {
 			expectedSize: 100,
 			checkMsg: func(t *testing.T, message GraphSyncMessage) {
 
-				responses := message.Responses
-				sentBlocks := BlockFormatSlice(message.Blocks)
+				responses := message.Responses()
+				sentBlocks := message.Blocks()
 				require.Len(t, responses, 1, "did not assemble correct number of responses")
 
 				response3 := findResponseForRequestID(t, responses, requestID3)
-				require.Equal(t, graphsync.PartialResponse, response3.Status, "did not generate partial response")
+				require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
 				assertMetadata(t, response3, metadata.Metadata{
 					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
 				})
@@ -273,7 +250,7 @@ func TestMessageBuilding(t *testing.T) {
 
 func findResponseForRequestID(t *testing.T, responses []GraphSyncResponse, requestID graphsync.RequestID) GraphSyncResponse {
 	for _, response := range responses {
-		if response.ID == requestID {
+		if response.RequestID() == requestID {
 			return response
 		}
 	}
@@ -281,17 +258,15 @@ func findResponseForRequestID(t *testing.T, responses []GraphSyncResponse, reque
 	return GraphSyncResponse{}
 }
 
-func assertExtension(t *testing.T, response GraphSyncResponse, extension NamedExtension) {
+func assertExtension(t *testing.T, response GraphSyncResponse, extension graphsync.ExtensionData) {
 	returnedExtensionData, found := response.Extension(extension.Name)
 	require.True(t, found)
 	require.Equal(t, extension.Data, returnedExtensionData, "did not encode extension")
 }
 
 func assertMetadata(t *testing.T, response GraphSyncResponse, expectedMetadata metadata.Metadata) {
-	responseMetadataNode, found := response.Extension(graphsync.ExtensionMetadata)
+	responseMetadataRaw, found := response.Extension(graphsync.ExtensionMetadata)
 	require.True(t, found, "Metadata should be included in response")
-	responseMetadataRaw, err := responseMetadataNode.AsBytes()
-	require.NoError(t, err)
 	responseMetadata, err := metadata.DecodeMetadata(responseMetadataRaw)
 	require.NoError(t, err)
 	require.Equal(t, expectedMetadata, responseMetadata, "incorrect metadata included in response")

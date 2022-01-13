@@ -1,4 +1,4 @@
-package message
+package ipldbind
 
 import (
 	_ "embed"

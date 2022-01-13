@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
@@ -83,41 +84,41 @@ func (mh *MessageHandler) FromMsgReaderV1(p peer.ID, r msgio.Reader) (GraphSyncM
 // ToProto converts a GraphSyncMessage to its pb.Message equivalent
 func (mh *MessageHandler) ToProto(gsm GraphSyncMessage) (*pb.Message, error) {
 	pbm := new(pb.Message)
-	pbm.Requests = make([]*pb.Message_Request, 0, len(gsm.Requests))
-	for _, request := range gsm.Requests {
+	pbm.Requests = make([]*pb.Message_Request, 0, len(gsm.requests))
+	for _, request := range gsm.requests {
 		var selector []byte
 		var err error
-		if request.Selector != nil {
-			selector, err = ipldutil.EncodeNode(request.Selector)
+		if request.selector != nil {
+			selector, err = ipldutil.EncodeNode(request.selector)
 			if err != nil {
 				return nil, err
 			}
 		}
 		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
-			Id:         request.ID.Bytes(),
-			Root:       request.Root.Bytes(),
+			Id:         request.id.Bytes(),
+			Root:       request.root.Bytes(),
 			Selector:   selector,
-			Priority:   int32(request.Priority),
-			Cancel:     request.Cancel,
-			Update:     request.Update,
-			Extensions: toProtoExtensions(request.Extensions),
+			Priority:   int32(request.priority),
+			Cancel:     request.isCancel,
+			Update:     request.isUpdate,
+			Extensions: request.extensions,
 		})
 	}
 
-	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.Responses))
-	for _, response := range gsm.Responses {
+	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.responses))
+	for _, response := range gsm.responses {
 		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
-			Id:         response.ID.Bytes(),
-			Status:     int32(response.Status),
-			Extensions: toProtoExtensions(response.Extensions),
+			Id:         response.requestID.Bytes(),
+			Status:     int32(response.status),
+			Extensions: response.extensions,
 		})
 	}
 
-	pbm.Data = make([]*pb.Message_Block, 0, len(gsm.Blocks))
-	for _, b := range gsm.Blocks {
+	pbm.Data = make([]*pb.Message_Block, 0, len(gsm.blocks))
+	for _, b := range gsm.blocks {
 		pbm.Data = append(pbm.Data, &pb.Message_Block{
-			Prefix: b.Prefix,
-			Data:   b.Data,
+			Prefix: b.Cid().Prefix().Bytes(),
+			Data:   b.RawData(),
 		})
 	}
 	return pbm, nil
@@ -129,49 +130,49 @@ func (mh *MessageHandler) ToProtoV1(p peer.ID, gsm GraphSyncMessage) (*pb.Messag
 	defer mh.mapLock.Unlock()
 
 	pbm := new(pb.Message_V1_0_0)
-	pbm.Requests = make([]*pb.Message_V1_0_0_Request, 0, len(gsm.Requests))
-	for _, request := range gsm.Requests {
+	pbm.Requests = make([]*pb.Message_V1_0_0_Request, 0, len(gsm.requests))
+	for _, request := range gsm.requests {
 		var selector []byte
 		var err error
-		if request.Selector != nil {
-			selector, err = ipldutil.EncodeNode(request.Selector)
+		if request.selector != nil {
+			selector, err = ipldutil.EncodeNode(request.selector)
 			if err != nil {
 				return nil, err
 			}
 		}
-		rid, err := bytesIdToInt(p, mh.fromV1Map, mh.toV1Map, &mh.nextIntId, request.ID.Bytes())
+		rid, err := bytesIdToInt(p, mh.fromV1Map, mh.toV1Map, &mh.nextIntId, request.id.Bytes())
 		if err != nil {
 			return nil, err
 		}
 		pbm.Requests = append(pbm.Requests, &pb.Message_V1_0_0_Request{
 			Id:         rid,
-			Root:       request.Root.Bytes(),
+			Root:       request.root.Bytes(),
 			Selector:   selector,
-			Priority:   int32(request.Priority),
-			Cancel:     request.Cancel,
-			Update:     request.Update,
-			Extensions: toProtoExtensions(request.Extensions),
+			Priority:   int32(request.priority),
+			Cancel:     request.isCancel,
+			Update:     request.isUpdate,
+			Extensions: request.extensions,
 		})
 	}
 
-	pbm.Responses = make([]*pb.Message_V1_0_0_Response, 0, len(gsm.Responses))
-	for _, response := range gsm.Responses {
-		rid, err := bytesIdToInt(p, mh.fromV1Map, mh.toV1Map, &mh.nextIntId, response.ID.Bytes())
+	pbm.Responses = make([]*pb.Message_V1_0_0_Response, 0, len(gsm.responses))
+	for _, response := range gsm.responses {
+		rid, err := bytesIdToInt(p, mh.fromV1Map, mh.toV1Map, &mh.nextIntId, response.requestID.Bytes())
 		if err != nil {
 			return nil, err
 		}
 		pbm.Responses = append(pbm.Responses, &pb.Message_V1_0_0_Response{
 			Id:         rid,
-			Status:     int32(response.Status),
-			Extensions: toProtoExtensions(response.Extensions),
+			Status:     int32(response.status),
+			Extensions: response.extensions,
 		})
 	}
 
-	pbm.Data = make([]*pb.Message_V1_0_0_Block, 0, len(gsm.Blocks))
-	for _, b := range gsm.Blocks {
+	pbm.Data = make([]*pb.Message_V1_0_0_Block, 0, len(gsm.blocks))
+	for _, b := range gsm.blocks {
 		pbm.Data = append(pbm.Data, &pb.Message_V1_0_0_Block{
-			Prefix: b.Prefix,
-			Data:   b.Data,
+			Prefix: b.Cid().Prefix().Bytes(),
+			Data:   b.RawData(),
 		})
 	}
 	return pbm, nil
@@ -217,23 +218,6 @@ func (mh *MessageHandler) ToNetV1(p peer.ID, gsm GraphSyncMessage, w io.Writer) 
 	return err
 }
 
-func toProtoExtensions(m GraphSyncExtensions) map[string][]byte {
-	protoExts := make(map[string][]byte, len(m.Values))
-	for name, node := range m.Values {
-		// Only keep those which are plain bytes,
-		// as those are the only ones that the older protocol clients understand.
-		if node.Kind() != ipld.Kind_Bytes {
-			continue
-		}
-		raw, err := node.AsBytes()
-		if err != nil {
-			panic(err) // shouldn't happen
-		}
-		protoExts[name] = raw
-	}
-	return protoExts
-}
-
 // Maps a []byte slice form of a RequestID (uuid) to an integer format as used
 // by a v1 peer. Inverse of intIdToRequestId()
 func bytesIdToInt(p peer.ID, fromV1Map map[v1RequestKey]graphsync.RequestID, toV1Map map[graphsync.RequestID]int32, nextIntId *int32, id []byte) (int32, error) {
@@ -266,8 +250,8 @@ func intIdToRequestId(p peer.ID, fromV1Map map[v1RequestKey]graphsync.RequestID,
 
 // Mapping from a pb.Message object to a GraphSyncMessage object
 func (mh *MessageHandler) newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
-	requests := make([]GraphSyncRequest, len(pbm.GetRequests()))
-	for i, req := range pbm.Requests {
+	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(pbm.GetRequests()))
+	for _, req := range pbm.Requests {
 		if req == nil {
 			return GraphSyncMessage{}, errors.New("request is nil")
 		}
@@ -291,14 +275,12 @@ func (mh *MessageHandler) newMessageFromProto(pbm *pb.Message) (GraphSyncMessage
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		// TODO: we likely need to turn some "core" extensions to fields,
-		// as some of those got moved to proper fields in the new protocol.
-		// Same for responses above, as well as the "to proto" funcs.
-		requests[i] = newRequest(id, root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, fromProtoExtensions(req.GetExtensions()))
+		exts := req.GetExtensions()
+		requests[id] = newRequest(id, root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts)
 	}
 
-	responses := make([]GraphSyncResponse, len(pbm.GetResponses()))
-	for i, res := range pbm.Responses {
+	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(pbm.GetResponses()))
+	for _, res := range pbm.Responses {
 		if res == nil {
 			return GraphSyncMessage{}, errors.New("response is nil")
 		}
@@ -306,19 +288,32 @@ func (mh *MessageHandler) newMessageFromProto(pbm *pb.Message) (GraphSyncMessage
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		responses[i] = newResponse(id, graphsync.ResponseStatusCode(res.Status), fromProtoExtensions(res.GetExtensions()))
+		exts := res.GetExtensions()
+		responses[id] = newResponse(id, graphsync.ResponseStatusCode(res.Status), exts)
 	}
 
-	blks := make([]GraphSyncBlock, len(pbm.GetData()))
-	for i, b := range pbm.Data {
+	blks := make(map[cid.Cid]blocks.Block, len(pbm.GetData()))
+	for _, b := range pbm.GetData() {
 		if b == nil {
 			return GraphSyncMessage{}, errors.New("block is nil")
 		}
 
-		blks[i] = GraphSyncBlock{
-			Prefix: b.GetPrefix(),
-			Data:   b.GetData(),
+		pref, err := cid.PrefixFromBytes(b.GetPrefix())
+		if err != nil {
+			return GraphSyncMessage{}, err
 		}
+
+		c, err := pref.Sum(b.GetData())
+		if err != nil {
+			return GraphSyncMessage{}, err
+		}
+
+		blk, err := blocks.NewBlockWithCid(b.GetData(), c)
+		if err != nil {
+			return GraphSyncMessage{}, err
+		}
+
+		blks[blk.Cid()] = blk
 	}
 
 	return GraphSyncMessage{
@@ -332,8 +327,8 @@ func (mh *MessageHandler) newMessageFromProtoV1(p peer.ID, pbm *pb.Message_V1_0_
 	mh.mapLock.Lock()
 	defer mh.mapLock.Unlock()
 
-	requests := make([]GraphSyncRequest, len(pbm.GetRequests()))
-	for i, req := range pbm.Requests {
+	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(pbm.GetRequests()))
+	for _, req := range pbm.Requests {
 		if req == nil {
 			return GraphSyncMessage{}, errors.New("request is nil")
 		}
@@ -357,14 +352,12 @@ func (mh *MessageHandler) newMessageFromProtoV1(p peer.ID, pbm *pb.Message_V1_0_
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		// TODO: we likely need to turn some "core" extensions to fields,
-		// as some of those got moved to proper fields in the new protocol.
-		// Same for responses above, as well as the "to proto" funcs.
-		requests[i] = newRequest(id, root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, fromProtoExtensions(req.GetExtensions()))
+		exts := req.GetExtensions()
+		requests[id] = newRequest(id, root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts)
 	}
 
-	responses := make([]GraphSyncResponse, len(pbm.GetResponses()))
-	for i, res := range pbm.Responses {
+	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(pbm.GetResponses()))
+	for _, res := range pbm.Responses {
 		if res == nil {
 			return GraphSyncMessage{}, errors.New("response is nil")
 		}
@@ -372,19 +365,32 @@ func (mh *MessageHandler) newMessageFromProtoV1(p peer.ID, pbm *pb.Message_V1_0_
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		responses[i] = newResponse(id, graphsync.ResponseStatusCode(res.Status), fromProtoExtensions(res.GetExtensions()))
+		exts := res.GetExtensions()
+		responses[id] = newResponse(id, graphsync.ResponseStatusCode(res.Status), exts)
 	}
 
-	blks := make([]GraphSyncBlock, len(pbm.GetData()))
-	for i, b := range pbm.Data {
+	blks := make(map[cid.Cid]blocks.Block, len(pbm.GetData()))
+	for _, b := range pbm.GetData() {
 		if b == nil {
 			return GraphSyncMessage{}, errors.New("block is nil")
 		}
 
-		blks[i] = GraphSyncBlock{
-			Prefix: b.GetPrefix(),
-			Data:   b.GetData(),
+		pref, err := cid.PrefixFromBytes(b.GetPrefix())
+		if err != nil {
+			return GraphSyncMessage{}, err
 		}
+
+		c, err := pref.Sum(b.GetData())
+		if err != nil {
+			return GraphSyncMessage{}, err
+		}
+
+		blk, err := blocks.NewBlockWithCid(b.GetData(), c)
+		if err != nil {
+			return GraphSyncMessage{}, err
+		}
+
+		blks[blk.Cid()] = blk
 	}
 
 	return GraphSyncMessage{

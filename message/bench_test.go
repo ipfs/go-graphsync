@@ -1,13 +1,15 @@
-package message_test
+package message
 
 import (
 	"bytes"
 	"math/rand"
+	"reflect"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/message/ipldbind"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
@@ -21,16 +23,17 @@ func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
-	extension := message.NamedExtension{
+	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
+		Data: testutil.RandomBytes(100),
 	}
 	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	status := graphsync.RequestAcknowledged
 
-	builder := message.NewBuilder()
-	builder.AddRequest(message.NewRequest(id, root, selector, priority, extension))
+	builder := NewBuilder()
+	builder.AddRequest(NewRequest(id, root, selector, priority, extension))
+	builder.AddRequest(NewRequest(id, root, selector, priority))
 	builder.AddResponseCode(id, status)
 	builder.AddExtensionData(id, extension)
 	builder.AddBlock(blocks.NewBlock([]byte("W")))
@@ -48,12 +51,17 @@ func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
 			for pb.Next() {
 				buf.Reset()
 
-				err := message.NewMessageHandler().ToNet(gsm, buf)
+				err := NewMessageHandler().ToNet(gsm, buf)
 				require.NoError(b, err)
 
-				gsm2, err := message.NewMessageHandler().FromNet(buf)
+				gsm2, err := NewMessageHandler().FromNet(buf)
 				require.NoError(b, err)
-				require.Equal(b, gsm, gsm2)
+
+				// Note that require.Equal doesn't seem to handle maps well.
+				// It says they are non-equal simply because their order isn't deterministic.
+				if diff := cmp.Diff(gsm, gsm2, cmp.Exporter(func(reflect.Type) bool { return true })); diff != "" {
+					b.Fatal(diff)
+				}
 			}
 		})
 	})
@@ -65,16 +73,24 @@ func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
 			for pb.Next() {
 				buf.Reset()
 
-				node := bindnode.Wrap(&gsm, message.Prototype.Message.Type())
-				err := dagcbor.Encode(node.Representation(), buf)
+				ipldGSM, err := gsm.ToIPLD()
+				require.NoError(b, err)
+				node := bindnode.Wrap(ipldGSM, ipldbind.Prototype.Message.Type())
+				err = dagcbor.Encode(node.Representation(), buf)
 				require.NoError(b, err)
 
-				builder := message.Prototype.Message.Representation().NewBuilder()
+				builder := ipldbind.Prototype.Message.Representation().NewBuilder()
 				err = dagcbor.Decode(builder, buf)
 				require.NoError(b, err)
 				node2 := builder.Build()
-				gsm2 := *bindnode.Unwrap(node2).(*message.GraphSyncMessage)
-				require.Equal(b, gsm, gsm2)
+				ipldGSM2 := bindnode.Unwrap(node2).(*ipldbind.GraphSyncMessage)
+				gsm2, err := messageFromIPLD(ipldGSM2)
+				require.NoError(b, err)
+
+				// same as above.
+				if diff := cmp.Diff(gsm, gsm2, cmp.Exporter(func(reflect.Type) bool { return true })); diff != "" {
+					b.Fatal(diff)
+				}
 			}
 		})
 	})
