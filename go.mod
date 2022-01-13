@@ -25,9 +25,9 @@ require (
 	github.com/ipfs/go-merkledag v0.5.1
 	github.com/ipfs/go-peertaskqueue v0.7.1
 	github.com/ipfs/go-unixfs v0.3.1
-	github.com/ipfs/go-unixfsnode v1.1.4-0.20220110213426-c487b3de0a4e
+	github.com/ipfs/go-unixfsnode v1.2.0
 	github.com/ipld/go-codec-dagpb v1.3.0
-	github.com/ipld/go-ipld-prime v0.14.4-0.20220110161855-fc09d6b768e9
+	github.com/ipld/go-ipld-prime v0.14.4
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-libp2p v0.16.0
