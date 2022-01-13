@@ -8,6 +8,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/message/ipldbind"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
@@ -65,15 +66,15 @@ func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
 			for pb.Next() {
 				buf.Reset()
 
-				node := bindnode.Wrap(&gsm, message.Prototype.Message.Type())
+				node := bindnode.Wrap(&gsm, ipldbind.Prototype.Message.Type())
 				err := dagcbor.Encode(node.Representation(), buf)
 				require.NoError(b, err)
 
-				builder := message.Prototype.Message.Representation().NewBuilder()
+				builder := ipldbind.Prototype.Message.Representation().NewBuilder()
 				err = dagcbor.Decode(builder, buf)
 				require.NoError(b, err)
 				node2 := builder.Build()
-				gsm2 := *bindnode.Unwrap(node2).(*message.GraphSyncMessage)
+				gsm2 := *bindnode.Unwrap(node2).(*ipldbind.GraphSyncMessage)
 				require.Equal(b, gsm, gsm2)
 			}
 		})
