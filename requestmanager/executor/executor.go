@@ -163,6 +163,7 @@ func (e *Executor) traverse(rt RequestTask) error {
 		if err != nil {
 			return err
 		}
+
 	}
 }
 
@@ -201,7 +202,10 @@ func (e *Executor) advanceTraversal(rt RequestTask, result types.AsyncLoadResult
 }
 
 func (e *Executor) processResult(rt RequestTask, link ipld.Link, result types.AsyncLoadResult) error {
-	err := e.onNewBlock(rt, &blockData{link, result.Local, uint64(len(result.Data)), int64(rt.Traverser.NBlocksTraversed())})
+	var err error
+	if result.Err == nil {
+		err = e.onNewBlock(rt, &blockData{link, result.Local, uint64(len(result.Data)), int64(rt.Traverser.NBlocksTraversed())})
+	}
 	select {
 	case <-rt.PauseMessages:
 		if err == nil {
