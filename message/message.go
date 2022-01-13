@@ -160,9 +160,6 @@ func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
 			}
 		}
 		exts := req.GetExtensions()
-		if exts == nil {
-			exts = make(map[string][]byte)
-		}
 		requests[graphsync.RequestID(req.Id)] = newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts)
 	}
 
@@ -172,9 +169,6 @@ func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
 			return GraphSyncMessage{}, errors.New("response is nil")
 		}
 		exts := res.GetExtensions()
-		if exts == nil {
-			exts = make(map[string][]byte)
-		}
 		responses[graphsync.RequestID(res.Id)] = newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), exts)
 	}
 
