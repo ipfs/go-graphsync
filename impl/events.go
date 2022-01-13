@@ -8,6 +8,9 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
@@ -39,6 +42,15 @@ func (m *manager) OnChannelOpened(chid datatransfer.ChannelID) error {
 // calls revalidators so they can pause / resume the channel or send a
 // message over the transport.
 func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, size uint64, index int64) error {
+	ctx, _ := m.spansIndex.SpanForChannel(context.TODO(), chid)
+	ctx, span := otel.Tracer("data-transfer").Start(ctx, "dataReceived", trace.WithAttributes(
+		attribute.String("channelID", chid.String()),
+		attribute.String("link", link.String()),
+		attribute.Int64("index", index),
+		attribute.Int64("size", int64(size)),
+	))
+	defer span.End()
+
 	isNew, err := m.channels.DataReceived(chid, link.(cidlink.Link).Cid, size, index)
 	if err != nil {
 		return err
@@ -89,6 +101,15 @@ func (m *manager) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size
 	// The transport layer reports that some data has been queued up to be sent
 	// to the requester, so fire a DataQueued event on the channels state
 	// machine.
+
+	ctx, _ := m.spansIndex.SpanForChannel(context.TODO(), chid)
+	ctx, span := otel.Tracer("data-transfer").Start(ctx, "dataQueued", trace.WithAttributes(
+		attribute.String("channelID", chid.String()),
+		attribute.String("link", link.String()),
+		attribute.Int64("size", int64(size)),
+	))
+	defer span.End()
+
 	isNew, err := m.channels.DataQueued(chid, link.(cidlink.Link).Cid, size)
 	if err != nil {
 		return nil, err
@@ -127,6 +148,15 @@ func (m *manager) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size
 }
 
 func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) error {
+
+	ctx, _ := m.spansIndex.SpanForChannel(context.TODO(), chid)
+	ctx, span := otel.Tracer("data-transfer").Start(ctx, "dataSent", trace.WithAttributes(
+		attribute.String("channelID", chid.String()),
+		attribute.String("link", link.String()),
+		attribute.Int64("size", int64(size)),
+	))
+	defer span.End()
+
 	_, err := m.channels.DataSent(chid, link.(cidlink.Link).Cid, size)
 	return err
 }
