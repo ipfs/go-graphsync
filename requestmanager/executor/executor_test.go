@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-peertaskqueue/peertask"
@@ -190,8 +191,8 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
 			ctx := context.Background()
-			//ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			//defer cancel()
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
 			persistence := testutil.NewTestStore(make(map[ipld.Link][]byte))
 			tbc := testutil.SetupBlockChain(ctx, t, persistence, 100, 10)
 			fal := testloader.NewFakeAsyncLoader()
