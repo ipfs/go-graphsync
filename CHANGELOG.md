@@ -1,5 +1,24 @@
 # go-data-transfer changelog
 
+# go-data-transfer v1.13.0
+
+This release removes deprecated v1.0 & v1.1 protocols and supports transfers with missing blocks
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Removing CID Lists Part 2: Deprecating protocols (#293) ([filecoin-project/go-data-transfer#293](https://github.com/filecoin-project/go-data-transfer/pull/293))
+  - Removing CID Lists part one: unblocking technical obstacles (#292) ([filecoin-project/go-data-transfer#292](https://github.com/filecoin-project/go-data-transfer/pull/292))
+  - Accept missing blocks without failing data transfer (#291) ([filecoin-project/go-data-transfer#291](https://github.com/filecoin-project/go-data-transfer/pull/291))
+  - Block spans (#290) ([filecoin-project/go-data-transfer#290](https://github.com/filecoin-project/go-data-transfer/pull/290))
+  - Merge branch 'release/v1.12.1'
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 4 | +920/-3861 | 79 |
+
 # go-data-transfer v1.12.1
 
 Add tracing diagnostics
