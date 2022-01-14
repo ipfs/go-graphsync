@@ -377,8 +377,8 @@ func TestDataTransferRestartInitiating(t *testing.T) {
 				testCids := testutil.GenerateCids(2)
 				ev, ok := h.dt.(datatransfer.EventsHandler)
 				require.True(t, ok)
-				require.NoError(t, ev.OnDataReceived(channelID, cidlink.Link{Cid: testCids[0]}, 12345, 1))
-				require.NoError(t, ev.OnDataReceived(channelID, cidlink.Link{Cid: testCids[1]}, 12345, 2))
+				require.NoError(t, ev.OnDataReceived(channelID, cidlink.Link{Cid: testCids[0]}, 12345, 1, true))
+				require.NoError(t, ev.OnDataReceived(channelID, cidlink.Link{Cid: testCids[1]}, 12345, 2, true))
 
 				// restart that pull channel
 				err = h.dt.RestartDataTransferChannel(ctx, channelID)

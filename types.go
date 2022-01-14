@@ -139,6 +139,14 @@ type ChannelState interface {
 	// on the channel - note that a block can exist in more than one place in the DAG
 	ReceivedCidsTotal() int64
 
+	// QueuedCidsTotal returns the number of (non-unique) cids queued so far
+	// on the channel - note that a block can exist in more than one place in the DAG
+	QueuedCidsTotal() int64
+
+	// SentCidsTotal returns the number of (non-unique) cids sent so far
+	// on the channel - note that a block can exist in more than one place in the DAG
+	SentCidsTotal() int64
+
 	// Queued returns the number of bytes read from the node and queued for sending
 	Queued() uint64
 

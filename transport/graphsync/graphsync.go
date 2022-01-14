@@ -527,7 +527,7 @@ func (t *Transport) gsIncomingBlockHook(p peer.ID, response graphsync.ResponseDa
 		return
 	}
 
-	err := t.events.OnDataReceived(chid, block.Link(), block.BlockSize(), block.Index())
+	err := t.events.OnDataReceived(chid, block.Link(), block.BlockSize(), block.Index(), block.BlockSizeOnWire() != 0)
 	if err != nil && err != datatransfer.ErrPause {
 		hookActions.TerminateWithError(err)
 		return
@@ -553,7 +553,7 @@ func (t *Transport) gsBlockSentHook(p peer.ID, request graphsync.RequestData, bl
 		return
 	}
 
-	if err := t.events.OnDataSent(chid, block.Link(), block.BlockSize()); err != nil {
+	if err := t.events.OnDataSent(chid, block.Link(), block.BlockSize(), block.Index(), block.BlockSizeOnWire() != 0); err != nil {
 		log.Errorf("failed to process data sent: %+v", err)
 	}
 }
@@ -577,7 +577,7 @@ func (t *Transport) gsOutgoingBlockHook(p peer.ID, request graphsync.RequestData
 	// peer. It can return ErrPause to pause the response (eg if payment is
 	// required) and it can return a message that will be sent with the block
 	// (eg to ask for payment).
-	msg, err := t.events.OnDataQueued(chid, block.Link(), block.BlockSize())
+	msg, err := t.events.OnDataQueued(chid, block.Link(), block.BlockSize(), block.Index(), block.BlockSizeOnWire() != 0)
 	if err != nil && err != datatransfer.ErrPause {
 		hookActions.TerminateWithError(err)
 		return

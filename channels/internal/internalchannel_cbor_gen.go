@@ -23,7 +23,7 @@ func (t *ChannelState) MarshalCBOR(w io.Writer) error {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{179}); err != nil {
+	if _, err := w.Write([]byte{181}); err != nil {
 		return err
 	}
 
@@ -363,6 +363,50 @@ func (t *ChannelState) MarshalCBOR(w io.Writer) error {
 		}
 	} else {
 		if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajNegativeInt, uint64(-t.ReceivedBlocksTotal-1)); err != nil {
+			return err
+		}
+	}
+
+	// t.QueuedBlocksTotal (int64) (int64)
+	if len("QueuedBlocksTotal") > cbg.MaxLength {
+		return xerrors.Errorf("Value in field \"QueuedBlocksTotal\" was too long")
+	}
+
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len("QueuedBlocksTotal"))); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(w, string("QueuedBlocksTotal")); err != nil {
+		return err
+	}
+
+	if t.QueuedBlocksTotal >= 0 {
+		if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajUnsignedInt, uint64(t.QueuedBlocksTotal)); err != nil {
+			return err
+		}
+	} else {
+		if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajNegativeInt, uint64(-t.QueuedBlocksTotal-1)); err != nil {
+			return err
+		}
+	}
+
+	// t.SentBlocksTotal (int64) (int64)
+	if len("SentBlocksTotal") > cbg.MaxLength {
+		return xerrors.Errorf("Value in field \"SentBlocksTotal\" was too long")
+	}
+
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len("SentBlocksTotal"))); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(w, string("SentBlocksTotal")); err != nil {
+		return err
+	}
+
+	if t.SentBlocksTotal >= 0 {
+		if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajUnsignedInt, uint64(t.SentBlocksTotal)); err != nil {
+			return err
+		}
+	} else {
+		if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajNegativeInt, uint64(-t.SentBlocksTotal-1)); err != nil {
 			return err
 		}
 	}
@@ -708,6 +752,58 @@ func (t *ChannelState) UnmarshalCBOR(r io.Reader) error {
 				}
 
 				t.ReceivedBlocksTotal = int64(extraI)
+			}
+			// t.QueuedBlocksTotal (int64) (int64)
+		case "QueuedBlocksTotal":
+			{
+				maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
+				var extraI int64
+				if err != nil {
+					return err
+				}
+				switch maj {
+				case cbg.MajUnsignedInt:
+					extraI = int64(extra)
+					if extraI < 0 {
+						return fmt.Errorf("int64 positive overflow")
+					}
+				case cbg.MajNegativeInt:
+					extraI = int64(extra)
+					if extraI < 0 {
+						return fmt.Errorf("int64 negative oveflow")
+					}
+					extraI = -1 - extraI
+				default:
+					return fmt.Errorf("wrong type for int64 field: %d", maj)
+				}
+
+				t.QueuedBlocksTotal = int64(extraI)
+			}
+			// t.SentBlocksTotal (int64) (int64)
+		case "SentBlocksTotal":
+			{
+				maj, extra, err := cbg.CborReadHeaderBuf(br, scratch)
+				var extraI int64
+				if err != nil {
+					return err
+				}
+				switch maj {
+				case cbg.MajUnsignedInt:
+					extraI = int64(extra)
+					if extraI < 0 {
+						return fmt.Errorf("int64 positive overflow")
+					}
+				case cbg.MajNegativeInt:
+					extraI = int64(extra)
+					if extraI < 0 {
+						return fmt.Errorf("int64 negative oveflow")
+					}
+					extraI = -1 - extraI
+				default:
+					return fmt.Errorf("wrong type for int64 field: %d", maj)
+				}
+
+				t.SentBlocksTotal = int64(extraI)
 			}
 			// t.Stages (datatransfer.ChannelStages) (struct)
 		case "Stages":

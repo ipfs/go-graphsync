@@ -1199,7 +1199,7 @@ type fakeEvents struct {
 	ResponseReceivedResponse datatransfer.Response
 }
 
-func (fe *fakeEvents) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size uint64) (datatransfer.Message, error) {
+func (fe *fakeEvents) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size uint64, index int64, unique bool) (datatransfer.Message, error) {
 	fe.OnDataQueuedCalled = true
 
 	return fe.OnDataQueuedMessage, fe.OnDataQueuedError
@@ -1238,12 +1238,12 @@ func (fe *fakeEvents) OnChannelOpened(chid datatransfer.ChannelID) error {
 	return fe.OnChannelOpenedError
 }
 
-func (fe *fakeEvents) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, size uint64, index int64) error {
+func (fe *fakeEvents) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, size uint64, index int64, unique bool) error {
 	fe.OnDataReceivedCalled = true
 	return fe.OnDataReceivedError
 }
 
-func (fe *fakeEvents) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) error {
+func (fe *fakeEvents) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64, index int64, unique bool) error {
 	fe.OnDataSentCalled = true
 	return nil
 }
@@ -1456,6 +1456,14 @@ func (m *mockChannelState) ReceivedCidsLen() int {
 
 func (m *mockChannelState) ReceivedCidsTotal() int64 {
 	return (int64)(len(m.receivedCids))
+}
+
+func (m *mockChannelState) QueuedCidsTotal() int64 {
+	panic("implement me")
+}
+
+func (m *mockChannelState) SentCidsTotal() int64 {
+	panic("implement me")
 }
 
 func (m *mockChannelState) Queued() uint64 {

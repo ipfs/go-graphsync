@@ -63,7 +63,12 @@ type ChannelState struct {
 	// Number of blocks that have been received, including blocks that are
 	// present in more than one place in the DAG
 	ReceivedBlocksTotal int64
-
+	// Number of blocks that have been queued, including blocks that are
+	// present in more than one place in the DAG
+	QueuedBlocksTotal int64
+	// Number of blocks that have been sent, including blocks that are
+	// present in more than one place in the DAG
+	SentBlocksTotal int64
 	// Stages traces the execution fo a data transfer.
 	//
 	// EXPERIMENTAL; subject to change.

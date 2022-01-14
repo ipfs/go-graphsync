@@ -41,7 +41,7 @@ func (m *manager) OnChannelOpened(chid datatransfer.ChannelID) error {
 // It fires an event on the channel, updating the sum of received data and
 // calls revalidators so they can pause / resume the channel or send a
 // message over the transport.
-func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, size uint64, index int64) error {
+func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, size uint64, index int64, unique bool) error {
 	ctx, _ := m.spansIndex.SpanForChannel(context.TODO(), chid)
 	ctx, span := otel.Tracer("data-transfer").Start(ctx, "dataReceived", trace.WithAttributes(
 		attribute.String("channelID", chid.String()),
@@ -51,7 +51,7 @@ func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, si
 	))
 	defer span.End()
 
-	isNew, err := m.channels.DataReceived(chid, link.(cidlink.Link).Cid, size, index)
+	isNew, err := m.channels.DataReceived(chid, link.(cidlink.Link).Cid, size, index, unique)
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func (m *manager) OnDataReceived(chid datatransfer.ChannelID, link ipld.Link, si
 // up some data to be sent to the requester.
 // It fires an event on the channel, updating the sum of queued data and calls
 // revalidators so they can pause / resume or send a message over the transport.
-func (m *manager) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size uint64) (datatransfer.Message, error) {
+func (m *manager) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size uint64, index int64, unique bool) (datatransfer.Message, error) {
 	// The transport layer reports that some data has been queued up to be sent
 	// to the requester, so fire a DataQueued event on the channels state
 	// machine.
@@ -110,7 +110,7 @@ func (m *manager) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size
 	))
 	defer span.End()
 
-	isNew, err := m.channels.DataQueued(chid, link.(cidlink.Link).Cid, size)
+	isNew, err := m.channels.DataQueued(chid, link.(cidlink.Link).Cid, size, index, unique)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func (m *manager) OnDataQueued(chid datatransfer.ChannelID, link ipld.Link, size
 	return nil, nil
 }
 
-func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64) error {
+func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size uint64, index int64, unique bool) error {
 
 	ctx, _ := m.spansIndex.SpanForChannel(context.TODO(), chid)
 	ctx, span := otel.Tracer("data-transfer").Start(ctx, "dataSent", trace.WithAttributes(
@@ -157,7 +157,7 @@ func (m *manager) OnDataSent(chid datatransfer.ChannelID, link ipld.Link, size u
 	))
 	defer span.End()
 
-	_, err := m.channels.DataSent(chid, link.(cidlink.Link).Cid, size)
+	_, err := m.channels.DataSent(chid, link.(cidlink.Link).Cid, size, index, unique)
 	return err
 }
 
