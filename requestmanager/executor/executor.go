@@ -5,11 +5,9 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipld/go-ipld-prime"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"go.opentelemetry.io/otel"
@@ -17,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
@@ -102,17 +100,17 @@ func (e *Executor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.
 
 // RequestTask are parameters for a single request execution
 type RequestTask struct {
-	Ctx            context.Context
-	Span           trace.Span
-	Request        gsmsg.GraphSyncRequest
-	LastResponse   *atomic.Value
-	DoNotSendCids  *cid.Set
-	PauseMessages  <-chan struct{}
-	Traverser      ipldutil.Traverser
-	P              peer.ID
-	InProgressErr  chan error
-	Empty          bool
-	InitialRequest bool
+	Ctx                  context.Context
+	Span                 trace.Span
+	Request              gsmsg.GraphSyncRequest
+	LastResponse         *atomic.Value
+	DoNotSendFirstBlocks int64
+	PauseMessages        <-chan struct{}
+	Traverser            ipldutil.Traverser
+	P                    peer.ID
+	InProgressErr        chan error
+	Empty                bool
+	InitialRequest       bool
 }
 
 func (e *Executor) traverse(rt RequestTask) error {
@@ -177,7 +175,6 @@ func (e *Executor) processBlockHooks(p peer.ID, response graphsync.ResponseData,
 }
 
 func (e *Executor) onNewBlock(rt RequestTask, block graphsync.BlockData) error {
-	rt.DoNotSendCids.Add(block.Link().(cidlink.Link).Cid)
 	response := rt.LastResponse.Load().(gsmsg.GraphSyncResponse)
 	return e.processBlockHooks(rt.P, response, block)
 }
@@ -218,12 +215,16 @@ func (e *Executor) processResult(rt RequestTask, link ipld.Link, result types.As
 
 func (e *Executor) startRemoteRequest(rt RequestTask) error {
 	request := rt.Request
-	if rt.DoNotSendCids.Len() > 0 {
-		cidsData, err := cidset.EncodeCidSet(rt.DoNotSendCids)
+	doNotSendFirstBlocks := rt.DoNotSendFirstBlocks
+	if doNotSendFirstBlocks < int64(rt.Traverser.NBlocksTraversed()) {
+		doNotSendFirstBlocks = int64(rt.Traverser.NBlocksTraversed())
+	}
+	if doNotSendFirstBlocks > 0 {
+		doNotSendFirstBlocksData, err := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(doNotSendFirstBlocks)
 		if err != nil {
 			return err
 		}
-		request = rt.Request.ReplaceExtensions([]graphsync.ExtensionData{{Name: graphsync.ExtensionDoNotSendCIDs, Data: cidsData}})
+		request = rt.Request.ReplaceExtensions([]graphsync.ExtensionData{{Name: graphsync.ExtensionsDoNotSendFirstBlocks, Data: doNotSendFirstBlocksData}})
 	}
 	log.Debugw("starting remote request", "id", rt.Request.ID(), "peer", rt.P.String(), "root_cid", rt.Request.Root().String())
 	e.manager.SendRequest(rt.P, request)

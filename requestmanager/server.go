@@ -8,7 +8,6 @@ import (
 	"time"
 
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-peertaskqueue/peertracker"
 	"github.com/ipld/go-ipld-prime"
@@ -22,8 +21,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/dedupkey"
+	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/peerstate"
@@ -73,10 +72,10 @@ func (rm *RequestManager) newRequest(parentSpan trace.Span, p peer.ID, root ipld
 		rp, err := rm.singleErrorResponse(err)
 		return request, rp, err
 	}
-	doNotSendCidsData, has := request.Extension(graphsync.ExtensionDoNotSendCIDs)
-	var doNotSendCids *cid.Set
+	doNotSendFirstBlocksData, has := request.Extension(graphsync.ExtensionsDoNotSendFirstBlocks)
+	var doNotSendFirstBlocks int64
 	if has {
-		doNotSendCids, err = cidset.DecodeCidSet(doNotSendCidsData)
+		doNotSendFirstBlocks, err = donotsendfirstblocks.DecodeDoNotSendFirstBlocks(doNotSendFirstBlocksData)
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
@@ -84,23 +83,21 @@ func (rm *RequestManager) newRequest(parentSpan trace.Span, p peer.ID, root ipld
 			rp, err := rm.singleErrorResponse(err)
 			return request, rp, err
 		}
-	} else {
-		doNotSendCids = cid.NewSet()
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	requestStatus := &inProgressRequestStatus{
-		ctx:              ctx,
-		span:             parentSpan,
-		startTime:        time.Now(),
-		cancelFn:         cancel,
-		p:                p,
-		pauseMessages:    make(chan struct{}, 1),
-		doNotSendCids:    doNotSendCids,
-		request:          request,
-		state:            graphsync.Queued,
-		nodeStyleChooser: hooksResult.CustomChooser,
-		inProgressChan:   make(chan graphsync.ResponseProgress),
-		inProgressErr:    make(chan error),
+		ctx:                  ctx,
+		span:                 parentSpan,
+		startTime:            time.Now(),
+		cancelFn:             cancel,
+		p:                    p,
+		pauseMessages:        make(chan struct{}, 1),
+		doNotSendFirstBlocks: doNotSendFirstBlocks,
+		request:              request,
+		state:                graphsync.Queued,
+		nodeStyleChooser:     hooksResult.CustomChooser,
+		inProgressChan:       make(chan graphsync.ResponseProgress),
+		inProgressErr:        make(chan error),
 	}
 	requestStatus.lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
 	rm.inProgressRequestStatuses[request.ID()] = requestStatus
@@ -157,17 +154,17 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 
 	ipr.state = graphsync.Running
 	return executor.RequestTask{
-		Ctx:            ipr.ctx,
-		Span:           ipr.span,
-		Request:        ipr.request,
-		LastResponse:   &ipr.lastResponse,
-		DoNotSendCids:  ipr.doNotSendCids,
-		PauseMessages:  ipr.pauseMessages,
-		Traverser:      ipr.traverser,
-		P:              ipr.p,
-		InProgressErr:  ipr.inProgressErr,
-		InitialRequest: initialRequest,
-		Empty:          false,
+		Ctx:                  ipr.ctx,
+		Span:                 ipr.span,
+		Request:              ipr.request,
+		LastResponse:         &ipr.lastResponse,
+		DoNotSendFirstBlocks: ipr.doNotSendFirstBlocks,
+		PauseMessages:        ipr.pauseMessages,
+		Traverser:            ipr.traverser,
+		P:                    ipr.p,
+		InProgressErr:        ipr.inProgressErr,
+		InitialRequest:       initialRequest,
+		Empty:                false,
 	}
 }
 
@@ -259,6 +256,7 @@ func (rm *RequestManager) cancelOnError(requestID graphsync.RequestID, ipr *inPr
 		rm.terminateRequest(requestID, ipr)
 	} else {
 		ipr.cancelFn()
+		rm.asyncLoader.CompleteResponsesFor(requestID)
 	}
 }
 
