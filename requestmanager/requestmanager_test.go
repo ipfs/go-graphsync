@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/dedupkey"
+	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
@@ -877,10 +877,10 @@ func TestPauseResume(t *testing.T) {
 
 	// verify the correct new request with Do-no-send-cids & other extensions
 	resumedRequest := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
-	doNotSendCidsData, has := resumedRequest.gsr.Extension(graphsync.ExtensionDoNotSendCIDs)
-	doNotSendCids, err := cidset.DecodeCidSet(doNotSendCidsData)
+	doNotSendFirstBlocksData, has := resumedRequest.gsr.Extension(graphsync.ExtensionsDoNotSendFirstBlocks)
+	doNotSendFirstBlocks, err := donotsendfirstblocks.DecodeDoNotSendFirstBlocks(doNotSendFirstBlocksData)
 	require.NoError(t, err)
-	require.Equal(t, pauseAt, doNotSendCids.Len())
+	require.Equal(t, pauseAt, int(doNotSendFirstBlocks))
 	require.True(t, has)
 	ext1Data, has := resumedRequest.gsr.Extension(td.extensionName1)
 	require.True(t, has)
@@ -957,10 +957,10 @@ func TestPauseResumeExternal(t *testing.T) {
 
 	// verify the correct new request with Do-no-send-cids & other extensions
 	resumedRequest := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
-	doNotSendCidsData, has := resumedRequest.gsr.Extension(graphsync.ExtensionDoNotSendCIDs)
-	doNotSendCids, err := cidset.DecodeCidSet(doNotSendCidsData)
+	doNotSendFirstBlocksData, has := resumedRequest.gsr.Extension(graphsync.ExtensionsDoNotSendFirstBlocks)
+	doNotSendFirstBlocks, err := donotsendfirstblocks.DecodeDoNotSendFirstBlocks(doNotSendFirstBlocksData)
 	require.NoError(t, err)
-	require.Equal(t, pauseAt, doNotSendCids.Len())
+	require.Equal(t, pauseAt, int(doNotSendFirstBlocks))
 	require.True(t, has)
 	ext1Data, has := resumedRequest.gsr.Extension(td.extensionName1)
 	require.True(t, has)

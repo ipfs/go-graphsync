@@ -9,7 +9,6 @@ import (
 
 	"github.com/hannahhoward/go-pubsub"
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipld/go-ipld-prime"
@@ -46,23 +45,23 @@ const (
 )
 
 type inProgressRequestStatus struct {
-	ctx              context.Context
-	span             trace.Span
-	startTime        time.Time
-	cancelFn         func()
-	p                peer.ID
-	terminalError    error
-	pauseMessages    chan struct{}
-	state            graphsync.RequestState
-	lastResponse     atomic.Value
-	onTerminated     []chan<- error
-	request          gsmsg.GraphSyncRequest
-	doNotSendCids    *cid.Set
-	nodeStyleChooser traversal.LinkTargetNodePrototypeChooser
-	inProgressChan   chan graphsync.ResponseProgress
-	inProgressErr    chan error
-	traverser        ipldutil.Traverser
-	traverserCancel  context.CancelFunc
+	ctx                  context.Context
+	span                 trace.Span
+	startTime            time.Time
+	cancelFn             func()
+	p                    peer.ID
+	terminalError        error
+	pauseMessages        chan struct{}
+	state                graphsync.RequestState
+	lastResponse         atomic.Value
+	onTerminated         []chan<- error
+	request              gsmsg.GraphSyncRequest
+	doNotSendFirstBlocks int64
+	nodeStyleChooser     traversal.LinkTargetNodePrototypeChooser
+	inProgressChan       chan graphsync.ResponseProgress
+	inProgressErr        chan error
+	traverser            ipldutil.Traverser
+	traverserCancel      context.CancelFunc
 }
 
 // PeerHandler is an interface that can send requests to peers

@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -17,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
@@ -102,9 +101,9 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.EqualError(t, ree.terminalError, hooks.ErrPaused{}.Error())
 			},
 		},
-		"preexisting do not send cids": {
+		"preexisting do not send firstBlocks": {
 			configureRequestExecution: func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
-				ree.doNotSendCids.Add(tbc.GenisisLink.(cidlink.Link).Cid)
+				ree.doNotSendFirstBlocks = 1
 			},
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyWholeChainSync(responses)
@@ -112,11 +111,11 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.Equal(t, ree.request.ID(), ree.requestsSent[0].request.ID())
 				require.Equal(t, ree.request.Root(), ree.requestsSent[0].request.Root())
 				require.Equal(t, ree.request.Selector(), ree.requestsSent[0].request.Selector())
-				doNotSendCidsExt, has := ree.requestsSent[0].request.Extension(graphsync.ExtensionDoNotSendCIDs)
+				doNotSendFirstBlocksData, has := ree.requestsSent[0].request.Extension(graphsync.ExtensionsDoNotSendFirstBlocks)
 				require.True(t, has)
-				cidSet, err := cidset.DecodeCidSet(doNotSendCidsExt)
+				doNotSendFirstBlocks, err := donotsendfirstblocks.DecodeDoNotSendFirstBlocks(doNotSendFirstBlocksData)
 				require.NoError(t, err)
-				require.Equal(t, 1, cidSet.Len())
+				require.Equal(t, int64(1), doNotSendFirstBlocks)
 				require.Len(t, ree.blookHooksCalled, 10)
 				require.NoError(t, ree.terminalError)
 			},
@@ -145,11 +144,11 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.Equal(t, ree.request.ID(), ree.requestsSent[0].request.ID())
 				require.Equal(t, ree.request.Root(), ree.requestsSent[0].request.Root())
 				require.Equal(t, ree.request.Selector(), ree.requestsSent[0].request.Selector())
-				doNotSendCidsExt, has := ree.requestsSent[0].request.Extension(graphsync.ExtensionDoNotSendCIDs)
+				doNotSendFirstBlocksData, has := ree.requestsSent[0].request.Extension(graphsync.ExtensionsDoNotSendFirstBlocks)
 				require.True(t, has)
-				cidSet, err := cidset.DecodeCidSet(doNotSendCidsExt)
+				doNotSendFirstBlocks, err := donotsendfirstblocks.DecodeDoNotSendFirstBlocks(doNotSendFirstBlocksData)
 				require.NoError(t, err)
-				require.Equal(t, 6, cidSet.Len())
+				require.Equal(t, int64(6), doNotSendFirstBlocks)
 				require.Len(t, ree.blookHooksCalled, 10)
 				require.NoError(t, ree.terminalError)
 			},
@@ -202,16 +201,16 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			defer requestCancel()
 			var responsesReceived []graphsync.ResponseProgress
 			ree := &requestExecutionEnv{
-				ctx:              requestCtx,
-				p:                p,
-				pauseMessages:    make(chan struct{}, 1),
-				blockHookResults: make(map[blockHookKey]hooks.UpdateResult),
-				doNotSendCids:    cid.NewSet(),
-				request:          gsmsg.NewRequest(requestID, tbc.TipLink.(cidlink.Link).Cid, tbc.Selector(), graphsync.Priority(rand.Int31())),
-				fal:              fal,
-				tbc:              tbc,
-				initialRequest:   true,
-				inProgressErr:    make(chan error, 1),
+				ctx:                  requestCtx,
+				p:                    p,
+				pauseMessages:        make(chan struct{}, 1),
+				blockHookResults:     make(map[blockHookKey]hooks.UpdateResult),
+				doNotSendFirstBlocks: 0,
+				request:              gsmsg.NewRequest(requestID, tbc.TipLink.(cidlink.Link).Cid, tbc.Selector(), graphsync.Priority(rand.Int31())),
+				fal:                  fal,
+				tbc:                  tbc,
+				initialRequest:       true,
+				inProgressErr:        make(chan error, 1),
 				traverser: ipldutil.TraversalBuilder{
 					Root:     tbc.TipLink,
 					Selector: tbc.Selector(),
@@ -276,7 +275,7 @@ type requestExecutionEnv struct {
 	request              gsmsg.GraphSyncRequest
 	p                    peer.ID
 	blockHookResults     map[blockHookKey]hooks.UpdateResult
-	doNotSendCids        *cid.Set
+	doNotSendFirstBlocks int64
 	pauseMessages        chan struct{}
 	externalPause        pauseKey
 	loadLocallyUntil     int
@@ -304,16 +303,16 @@ func (ree *requestExecutionEnv) GetRequestTask(_ peer.ID, _ *peertask.Task, requ
 	lastResponse.Store(gsmsg.NewResponse(ree.request.ID(), graphsync.RequestAcknowledged))
 
 	requestExecution := executor.RequestTask{
-		Ctx:            ree.ctx,
-		Request:        ree.request,
-		LastResponse:   &lastResponse,
-		DoNotSendCids:  ree.doNotSendCids,
-		PauseMessages:  ree.pauseMessages,
-		Traverser:      ree.traverser,
-		P:              ree.p,
-		InProgressErr:  ree.inProgressErr,
-		Empty:          false,
-		InitialRequest: ree.initialRequest,
+		Ctx:                  ree.ctx,
+		Request:              ree.request,
+		LastResponse:         &lastResponse,
+		DoNotSendFirstBlocks: ree.doNotSendFirstBlocks,
+		PauseMessages:        ree.pauseMessages,
+		Traverser:            ree.traverser,
+		P:                    ree.p,
+		InProgressErr:        ree.inProgressErr,
+		Empty:                false,
+		InitialRequest:       ree.initialRequest,
 	}
 	go func() {
 		select {
