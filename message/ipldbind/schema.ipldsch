@@ -35,13 +35,13 @@ type GraphSyncResponseStatusCode enum {
 } representation int
 
 type GraphSyncRequest struct {
-  id          GraphSyncRequestID  (rename "ID")   # unique id set on the requester side
-  root        Link                (rename "Root") # a CID for the root node in the query
+  id                GraphSyncRequestID  (rename "ID")   # unique id set on the requester side
+  root     nullable Link                (rename "Root") # a CID for the root node in the query
   selector nullable Any                 (rename "Sel")  # see https://github.com/ipld/specs/blob/master/selectors/selectors.md
-  extensions  GraphSyncExtensions (rename "Ext")  # side channel information
-  priority    GraphSyncPriority   (rename "Pri")  # the priority (normalized). default to 1
-  cancel      Bool                (rename "Canc") # whether this cancels a request
-  update      Bool                (rename "Updt") # whether this is an update to an in progress request
+  extensions        GraphSyncExtensions (rename "Ext")  # side channel information
+  priority          GraphSyncPriority   (rename "Pri")  # the priority (normalized). default to 1
+  cancel            Bool                (rename "Canc") # whether this cancels a request
+  update            Bool                (rename "Updt") # whether this is an update to an in progress request
 } representation map
 
 type GraphSyncResponse struct {

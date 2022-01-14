@@ -73,7 +73,7 @@ func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
 			for pb.Next() {
 				buf.Reset()
 
-				ipldGSM, err := NewMessageHandler().ToIPLD(gsm)
+				ipldGSM, err := NewMessageHandler().toIPLD(gsm)
 				require.NoError(b, err)
 				node := bindnode.Wrap(ipldGSM, ipldbind.Prototype.Message.Type())
 				err = dagcbor.Encode(node.Representation(), buf)
@@ -84,7 +84,7 @@ func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
 				require.NoError(b, err)
 				node2 := builder.Build()
 				ipldGSM2 := bindnode.Unwrap(node2).(*ipldbind.GraphSyncMessage)
-				gsm2, err := NewMessageHandler().messageFromIPLD(ipldGSM2)
+				gsm2, err := NewMessageHandler().fromIPLD(ipldGSM2)
 				require.NoError(b, err)
 
 				// same as above.

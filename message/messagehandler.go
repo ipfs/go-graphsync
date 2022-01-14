@@ -3,6 +3,7 @@ package message
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -14,8 +15,8 @@ import (
 	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/message/ipldbind"
 	pb "github.com/ipfs/go-graphsync/message/pb"
-	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/bindnode"
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -49,7 +50,7 @@ func NewMessageHandler() *MessageHandler {
 // FromNet can read a network stream to deserialized a GraphSyncMessage
 func (mh *MessageHandler) FromNet(r io.Reader) (GraphSyncMessage, error) {
 	reader := msgio.NewVarintReaderSize(r, network.MessageSizeMax)
-	return mh.FromMsgReaderV11(reader)
+	return mh.FromMsgReader(reader)
 }
 
 // FromMsgReader can deserialize a DAG-CBOR message into a GraphySyncMessage
@@ -60,14 +61,16 @@ func (mh *MessageHandler) FromMsgReader(r msgio.Reader) (GraphSyncMessage, error
 	}
 
 	builder := ipldbind.Prototype.Message.Representation().NewBuilder()
+	fmt.Println(hex.EncodeToString(msg))
 	err = dagcbor.Decode(builder, bytes.NewReader(msg))
 	if err != nil {
+		fmt.Printf("dagcbor decode error %v", err)
 		return GraphSyncMessage{}, err
 	}
 
 	node := builder.Build()
 	ipldGSM := bindnode.Unwrap(node).(*ipldbind.GraphSyncMessage)
-	return mh.messageFromIPLD(ipldGSM)
+	return mh.fromIPLD(ipldGSM)
 }
 
 // FromMsgReaderV11 can deserialize a protobuf message into a GraphySyncMessage
@@ -105,14 +108,22 @@ func (mh *MessageHandler) FromMsgReaderV1(p peer.ID, r msgio.Reader) (GraphSyncM
 }
 
 // ToProto converts a GraphSyncMessage to its ipldbind.GraphSyncMessage equivalent
-func (mh *MessageHandler) ToIPLD(gsm GraphSyncMessage) (*ipldbind.GraphSyncMessage, error) {
+func (mh *MessageHandler) toIPLD(gsm GraphSyncMessage) (*ipldbind.GraphSyncMessage, error) {
 	ibm := new(ipldbind.GraphSyncMessage)
 	ibm.Requests = make([]ipldbind.GraphSyncRequest, 0, len(gsm.requests))
 	for _, request := range gsm.requests {
+		sel := &request.selector
+		if request.selector == nil {
+			sel = nil
+		}
+		root := &request.root
+		if request.root == cid.Undef {
+			root = nil
+		}
 		ibm.Requests = append(ibm.Requests, ipldbind.GraphSyncRequest{
 			Id:       request.id.Bytes(),
-			Root:     request.root,
-			Selector: &request.selector,
+			Root:     root,
+			Selector: sel,
 			Priority: request.priority,
 			Cancel:   request.isCancel,
 			Update:   request.isUpdate,
@@ -242,14 +253,14 @@ func (mh *MessageHandler) ToProtoV1(p peer.ID, gsm GraphSyncMessage) (*pb.Messag
 // prefixed with a length uvar
 func (mh *MessageHandler) ToNet(gsm GraphSyncMessage, w io.Writer) error {
 	fmt.Printf("gsm: %v\n", gsm.String())
-	msg, err := mh.ToIPLD(gsm)
+	msg, err := mh.toIPLD(gsm)
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("ipldgsm: %v\n", msg)
 
-	lbuf := make([]byte, binary.MaxVarintLen32)
+	lbuf := make([]byte, binary.MaxVarintLen64)
 	buf := new(bytes.Buffer)
 	buf.Write(lbuf)
 
@@ -258,12 +269,16 @@ func (mh *MessageHandler) ToNet(gsm GraphSyncMessage, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	//_, err = buf.WriteTo(w)
 
-	lbuflen := binary.PutUvarint(lbuf, uint64(buf.Len()-binary.MaxVarintLen32))
+	lbuflen := binary.PutUvarint(lbuf, uint64(buf.Len()-binary.MaxVarintLen64))
 	out := buf.Bytes()
-	copy(lbuf[:lbuflen], out[lbuflen:])
+	// fmt.Printf("%v = %v - %v\n", uint64(buf.Len()-binary.MaxVarintLen64), hex.EncodeToString(lbuf), lbuf[:lbuflen])
+	copy(out[binary.MaxVarintLen64-lbuflen:], lbuf[:lbuflen])
 
-	_, err = w.Write(out[lbuflen:])
+	fmt.Println(hex.EncodeToString(out))
+	_, err = w.Write(out[binary.MaxVarintLen64-lbuflen:])
+
 	return err
 }
 
@@ -338,7 +353,7 @@ func intIdToRequestId(p peer.ID, fromV1Map map[v1RequestKey]graphsync.RequestID,
 }
 
 // Mapping from a ipldbind.GraphSyncMessage object to a GraphSyncMessage object
-func (mh *MessageHandler) messageFromIPLD(ibm *ipldbind.GraphSyncMessage) (GraphSyncMessage, error) {
+func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessage) (GraphSyncMessage, error) {
 	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(ibm.Requests))
 	for _, req := range ibm.Requests {
 		// exts := req.Extensions
@@ -346,7 +361,15 @@ func (mh *MessageHandler) messageFromIPLD(ibm *ipldbind.GraphSyncMessage) (Graph
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		requests[id] = newRequest(id, req.Root, *req.Selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, nil)
+		root := cid.Undef
+		if req.Root != nil {
+			root = *req.Root
+		}
+		var selector datamodel.Node
+		if req.Selector != nil {
+			selector = *req.Selector
+		}
+		requests[id] = newRequest(id, root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, nil)
 	}
 
 	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(ibm.Responses))
@@ -400,7 +423,7 @@ func (mh *MessageHandler) newMessageFromProtoV11(pbm *pb.Message) (GraphSyncMess
 			}
 		}
 
-		var selector ipld.Node
+		var selector datamodel.Node
 		if !req.Cancel && !req.Update {
 			selector, err = ipldutil.DecodeNode(req.Selector)
 			if err != nil {
@@ -477,7 +500,7 @@ func (mh *MessageHandler) newMessageFromProtoV1(p peer.ID, pbm *pb.Message_V1_0_
 			}
 		}
 
-		var selector ipld.Node
+		var selector datamodel.Node
 		if !req.Cancel && !req.Update {
 			selector, err = ipldutil.DecodeNode(req.Selector)
 			if err != nil {
