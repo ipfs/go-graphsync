@@ -37,7 +37,7 @@ func NewFromLibp2pHost(host host.Host, options ...Option) GraphSyncNetwork {
 	graphSyncNetwork := libp2pGraphSyncNetwork{
 		host:           host,
 		messageHandler: gsmsg.NewMessageHandler(),
-		protocols:      []protocol.ID{ProtocolGraphsync_1_1_0, ProtocolGraphsync_1_0_0},
+		protocols:      []protocol.ID{ProtocolGraphsync_1_1_0, ProtocolGraphsync_2_0_0, ProtocolGraphsync_1_0_0},
 	}
 
 	for _, option := range options {
@@ -94,6 +94,11 @@ func msgToStream(ctx context.Context, s network.Stream, mh *gsmsg.MessageHandler
 			return err
 		}
 	case ProtocolGraphsync_1_1_0:
+		if err := mh.ToNetV11(msg, s); err != nil {
+			log.Debugf("error: %s", err)
+			return err
+		}
+	case ProtocolGraphsync_2_0_0:
 		if err := mh.ToNet(msg, s); err != nil {
 			log.Debugf("error: %s", err)
 			return err
@@ -172,6 +177,8 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 		case ProtocolGraphsync_1_0_0:
 			received, err = gsnet.messageHandler.FromMsgReaderV1(s.Conn().RemotePeer(), reader)
 		case ProtocolGraphsync_1_1_0:
+			received, err = gsnet.messageHandler.FromMsgReaderV11(reader)
+		case ProtocolGraphsync_2_0_0:
 			received, err = gsnet.messageHandler.FromMsgReader(reader)
 		default:
 			err = fmt.Errorf("unexpected protocol version %s", s.Protocol())
@@ -202,7 +209,7 @@ func (gsnet *libp2pGraphSyncNetwork) setProtocols(protocols []protocol.ID) {
 	gsnet.protocols = make([]protocol.ID, 0)
 	for _, proto := range protocols {
 		switch proto {
-		case ProtocolGraphsync_1_0_0, ProtocolGraphsync_1_1_0:
+		case ProtocolGraphsync_1_0_0, ProtocolGraphsync_1_1_0, ProtocolGraphsync_2_0_0:
 			gsnet.protocols = append([]protocol.ID{}, proto)
 		}
 	}

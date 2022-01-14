@@ -45,7 +45,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	pbMessage, err := NewMessageHandler().ToProto(gsm)
+	pbMessage, err := NewMessageHandler().ToProtoV11(gsm)
 	require.NoError(t, err, "serialize to protobuf errored")
 	selectorEncoded, err := ipldutil.EncodeNode(selector)
 	require.NoError(t, err)
@@ -59,7 +59,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.Equal(t, selectorEncoded, pbRequest.Selector)
 	require.Equal(t, map[string][]byte{"graphsync/awesome": extension.Data}, pbRequest.Extensions)
 
-	deserialized, err := NewMessageHandler().newMessageFromProto(pbMessage)
+	deserialized, err := NewMessageHandler().newMessageFromProtoV11(pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedRequests := deserialized.Requests()
 	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
@@ -99,14 +99,14 @@ func TestAppendingResponses(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	pbMessage, err := NewMessageHandler().ToProto(gsm)
+	pbMessage, err := NewMessageHandler().ToProtoV11(gsm)
 	require.NoError(t, err, "serialize to protobuf errored")
 	pbResponse := pbMessage.Responses[0]
 	require.Equal(t, requestID.Bytes(), pbResponse.Id)
 	require.Equal(t, int32(status), pbResponse.Status)
 	require.Equal(t, extension.Data, pbResponse.Extensions["graphsync/awesome"])
 
-	deserialized, err := NewMessageHandler().newMessageFromProto(pbMessage)
+	deserialized, err := NewMessageHandler().newMessageFromProtoV11(pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedResponses := deserialized.Responses()
 	require.Len(t, deserializedResponses, 1, "did not add response to deserialized message")
@@ -132,7 +132,7 @@ func TestAppendBlock(t *testing.T) {
 	m, err := builder.Build()
 	require.NoError(t, err)
 
-	pbMessage, err := NewMessageHandler().ToProto(m)
+	pbMessage, err := NewMessageHandler().ToProtoV11(m)
 	require.NoError(t, err, "serializing to protobuf errored")
 
 	// assert strings are in proto message

@@ -3,7 +3,6 @@ package message
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"strings"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -12,36 +11,7 @@ import (
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/message/ipldbind"
-	pb "github.com/ipfs/go-graphsync/message/pb"
 )
-
-// IsTerminalSuccessCode returns true if the response code indicates the
-// request terminated successfully.
-// DEPRECATED: use status.IsSuccess()
-func IsTerminalSuccessCode(status graphsync.ResponseStatusCode) bool {
-	return status.IsSuccess()
-}
-
-// IsTerminalFailureCode returns true if the response code indicates the
-// request terminated in failure.
-// DEPRECATED: use status.IsFailure()
-func IsTerminalFailureCode(status graphsync.ResponseStatusCode) bool {
-	return status.IsFailure()
-}
-
-// IsTerminalResponseCode returns true if the response code signals
-// the end of the request
-// DEPRECATED: use status.IsTerminal()
-func IsTerminalResponseCode(status graphsync.ResponseStatusCode) bool {
-	return status.IsTerminal()
-}
-
-// Exportable is an interface that can serialize to a protobuf
-type Exportable interface {
-	ToProto() (*pb.Message, error)
-	ToNet(w io.Writer) error
-}
 
 // GraphSyncRequest is a struct to capture data on a request contained in a
 // GraphSyncMessage.
@@ -57,11 +27,15 @@ type GraphSyncRequest struct {
 
 // String returns a human-readable form of a GraphSyncRequest
 func (gsr GraphSyncRequest) String() string {
-	var buf bytes.Buffer
-	dagjson.Encode(gsr.selector, &buf)
+	sel := "nil"
+	if gsr.selector != nil {
+		var buf bytes.Buffer
+		dagjson.Encode(gsr.selector, &buf)
+		sel = buf.String()
+	}
 	return fmt.Sprintf("GraphSyncRequest<root=%s, selector=%s, priority=%d, id=%s, cancel=%v, update=%v, exts=%s>",
 		gsr.root.String(),
-		buf.String(),
+		sel,
 		gsr.priority,
 		gsr.id.String(),
 		gsr.isCancel,
@@ -99,7 +73,8 @@ type GraphSyncMessage struct {
 // its contents
 func (gsm GraphSyncMessage) String() string {
 	cts := make([]string, 0)
-	for _, req := range gsm.requests {
+	for i, req := range gsm.requests {
+		fmt.Printf("req.String(%v)\n", i)
 		cts = append(cts, req.String())
 	}
 	for _, resp := range gsm.responses {
@@ -211,87 +186,6 @@ func (gsm GraphSyncMessage) Blocks() []blocks.Block {
 		bs = append(bs, block)
 	}
 	return bs
-}
-
-func (gsm GraphSyncMessage) ToIPLD() (*ipldbind.GraphSyncMessage, error) {
-	ibm := new(ipldbind.GraphSyncMessage)
-	ibm.Requests = make([]ipldbind.GraphSyncRequest, 0, len(gsm.requests))
-	for _, request := range gsm.requests {
-		ibm.Requests = append(ibm.Requests, ipldbind.GraphSyncRequest{
-			Id:       request.id.Bytes(),
-			Root:     request.root,
-			Selector: request.selector,
-			Priority: request.priority,
-			Cancel:   request.isCancel,
-			Update:   request.isUpdate,
-			// Extensions: request.extensions,
-		})
-	}
-
-	ibm.Responses = make([]ipldbind.GraphSyncResponse, 0, len(gsm.responses))
-	for _, response := range gsm.responses {
-		ibm.Responses = append(ibm.Responses, ipldbind.GraphSyncResponse{
-			Id:     response.requestID.Bytes(),
-			Status: response.status,
-			// Extensions: response.extensions,
-		})
-	}
-
-	blocks := gsm.Blocks()
-	ibm.Blocks = make([]ipldbind.GraphSyncBlock, 0, len(blocks))
-	for _, b := range blocks {
-		ibm.Blocks = append(ibm.Blocks, ipldbind.GraphSyncBlock{
-			Data:   b.RawData(),
-			Prefix: b.Cid().Prefix().Bytes(),
-		})
-	}
-	return ibm, nil
-}
-
-func messageFromIPLD(ibm *ipldbind.GraphSyncMessage) (GraphSyncMessage, error) {
-	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(ibm.Requests))
-	for _, req := range ibm.Requests {
-		// exts := req.Extensions
-		id, err := graphsync.ParseRequestID(req.Id)
-		if err != nil {
-			return GraphSyncMessage{}, err
-		}
-		requests[id] = newRequest(id, req.Root, req.Selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, nil)
-	}
-
-	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(ibm.Responses))
-	for _, res := range ibm.Responses {
-		// exts := res.Extensions
-		id, err := graphsync.ParseRequestID(res.Id)
-		if err != nil {
-			return GraphSyncMessage{}, err
-		}
-		responses[id] = newResponse(id, graphsync.ResponseStatusCode(res.Status), nil)
-	}
-
-	blks := make(map[cid.Cid]blocks.Block, len(ibm.Blocks))
-	for _, b := range ibm.Blocks {
-		pref, err := cid.PrefixFromBytes(b.Prefix)
-		if err != nil {
-			return GraphSyncMessage{}, err
-		}
-
-		c, err := pref.Sum(b.Data)
-		if err != nil {
-			return GraphSyncMessage{}, err
-		}
-
-		blk, err := blocks.NewBlockWithCid(b.Data, c)
-		if err != nil {
-			return GraphSyncMessage{}, err
-		}
-
-		blks[blk.Cid()] = blk
-	}
-
-	return GraphSyncMessage{
-		requests, responses, blks,
-	}, nil
 }
 
 func (gsm GraphSyncMessage) Loggable() map[string]interface{} {

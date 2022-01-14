@@ -50,7 +50,7 @@ type GraphSyncRequest struct {
 	Id []byte
 
 	Root       cid.Cid
-	Selector   ipld.Node
+	Selector   *ipld.Node
 	Extensions GraphSyncExtensions
 	Priority   graphsync.Priority
 	Cancel     bool
