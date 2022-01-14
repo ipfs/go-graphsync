@@ -94,7 +94,7 @@ func TestRoundTrip(t *testing.T) {
 				// initiator: receive completion message from responder that they got all the data
 				"transfer(0)->receiveResponse(0)",
 				// responder: receive dt request, execute graphsync request in response
-				"transfer(1)->receiveRequest(0)->request(0)->executeTask(0)",
+				"transfer(1)->receiveRequest(0)->request(0)",
 				// responder: send message indicating we received all data
 				"transfer(1)->sendMessage(0)",
 			},
@@ -272,12 +272,130 @@ func TestRoundTrip(t *testing.T) {
 				} else {
 					assert.Equal(t, chid.Initiator, host1.ID())
 				}
-				traces := collectTracing(t).TracesToStrings()
+				traces := collectTracing(t).TracesToStrings(3)
 				for _, expectedTrace := range data.expectedTraces {
 					require.Contains(t, traces, expectedTrace)
 				}
 			})
 		}
+	} //
+}
+
+func TestRoundTripMissingBlocks(t *testing.T) {
+	ctx := context.Background()
+	testCases := map[string]struct {
+		isPull bool
+	}{
+		"roundtrip for push requests": {},
+		"roundtrip for pull requests": {
+			isPull: true,
+		},
+	}
+	for testCase, data := range testCases {
+		t.Run(testCase, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+
+			gsData := testutil.NewGraphsyncTestingData(ctx, t, nil, nil)
+			host1 := gsData.Host1 // initiator, data sender
+			host2 := gsData.Host2 // data recipient
+
+			tp1 := gsData.SetupGSTransportHost1()
+			tp2 := gsData.SetupGSTransportHost2()
+
+			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+			require.NoError(t, err)
+			testutil.StartAndWaitForReady(ctx, t, dt1)
+			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+			require.NoError(t, err)
+			testutil.StartAndWaitForReady(ctx, t, dt2)
+
+			finished := make(chan struct{}, 2)
+			errChan := make(chan struct{}, 2)
+			opened := make(chan struct{}, 2)
+			sent := make(chan uint64, 21)
+			received := make(chan uint64, 21)
+			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+				if event.Code == datatransfer.DataQueued {
+					if channelState.Queued() > 0 {
+						sent <- channelState.Queued()
+					}
+				}
+
+				if event.Code == datatransfer.DataReceived {
+					if channelState.Received() > 0 {
+						received <- channelState.Received()
+					}
+				}
+
+				if channelState.Status() == datatransfer.Completed || channelState.Status() == datatransfer.PartiallyCompleted {
+					finished <- struct{}{}
+				}
+				if event.Code == datatransfer.Error {
+					fmt.Println(channelState.Message())
+					errChan <- struct{}{}
+				}
+				if event.Code == datatransfer.Open {
+					opened <- struct{}{}
+				}
+			}
+			dt1.SubscribeToEvents(subscriber)
+			dt2.SubscribeToEvents(subscriber)
+			voucher := testutil.FakeDTType{Data: "applesauce"}
+			sv := testutil.NewStubbedValidator()
+
+			partialTree := testutil.NewPartialTree(t, gsData.Bs1)
+			var chid datatransfer.ChannelID
+			if data.isPull {
+				sv.ExpectSuccessPull()
+				require.NoError(t, dt1.RegisterVoucherType(&testutil.FakeDTType{}, sv))
+				chid, err = dt2.OpenPullDataChannel(ctx, host1.ID(), &voucher, partialTree.PresentRootLink.(cidlink.Link).Cid, gsData.AllSelector)
+			} else {
+				sv.ExpectSuccessPush()
+				require.NoError(t, dt2.RegisterVoucherType(&testutil.FakeDTType{}, sv))
+				chid, err = dt1.OpenPushDataChannel(ctx, host2.ID(), &voucher, partialTree.PresentRootLink.(cidlink.Link).Cid, gsData.AllSelector)
+			}
+			require.NoError(t, err)
+			opens := 0
+			completes := 0
+			sentIncrements := make([]uint64, 0, 21)
+			receivedIncrements := make([]uint64, 0, 21)
+			for opens < 2 || completes < 2 {
+				select {
+				case <-ctx.Done():
+					t.Fatal("Did not complete successful data transfer")
+				case <-finished:
+					completes++
+				case <-opened:
+					opens++
+				case sentIncrement := <-sent:
+					sentIncrements = append(sentIncrements, sentIncrement)
+				case receivedIncrement := <-received:
+					receivedIncrements = append(receivedIncrements, receivedIncrement)
+				case <-errChan:
+					t.Fatal("received error on data transfer")
+				}
+			}
+			require.Equal(t, sentIncrements, receivedIncrements)
+			if data.isPull {
+				assert.Equal(t, chid.Initiator, host2.ID())
+			} else {
+				assert.Equal(t, chid.Initiator, host1.ID())
+			}
+			cs, err := dt2.ChannelState(ctx, chid)
+			require.NoError(t, err)
+			require.Equal(t, cs.Status(), datatransfer.PartiallyCompleted)
+			missingCids := cs.MissingCids()
+			require.Len(t, missingCids, 2)
+			require.Contains(t, missingCids, partialTree.MissingLeafLink.(cidlink.Link).Cid)
+			require.Contains(t, missingCids, partialTree.MissingMiddleLink.(cidlink.Link).Cid)
+			require.NotContains(t, missingCids, partialTree.PresentMiddleLink.(cidlink.Link).Cid)
+			require.NotContains(t, missingCids, partialTree.PresentRootLink.(cidlink.Link).Cid)
+
+			// The missing leaf is not included cause it's hidden completely underneath another missing link
+			require.NotContains(t, missingCids, partialTree.HiddenMissingLeafLink.(cidlink.Link).Cid)
+		})
+
 	} //
 }
 
@@ -1446,7 +1564,7 @@ func TestSimulatedRetrievalFlow(t *testing.T) {
 			gsData.VerifyFileTransferred(t, root, true)
 			require.Equal(t, srv.providerPausePoint, len(config.pausePoints))
 			require.Equal(t, clientPausePoint, len(config.pausePoints))
-			traces := collectTracing(t).TracesToStrings()
+			traces := collectTracing(t).TracesToStrings(3)
 			for _, expectedTrace := range config.expectedTraces {
 				require.Contains(t, traces, expectedTrace)
 			}

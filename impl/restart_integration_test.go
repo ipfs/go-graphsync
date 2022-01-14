@@ -73,11 +73,9 @@ func TestRestartPush(t *testing.T) {
 				// initiator: receive completion message from responder that they got all the data
 				"transfer(2)->receiveResponse(0)",
 				// responder: receive dt request, execute graphsync request in response
-				"transfer(1)->receiveRequest(0)->request(0)->executeTask(0)",
-				// responder: terminate first GS request
-				"transfer(1)->receiveRequest(0)->request(0)->terminateRequest(0)",
+				"transfer(1)->receiveRequest(0)->request(0)",
 				// responder: execute second GS resquest in response to restart request
-				"transfer(1)->receiveRequest(1)->request(0)->newRequest(0)",
+				"transfer(1)->receiveRequest(1)->request(0)",
 				// responder: send message indicating we received all data
 				"transfer(1)->sendMessage(0)",
 			},
@@ -117,13 +115,11 @@ func TestRestartPush(t *testing.T) {
 				// initiator: receive completion message from responder that they got all the data
 				"transfer(0)->receiveResponse(0)",
 				// responder: receive dt request, execute graphsync request in response
-				"transfer(1)->receiveRequest(0)->request(0)->executeTask(0)",
-				// responder: terminate first GS request
-				"transfer(1)->receiveRequest(0)->request(0)->terminateRequest(0)",
+				"transfer(1)->receiveRequest(0)->request(0)",
 				// responder: send restart request to initiator
 				"transfer(2)->restartChannel(0)->sendMessage(0)",
 				// responder: execute second GS resquest in response to restart request
-				"transfer(2)->receiveRequest(0)->request(0)->newRequest(0)",
+				"transfer(2)->receiveRequest(0)->request(0)",
 				// responder: send message indicating we received all data
 				"transfer(2)->sendMessage(0)",
 			},
@@ -287,7 +283,7 @@ func TestRestartPush(t *testing.T) {
 			require.Equal(t, expectedTransferSize, int(sendChan.Queued()))
 			require.Equal(t, expectedTransferSize, int(sendChan.Sent()))
 			require.Equal(t, expectedTransferSize, int(recvChan.Received()))
-			traces := rh.collectTracing(t).TracesToStrings()
+			traces := rh.collectTracing(t).TracesToStrings(3)
 			for _, expectedTrace := range tc.expectedTraces {
 				require.Contains(t, traces, expectedTrace)
 			}
@@ -328,7 +324,7 @@ func TestRestartPull(t *testing.T) {
 				// initiator: initial outgoing gs request terminates
 				"transfer(0)->request(0)->terminateRequest(0)",
 				// initiator: restart request encoded in GS outgoing request
-				"transfer(2)->restartChannel(0)->request(0)->newRequest(0)",
+				"transfer(2)->restartChannel(0)->request(0)",
 				// initiator: receive completion message from responder that they sent all the data
 				"transfer(2)->receiveResponse(0)",
 				// responder: receive GS request and execute response
@@ -367,7 +363,7 @@ func TestRestartPull(t *testing.T) {
 				// initiator: initial outgoing gs request terminates
 				"transfer(0)->request(0)->terminateRequest(0)",
 				// initiator: respond to restart request and send second GS request
-				"transfer(0)->receiveRequest(0)->request(0)->newRequest(0)",
+				"transfer(0)->receiveRequest(0)->request(0)",
 				// initiator: receive completion message from responder that they sent all the data
 				"transfer(0)->receiveResponse(0)",
 				// responder: receive GS request and execute response
@@ -538,7 +534,7 @@ func TestRestartPull(t *testing.T) {
 			require.Equal(t, expectedTransferSize, int(sendChan.Queued()))
 			require.Equal(t, expectedTransferSize, int(sendChan.Sent()))
 			require.Equal(t, expectedTransferSize, int(recvChan.Received()))
-			traces := rh.collectTracing(t).TracesToStrings()
+			traces := rh.collectTracing(t).TracesToStrings(3)
 			for _, expectedTrace := range tc.expectedTraces {
 				require.Contains(t, traces, expectedTrace)
 			}

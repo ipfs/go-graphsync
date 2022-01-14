@@ -337,6 +337,10 @@ func (m *manager) OnContextAugment(chid datatransfer.ChannelID) func(context.Con
 	}
 }
 
+func (m *manager) OnLinkMissing(chid datatransfer.ChannelID, link ipld.Link) error {
+	return m.channels.CIDMissing(chid, link.(cidlink.Link).Cid)
+}
+
 func (m *manager) receiveRestartRequest(chid datatransfer.ChannelID, incoming datatransfer.Request) (datatransfer.Response, error) {
 	log.Infof("channel %s: received restart request", chid)
 

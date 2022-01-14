@@ -23,7 +23,7 @@ func (t *ChannelState) MarshalCBOR(w io.Writer) error {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{178}); err != nil {
+	if _, err := w.Write([]byte{179}); err != nil {
 		return err
 	}
 
@@ -382,6 +382,31 @@ func (t *ChannelState) MarshalCBOR(w io.Writer) error {
 	if err := t.Stages.MarshalCBOR(w); err != nil {
 		return err
 	}
+
+	// t.MissingCids ([]cid.Cid) (slice)
+	if len("MissingCids") > cbg.MaxLength {
+		return xerrors.Errorf("Value in field \"MissingCids\" was too long")
+	}
+
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len("MissingCids"))); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(w, string("MissingCids")); err != nil {
+		return err
+	}
+
+	if len(t.MissingCids) > cbg.MaxLength {
+		return xerrors.Errorf("Slice value in field t.MissingCids was too long")
+	}
+
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajArray, uint64(len(t.MissingCids))); err != nil {
+		return err
+	}
+	for _, v := range t.MissingCids {
+		if err := cbg.WriteCidBuf(scratch, w, v); err != nil {
+			return xerrors.Errorf("failed writing cid field t.MissingCids: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -703,6 +728,34 @@ func (t *ChannelState) UnmarshalCBOR(r io.Reader) error {
 					}
 				}
 
+			}
+			// t.MissingCids ([]cid.Cid) (slice)
+		case "MissingCids":
+
+			maj, extra, err = cbg.CborReadHeaderBuf(br, scratch)
+			if err != nil {
+				return err
+			}
+
+			if extra > cbg.MaxLength {
+				return fmt.Errorf("t.MissingCids: array too large (%d)", extra)
+			}
+
+			if maj != cbg.MajArray {
+				return fmt.Errorf("expected cbor array")
+			}
+
+			if extra > 0 {
+				t.MissingCids = make([]cid.Cid, extra)
+			}
+
+			for i := 0; i < int(extra); i++ {
+
+				c, err := cbg.ReadCid(br)
+				if err != nil {
+					return xerrors.Errorf("reading cid field t.MissingCids failed: %w", err)
+				}
+				t.MissingCids[i] = c
 			}
 
 		default:

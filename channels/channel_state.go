@@ -56,6 +56,9 @@ type channelState struct {
 	// stages tracks the timeline of events related to a data transfer, for
 	// traceability purposes.
 	stages *datatransfer.ChannelStages
+
+	// missingCids are the set of CIDS that were missing and skipped over in the data transfer
+	missingCids []cid.Cid
 }
 
 // EmptyChannelState is the zero value for channel state, meaning not present
@@ -193,6 +196,10 @@ func (c channelState) OtherPeer() peer.ID {
 	return c.sender
 }
 
+func (c channelState) MissingCids() []cid.Cid {
+	return c.missingCids
+}
+
 // Stages returns the current ChannelStages object, or an empty object.
 // It is unsafe for the caller to modify the return value, and changes may not
 // be persisted. It should be treated as immutable.
@@ -230,6 +237,7 @@ func fromInternalChannelState(c internal.ChannelState, voucherDecoder DecoderByT
 		voucherDecoder:       voucherDecoder,
 		receivedCids:         receivedCidsReader,
 		stages:               c.Stages,
+		missingCids:          c.MissingCids,
 	}
 }
 

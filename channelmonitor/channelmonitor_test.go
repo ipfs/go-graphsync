@@ -621,3 +621,7 @@ func (m *mockChannelState) ReceivedCidsLen() int {
 func (m *mockChannelState) ReceivedCidsTotal() int64 {
 	panic("implement me")
 }
+
+func (m *mockChannelState) MissingCids() []cid.Cid {
+	panic("implement me")
+}

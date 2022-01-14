@@ -52,7 +52,7 @@ func TestSpansIndex(t *testing.T) {
 			ctx, collectTracing := testutil.SetupTracing(ctx)
 			si := tracing.NewSpansIndex()
 			data.operation(ctx, si)
-			traces := collectTracing(t).TracesToStrings()
+			traces := collectTracing(t).TracesToStrings(3)
 			require.Equal(t, data.expectedTraces, traces)
 		})
 	}

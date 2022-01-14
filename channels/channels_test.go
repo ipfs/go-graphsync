@@ -241,6 +241,37 @@ func TestChannels(t *testing.T) {
 		require.ElementsMatch(t, []cid.Cid{cids[0], cids[1]}, state.ReceivedCids())
 	})
 
+	t.Run("missing cids", func(t *testing.T) {
+		ds := dss.MutexWrap(datastore.NewMapDatastore())
+		dir := os.TempDir()
+		cidLists, err := cidlists.NewCIDLists(dir)
+		require.NoError(t, err)
+		channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
+		require.NoError(t, err)
+		err = channelList.Start(ctx)
+		require.NoError(t, err)
+
+		_, err = channelList.CreateNew(peers[0], tid1, cids[0], selector, fv1, peers[0], peers[0], peers[1])
+		require.NoError(t, err)
+		state := checkEvent(ctx, t, received, datatransfer.Open)
+		require.Equal(t, datatransfer.Requested, state.Status())
+
+		err = channelList.CIDMissing(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[0])
+		require.NoError(t, err)
+		state = checkEvent(ctx, t, received, datatransfer.CIDMissing)
+		require.Equal(t, []cid.Cid{cids[0]}, state.MissingCids())
+
+		err = channelList.CIDMissing(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[1])
+		require.NoError(t, err)
+		state = checkEvent(ctx, t, received, datatransfer.CIDMissing)
+		require.Equal(t, []cid.Cid{cids[0], cids[1]}, state.MissingCids())
+
+		err = channelList.CIDMissing(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[0])
+		require.NoError(t, err)
+		state = checkEvent(ctx, t, received, datatransfer.CIDMissing)
+		require.Equal(t, []cid.Cid{cids[0], cids[1]}, state.MissingCids())
+	})
+
 	t.Run("pause/resume", func(t *testing.T) {
 		state, err := channelList.GetByID(ctx, datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1})
 		require.NoError(t, err)

@@ -68,6 +68,9 @@ type ChannelState struct {
 	//
 	// EXPERIMENTAL; subject to change.
 	Stages *datatransfer.ChannelStages
+
+	// MissingCids are the set of CIDS that were missing and skipped over in the data transfer
+	MissingCids []cid.Cid
 }
 
 // AddLog takes an fmt string with arguments, and adds the formatted string to

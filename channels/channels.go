@@ -373,6 +373,11 @@ func (c *Channels) ReceiveDataError(chid datatransfer.ChannelID, err error) erro
 	return c.send(chid, datatransfer.ReceiveDataError, err)
 }
 
+// CIDMissing indicates the sender is missing a section of the graph in the response
+func (c *Channels) CIDMissing(chid datatransfer.ChannelID, cid cid.Cid) error {
+	return c.send(chid, datatransfer.CIDMissing, cid)
+}
+
 // HasChannel returns true if the given channel id is being tracked
 func (c *Channels) HasChannel(chid datatransfer.ChannelID) (bool, error) {
 	return c.stateMachines.Has(chid)

@@ -51,11 +51,11 @@ func (c Collector) FindSpans(name string) tracetest.SpanStubs {
 // TracesToString returns an array of all traces represented as strings with each
 // span in the trace identified by name and its number (within the parent span)
 // in parens, separated by a '->'. e.g. `"foo(0)->bar(0)","foo(0)->bar(1)"`
-func (c Collector) TracesToStrings() []string {
-	return c.tracesToString("", c.FindParentSpans(), "", func(_ tracetest.SpanStub) {})
+func (c Collector) TracesToStrings(maxDepth int) []string {
+	return c.tracesToString(1, maxDepth, "", c.FindParentSpans(), "", func(_ tracetest.SpanStub) {})
 }
 
-func (c Collector) tracesToString(trace string, spans tracetest.SpanStubs, matchString string, matchCb func(tracetest.SpanStub)) []string {
+func (c Collector) tracesToString(depth int, maxDepth int, trace string, spans tracetest.SpanStubs, matchString string, matchCb func(tracetest.SpanStub)) []string {
 	var traces []string
 	counts := make(map[string]int) // count the span children by name
 	for _, span := range spans {
@@ -69,8 +69,8 @@ func (c Collector) tracesToString(trace string, spans tracetest.SpanStubs, match
 			matchCb(span)
 		}
 		children := c.FindSpansWithParent(span)
-		if len(children) > 0 {
-			traces = append(traces, c.tracesToString(t, children, matchString, matchCb)...)
+		if len(children) > 0 && (maxDepth == -1 || depth < maxDepth) {
+			traces = append(traces, c.tracesToString(depth+1, maxDepth, t, children, matchString, matchCb)...)
 		} else {
 			traces = append(traces, t)
 		}
@@ -84,7 +84,7 @@ func (c Collector) tracesToString(trace string, spans tracetest.SpanStubs, match
 // without any children to fetch the parent span.
 func (c Collector) FindSpanByTraceString(trace string) *tracetest.SpanStub {
 	var found *tracetest.SpanStub
-	c.tracesToString("", c.FindParentSpans(), trace, func(span tracetest.SpanStub) {
+	c.tracesToString(1, -1, "", c.FindParentSpans(), trace, func(span tracetest.SpanStub) {
 		if found != nil && found.Name != "" {
 			panic("found more than one span with the same trace string")
 		}

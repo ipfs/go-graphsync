@@ -238,6 +238,15 @@ func (t *Transport) consumeResponses(req *gsReq) error {
 	log.Infof("channel %s: finished consuming graphsync response channel", req.channelID)
 
 	for err := range req.errChan {
+		// graphsync returns a stream of errors, where some can simply report the remote
+		// peer was missing a block
+		// here, we check for that type of error and record this missing block, rather than
+		// fail the transfer
+		var remoteMissingBlockErr graphsync.RemoteMissingBlockErr
+		if errors.As(err, &remoteMissingBlockErr) {
+			t.events.OnLinkMissing(req.channelID, remoteMissingBlockErr.Link)
+			continue
+		}
 		lastError = err
 	}
 	log.Infof("channel %s: finished consuming graphsync error channel", req.channelID)
@@ -752,7 +761,7 @@ func (t *Transport) gsCompletedResponseListener(p peer.ID, request graphsync.Req
 	}
 
 	var completeErr error
-	if status != graphsync.RequestCompletedFull {
+	if status != graphsync.RequestCompletedFull && status != graphsync.RequestCompletedPartial {
 		statusStr := gsResponseStatusCodeString(status)
 		completeErr = xerrors.Errorf("graphsync response to peer %s did not complete: response status code %s", p, statusStr)
 	}
