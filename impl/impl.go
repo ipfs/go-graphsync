@@ -22,7 +22,6 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/channelmonitor"
 	"github.com/filecoin-project/go-data-transfer/channels"
-	"github.com/filecoin-project/go-data-transfer/cidlists"
 	"github.com/filecoin-project/go-data-transfer/encoding"
 	"github.com/filecoin-project/go-data-transfer/message"
 	"github.com/filecoin-project/go-data-transfer/network"
@@ -44,7 +43,6 @@ type manager struct {
 	channels             *channels.Channels
 	peerID               peer.ID
 	transport            datatransfer.Transport
-	cidLists             cidlists.CIDLists
 	channelMonitor       *channelmonitor.Monitor
 	channelMonitorCfg    *channelmonitor.Config
 	transferIDGen        *timeCounter
@@ -94,7 +92,7 @@ func ChannelRestartConfig(cfg channelmonitor.Config) DataTransferOption {
 }
 
 // NewDataTransfer initializes a new instance of a data transfer manager
-func NewDataTransfer(ds datastore.Batching, cidListsDir string, dataTransferNetwork network.DataTransferNetwork, transport datatransfer.Transport, options ...DataTransferOption) (datatransfer.Manager, error) {
+func NewDataTransfer(ds datastore.Batching, dataTransferNetwork network.DataTransferNetwork, transport datatransfer.Transport, options ...DataTransferOption) (datatransfer.Manager, error) {
 	m := &manager{
 		dataTransferNetwork:  dataTransferNetwork,
 		validatedTypes:       registry.NewRegistry(),
@@ -109,12 +107,7 @@ func NewDataTransfer(ds datastore.Batching, cidListsDir string, dataTransferNetw
 		spansIndex:           tracing.NewSpansIndex(),
 	}
 
-	cidLists, err := cidlists.NewCIDLists(cidListsDir)
-	if err != nil {
-		return nil, err
-	}
-	m.cidLists = cidLists
-	channels, err := channels.New(ds, cidLists, m.notifier, m.voucherDecoder, m.resultTypes.Decoder, &channelEnvironment{m}, dataTransferNetwork.ID())
+	channels, err := channels.New(ds, m.notifier, m.voucherDecoder, m.resultTypes.Decoder, &channelEnvironment{m}, dataTransferNetwork.ID())
 	if err != nil {
 		return nil, err
 	}

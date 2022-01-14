@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"os"
 	"testing"
 	"time"
 
@@ -559,7 +558,7 @@ func TestDataTransferResponding(t *testing.T) {
 			h.network = testutil.NewFakeNetwork(h.peers[0])
 			h.transport = testutil.NewFakeTransport()
 			h.ds = dss.MutexWrap(datastore.NewMapDatastore())
-			dt, err := NewDataTransfer(h.ds, os.TempDir(), h.network, h.transport)
+			dt, err := NewDataTransfer(h.ds, h.network, h.transport)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt)
 			h.dt = dt
@@ -664,8 +663,6 @@ func TestDataTransferRestartResponding(t *testing.T) {
 				require.Equal(t, openChannel.Root, cidlink.Link{Cid: h.baseCid})
 				require.Equal(t, openChannel.Selector, h.stor)
 				// assert do not send cids are sent
-				require.ElementsMatch(t, []cid.Cid{testCids[0], testCids[1]}, openChannel.Channel.ReceivedCids())
-				require.EqualValues(t, 2, openChannel.Channel.ReceivedCidsTotal())
 				require.False(t, openChannel.Message.IsRequest())
 				response, ok := openChannel.Message.(datatransfer.Response)
 				require.True(t, ok)
@@ -875,8 +872,6 @@ func TestDataTransferRestartResponding(t *testing.T) {
 				require.Equal(t, openChannel.Root, cidlink.Link{Cid: h.baseCid})
 				require.Equal(t, openChannel.Selector, h.stor)
 				require.True(t, openChannel.Message.IsRequest())
-				// received cids should be a part of the channel req
-				require.ElementsMatch(t, openChannel.Channel.ReceivedCids(), testCids)
 				require.EqualValues(t, len(testCids), openChannel.Channel.ReceivedCidsTotal())
 
 				// assert a restart request is in the channel
@@ -983,7 +978,7 @@ func TestDataTransferRestartResponding(t *testing.T) {
 			h.network = testutil.NewFakeNetwork(h.peers[0])
 			h.transport = testutil.NewFakeTransport()
 			h.ds = dss.MutexWrap(datastore.NewMapDatastore())
-			dt, err := NewDataTransfer(h.ds, os.TempDir(), h.network, h.transport)
+			dt, err := NewDataTransfer(h.ds, h.network, h.transport)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt)
 			h.dt = dt

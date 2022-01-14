@@ -7,14 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	logging "github.com/ipfs/go-log/v2"
 	ipld "github.com/ipld/go-ipld-prime"
 	peer "github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/protocol"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/xerrors"
 
@@ -37,19 +34,16 @@ type graphsyncKey struct {
 
 var defaultSupportedExtensions = []graphsync.ExtensionName{
 	extension.ExtensionDataTransfer1_1,
-	extension.ExtensionDataTransfer1_0,
 }
 
 var incomingReqExtensions = []graphsync.ExtensionName{
 	extension.ExtensionIncomingRequest1_1,
 	extension.ExtensionDataTransfer1_1,
-	extension.ExtensionDataTransfer1_0,
 }
 
 var outgoingBlkExtensions = []graphsync.ExtensionName{
 	extension.ExtensionOutgoingBlock1_1,
 	extension.ExtensionDataTransfer1_1,
-	extension.ExtensionDataTransfer1_0,
 }
 
 // Option is an option for setting up the graphsync transport
@@ -76,19 +70,12 @@ func RegisterCompletedResponseListener(l func(channelID datatransfer.ChannelID))
 	}
 }
 
-type PeerProtocol interface {
-	// Protocol returns the protocol version of the peer, connecting to
-	// the peer if necessary
-	Protocol(context.Context, peer.ID) (protocol.ID, error)
-}
-
 // Transport manages graphsync hooks for data transfer, translating from
 // graphsync hooks to semantic data transfer events
 type Transport struct {
-	events       datatransfer.EventsHandler
-	gs           graphsync.GraphExchange
-	peerProtocol PeerProtocol
-	peerID       peer.ID
+	events datatransfer.EventsHandler
+	gs     graphsync.GraphExchange
+	peerID peer.ID
 
 	supportedExtensions       []graphsync.ExtensionName
 	unregisterFuncs           []graphsync.UnregisterHookFunc
@@ -105,10 +92,9 @@ type Transport struct {
 }
 
 // NewTransport makes a new hooks manager with the given hook events interface
-func NewTransport(peerID peer.ID, gs graphsync.GraphExchange, pp PeerProtocol, options ...Option) *Transport {
+func NewTransport(peerID peer.ID, gs graphsync.GraphExchange, options ...Option) *Transport {
 	t := &Transport{
 		gs:                  gs,
-		peerProtocol:        pp,
 		peerID:              peerID,
 		supportedExtensions: defaultSupportedExtensions,
 		dtChannels:          make(map[datatransfer.ChannelID]*dtChannel),
@@ -172,48 +158,7 @@ func (t *Transport) getRestartExtension(ctx context.Context, p peer.ID, channel 
 	if channel == nil {
 		return nil, nil
 	}
-
-	// Get the peer's protocol version
-	protocol, err := t.peerProtocol.Protocol(ctx, p)
-	if err != nil {
-		return nil, err
-	}
-
-	switch protocol {
-	case datatransfer.ProtocolDataTransfer1_0:
-		// Doesn't support restart extensions
-		return nil, nil
-	case datatransfer.ProtocolDataTransfer1_1:
-		// Supports do-not-send-cids extension
-		return getDoNotSendCidsExtension(channel)
-	default: // Versions higher than 1.1
-		// Supports do-not-send-first-blocks extension
-		return getDoNotSendFirstBlocksExtension(channel)
-	}
-}
-
-// Send a list of CIDs that have already been received, so that the peer
-// doesn't send those blocks again
-func getDoNotSendCidsExtension(channel datatransfer.ChannelState) ([]graphsync.ExtensionData, error) {
-	doNotSendCids := channel.ReceivedCids()
-	if len(doNotSendCids) == 0 {
-		return nil, nil
-	}
-
-	// Make sure the CIDs are unique
-	set := cid.NewSet()
-	for _, c := range doNotSendCids {
-		set.Add(c)
-	}
-	bz, err := cidset.EncodeCidSet(set)
-	if err != nil {
-		return nil, xerrors.Errorf("failed to encode cid set: %w", err)
-	}
-	doNotSendExt := graphsync.ExtensionData{
-		Name: graphsync.ExtensionDoNotSendCIDs,
-		Data: bz,
-	}
-	return []graphsync.ExtensionData{doNotSendExt}, nil
+	return getDoNotSendFirstBlocksExtension(channel)
 }
 
 // Skip the first N blocks because they were already received
@@ -1065,7 +1010,7 @@ func (c *dtChannel) open(
 	// Open a new graphsync request
 	msg := fmt.Sprintf("Opening graphsync request to %s for root %s", dataSender, root)
 	if channel != nil {
-		msg += fmt.Sprintf(" with %d CIDs already received", channel.ReceivedCidsLen())
+		msg += fmt.Sprintf(" with %d Blocks already received", channel.ReceivedCidsTotal())
 	}
 	log.Info(msg)
 	responseChan, errChan := c.gs.Request(ctx, dataSender, root, stor, exts...)

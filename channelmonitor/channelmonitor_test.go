@@ -610,14 +610,6 @@ func (m *mockChannelState) Stages() *datatransfer.ChannelStages {
 	panic("implement me")
 }
 
-func (m *mockChannelState) ReceivedCids() []cid.Cid {
-	panic("implement me")
-}
-
-func (m *mockChannelState) ReceivedCidsLen() int {
-	panic("implement me")
-}
-
 func (m *mockChannelState) ReceivedCidsTotal() int64 {
 	panic("implement me")
 }

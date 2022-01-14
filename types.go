@@ -129,12 +129,6 @@ type ChannelState interface {
 	// LastVoucherResult returns the last voucher result sent on the channel
 	LastVoucherResult() VoucherResult
 
-	// ReceivedCids returns the cids received so far on the channel
-	ReceivedCids() []cid.Cid
-
-	// ReceivedCidsLen returns the number of unique cids received so far on the channel
-	ReceivedCidsLen() int
-
 	// ReceivedCidsTotal returns the number of (non-unique) cids received so far
 	// on the channel - note that a block can exist in more than one place in the DAG
 	ReceivedCidsTotal() int64

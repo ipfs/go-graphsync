@@ -14,7 +14,6 @@ import (
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/encoding"
-	"github.com/filecoin-project/go-data-transfer/message/message1_0"
 	"github.com/filecoin-project/go-data-transfer/message/types"
 )
 
@@ -38,26 +37,8 @@ type transferRequest1_1 struct {
 
 func (trq *transferRequest1_1) MessageForProtocol(targetProtocol protocol.ID) (datatransfer.Message, error) {
 	switch targetProtocol {
-	case datatransfer.ProtocolDataTransfer1_2, datatransfer.ProtocolDataTransfer1_1:
+	case datatransfer.ProtocolDataTransfer1_2:
 		return trq, nil
-	case datatransfer.ProtocolDataTransfer1_0:
-		if trq.IsRestart() || trq.IsRestartExistingChannelRequest() {
-			return nil, xerrors.New("restart not supported on 1.0")
-		}
-
-		lreq := message1_0.NewTransferRequest(
-			trq.BCid,
-			trq.Type,
-			trq.Paus,
-			trq.Part,
-			trq.Pull,
-			trq.Stor,
-			trq.Vouch,
-			trq.VTyp,
-			trq.XferID,
-		)
-		return lreq, nil
-
 	default:
 		return nil, xerrors.Errorf("protocol not supported")
 	}

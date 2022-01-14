@@ -20,7 +20,6 @@ import (
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/message"
-	"github.com/filecoin-project/go-data-transfer/message/message1_0"
 )
 
 var log = logging.Logger("data_transfer_network")
@@ -45,8 +44,6 @@ const defaultBackoffFactor = 5
 
 var defaultDataTransferProtocols = []protocol.ID{
 	datatransfer.ProtocolDataTransfer1_2,
-	datatransfer.ProtocolDataTransfer1_1,
-	datatransfer.ProtocolDataTransfer1_0,
 }
 
 // Option is an option for configuring the libp2p storage market network
@@ -247,10 +244,8 @@ func (dtnet *libp2pDataTransferNetwork) handleNewStream(s network.Stream) {
 		var received datatransfer.Message
 		var err error
 		switch s.Protocol() {
-		case datatransfer.ProtocolDataTransfer1_2, datatransfer.ProtocolDataTransfer1_1:
+		case datatransfer.ProtocolDataTransfer1_2:
 			received, err = message.FromNet(s)
-		default:
-			received, err = message1_0.FromNet(s)
 		}
 
 		if err != nil {
@@ -315,8 +310,6 @@ func (dtnet *libp2pDataTransferNetwork) msgToStream(ctx context.Context, s netwo
 
 	switch s.Protocol() {
 	case datatransfer.ProtocolDataTransfer1_2:
-	case datatransfer.ProtocolDataTransfer1_1:
-	case datatransfer.ProtocolDataTransfer1_0:
 	default:
 		return fmt.Errorf("unrecognized protocol on remote: %s", s.Protocol())
 	}

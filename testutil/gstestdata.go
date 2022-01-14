@@ -58,8 +58,7 @@ const unixfsChunkSize uint64 = 1 << 10
 const unixfsLinksPerLevel = 1024
 
 var extsForProtocol = map[protocol.ID]graphsync.ExtensionName{
-	datatransfer.ProtocolDataTransfer1_1: extension.ExtensionDataTransfer1_1,
-	datatransfer.ProtocolDataTransfer1_0: extension.ExtensionDataTransfer1_0,
+	datatransfer.ProtocolDataTransfer1_2: extension.ExtensionDataTransfer1_1,
 }
 
 // GraphsyncTestingData is a test harness for testing data transfer on top of
@@ -181,7 +180,7 @@ func (gsData *GraphsyncTestingData) SetupGSTransportHost1(opts ...gstransport.Op
 		opts = append(opts, gstransport.SupportedExtensions(supportedExtensions))
 	}
 
-	return gstransport.NewTransport(gsData.Host1.ID(), gs, gsData.DtNet1, opts...)
+	return gstransport.NewTransport(gsData.Host1.ID(), gs, opts...)
 }
 
 // SetupGraphsyncHost2 sets up a new, real graphsync instance on top of the second host
@@ -206,7 +205,7 @@ func (gsData *GraphsyncTestingData) SetupGSTransportHost2(opts ...gstransport.Op
 		}
 		opts = append(opts, gstransport.SupportedExtensions(supportedExtensions))
 	}
-	return gstransport.NewTransport(gsData.Host2.ID(), gs, gsData.DtNet2, opts...)
+	return gstransport.NewTransport(gsData.Host2.ID(), gs, opts...)
 }
 
 // LoadUnixFSFile loads a fixtures file we can test dag transfer with

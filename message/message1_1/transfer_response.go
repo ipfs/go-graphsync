@@ -9,7 +9,6 @@ import (
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/encoding"
-	"github.com/filecoin-project/go-data-transfer/message/message1_0"
 	"github.com/filecoin-project/go-data-transfer/message/types"
 )
 
@@ -91,24 +90,8 @@ func (trsp *transferResponse1_1) EmptyVoucherResult() bool {
 
 func (trsp *transferResponse1_1) MessageForProtocol(targetProtocol protocol.ID) (datatransfer.Message, error) {
 	switch targetProtocol {
-	case datatransfer.ProtocolDataTransfer1_2, datatransfer.ProtocolDataTransfer1_1:
+	case datatransfer.ProtocolDataTransfer1_2:
 		return trsp, nil
-	case datatransfer.ProtocolDataTransfer1_0:
-		// this should never happen but dosen't hurt to have this here for sanity
-		if trsp.IsRestart() {
-			return nil, xerrors.New("restart not supported for 1.0 protocol")
-		}
-
-		lresp := message1_0.NewTransferResponse(
-			trsp.Type,
-			trsp.Acpt,
-			trsp.Paus,
-			trsp.XferID,
-			trsp.VRes,
-			trsp.VTyp,
-		)
-
-		return lresp, nil
 	default:
 		return nil, xerrors.Errorf("protocol %s not supported", targetProtocol)
 	}

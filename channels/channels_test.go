@@ -1,35 +1,22 @@
 package channels_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"math/rand"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
-	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
-	cbg "github.com/whyrusleeping/cbor-gen"
 	"golang.org/x/xerrors"
-
-	versioning "github.com/filecoin-project/go-ds-versioning/pkg"
-	versionedds "github.com/filecoin-project/go-ds-versioning/pkg/datastore"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/channels"
-	"github.com/filecoin-project/go-data-transfer/channels/internal"
-	"github.com/filecoin-project/go-data-transfer/channels/internal/migrations"
-	v0 "github.com/filecoin-project/go-data-transfer/channels/internal/migrations/v0"
-	v1 "github.com/filecoin-project/go-data-transfer/channels/internal/migrations/v1"
-	"github.com/filecoin-project/go-data-transfer/cidlists"
 	"github.com/filecoin-project/go-data-transfer/encoding"
 	"github.com/filecoin-project/go-data-transfer/testutil"
 )
@@ -52,10 +39,7 @@ func TestChannels(t *testing.T) {
 	selector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
 	peers := testutil.GeneratePeers(4)
 
-	dir := os.TempDir()
-	cidLists, err := cidlists.NewCIDLists(dir)
-	require.NoError(t, err)
-	channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
+	channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
 	require.NoError(t, err)
 
 	err = channelList.Start(ctx)
@@ -140,10 +124,8 @@ func TestChannels(t *testing.T) {
 
 	t.Run("datasent/queued when transfer is already finished", func(t *testing.T) {
 		ds := dss.MutexWrap(datastore.NewMapDatastore())
-		dir := os.TempDir()
-		cidLists, err := cidlists.NewCIDLists(dir)
-		require.NoError(t, err)
-		channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
+
+		channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
 		require.NoError(t, err)
 		err = channelList.Start(ctx)
 		require.NoError(t, err)
@@ -172,10 +154,8 @@ func TestChannels(t *testing.T) {
 
 	t.Run("updating send/receive values", func(t *testing.T) {
 		ds := dss.MutexWrap(datastore.NewMapDatastore())
-		dir := os.TempDir()
-		cidLists, err := cidlists.NewCIDLists(dir)
-		require.NoError(t, err)
-		channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
+
+		channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
 		require.NoError(t, err)
 		err = channelList.Start(ctx)
 		require.NoError(t, err)
@@ -186,7 +166,6 @@ func TestChannels(t *testing.T) {
 		require.Equal(t, datatransfer.Requested, state.Status())
 		require.Equal(t, uint64(0), state.Received())
 		require.Equal(t, uint64(0), state.Sent())
-		require.Empty(t, state.ReceivedCids())
 
 		isNew, err := channelList.DataReceived(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[0], 50, 1, true)
 		require.NoError(t, err)
@@ -195,7 +174,6 @@ func TestChannels(t *testing.T) {
 		state = checkEvent(ctx, t, received, datatransfer.DataReceived)
 		require.Equal(t, uint64(50), state.Received())
 		require.Equal(t, uint64(0), state.Sent())
-		require.Equal(t, []cid.Cid{cids[0]}, state.ReceivedCids())
 
 		isNew, err = channelList.DataSent(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[1], 100, 1, true)
 		require.NoError(t, err)
@@ -204,7 +182,6 @@ func TestChannels(t *testing.T) {
 		state = checkEvent(ctx, t, received, datatransfer.DataSent)
 		require.Equal(t, uint64(50), state.Received())
 		require.Equal(t, uint64(100), state.Sent())
-		require.Equal(t, []cid.Cid{cids[0]}, state.ReceivedCids())
 
 		// send block again has no effect
 		isNew, err = channelList.DataSent(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[1], 100, 1, true)
@@ -220,7 +197,6 @@ func TestChannels(t *testing.T) {
 		require.False(t, isNew)
 		isNew, err = channelList.DataSent(datatransfer.ChannelID{Initiator: peers[1], Responder: peers[0], ID: tid1}, cids[1], 200, 2, true)
 		require.True(t, xerrors.As(err, new(*channels.ErrNotFound)))
-		require.Equal(t, []cid.Cid{cids[0]}, state.ReceivedCids())
 		require.False(t, isNew)
 
 		isNew, err = channelList.DataReceived(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[1], 50, 2, true)
@@ -230,7 +206,6 @@ func TestChannels(t *testing.T) {
 		state = checkEvent(ctx, t, received, datatransfer.DataReceived)
 		require.Equal(t, uint64(100), state.Received())
 		require.Equal(t, uint64(100), state.Sent())
-		require.ElementsMatch(t, []cid.Cid{cids[0], cids[1]}, state.ReceivedCids())
 
 		isNew, err = channelList.DataSent(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[1], 25, 2, false)
 		require.NoError(t, err)
@@ -238,7 +213,6 @@ func TestChannels(t *testing.T) {
 		state = checkEvent(ctx, t, received, datatransfer.DataSent)
 		require.Equal(t, uint64(100), state.Received())
 		require.Equal(t, uint64(100), state.Sent())
-		require.ElementsMatch(t, []cid.Cid{cids[0], cids[1]}, state.ReceivedCids())
 
 		isNew, err = channelList.DataReceived(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[0], 50, 3, false)
 		require.NoError(t, err)
@@ -246,16 +220,12 @@ func TestChannels(t *testing.T) {
 		state = checkEvent(ctx, t, received, datatransfer.DataReceived)
 		require.Equal(t, uint64(100), state.Received())
 		require.Equal(t, uint64(100), state.Sent())
-
-		require.ElementsMatch(t, []cid.Cid{cids[0], cids[1]}, state.ReceivedCids())
 	})
 
 	t.Run("missing cids", func(t *testing.T) {
 		ds := dss.MutexWrap(datastore.NewMapDatastore())
-		dir := os.TempDir()
-		cidLists, err := cidlists.NewCIDLists(dir)
-		require.NoError(t, err)
-		channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
+
+		channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
 		require.NoError(t, err)
 		err = channelList.Start(ctx)
 		require.NoError(t, err)
@@ -398,10 +368,7 @@ func TestChannels(t *testing.T) {
 		notifier := func(evt datatransfer.Event, chst datatransfer.ChannelState) {
 			received <- event{evt, chst}
 		}
-		dir := os.TempDir()
-		cidLists, err := cidlists.NewCIDLists(dir)
-		require.NoError(t, err)
-		channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
+		channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
 		require.NoError(t, err)
 		err = channelList.Start(ctx)
 		require.NoError(t, err)
@@ -449,258 +416,6 @@ func TestIsChannelCleaningUp(t *testing.T) {
 	require.True(t, channels.IsChannelCleaningUp(datatransfer.Failing))
 	require.True(t, channels.IsChannelCleaningUp(datatransfer.Completing))
 	require.False(t, channels.IsChannelCleaningUp(datatransfer.Cancelled))
-}
-
-func TestMigrationsV0(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	ds := dss.MutexWrap(datastore.NewMapDatastore())
-	received := make(chan event)
-	notifier := func(evt datatransfer.Event, chst datatransfer.ChannelState) {
-		received <- event{evt, chst}
-	}
-	numChannels := 5
-	transferIDs := make([]datatransfer.TransferID, numChannels)
-	initiators := make([]peer.ID, numChannels)
-	responders := make([]peer.ID, numChannels)
-	baseCids := make([]cid.Cid, numChannels)
-
-	totalSizes := make([]uint64, numChannels)
-	sents := make([]uint64, numChannels)
-	receiveds := make([]uint64, numChannels)
-	messages := make([]string, numChannels)
-	vouchers := make([]datatransfer.Voucher, numChannels)
-	voucherResults := make([]datatransfer.VoucherResult, numChannels)
-
-	allSelector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
-	allSelectorBuf := new(bytes.Buffer)
-	err := dagcbor.Encode(allSelector, allSelectorBuf)
-	require.NoError(t, err)
-	allSelectorBytes := allSelectorBuf.Bytes()
-
-	for i := 0; i < numChannels; i++ {
-		transferIDs[i] = datatransfer.TransferID(rand.Uint64())
-		initiators[i] = testutil.GeneratePeers(1)[0]
-		responders[i] = testutil.GeneratePeers(1)[0]
-		baseCids[i] = testutil.GenerateCids(1)[0]
-		totalSizes[i] = rand.Uint64()
-		sents[i] = rand.Uint64()
-		receiveds[i] = rand.Uint64()
-		messages[i] = string(testutil.RandomBytes(20))
-		vouchers[i] = testutil.NewFakeDTType()
-		vBytes, err := encoding.Encode(vouchers[i])
-		require.NoError(t, err)
-		voucherResults[i] = testutil.NewFakeDTType()
-		vrBytes, err := encoding.Encode(voucherResults[i])
-		require.NoError(t, err)
-		channel := v0.ChannelState{
-			TransferID: transferIDs[i],
-			Initiator:  initiators[i],
-			Responder:  responders[i],
-			BaseCid:    baseCids[i],
-			Selector: &cbg.Deferred{
-				Raw: allSelectorBytes,
-			},
-			Sender:    initiators[i],
-			Recipient: responders[i],
-			TotalSize: totalSizes[i],
-			Status:    datatransfer.Ongoing,
-			Sent:      sents[i],
-			Received:  receiveds[i],
-			Message:   messages[i],
-			Vouchers: []v0.EncodedVoucher{
-				{
-					Type: vouchers[i].Type(),
-					Voucher: &cbg.Deferred{
-						Raw: vBytes,
-					},
-				},
-			},
-			VoucherResults: []v0.EncodedVoucherResult{
-				{
-					Type: voucherResults[i].Type(),
-					VoucherResult: &cbg.Deferred{
-						Raw: vrBytes,
-					},
-				},
-			},
-		}
-		buf := new(bytes.Buffer)
-		err = channel.MarshalCBOR(buf)
-		require.NoError(t, err)
-		err = ds.Put(ctx, datastore.NewKey(datatransfer.ChannelID{
-			Initiator: initiators[i],
-			Responder: responders[i],
-			ID:        transferIDs[i],
-		}.String()), buf.Bytes())
-		require.NoError(t, err)
-	}
-
-	selfPeer := testutil.GeneratePeers(1)[0]
-	dir := os.TempDir()
-	cidLists, err := cidlists.NewCIDLists(dir)
-	require.NoError(t, err)
-	channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, selfPeer)
-	require.NoError(t, err)
-	err = channelList.Start(ctx)
-	require.NoError(t, err)
-
-	for i := 0; i < numChannels; i++ {
-
-		channel, err := channelList.GetByID(ctx, datatransfer.ChannelID{
-			Initiator: initiators[i],
-			Responder: responders[i],
-			ID:        transferIDs[i],
-		})
-		require.NoError(t, err)
-		require.Equal(t, selfPeer, channel.SelfPeer())
-		require.Equal(t, transferIDs[i], channel.TransferID())
-		require.Equal(t, baseCids[i], channel.BaseCID())
-		require.Equal(t, allSelector, channel.Selector())
-		require.Equal(t, initiators[i], channel.Sender())
-		require.Equal(t, responders[i], channel.Recipient())
-		require.Equal(t, totalSizes[i], channel.TotalSize())
-		require.Equal(t, datatransfer.Ongoing, channel.Status())
-		require.Equal(t, sents[i], channel.Sent())
-		require.Equal(t, receiveds[i], channel.Received())
-		require.Equal(t, messages[i], channel.Message())
-		require.Equal(t, vouchers[i], channel.LastVoucher())
-		require.Equal(t, voucherResults[i], channel.LastVoucherResult())
-		require.Len(t, channel.ReceivedCids(), 0)
-	}
-}
-func TestMigrationsV1(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	ds := dss.MutexWrap(datastore.NewMapDatastore())
-	received := make(chan event)
-	notifier := func(evt datatransfer.Event, chst datatransfer.ChannelState) {
-		received <- event{evt, chst}
-	}
-	numChannels := 5
-	transferIDs := make([]datatransfer.TransferID, numChannels)
-	initiators := make([]peer.ID, numChannels)
-	responders := make([]peer.ID, numChannels)
-	baseCids := make([]cid.Cid, numChannels)
-
-	totalSizes := make([]uint64, numChannels)
-	sents := make([]uint64, numChannels)
-	receiveds := make([]uint64, numChannels)
-	messages := make([]string, numChannels)
-	vouchers := make([]datatransfer.Voucher, numChannels)
-	voucherResults := make([]datatransfer.VoucherResult, numChannels)
-	receivedCids := make([][]cid.Cid, numChannels)
-	allSelector := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher().Node()
-	allSelectorBuf := new(bytes.Buffer)
-	err := dagcbor.Encode(allSelector, allSelectorBuf)
-	require.NoError(t, err)
-	allSelectorBytes := allSelectorBuf.Bytes()
-	selfPeer := testutil.GeneratePeers(1)[0]
-	dir := os.TempDir()
-	cidLists, err := cidlists.NewCIDLists(dir)
-	require.NoError(t, err)
-
-	list, err := migrations.GetChannelStateMigrations(selfPeer, cidLists)
-	require.NoError(t, err)
-	vds, up := versionedds.NewVersionedDatastore(ds, list, versioning.VersionKey("1"))
-	require.NoError(t, up(ctx))
-
-	for i := 0; i < numChannels; i++ {
-		transferIDs[i] = datatransfer.TransferID(rand.Uint64())
-		initiators[i] = testutil.GeneratePeers(1)[0]
-		responders[i] = testutil.GeneratePeers(1)[0]
-		baseCids[i] = testutil.GenerateCids(1)[0]
-		totalSizes[i] = rand.Uint64()
-		sents[i] = rand.Uint64()
-		receiveds[i] = rand.Uint64()
-		messages[i] = string(testutil.RandomBytes(20))
-		vouchers[i] = testutil.NewFakeDTType()
-		vBytes, err := encoding.Encode(vouchers[i])
-		require.NoError(t, err)
-		voucherResults[i] = testutil.NewFakeDTType()
-		vrBytes, err := encoding.Encode(voucherResults[i])
-		require.NoError(t, err)
-		receivedCids[i] = testutil.GenerateCids(100)
-		channel := v1.ChannelState{
-			TransferID: transferIDs[i],
-			Initiator:  initiators[i],
-			Responder:  responders[i],
-			BaseCid:    baseCids[i],
-			Selector: &cbg.Deferred{
-				Raw: allSelectorBytes,
-			},
-			Sender:    initiators[i],
-			Recipient: responders[i],
-			TotalSize: totalSizes[i],
-			Status:    datatransfer.Ongoing,
-			Sent:      sents[i],
-			Received:  receiveds[i],
-			Message:   messages[i],
-			Vouchers: []internal.EncodedVoucher{
-				{
-					Type: vouchers[i].Type(),
-					Voucher: &cbg.Deferred{
-						Raw: vBytes,
-					},
-				},
-			},
-			VoucherResults: []internal.EncodedVoucherResult{
-				{
-					Type: voucherResults[i].Type(),
-					VoucherResult: &cbg.Deferred{
-						Raw: vrBytes,
-					},
-				},
-			},
-			SelfPeer:     selfPeer,
-			ReceivedCids: receivedCids[i],
-		}
-		buf := new(bytes.Buffer)
-		err = channel.MarshalCBOR(buf)
-		require.NoError(t, err)
-		err = vds.Put(ctx, datastore.NewKey(datatransfer.ChannelID{
-			Initiator: initiators[i],
-			Responder: responders[i],
-			ID:        transferIDs[i],
-		}.String()), buf.Bytes())
-		require.NoError(t, err)
-	}
-
-	channelList, err := channels.New(ds, cidLists, notifier, decoderByType, decoderByType, &fakeEnv{}, selfPeer)
-	require.NoError(t, err)
-	err = channelList.Start(ctx)
-	require.NoError(t, err)
-
-	for i := 0; i < numChannels; i++ {
-
-		channel, err := channelList.GetByID(ctx, datatransfer.ChannelID{
-			Initiator: initiators[i],
-			Responder: responders[i],
-			ID:        transferIDs[i],
-		})
-		require.NoError(t, err)
-		require.Equal(t, selfPeer, channel.SelfPeer())
-		require.Equal(t, transferIDs[i], channel.TransferID())
-		require.Equal(t, baseCids[i], channel.BaseCID())
-		require.Equal(t, allSelector, channel.Selector())
-		require.Equal(t, initiators[i], channel.Sender())
-		require.Equal(t, responders[i], channel.Recipient())
-		require.Equal(t, totalSizes[i], channel.TotalSize())
-		require.Equal(t, datatransfer.Ongoing, channel.Status())
-		require.Equal(t, sents[i], channel.Sent())
-		require.Equal(t, receiveds[i], channel.Received())
-		require.Equal(t, messages[i], channel.Message())
-		require.Equal(t, vouchers[i], channel.LastVoucher())
-		require.Equal(t, voucherResults[i], channel.LastVoucherResult())
-		// No longer relying on this migration to migrate CID lists as they
-		// have been deprecated since we moved to CID sets:
-		// https://github.com/filecoin-project/go-data-transfer/pull/217
-		//require.Equal(t, receivedCids[i], channel.ReceivedCids())
-	}
 }
 
 type event struct {

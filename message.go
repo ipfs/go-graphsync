@@ -15,15 +15,6 @@ var (
 	// ProtocolDataTransfer1_2 is the protocol identifier for the latest
 	// version of data-transfer (supports do-not-send-first-blocks extension)
 	ProtocolDataTransfer1_2 protocol.ID = "/fil/datatransfer/1.2.0"
-
-	// ProtocolDataTransfer1_1 is the protocol identifier for the version
-	// of data-transfer that supports the do-not-send-cids extension
-	// (but not the do-not-send-first-blocks extension)
-	ProtocolDataTransfer1_1 protocol.ID = "/fil/datatransfer/1.1.0"
-
-	// ProtocolDataTransfer1_0 is the protocol identifier for legacy data-transfer messages.
-	// This protocol does NOT support the `Restart` functionality for data transfer channels.
-	ProtocolDataTransfer1_0 protocol.ID = "/fil/datatransfer/1.0.0"
 )
 
 // Message is a message for the data transfer protocol

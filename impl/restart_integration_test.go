@@ -51,7 +51,7 @@ func TestRestartPush(t *testing.T) {
 				require.NoError(t, rh.dt1.Stop(rh.testCtx))
 				time.Sleep(100 * time.Millisecond)
 				tp1 := rh.gsData.SetupGSTransportHost1()
-				rh.dt1, err = NewDataTransfer(rh.gsData.DtDs1, rh.gsData.TempDir1, rh.gsData.DtNet1, tp1)
+				rh.dt1, err = NewDataTransfer(rh.gsData.DtDs1, rh.gsData.DtNet1, tp1)
 				require.NoError(rh.t, err)
 				require.NoError(rh.t, rh.dt1.RegisterVoucherType(&testutil.FakeDTType{}, rh.sv))
 				testutil.StartAndWaitForReady(rh.testCtx, t, rh.dt1)
@@ -93,7 +93,7 @@ func TestRestartPush(t *testing.T) {
 				require.NoError(t, rh.dt2.Stop(rh.testCtx))
 				time.Sleep(100 * time.Millisecond)
 				tp2 := rh.gsData.SetupGSTransportHost2()
-				rh.dt2, err = NewDataTransfer(rh.gsData.DtDs2, rh.gsData.TempDir2, rh.gsData.DtNet2, tp2)
+				rh.dt2, err = NewDataTransfer(rh.gsData.DtDs2, rh.gsData.DtNet2, tp2)
 				require.NoError(rh.t, err)
 				require.NoError(rh.t, rh.dt2.RegisterVoucherType(&testutil.FakeDTType{}, rh.sv))
 				testutil.StartAndWaitForReady(rh.testCtx, t, rh.dt2)
@@ -300,7 +300,7 @@ func TestRestartPull(t *testing.T) {
 				require.NoError(t, rh.dt2.Stop(rh.testCtx))
 				time.Sleep(100 * time.Millisecond)
 				tp2 := rh.gsData.SetupGSTransportHost2()
-				rh.dt2, err = NewDataTransfer(rh.gsData.DtDs2, rh.gsData.TempDir2, rh.gsData.DtNet2, tp2)
+				rh.dt2, err = NewDataTransfer(rh.gsData.DtDs2, rh.gsData.DtNet2, tp2)
 				require.NoError(rh.t, err)
 				require.NoError(rh.t, rh.dt2.RegisterVoucherType(&testutil.FakeDTType{}, rh.sv))
 				testutil.StartAndWaitForReady(rh.testCtx, t, rh.dt2)
@@ -339,7 +339,7 @@ func TestRestartPull(t *testing.T) {
 				require.NoError(t, rh.dt1.Stop(rh.testCtx))
 				time.Sleep(100 * time.Millisecond)
 				tp1 := rh.gsData.SetupGSTransportHost1()
-				rh.dt1, err = NewDataTransfer(rh.gsData.DtDs1, rh.gsData.TempDir1, rh.gsData.DtNet1, tp1)
+				rh.dt1, err = NewDataTransfer(rh.gsData.DtDs1, rh.gsData.DtNet1, tp1)
 				require.NoError(rh.t, err)
 				require.NoError(rh.t, rh.dt1.RegisterVoucherType(&testutil.FakeDTType{}, rh.sv))
 				testutil.StartAndWaitForReady(rh.testCtx, t, rh.dt1)
@@ -387,7 +387,6 @@ func TestRestartPull(t *testing.T) {
 			sent := make(chan uint64, totalIncrements)
 			received := make(chan uint64, totalIncrements)
 			receivedTillNow := atomic.NewInt32(0)
-			var receivedCids []cid.Cid
 
 			// counters we will check at the end for correctness
 			opens := atomic.NewInt32(0)
@@ -420,15 +419,6 @@ func TestRestartPull(t *testing.T) {
 					finishedPeersLk.Lock()
 					{
 						finishedPeers = append(finishedPeers, channelState.SelfPeer())
-
-						// When the receiving peer completes, record received CIDs
-						// before they get cleaned up
-						if channelState.SelfPeer() == rh.peer2 {
-							chs, err := rh.dt2.InProgressChannels(rh.testCtx)
-							require.NoError(t, err)
-							require.Len(t, chs, 1)
-							receivedCids = chs[chid].ReceivedCids()
-						}
 					}
 					finishedPeersLk.Unlock()
 					finished <- channelState.SelfPeer()
@@ -502,9 +492,6 @@ func TestRestartPull(t *testing.T) {
 			_, _, err = waitF(10*time.Second, 2)
 			require.NoError(t, err)
 
-			// verify all cids are present on the receiver
-			require.Equal(t, totalIncrements, len(receivedCids))
-
 			testutil.VerifyHasFile(rh.testCtx, t, rh.destDagService, rh.root, rh.origBytes)
 			rh.sv.VerifyExpectations(t)
 
@@ -568,10 +555,10 @@ func newRestartHarness(t *testing.T) *restartHarness {
 	tp1 := gsData.SetupGSTransportHost1()
 	tp2 := gsData.SetupGSTransportHost2()
 
-	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 	require.NoError(t, err)
 
-	dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+	dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 	require.NoError(t, err)
 
 	sv := testutil.NewStubbedValidator()

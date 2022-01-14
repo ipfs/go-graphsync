@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"os"
 	"testing"
 	"time"
 
@@ -61,10 +60,6 @@ var protocolsForTest = map[string]struct {
 	host2Protocols []protocol.ID
 }{
 	"(v1.2 -> v1.2)": {nil, nil},
-	"(v1.0 -> v1.2)": {[]protocol.ID{datatransfer.ProtocolDataTransfer1_0}, nil},
-	"(v1.2 -> v1.0)": {nil, []protocol.ID{datatransfer.ProtocolDataTransfer1_0}},
-	"(v1.1 -> v1.2)": {[]protocol.ID{datatransfer.ProtocolDataTransfer1_1}, nil},
-	"(v1.2 -> v1.1)": {nil, []protocol.ID{datatransfer.ProtocolDataTransfer1_1}},
 }
 
 // tests data transfer for the protocol combinations that support restart messages
@@ -73,8 +68,6 @@ var protocolsForRestartTest = map[string]struct {
 	host2Protocols []protocol.ID
 }{
 	"(v1.2 -> v1.2)": {nil, nil},
-	"(v1.1 -> v1.2)": {[]protocol.ID{datatransfer.ProtocolDataTransfer1_1}, nil},
-	"(v1.2 -> v1.1)": {nil, []protocol.ID{datatransfer.ProtocolDataTransfer1_1}},
 }
 
 func TestRoundTrip(t *testing.T) {
@@ -150,10 +143,10 @@ func TestRoundTrip(t *testing.T) {
 				tp1 := gsData.SetupGSTransportHost1()
 				tp2 := gsData.SetupGSTransportHost2()
 
-				dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+				dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 				require.NoError(t, err)
 				testutil.StartAndWaitForReady(ctx, t, dt1)
-				dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+				dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 				require.NoError(t, err)
 				testutil.StartAndWaitForReady(ctx, t, dt2)
 
@@ -303,10 +296,10 @@ func TestRoundTripMissingBlocks(t *testing.T) {
 			tp1 := gsData.SetupGSTransportHost1()
 			tp2 := gsData.SetupGSTransportHost2()
 
-			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt1)
-			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt2)
 
@@ -425,10 +418,10 @@ func TestMultipleRoundTripMultipleStores(t *testing.T) {
 			tp1 := gsData.SetupGSTransportHost1()
 			tp2 := gsData.SetupGSTransportHost2()
 
-			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt1)
-			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt2)
 
@@ -544,7 +537,7 @@ func TestManyReceiversAtOnce(t *testing.T) {
 			host1 := gsData.Host1 // initiator, data sender
 
 			tp1 := gsData.SetupGSTransportHost1()
-			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt1)
 
@@ -566,11 +559,11 @@ func TestManyReceiversAtOnce(t *testing.T) {
 				destDagService := merkledag.NewDAGService(blockservice.New(altBs, offline.Exchange(altBs)))
 
 				gs := gsimpl.New(gsData.Ctx, gsnet, lsys)
-				gsTransport := tp.NewTransport(host.ID(), gs, dtnet)
+				gsTransport := tp.NewTransport(host.ID(), gs)
 
 				dtDs := namespace.Wrap(ds, datastore.NewKey("datatransfer"))
 
-				receiver, err := NewDataTransfer(dtDs, os.TempDir(), dtnet, gsTransport)
+				receiver, err := NewDataTransfer(dtDs, dtnet, gsTransport)
 				require.NoError(t, err)
 				err = receiver.Start(gsData.Ctx)
 				require.NoError(t, err)
@@ -894,12 +887,12 @@ func TestAutoRestart(t *testing.T) {
 					MaxConsecutiveRestarts: 10,
 					CompleteTimeout:        100 * time.Millisecond,
 				})
-				initiator, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, initiatorGSTspt, restartConf)
+				initiator, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, initiatorGSTspt, restartConf)
 				require.NoError(t, err)
 				testutil.StartAndWaitForReady(ctx, t, initiator)
 				defer initiator.Stop(ctx)
 
-				responder, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, responderGSTspt)
+				responder, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, responderGSTspt)
 				require.NoError(t, err)
 				testutil.StartAndWaitForReady(ctx, t, responder)
 				defer responder.Stop(ctx)
@@ -1070,12 +1063,12 @@ func TestAutoRestartAfterBouncingInitiator(t *testing.T) {
 			MaxConsecutiveRestarts: 10,
 			CompleteTimeout:        100 * time.Millisecond,
 		})
-		initiator, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, initiatorGSTspt, restartConf)
+		initiator, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, initiatorGSTspt, restartConf)
 		require.NoError(t, err)
 		testutil.StartAndWaitForReady(ctx, t, initiator)
 		defer initiator.Stop(ctx)
 
-		responder, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, responderGSTspt)
+		responder, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, responderGSTspt)
 		require.NoError(t, err)
 		testutil.StartAndWaitForReady(ctx, t, responder)
 		defer responder.Stop(ctx)
@@ -1170,7 +1163,7 @@ func TestAutoRestartAfterBouncingInitiator(t *testing.T) {
 
 		// 2. Create a new initiator
 		initiator2GSTspt := gsData.SetupGSTransportHost1()
-		initiator2, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, initiator2GSTspt, restartConf)
+		initiator2, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, initiator2GSTspt, restartConf)
 		require.NoError(t, err)
 		require.NoError(t, initiator2.RegisterVoucherType(&testutil.FakeDTType{}, sv))
 		initiator2.SubscribeToEvents(completeSubscriber)
@@ -1280,10 +1273,10 @@ func TestRoundTripCancelledRequest(t *testing.T) {
 			tp1 := gsData.SetupGSTransportHost1()
 			tp2 := gsData.SetupGSTransportHost2()
 
-			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt1)
-			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt2)
 
@@ -1474,10 +1467,10 @@ func TestSimulatedRetrievalFlow(t *testing.T) {
 			tp1 := gsData.SetupGSTransportHost1()
 			tp2 := gsData.SetupGSTransportHost2()
 
-			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt1)
-			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt2)
 			var chid datatransfer.ChannelID
@@ -1592,10 +1585,10 @@ func TestPauseAndResume(t *testing.T) {
 			tp1 := gsData.SetupGSTransportHost1()
 			tp2 := gsData.SetupGSTransportHost2()
 
-			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt1)
-			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt2)
 			finished := make(chan struct{}, 2)
@@ -1731,10 +1724,10 @@ func TestUnrecognizedVoucherRoundTrip(t *testing.T) {
 			tp1 := gsData.SetupGSTransportHost1()
 			tp2 := gsData.SetupGSTransportHost2()
 
-			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+			dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt1)
-			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+			dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 			require.NoError(t, err)
 			testutil.StartAndWaitForReady(ctx, t, dt2)
 
@@ -1801,14 +1794,14 @@ func TestDataTransferSubscribing(t *testing.T) {
 	sv := testutil.NewStubbedValidator()
 	sv.StubErrorPull()
 	sv.StubErrorPush()
-	dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+	dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 	require.NoError(t, err)
 	testutil.StartAndWaitForReady(ctx, t, dt2)
 	require.NoError(t, dt2.RegisterVoucherType(&testutil.FakeDTType{}, sv))
 	voucher := testutil.FakeDTType{Data: "applesauce"}
 	baseCid := testutil.GenerateCids(1)[0]
 
-	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 	require.NoError(t, err)
 	testutil.StartAndWaitForReady(ctx, t, dt1)
 	subscribe1Calls := make(chan struct{}, 1)
@@ -1940,7 +1933,7 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 	gsData.GsNet2.SetDelegate(gsr)
 
 	tp1 := gsData.SetupGSTransportHost1()
-	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 	require.NoError(t, err)
 	testutil.StartAndWaitForReady(ctx, t, dt1)
 	voucherResult := testutil.NewFakeDTType()
@@ -2027,8 +2020,8 @@ func TestResponseHookWhenExtensionNotFound(t *testing.T) {
 	gsData.GsNet2.SetDelegate(gsr)
 
 	gs1 := gsData.SetupGraphsyncHost1()
-	tp1 := tp.NewTransport(host1.ID(), gs1, gsData.DtNet1)
-	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+	tp1 := tp.NewTransport(host1.ID(), gs1)
+	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 	require.NoError(t, err)
 	testutil.StartAndWaitForReady(ctx, t, dt1)
 	t.Run("when it's not our extension, does not error and does not validate", func(t *testing.T) {
@@ -2071,7 +2064,7 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 				sv := testutil.NewStubbedValidator()
 				sv.ExpectSuccessPull()
 
-				dt1, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+				dt1, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 				require.NoError(t, err)
 				testutil.StartAndWaitForReady(ctx, t, dt1)
 				require.NoError(t, dt1.RegisterVoucherType(&testutil.FakeDTType{}, sv))
@@ -2103,7 +2096,7 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 			test: func(t *testing.T, gsData *testutil.GraphsyncTestingData, tp2 datatransfer.Transport, link ipld.Link, id datatransfer.TransferID, gsr *fakeGraphSyncReceiver) {
 				sv := testutil.NewStubbedValidator()
 				sv.ExpectErrorPull()
-				dt1, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+				dt1, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 				require.NoError(t, err)
 				testutil.StartAndWaitForReady(ctx, t, dt1)
 				require.NoError(t, dt1.RegisterVoucherType(&testutil.FakeDTType{}, sv))
@@ -2174,11 +2167,11 @@ func TestMultipleMessagesInExtension(t *testing.T) {
 	tp1 := gsData.SetupGSTransportHost1()
 	tp2 := gsData.SetupGSTransportHost2()
 
-	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 	require.NoError(t, err)
 	testutil.StartAndWaitForReady(ctx, t, dt1)
 
-	dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+	dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 	require.NoError(t, err)
 	testutil.StartAndWaitForReady(ctx, t, dt2)
 
@@ -2327,11 +2320,11 @@ func TestMultipleParallelTransfers(t *testing.T) {
 	tp1 := gsData.SetupGSTransportHost1()
 	tp2 := gsData.SetupGSTransportHost2()
 
-	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.TempDir1, gsData.DtNet1, tp1)
+	dt1, err := NewDataTransfer(gsData.DtDs1, gsData.DtNet1, tp1)
 	require.NoError(t, err)
 	testutil.StartAndWaitForReady(ctx, t, dt1)
 
-	dt2, err := NewDataTransfer(gsData.DtDs2, gsData.TempDir2, gsData.DtNet2, tp2)
+	dt2, err := NewDataTransfer(gsData.DtDs2, gsData.DtNet2, tp2)
 	require.NoError(t, err)
 	testutil.StartAndWaitForReady(ctx, t, dt2)
 

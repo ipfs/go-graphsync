@@ -57,7 +57,6 @@ type channelState struct {
 	voucherResults       []internal.EncodedVoucherResult
 	voucherResultDecoder DecoderByTypeFunc
 	voucherDecoder       DecoderByTypeFunc
-	receivedCids         ReceivedCidsReader
 
 	// stages tracks the timeline of events related to a data transfer, for
 	// traceability purposes.
@@ -108,24 +107,6 @@ func (c channelState) Voucher() datatransfer.Voucher {
 	decoder, _ := c.voucherDecoder(c.vouchers[0].Type)
 	encodable, _ := decoder.DecodeFromCbor(c.vouchers[0].Voucher.Raw)
 	return encodable.(datatransfer.Voucher)
-}
-
-// ReceivedCids returns the cids received so far on this channel
-func (c channelState) ReceivedCids() []cid.Cid {
-	receivedCids, err := c.receivedCids.ToArray(c.ChannelID())
-	if err != nil {
-		log.Error(err)
-	}
-	return receivedCids
-}
-
-// ReceivedCids returns the number of unique cids received so far on this channel
-func (c channelState) ReceivedCidsLen() int {
-	len, err := c.receivedCids.Len(c.ChannelID())
-	if err != nil {
-		log.Error(err)
-	}
-	return len
 }
 
 // ReceivedCidsTotal returns the number of (non-unique) cids received so far
@@ -233,7 +214,7 @@ func (c channelState) Stages() *datatransfer.ChannelStages {
 	return c.stages
 }
 
-func fromInternalChannelState(c internal.ChannelState, voucherDecoder DecoderByTypeFunc, voucherResultDecoder DecoderByTypeFunc, receivedCidsReader ReceivedCidsReader) datatransfer.ChannelState {
+func fromInternalChannelState(c internal.ChannelState, voucherDecoder DecoderByTypeFunc, voucherResultDecoder DecoderByTypeFunc) datatransfer.ChannelState {
 	return channelState{
 		selfPeer:             c.SelfPeer,
 		isPull:               c.Initiator == c.Recipient,
@@ -255,7 +236,6 @@ func fromInternalChannelState(c internal.ChannelState, voucherDecoder DecoderByT
 		voucherResults:       c.VoucherResults,
 		voucherResultDecoder: voucherResultDecoder,
 		voucherDecoder:       voucherDecoder,
-		receivedCids:         receivedCidsReader,
 		stages:               c.Stages,
 		missingCids:          c.MissingCids,
 	}

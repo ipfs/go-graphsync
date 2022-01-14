@@ -10,7 +10,6 @@ import (
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/message"
-	"github.com/filecoin-project/go-data-transfer/message/message1_0"
 )
 
 const (
@@ -20,16 +19,13 @@ const (
 	ExtensionOutgoingBlock1_1 = graphsync.ExtensionName("fil/data-transfer/outgoing-block/1.1")
 	// ExtensionDataTransfer1_1 is the identifier for the v1.1 data transfer extension to graphsync
 	ExtensionDataTransfer1_1 = graphsync.ExtensionName("fil/data-transfer/1.1")
-	// ExtensionDataTransfer1_0 is the identifier for the v1.0 data transfer extension to graphsync
-	ExtensionDataTransfer1_0 = graphsync.ExtensionName("fil/data-transfer")
 )
 
 // ProtocolMap maps graphsync extensions to their libp2p protocols
 var ProtocolMap = map[graphsync.ExtensionName]protocol.ID{
-	ExtensionIncomingRequest1_1: datatransfer.ProtocolDataTransfer1_1,
-	ExtensionOutgoingBlock1_1:   datatransfer.ProtocolDataTransfer1_1,
-	ExtensionDataTransfer1_1:    datatransfer.ProtocolDataTransfer1_1,
-	ExtensionDataTransfer1_0:    datatransfer.ProtocolDataTransfer1_0,
+	ExtensionIncomingRequest1_1: datatransfer.ProtocolDataTransfer1_2,
+	ExtensionOutgoingBlock1_1:   datatransfer.ProtocolDataTransfer1_2,
+	ExtensionDataTransfer1_1:    datatransfer.ProtocolDataTransfer1_2,
 }
 
 // ToExtensionData converts a message to a graphsync extension
@@ -87,5 +83,4 @@ var decoders = map[graphsync.ExtensionName]decoder{
 	ExtensionIncomingRequest1_1: message.FromNet,
 	ExtensionOutgoingBlock1_1:   message.FromNet,
 	ExtensionDataTransfer1_1:    message.FromNet,
-	ExtensionDataTransfer1_0:    message1_0.FromNet,
 }

@@ -22,14 +22,6 @@ func TestResponseMessageForProtocol(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, response, out)
 
-	// v1.1 protocol
-	out, err = response.MessageForProtocol(datatransfer.ProtocolDataTransfer1_1)
-	require.NoError(t, err)
-	require.Equal(t, response, out)
-
-	// old protocol
-	out, err = response.MessageForProtocol(datatransfer.ProtocolDataTransfer1_0)
-	require.NoError(t, err)
 	resp, ok := (out).(datatransfer.Response)
 	require.True(t, ok)
 	require.True(t, resp.IsPaused())
@@ -40,15 +32,4 @@ func TestResponseMessageForProtocol(t *testing.T) {
 	out, err = response.MessageForProtocol("RAND")
 	require.Error(t, err)
 	require.Nil(t, out)
-}
-
-func TestResponseMessageForProtocolFail(t *testing.T) {
-	id := datatransfer.TransferID(rand.Int31())
-	voucherResult := testutil.NewFakeDTType()
-	response, err := message1_1.RestartResponse(id, false, true, voucherResult.Type(), voucherResult) // not accepted
-	require.NoError(t, err)
-
-	out, err := response.MessageForProtocol(datatransfer.ProtocolDataTransfer1_0)
-	require.Nil(t, out)
-	require.EqualError(t, err, "restart not supported for 1.0 protocol")
 }
