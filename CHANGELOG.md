@@ -1,5 +1,28 @@
 # go-graphsync changelog
 
+# go-graphsync v0.12.0
+
+New features (UnixFS Fetching!) and additional tracing
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Use do not send blocks for pause/resume & prevent processing of blocks on cancelled requests (#333) ([ipfs/go-graphsync#333](https://github.com/ipfs/go-graphsync/pull/333))
+  - Support unixfs reification in default linksystem (#329) ([ipfs/go-graphsync#329](https://github.com/ipfs/go-graphsync/pull/329))
+  - Don't run hooks on blocks we didn't have (#331) ([ipfs/go-graphsync#331](https://github.com/ipfs/go-graphsync/pull/331))
+  - feat(responsemanager): trace full messages via links to responses (#325) ([ipfs/go-graphsync#325](https://github.com/ipfs/go-graphsync/pull/325))
+  - chore(requestmanager): rename processResponses internals for consistency (#328) ([ipfs/go-graphsync#328](https://github.com/ipfs/go-graphsync/pull/328))
+  - Response message tracing (#327) ([ipfs/go-graphsync#327](https://github.com/ipfs/go-graphsync/pull/327))
+  - fix(testutil): fix tracing span collection (#324) ([ipfs/go-graphsync#324](https://github.com/ipfs/go-graphsync/pull/324))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 5 | +576/-311 | 27 |
+| Rod Vagg | 2 | +127/-71 | 9 |
+
+
 # go-graphsync v0.11.5
 
 Additional tracing, context hooks, improvements to IPLD traversal
