@@ -502,7 +502,7 @@ func TestManager(t *testing.T) {
 
 		"recognized incoming request will record unsuccessful request completion": {
 			responseConfig: gsResponseConfig{
-				status: graphsync.RequestFailedUnknown,
+				status: graphsync.RequestCompletedPartial,
 			},
 			action: func(gsData *harness) {
 				gsData.incomingRequestHook()
@@ -707,40 +707,6 @@ func TestManager(t *testing.T) {
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.True(t, events.OnReceiveDataErrorCalled)
-			},
-		},
-		"open channel sends missing Cids": {
-			action: func(gsData *harness) {
-				stor, _ := gsData.outgoing.Selector()
-				gsData.fgs.LeaveRequestsOpen()
-				go gsData.outgoingRequestHook()
-				_ = gsData.transport.OpenChannel(
-					gsData.ctx,
-					gsData.other,
-					datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self},
-					cidlink.Link{Cid: gsData.outgoing.BaseCid()},
-					stor,
-					nil,
-					gsData.outgoing)
-			},
-			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
-				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
-				close(requestReceived.ResponseChan)
-				cid := testutil.GenerateCids(1)[0]
-				requestReceived.ResponseErrChan <- graphsync.RemoteMissingBlockErr{
-					Link: cidlink.Link{Cid: cid},
-				}
-				close(requestReceived.ResponseErrChan)
-
-				require.Eventually(t, func() bool {
-					return events.OnLinkMissingCalled == true
-				}, 2*time.Second, 100*time.Millisecond)
-				require.Equal(t, events.OnLinkMissingLink, cidlink.Link{Cid: cid})
-
-				require.Eventually(t, func() bool {
-					return events.OnChannelCompletedCalled == true
-				}, 2*time.Second, 100*time.Millisecond)
-				require.True(t, events.ChannelCompletedSuccess)
 			},
 		},
 		"open channel adds block count to the DoNotSendFirstBlocks extension for v1.2 protocol": {
@@ -1148,9 +1114,6 @@ type fakeEvents struct {
 	OnReceiveDataErrorCalled    bool
 	OnReceiveDataErrorChannelID datatransfer.ChannelID
 	OnContextAugmentFunc        func(context.Context) context.Context
-	OnLinkMissingCalled         bool
-	OnLinkMissingLink           ipld.Link
-	OnLinkMissingError          error
 	TransferQueuedCalled        bool
 	TransferQueuedChannelID     datatransfer.ChannelID
 
@@ -1239,12 +1202,6 @@ func (fe *fakeEvents) OnChannelCompleted(chid datatransfer.ChannelID, completeEr
 
 func (fe *fakeEvents) OnContextAugment(chid datatransfer.ChannelID) func(context.Context) context.Context {
 	return fe.OnContextAugmentFunc
-}
-
-func (fe *fakeEvents) OnLinkMissing(chid datatransfer.ChannelID, link ipld.Link) error {
-	fe.OnLinkMissingCalled = true
-	fe.OnLinkMissingLink = link
-	return fe.OnLinkMissingError
 }
 
 type harness struct {
@@ -1508,9 +1465,5 @@ func (m *mockChannelState) LastVoucherResult() datatransfer.VoucherResult {
 }
 
 func (m *mockChannelState) Stages() *datatransfer.ChannelStages {
-	panic("implement me")
-}
-
-func (m *mockChannelState) MissingCids() []cid.Cid {
 	panic("implement me")
 }

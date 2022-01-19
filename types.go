@@ -144,11 +144,6 @@ type ChannelState interface {
 	// Queued returns the number of bytes read from the node and queued for sending
 	Queued() uint64
 
-	// MissingCids returns a set of CIDS that were missing and skipped over in the data transfer
-	// Note: because we were unable to traverse these CIDs, there may be additional CIDs
-	// in the DAGs these CIDs were at the root of we also missed but are not aware of
-	MissingCids() []cid.Cid
-
 	// Stages returns the timeline of events this data transfer has gone through,
 	// for observability purposes.
 	//

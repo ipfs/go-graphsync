@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
@@ -220,35 +219,6 @@ func TestChannels(t *testing.T) {
 		state = checkEvent(ctx, t, received, datatransfer.DataReceived)
 		require.Equal(t, uint64(100), state.Received())
 		require.Equal(t, uint64(100), state.Sent())
-	})
-
-	t.Run("missing cids", func(t *testing.T) {
-		ds := dss.MutexWrap(datastore.NewMapDatastore())
-
-		channelList, err := channels.New(ds, notifier, decoderByType, decoderByType, &fakeEnv{}, peers[0])
-		require.NoError(t, err)
-		err = channelList.Start(ctx)
-		require.NoError(t, err)
-
-		_, err = channelList.CreateNew(peers[0], tid1, cids[0], selector, fv1, peers[0], peers[0], peers[1])
-		require.NoError(t, err)
-		state := checkEvent(ctx, t, received, datatransfer.Open)
-		require.Equal(t, datatransfer.Requested, state.Status())
-
-		err = channelList.CIDMissing(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[0])
-		require.NoError(t, err)
-		state = checkEvent(ctx, t, received, datatransfer.CIDMissing)
-		require.Equal(t, []cid.Cid{cids[0]}, state.MissingCids())
-
-		err = channelList.CIDMissing(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[1])
-		require.NoError(t, err)
-		state = checkEvent(ctx, t, received, datatransfer.CIDMissing)
-		require.Equal(t, []cid.Cid{cids[0], cids[1]}, state.MissingCids())
-
-		err = channelList.CIDMissing(datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: tid1}, cids[0])
-		require.NoError(t, err)
-		state = checkEvent(ctx, t, received, datatransfer.CIDMissing)
-		require.Equal(t, []cid.Cid{cids[0], cids[1]}, state.MissingCids())
 	})
 
 	t.Run("pause/resume", func(t *testing.T) {

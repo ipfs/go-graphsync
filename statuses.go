@@ -58,10 +58,6 @@ const (
 
 	// ChannelNotFoundError means the searched for data transfer does not exist
 	ChannelNotFoundError
-
-	// PartiallyCompleted means the data transfer completed without significant error, but the remote
-	// peer only sent a portion of the requested DAG rather than the whole thing
-	PartiallyCompleted
 )
 
 // Statuses are human readable names for data transfer states
@@ -84,5 +80,4 @@ var Statuses = map[Status]string{
 	ResponderFinalizing:                 "ResponderFinalizing",
 	ResponderFinalizingTransferFinished: "ResponderFinalizingTransferFinished",
 	ChannelNotFoundError:                "ChannelNotFoundError",
-	PartiallyCompleted:                  "PartiallyCompleted",
 }

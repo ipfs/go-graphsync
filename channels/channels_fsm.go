@@ -1,7 +1,6 @@
 package channels
 
 import (
-	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	cbg "github.com/whyrusleeping/cbor-gen"
 
@@ -110,24 +109,6 @@ var ChannelEvents = fsm.Events{
 			chst.AddLog("")
 			return nil
 		}),
-
-	fsm.Event(datatransfer.CIDMissing).FromMany(transferringStates...).ToJustRecord().
-		Action(func(chst *internal.ChannelState, missing cid.Cid) error {
-			// TODO: find a more efficient way to do this
-			var found bool
-			for _, c := range chst.MissingCids {
-				if c.Equals(missing) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				chst.MissingCids = append(chst.MissingCids, missing)
-			}
-			chst.AddLog("")
-			return nil
-		}),
-
 	fsm.Event(datatransfer.Disconnected).FromAny().ToNoChange().Action(func(chst *internal.ChannelState, err error) error {
 		chst.Message = err.Error()
 		chst.AddLog("data transfer disconnected: %s", chst.Message)
@@ -250,12 +231,6 @@ var ChannelEvents = fsm.Events{
 		return nil
 	}),
 
-	fsm.Event(datatransfer.CleanupCompletePartial).
-		From(datatransfer.Completing).To(datatransfer.PartiallyCompleted).Action(func(chst *internal.ChannelState) error {
-		chst.AddLog("")
-		return nil
-	}),
-
 	// will kickoff state handlers for channels that were cleaning up
 	fsm.Event(datatransfer.CompleteCleanupOnRestart).FromAny().ToNoChange().Action(func(chst *internal.ChannelState) error {
 		chst.AddLog("")
@@ -278,9 +253,6 @@ func cleanupConnection(ctx fsm.Context, env ChannelEnvironment, channel internal
 	}
 	env.CleanupChannel(datatransfer.ChannelID{ID: channel.TransferID, Initiator: channel.Initiator, Responder: channel.Responder})
 	env.Unprotect(otherParty, datatransfer.ChannelID{ID: channel.TransferID, Initiator: channel.Initiator, Responder: channel.Responder}.String())
-	if channel.Status == datatransfer.Completing && len(channel.MissingCids) > 0 {
-		return ctx.Trigger(datatransfer.CleanupCompletePartial)
-	}
 	return ctx.Trigger(datatransfer.CleanupComplete)
 }
 
@@ -296,7 +268,6 @@ var ChannelFinalityStates = []fsm.StateKey{
 	datatransfer.Cancelled,
 	datatransfer.Completed,
 	datatransfer.Failed,
-	datatransfer.PartiallyCompleted,
 }
 
 // IsChannelTerminated returns true if the channel is in a finality state

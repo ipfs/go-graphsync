@@ -73,10 +73,6 @@ type EventsHandler interface {
 	// OnContextAugment allows the transport to attach data transfer tracing information
 	// to its local context, in order to create a hierarchical trace
 	OnContextAugment(chid ChannelID) func(context.Context) context.Context
-
-	// OnLinkMissing tells data transfer the sending party was missing the given CID so it was
-	// not traversed on the receiving side
-	OnLinkMissing(chid ChannelID, link ipld.Link) error
 }
 
 /*
