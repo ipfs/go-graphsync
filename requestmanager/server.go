@@ -157,9 +157,10 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 				}
 				return nil
 			},
-			Chooser:    ipr.nodeStyleChooser,
-			LinkSystem: rm.linkSystem,
-			Budget:     budget,
+			Chooser:       ipr.nodeStyleChooser,
+			LinkSystem:    rm.linkSystem,
+			Budget:        budget,
+			PanicCallback: rm.panicCallback,
 		}.Start(ctx)
 
 		ipr.reconciledLoader = reconciledloader.NewReconciledLoader(ipr.request.ID(), ipr.lsys)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/ipfs/go-graphsync/panics"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -40,12 +41,13 @@ func IsContextCancelErr(err error) bool {
 
 // TraversalBuilder defines parameters for an iterative traversal
 type TraversalBuilder struct {
-	Root       ipld.Link
-	Selector   ipld.Node
-	Visitor    traversal.AdvVisitFn
-	LinkSystem ipld.LinkSystem
-	Chooser    traversal.LinkTargetNodePrototypeChooser
-	Budget     *traversal.Budget
+	Root          ipld.Link
+	Selector      ipld.Node
+	Visitor       traversal.AdvVisitFn
+	LinkSystem    ipld.LinkSystem
+	Chooser       traversal.LinkTargetNodePrototypeChooser
+	Budget        *traversal.Budget
+	PanicCallback panics.CallBackFn
 }
 
 // Traverser is an interface for performing a selector traversal that operates iteratively --
@@ -90,14 +92,15 @@ type nextResponse struct {
 func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 	ctx, cancel := context.WithCancel(parentCtx)
 	t := &traverser{
-		ctx:        ctx,
-		cancel:     cancel,
-		root:       tb.Root,
-		selector:   tb.Selector,
-		linkSystem: tb.LinkSystem,
-		budget:     tb.Budget,
-		responses:  make(chan nextResponse),
-		stopped:    make(chan struct{}),
+		ctx:          ctx,
+		cancel:       cancel,
+		root:         tb.Root,
+		selector:     tb.Selector,
+		linkSystem:   tb.LinkSystem,
+		budget:       tb.Budget,
+		responses:    make(chan nextResponse),
+		stopped:      make(chan struct{}),
+		panicHandler: panics.MakeHandler(tb.PanicCallback),
 	}
 	if tb.Visitor != nil {
 		t.visitor = tb.Visitor
@@ -126,15 +129,16 @@ func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 // traverser is a class to perform a selector traversal that stops every time a new block is loaded
 // and waits for manual input (in the form of advance or error)
 type traverser struct {
-	blocksCount int
-	ctx         context.Context
-	cancel      context.CancelFunc
-	root        ipld.Link
-	selector    ipld.Node
-	visitor     traversal.AdvVisitFn
-	linkSystem  ipld.LinkSystem
-	chooser     traversal.LinkTargetNodePrototypeChooser
-	budget      *traversal.Budget
+	blocksCount  int
+	ctx          context.Context
+	cancel       context.CancelFunc
+	root         ipld.Link
+	selector     ipld.Node
+	visitor      traversal.AdvVisitFn
+	linkSystem   ipld.LinkSystem
+	chooser      traversal.LinkTargetNodePrototypeChooser
+	budget       *traversal.Budget
+	panicHandler panics.PanicHandler
 
 	// stateMu is held while a block is being loaded.
 	// It is released when a StorageReadOpener callback is received,
@@ -196,7 +200,13 @@ func (t *traverser) start() {
 	t.stateMu.Lock()
 
 	go func() {
-		defer close(t.stopped)
+		defer func() {
+			// catch panics that occur in selector traversal, treat as an errored traversal
+			if err := t.panicHandler(); err != nil {
+				t.writeDone(err)
+			}
+			close(t.stopped)
+		}()
 		ns, err := t.chooser(t.root, ipld.LinkContext{Ctx: t.ctx})
 		if err != nil {
 			t.writeDone(err)
