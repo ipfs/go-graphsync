@@ -1,5 +1,23 @@
 # go-data-transfer changelog
 
+# go-data-transfer v1.14.0
+
+Update libp2p and revert missing block support for now
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Revert "Accept missing blocks without failing data transfer (#291)" (#294) ([filecoin-project/go-data-transfer#294](https://github.com/filecoin-project/go-data-transfer/pull/294))
+  - Update libp2p (#295) ([filecoin-project/go-data-transfer#295](https://github.com/filecoin-project/go-data-transfer/pull/295))
+  - Merge branch 'release/v1.13.0'
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +3/-428 | 16 |
+| vyzo | 1 | +94/-40 | 5 |
+
 # go-data-transfer v1.13.0
 
 This release removes deprecated v1.0 & v1.1 protocols and supports transfers with missing blocks
