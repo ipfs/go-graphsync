@@ -1,11 +1,11 @@
 package metadata
 
 import (
-	"bytes"
 	"math/rand"
+	"os"
 	"testing"
 
-	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/fluent"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
@@ -29,29 +29,16 @@ func TestDecodeEncodeMetadata(t *testing.T) {
 	})
 
 	// verify metadata matches
-	encoded, err := EncodeMetadata(initialMetadata)
-	require.NoError(t, err, "encode errored")
+	encoded := EncodeMetadata(initialMetadata)
 
 	decodedMetadata, err := DecodeMetadata(encoded)
 	require.NoError(t, err, "decode errored")
 	require.Equal(t, initialMetadata, decodedMetadata, "metadata changed during encoding and decoding")
 
 	// verify metadata is equivalent of IPLD node encoding
-	encodedNode := new(bytes.Buffer)
-	err = dagcbor.Encode(nd, encodedNode)
-	require.NoError(t, err)
-	decodedMetadataFromNode, err := DecodeMetadata(encodedNode.Bytes())
+	decodedMetadataFromNode, err := DecodeMetadata(nd)
 	require.NoError(t, err)
 	require.Equal(t, decodedMetadata, decodedMetadataFromNode, "metadata not equal to IPLD encoding")
 
-	nb := basicnode.Prototype.List.NewBuilder()
-	err = dagcbor.Decode(nb, encodedNode)
-	require.NoError(t, err)
-	decodedNode := nb.Build()
-	require.Equal(t, nd, decodedNode)
-	nb = basicnode.Prototype.List.NewBuilder()
-	err = dagcbor.Decode(nb, bytes.NewReader(encoded))
-	require.NoError(t, err)
-	decodedNodeFromMetadata := nb.Build()
-	require.Equal(t, decodedNode, decodedNodeFromMetadata, "deserialzed metadata does not match deserialized node")
+	dagjson.Encode(nd, os.Stdout)
 }
