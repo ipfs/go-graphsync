@@ -1,4 +1,4 @@
-package message
+package bench
 
 import (
 	"bytes"
