@@ -5,7 +5,6 @@ go 1.16
 require (
 	github.com/google/go-cmp v0.5.6
 	github.com/google/uuid v1.3.0
-	github.com/gopherjs/gopherjs v0.0.0-20190430165422-3e4dfb77656c // indirect
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20200817222906-ea96cece81f1
 	github.com/hannahhoward/go-pubsub v0.0.0-20200423002714-8d62886cc36e
 	github.com/ipfs/go-block-format v0.0.3
@@ -39,13 +38,10 @@ require (
 	github.com/libp2p/go-msgio v0.1.0
 	github.com/multiformats/go-multiaddr v0.4.0
 	github.com/multiformats/go-multihash v0.1.0
-	github.com/smartystreets/assertions v1.0.0 // indirect
 	github.com/stretchr/testify v1.7.0
-	github.com/whyrusleeping/cbor-gen v0.0.0-20210219115102-f37d292932f2
 	go.opentelemetry.io/otel v1.2.0
 	go.opentelemetry.io/otel/sdk v1.2.0
 	go.opentelemetry.io/otel/trace v1.2.0
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	google.golang.org/protobuf v1.27.1
 )
