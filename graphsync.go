@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
@@ -54,7 +55,7 @@ type ExtensionName string
 // ExtensionData is a name/data pair for a graphsync extension
 type ExtensionData struct {
 	Name ExtensionName
-	Data []byte
+	Data datamodel.Node
 }
 
 const (
@@ -172,7 +173,7 @@ type RequestData interface {
 
 	// Extension returns the content for an extension on a response, or errors
 	// if extension is not present
-	Extension(name ExtensionName) ([]byte, bool)
+	Extension(name ExtensionName) (datamodel.Node, bool)
 
 	// IsCancel returns true if this particular request is being cancelled
 	IsCancel() bool
@@ -188,7 +189,7 @@ type ResponseData interface {
 
 	// Extension returns the content for an extension on a response, or errors
 	// if extension is not present
-	Extension(name ExtensionName) ([]byte, bool)
+	Extension(name ExtensionName) (datamodel.Node, bool)
 }
 
 // BlockData gives information about a block included in a graphsync response

@@ -29,7 +29,7 @@ require (
 	github.com/ipfs/go-unixfs v0.3.1
 	github.com/ipfs/go-unixfsnode v1.2.0
 	github.com/ipld/go-codec-dagpb v1.3.0
-	github.com/ipld/go-ipld-prime v0.14.4
+	github.com/ipld/go-ipld-prime v0.14.5-0.20220121142026-257b06219831
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-libp2p v0.16.0
@@ -49,5 +49,3 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	google.golang.org/protobuf v1.27.1
 )
-
-replace github.com/ipld/go-ipld-prime => ../../ipld/go-ipld-prime

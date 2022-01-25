@@ -111,10 +111,7 @@ func (b *Builder) ScrubResponses(requestIDs []graphsync.RequestID) uint64 {
 func (b *Builder) Build() (GraphSyncMessage, error) {
 	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(b.outgoingResponses))
 	for requestID, linkMap := range b.outgoingResponses {
-		mdRaw, err := metadata.EncodeMetadata(linkMap)
-		if err != nil {
-			return GraphSyncMessage{}, err
-		}
+		mdRaw := metadata.EncodeMetadata(linkMap)
 		b.extensions[requestID] = append(b.extensions[requestID], graphsync.ExtensionData{
 			Name: graphsync.ExtensionMetadata,
 			Data: mdRaw,

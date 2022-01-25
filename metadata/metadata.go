@@ -19,6 +19,9 @@ type Metadata []Item
 // DecodeMetadata assembles metadata from a raw byte array, first deserializing
 // as a node and then assembling into a metadata struct.
 func DecodeMetadata(data datamodel.Node) (Metadata, error) {
+	if data == nil {
+		return nil, nil
+	}
 	builder := Prototype.Metadata.Representation().NewBuilder()
 	err := builder.AssignNode(data)
 	if err != nil {

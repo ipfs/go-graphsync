@@ -11,6 +11,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
@@ -171,7 +172,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 		},
 		"sending updates": {
 			configureRequestExecution: func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
-				ree.blockHookResults[blockHookKey{p, requestID, tbc.LinkTipIndex(5)}] = hooks.UpdateResult{Extensions: []graphsync.ExtensionData{{Name: "something", Data: []byte("applesauce")}}}
+				ree.blockHookResults[blockHookKey{p, requestID, tbc.LinkTipIndex(5)}] = hooks.UpdateResult{Extensions: []graphsync.ExtensionData{{Name: "something", Data: basicnode.NewString("applesauce")}}}
 			},
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyWholeChainSync(responses)
@@ -181,7 +182,8 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.True(t, ree.requestsSent[1].request.IsUpdate())
 				data, has := ree.requestsSent[1].request.Extension("something")
 				require.True(t, has)
-				require.Equal(t, string(data), "applesauce")
+				str, _ := data.AsString()
+				require.Equal(t, str, "applesauce")
 				require.Len(t, ree.blookHooksCalled, 10)
 				require.NoError(t, ree.terminalError)
 			},

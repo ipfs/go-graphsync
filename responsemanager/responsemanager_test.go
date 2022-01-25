@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-peertaskqueue/peertracker"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -433,8 +434,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		for _, blk := range blks {
 			set.Add(blk.Cid())
 		}
-		data, err := cidset.EncodeCidSet(set)
-		require.NoError(t, err)
+		data := cidset.EncodeCidSet(set)
 		requests := []gsmsg.GraphSyncRequest{
 			gsmsg.NewRequest(td.requestID, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0),
 				graphsync.ExtensionData{
@@ -455,8 +455,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 		})
-		data, err := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(4)
-		require.NoError(t, err)
+		data := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(4)
 		requests := []gsmsg.GraphSyncRequest{
 			gsmsg.NewRequest(td.requestID, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0),
 				graphsync.ExtensionData{
@@ -1052,12 +1051,12 @@ type testData struct {
 	skippedFirstBlocks        chan int64
 	dedupKeys                 chan string
 	responseAssembler         *fakeResponseAssembler
-	extensionData             []byte
+	extensionData             datamodel.Node
 	extensionName             graphsync.ExtensionName
 	extension                 graphsync.ExtensionData
-	extensionResponseData     []byte
+	extensionResponseData     datamodel.Node
 	extensionResponse         graphsync.ExtensionData
-	extensionUpdateData       []byte
+	extensionUpdateData       datamodel.Node
 	extensionUpdate           graphsync.ExtensionData
 	requestID                 graphsync.RequestID
 	requests                  []gsmsg.GraphSyncRequest
@@ -1126,18 +1125,18 @@ func newTestData(t *testing.T) testData {
 		completedNotifications: td.completedNotifications,
 	}
 
-	td.extensionData = testutil.RandomBytes(100)
+	td.extensionData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.extension = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionData,
 	}
-	td.extensionResponseData = testutil.RandomBytes(100)
+	td.extensionResponseData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionResponse = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionResponseData,
 	}
-	td.extensionUpdateData = testutil.RandomBytes(100)
+	td.extensionUpdateData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionUpdate = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionUpdateData,

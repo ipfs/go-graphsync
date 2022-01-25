@@ -20,7 +20,7 @@ func TestRequestHookProcessing(t *testing.T) {
 	fakeChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
 		return basicnode.Prototype.Any, nil
 	}
-	extensionData := testutil.RandomBytes(100)
+	extensionData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
@@ -99,13 +99,13 @@ func TestRequestHookProcessing(t *testing.T) {
 
 func TestBlockHookProcessing(t *testing.T) {
 
-	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponseData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extensionResponse := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionResponseData,
 	}
-	extensionUpdateData := testutil.RandomBytes(100)
+	extensionUpdateData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionUpdate := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionUpdateData,
@@ -196,13 +196,13 @@ func TestBlockHookProcessing(t *testing.T) {
 
 func TestResponseHookProcessing(t *testing.T) {
 
-	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponseData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extensionResponse := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionResponseData,
 	}
-	extensionUpdateData := testutil.RandomBytes(100)
+	extensionUpdateData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionUpdate := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionUpdateData,

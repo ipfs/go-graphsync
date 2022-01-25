@@ -6,6 +6,7 @@ import (
 
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
@@ -19,17 +20,19 @@ func TestMessageBuilding(t *testing.T) {
 	for _, block := range blocks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	extensionData1 := testutil.RandomBytes(100)
+	bb := basicnode.Prototype.Bytes.NewBuilder()
+	bb.AssignBytes(testutil.RandomBytes(100))
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
 	extension1 := graphsync.ExtensionData{
 		Name: extensionName1,
-		Data: extensionData1,
+		Data: bb.Build(),
 	}
-	extensionData2 := testutil.RandomBytes(100)
+	bb = basicnode.Prototype.Bytes.NewBuilder()
+	bb.AssignBytes(testutil.RandomBytes(100))
 	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
 	extension2 := graphsync.ExtensionData{
 		Name: extensionName2,
-		Data: extensionData2,
+		Data: bb.Build(),
 	}
 	requestID1 := graphsync.NewRequestID()
 	requestID2 := graphsync.NewRequestID()

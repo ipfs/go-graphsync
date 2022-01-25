@@ -220,10 +220,7 @@ func (e *Executor) startRemoteRequest(rt RequestTask) error {
 		doNotSendFirstBlocks = int64(rt.Traverser.NBlocksTraversed())
 	}
 	if doNotSendFirstBlocks > 0 {
-		doNotSendFirstBlocksData, err := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(doNotSendFirstBlocks)
-		if err != nil {
-			return err
-		}
+		doNotSendFirstBlocksData := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(doNotSendFirstBlocks)
 		request = rt.Request.ReplaceExtensions([]graphsync.ExtensionData{{Name: graphsync.ExtensionsDoNotSendFirstBlocks, Data: doNotSendFirstBlocksData}})
 	}
 	log.Debugw("starting remote request", "id", rt.Request.ID(), "peer", rt.P.String(), "root_cid", rt.Request.Root().String())

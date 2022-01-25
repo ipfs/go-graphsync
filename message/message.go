@@ -9,6 +9,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
+	"github.com/ipld/go-ipld-prime/datamodel"
 
 	"github.com/ipfs/go-graphsync"
 )
@@ -20,7 +21,7 @@ type GraphSyncRequest struct {
 	selector   ipld.Node
 	priority   graphsync.Priority
 	id         graphsync.RequestID
-	extensions map[string][]byte
+	extensions map[string]datamodel.Node
 	isCancel   bool
 	isUpdate   bool
 }
@@ -49,7 +50,7 @@ func (gsr GraphSyncRequest) String() string {
 type GraphSyncResponse struct {
 	requestID  graphsync.RequestID
 	status     graphsync.ResponseStatusCode
-	extensions map[string][]byte
+	extensions map[string]datamodel.Node
 }
 
 // String returns a human-readable form of a GraphSyncResponse
@@ -106,9 +107,9 @@ func UpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionData
 	return newRequest(id, cid.Cid{}, nil, 0, false, true, toExtensionsMap(extensions))
 }
 
-func toExtensionsMap(extensions []graphsync.ExtensionData) (extensionsMap map[string][]byte) {
+func toExtensionsMap(extensions []graphsync.ExtensionData) (extensionsMap map[string]datamodel.Node) {
 	if len(extensions) > 0 {
-		extensionsMap = make(map[string][]byte, len(extensions))
+		extensionsMap = make(map[string]datamodel.Node, len(extensions))
 		for _, extension := range extensions {
 			extensionsMap[string(extension.Name)] = extension.Data
 		}
@@ -122,7 +123,7 @@ func newRequest(id graphsync.RequestID,
 	priority graphsync.Priority,
 	isCancel bool,
 	isUpdate bool,
-	extensions map[string][]byte) GraphSyncRequest {
+	extensions map[string]datamodel.Node) GraphSyncRequest {
 	return GraphSyncRequest{
 		id:         id,
 		root:       root,
@@ -142,7 +143,7 @@ func NewResponse(requestID graphsync.RequestID,
 }
 
 func newResponse(requestID graphsync.RequestID,
-	status graphsync.ResponseStatusCode, extensions map[string][]byte) GraphSyncResponse {
+	status graphsync.ResponseStatusCode, extensions map[string]datamodel.Node) GraphSyncResponse {
 	return GraphSyncResponse{
 		requestID:  requestID,
 		status:     status,
@@ -234,7 +235,7 @@ func (gsr GraphSyncRequest) Priority() graphsync.Priority { return gsr.priority 
 
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
-func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) ([]byte, bool) {
+func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) (datamodel.Node, bool) {
 	if gsr.extensions == nil {
 		return nil, false
 	}
@@ -268,7 +269,7 @@ func (gsr GraphSyncResponse) Status() graphsync.ResponseStatusCode { return gsr.
 
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
-func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) ([]byte, bool) {
+func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) (datamodel.Node, bool) {
 	if gsr.extensions == nil {
 		return nil, false
 	}
@@ -291,7 +292,7 @@ func (gsr GraphSyncResponse) ExtensionNames() []string {
 // ReplaceExtensions merges the extensions given extensions into the request to create a new request,
 // but always uses new data
 func (gsr GraphSyncRequest) ReplaceExtensions(extensions []graphsync.ExtensionData) GraphSyncRequest {
-	req, _ := gsr.MergeExtensions(extensions, func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error) {
+	req, _ := gsr.MergeExtensions(extensions, func(name graphsync.ExtensionName, oldData datamodel.Node, newData datamodel.Node) (datamodel.Node, error) {
 		return newData, nil
 	})
 	return req
@@ -300,12 +301,12 @@ func (gsr GraphSyncRequest) ReplaceExtensions(extensions []graphsync.ExtensionDa
 // MergeExtensions merges the given list of extensions to produce a new request with the combination of the old request
 // plus the new extensions. When an old extension and a new extension are both present, mergeFunc is called to produce
 // the result
-func (gsr GraphSyncRequest) MergeExtensions(extensions []graphsync.ExtensionData, mergeFunc func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error)) (GraphSyncRequest, error) {
+func (gsr GraphSyncRequest) MergeExtensions(extensions []graphsync.ExtensionData, mergeFunc func(name graphsync.ExtensionName, oldData datamodel.Node, newData datamodel.Node) (datamodel.Node, error)) (GraphSyncRequest, error) {
 	if gsr.extensions == nil {
 		return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.isCancel, gsr.isUpdate, toExtensionsMap(extensions)), nil
 	}
 	newExtensionMap := toExtensionsMap(extensions)
-	combinedExtensions := make(map[string][]byte)
+	combinedExtensions := make(map[string]datamodel.Node)
 	for name, newData := range newExtensionMap {
 		oldData, ok := gsr.extensions[name]
 		if !ok {

@@ -9,7 +9,9 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 
@@ -59,11 +61,9 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 
 	firstBlocks := append(td.blockChain.AllBlocks(), blockChain2.Blocks(0, 3)...)
 	firstMetadata1 := metadataForBlocks(td.blockChain.AllBlocks(), true)
-	firstMetadataEncoded1, err := metadata.EncodeMetadata(firstMetadata1)
-	require.NoError(t, err, "did not encode metadata")
+	firstMetadataEncoded1 := metadata.EncodeMetadata(firstMetadata1)
 	firstMetadata2 := metadataForBlocks(blockChain2.Blocks(0, 3), true)
-	firstMetadataEncoded2, err := metadata.EncodeMetadata(firstMetadata2)
-	require.NoError(t, err, "did not encode metadata")
+	firstMetadataEncoded2 := metadata.EncodeMetadata(firstMetadata2)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
 			Name: graphsync.ExtensionMetadata,
@@ -93,8 +93,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 
 	moreBlocks := blockChain2.RemainderBlocks(3)
 	moreMetadata := metadataForBlocks(moreBlocks, true)
-	moreMetadataEncoded, err := metadata.EncodeMetadata(moreMetadata)
-	require.NoError(t, err, "did not encode metadata")
+	moreMetadataEncoded := metadata.EncodeMetadata(moreMetadata)
 	moreResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
 			Name: graphsync.ExtensionMetadata,
@@ -418,7 +417,7 @@ func TestEncodingExtensions(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 
 	expectedError := make(chan error, 2)
-	receivedExtensionData := make(chan []byte, 2)
+	receivedExtensionData := make(chan datamodel.Node, 2)
 	expectedUpdateChan := make(chan []graphsync.ExtensionData, 2)
 	hook := func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
 		data, has := responseData.Extension(td.extensionName1)
@@ -448,8 +447,8 @@ func TestEncodingExtensions(t *testing.T) {
 	require.Equal(t, td.extensionData2, returnedData2, "did not encode second extension correctly")
 
 	t.Run("responding to extensions", func(t *testing.T) {
-		expectedData := testutil.RandomBytes(100)
-		expectedUpdate := testutil.RandomBytes(100)
+		expectedData := basicnode.NewBytes(testutil.RandomBytes(100))
+		expectedUpdate := basicnode.NewBytes(testutil.RandomBytes(100))
 		firstResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
 				graphsync.PartialResponse, graphsync.ExtensionData{
@@ -470,7 +469,7 @@ func TestEncodingExtensions(t *testing.T) {
 			},
 		}
 		td.requestManager.ProcessResponses(peers[0], firstResponses, nil)
-		var received []byte
+		var received datamodel.Node
 		testutil.AssertReceive(ctx, t, receivedExtensionData, &received, "did not receive extension data")
 		require.Equal(t, expectedData, received, "did not receive correct extension data from resposne")
 
@@ -479,9 +478,9 @@ func TestEncodingExtensions(t *testing.T) {
 		require.True(t, has)
 		require.Equal(t, expectedUpdate, receivedUpdateData, "should have updated with correct extension")
 
-		nextExpectedData := testutil.RandomBytes(100)
-		nextExpectedUpdate1 := testutil.RandomBytes(100)
-		nextExpectedUpdate2 := testutil.RandomBytes(100)
+		nextExpectedData := basicnode.NewBytes(testutil.RandomBytes(100))
+		nextExpectedUpdate1 := basicnode.NewBytes(testutil.RandomBytes(100))
+		nextExpectedUpdate2 := basicnode.NewBytes(testutil.RandomBytes(100))
 
 		secondResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
@@ -562,13 +561,12 @@ func TestBlockHooks(t *testing.T) {
 	require.Equal(t, td.extensionData2, returnedData2, "did not encode second extension correctly")
 
 	t.Run("responding to extensions", func(t *testing.T) {
-		expectedData := testutil.RandomBytes(100)
-		expectedUpdate := testutil.RandomBytes(100)
+		expectedData := basicnode.NewBytes(testutil.RandomBytes(100))
+		expectedUpdate := basicnode.NewBytes(testutil.RandomBytes(100))
 
 		firstBlocks := td.blockChain.Blocks(0, 3)
 		firstMetadata := metadataForBlocks(firstBlocks, true)
-		firstMetadataEncoded, err := metadata.EncodeMetadata(firstMetadata)
-		require.NoError(t, err, "did not encode metadata")
+		firstMetadataEncoded := metadata.EncodeMetadata(firstMetadata)
 		firstResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
 				graphsync.PartialResponse, graphsync.ExtensionData{
@@ -623,13 +621,12 @@ func TestBlockHooks(t *testing.T) {
 			require.Equal(t, uint64(len(blk.RawData())), receivedBlock.BlockSize())
 		}
 
-		nextExpectedData := testutil.RandomBytes(100)
-		nextExpectedUpdate1 := testutil.RandomBytes(100)
-		nextExpectedUpdate2 := testutil.RandomBytes(100)
+		nextExpectedData := basicnode.NewBytes(testutil.RandomBytes(100))
+		nextExpectedUpdate1 := basicnode.NewBytes(testutil.RandomBytes(100))
+		nextExpectedUpdate2 := basicnode.NewBytes(testutil.RandomBytes(100))
 		nextBlocks := td.blockChain.RemainderBlocks(3)
 		nextMetadata := metadataForBlocks(nextBlocks, true)
-		nextMetadataEncoded, err := metadata.EncodeMetadata(nextMetadata)
-		require.NoError(t, err)
+		nextMetadataEncoded := metadata.EncodeMetadata(nextMetadata)
 		secondResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
 				graphsync.RequestCompletedFull, graphsync.ExtensionData{
@@ -724,8 +721,7 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	require.Equal(t, "chainstore", key)
 
 	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
-	mdEncoded, err := metadata.EncodeMetadata(md)
-	require.NoError(t, err)
+	mdEncoded := metadata.EncodeMetadata(md)
 	mdExt := graphsync.ExtensionData{
 		Name: graphsync.ExtensionMetadata,
 		Data: mdEncoded,
@@ -787,8 +783,7 @@ func TestOutgoingRequestListeners(t *testing.T) {
 	}
 
 	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
-	mdEncoded, err := metadata.EncodeMetadata(md)
-	require.NoError(t, err)
+	mdEncoded := metadata.EncodeMetadata(md)
 	mdExt := graphsync.ExtensionData{
 		Name: graphsync.ExtensionMetadata,
 		Data: mdEncoded,
@@ -840,8 +835,7 @@ func TestPauseResume(t *testing.T) {
 
 	// Start processing responses
 	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
-	mdEncoded, err := metadata.EncodeMetadata(md)
-	require.NoError(t, err)
+	mdEncoded := metadata.EncodeMetadata(md)
 	responses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
 			Name: graphsync.ExtensionMetadata,
@@ -853,7 +847,7 @@ func TestPauseResume(t *testing.T) {
 
 	// attempt to unpause while request is not paused (note: hook on second block will keep it from
 	// reaching pause point)
-	err = td.requestManager.UnpauseRequest(rr.gsr.ID())
+	err := td.requestManager.UnpauseRequest(rr.gsr.ID())
 	require.EqualError(t, err, "request is not paused")
 	close(holdForResumeAttempt)
 	// verify responses sent read ONLY for blocks BEFORE the pause
@@ -926,8 +920,7 @@ func TestPauseResumeExternal(t *testing.T) {
 
 	// Start processing responses
 	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
-	mdEncoded, err := metadata.EncodeMetadata(md)
-	require.NoError(t, err)
+	mdEncoded := metadata.EncodeMetadata(md)
 	responses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
 			Name: graphsync.ExtensionMetadata,
@@ -951,7 +944,7 @@ func TestPauseResumeExternal(t *testing.T) {
 	td.fal.CleanupRequest(peers[0], rr.gsr.ID())
 
 	// unpause
-	err = td.requestManager.UnpauseRequest(rr.gsr.ID(), td.extension1, td.extension2)
+	err := td.requestManager.UnpauseRequest(rr.gsr.ID(), td.extension1, td.extension2)
 	require.NoError(t, err)
 
 	// verify the correct new request with Do-no-send-cids & other extensions
@@ -1058,8 +1051,7 @@ func metadataForBlocks(blks []blocks.Block, present bool) metadata.Metadata {
 func encodedMetadataForBlocks(t *testing.T, blks []blocks.Block, present bool) graphsync.ExtensionData {
 	t.Helper()
 	md := metadataForBlocks(blks, present)
-	metadataEncoded, err := metadata.EncodeMetadata(md)
-	require.NoError(t, err, "did not encode metadata")
+	metadataEncoded := metadata.EncodeMetadata(md)
 	return graphsync.ExtensionData{
 		Name: graphsync.ExtensionMetadata,
 		Data: metadataEncoded,
@@ -1079,10 +1071,10 @@ type testData struct {
 	persistence                        ipld.LinkSystem
 	blockChain                         *testutil.TestBlockChain
 	extensionName1                     graphsync.ExtensionName
-	extensionData1                     []byte
+	extensionData1                     datamodel.Node
 	extension1                         graphsync.ExtensionData
 	extensionName2                     graphsync.ExtensionName
-	extensionData2                     []byte
+	extensionData2                     datamodel.Node
 	extension2                         graphsync.ExtensionData
 	networkErrorListeners              *listeners.NetworkErrorListeners
 	outgoingRequestProcessingListeners *listeners.OutgoingRequestProcessingListeners
@@ -1113,13 +1105,13 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.blockStore = make(map[ipld.Link][]byte)
 	td.persistence = testutil.NewTestStore(td.blockStore)
 	td.blockChain = testutil.SetupBlockChain(ctx, t, td.persistence, 100, 5)
-	td.extensionData1 = testutil.RandomBytes(100)
+	td.extensionData1 = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionName1 = graphsync.ExtensionName("AppleSauce/McGee")
 	td.extension1 = graphsync.ExtensionData{
 		Name: td.extensionName1,
 		Data: td.extensionData1,
 	}
-	td.extensionData2 = testutil.RandomBytes(100)
+	td.extensionData2 = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionName2 = graphsync.ExtensionName("HappyLand/Happenstance")
 	td.extension2 = graphsync.ExtensionData{
 		Name: td.extensionName2,

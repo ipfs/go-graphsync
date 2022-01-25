@@ -15,8 +15,7 @@ func TestDecodeEncodeCidSet(t *testing.T) {
 	for _, c := range cids {
 		set.Add(c)
 	}
-	encoded, err := EncodeCidSet(set)
-	require.NoError(t, err, "encode errored")
+	encoded := EncodeCidSet(set)
 	decodedCidSet, err := DecodeCidSet(encoded)
 	require.NoError(t, err, "decode errored")
 	require.Equal(t, decodedCidSet.Len(), set.Len())

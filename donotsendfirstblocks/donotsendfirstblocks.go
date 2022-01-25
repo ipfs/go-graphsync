@@ -1,23 +1,17 @@
 package donotsendfirstblocks
 
 import (
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
-
-	"github.com/ipfs/go-graphsync/ipldutil"
 )
 
 // EncodeDoNotSendFirstBlocks returns encoded cbor data for the given number
 // of blocks to skip
-func EncodeDoNotSendFirstBlocks(skipBlockCount int64) ([]byte, error) {
-	nd := basicnode.NewInt(skipBlockCount)
-	return ipldutil.EncodeNode(nd)
+func EncodeDoNotSendFirstBlocks(skipBlockCount int64) datamodel.Node {
+	return basicnode.NewInt(skipBlockCount)
 }
 
 // DecodeDoNotSendFirstBlocks returns the number of blocks to skip
-func DecodeDoNotSendFirstBlocks(data []byte) (int64, error) {
-	nd, err := ipldutil.DecodeNode(data)
-	if err != nil {
-		return 0, err
-	}
-	return nd.AsInt()
+func DecodeDoNotSendFirstBlocks(data datamodel.Node) (int64, error) {
+	return data.AsInt()
 }

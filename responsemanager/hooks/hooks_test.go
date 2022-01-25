@@ -40,13 +40,13 @@ func TestRequestHookProcessing(t *testing.T) {
 			"chainstore": fakeSystem,
 		},
 	}
-	extensionData := testutil.RandomBytes(100)
+	extensionData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionData,
 	}
-	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponseData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionResponse := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionResponseData,
@@ -218,13 +218,13 @@ func TestRequestHookProcessing(t *testing.T) {
 }
 
 func TestBlockHookProcessing(t *testing.T) {
-	extensionData := testutil.RandomBytes(100)
+	extensionData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionData,
 	}
-	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponseData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionResponse := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionResponseData,
@@ -296,18 +296,18 @@ func TestBlockHookProcessing(t *testing.T) {
 }
 
 func TestUpdateHookProcessing(t *testing.T) {
-	extensionData := testutil.RandomBytes(100)
+	extensionData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionData,
 	}
-	extensionUpdateData := testutil.RandomBytes(100)
+	extensionUpdateData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionUpdate := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionUpdateData,
 	}
-	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponseData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionResponse := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionResponseData,

@@ -247,7 +247,7 @@ type testData struct {
 	responseBuilder   *fauxResponseBuilder
 	blockHooks        *hooks.OutgoingBlockHooks
 	updateHooks       *hooks.RequestUpdatedHooks
-	extensionData     []byte
+	extensionData     datamodel.Node
 	extensionName     graphsync.ExtensionName
 	extension         graphsync.ExtensionData
 	requestID         graphsync.RequestID
@@ -277,7 +277,7 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td.requestID = graphsync.NewRequestID()
 	td.requestCid, _ = cid.Decode("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	td.requestSelector = basicnode.NewInt(rand.Int63())
-	td.extensionData = testutil.RandomBytes(100)
+	td.extensionData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.responseCode = graphsync.ResponseStatusCode(101)
 	td.peer = testutil.GeneratePeers(1)[0]

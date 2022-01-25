@@ -10,6 +10,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 
@@ -193,13 +194,13 @@ func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 	fph.AssertBlocks(blks[0])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	extensionData1 := testutil.RandomBytes(100)
+	extensionData1 := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
 	extension1 := graphsync.ExtensionData{
 		Name: extensionName1,
 		Data: extensionData1,
 	}
-	extensionData2 := testutil.RandomBytes(100)
+	extensionData2 := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
 	extension2 := graphsync.ExtensionData{
 		Name: extensionName2,

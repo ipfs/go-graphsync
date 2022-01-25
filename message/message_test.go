@@ -8,8 +8,10 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
@@ -21,7 +23,7 @@ func TestAppendingRequests(t *testing.T) {
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: testutil.RandomBytes(100),
+		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
 	}
 	root := testutil.GenerateCids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
@@ -57,7 +59,12 @@ func TestAppendingRequests(t *testing.T) {
 	require.False(t, pbRequest.Update)
 	require.Equal(t, root.Bytes(), pbRequest.Root)
 	require.Equal(t, selectorEncoded, pbRequest.Selector)
-	require.Equal(t, map[string][]byte{"graphsync/awesome": extension.Data}, pbRequest.Extensions)
+	require.Equal(t, 1, len(pbRequest.Extensions))
+	byts, _ := extension.Data.AsBytes()
+	expectedByts := append([]byte{88, 100}, byts...)
+	actualByts, ok := pbRequest.Extensions["graphsync/awesome"]
+	require.True(t, ok)
+	require.Equal(t, expectedByts, actualByts)
 
 	deserialized, err := NewMessageHandler().newMessageFromProtoV11(pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
@@ -80,9 +87,11 @@ func TestAppendingResponses(t *testing.T) {
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: testutil.RandomBytes(100),
+		Data: basicnode.NewString("test extension data"),
 	}
 	requestID := graphsync.NewRequestID()
+	p := peer.ID("test peer")
+	mh := NewMessageHandler()
 	status := graphsync.RequestAcknowledged
 
 	builder := NewBuilder()
@@ -99,14 +108,14 @@ func TestAppendingResponses(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	pbMessage, err := NewMessageHandler().ToProtoV11(gsm)
+	pbMessage, err := mh.ToProtoV1(p, gsm)
 	require.NoError(t, err, "serialize to protobuf errored")
 	pbResponse := pbMessage.Responses[0]
-	require.Equal(t, requestID.Bytes(), pbResponse.Id)
+	// no longer equal: require.Equal(t, requestID.Bytes(), pbResponse.Id)
 	require.Equal(t, int32(status), pbResponse.Status)
-	require.Equal(t, extension.Data, pbResponse.Extensions["graphsync/awesome"])
+	require.Equal(t, []byte("stest extension data"), pbResponse.Extensions["graphsync/awesome"])
 
-	deserialized, err := NewMessageHandler().newMessageFromProtoV11(pbMessage)
+	deserialized, err := mh.newMessageFromProtoV1(p, pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedResponses := deserialized.Responses()
 	require.Len(t, deserializedResponses, 1, "did not add response to deserialized message")
@@ -188,7 +197,7 @@ func TestRequestUpdate(t *testing.T) {
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: testutil.RandomBytes(100),
+		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
 	}
 
 	builder := NewBuilder()
@@ -233,7 +242,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: testutil.RandomBytes(100),
+		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
 	}
 	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
@@ -302,25 +311,33 @@ func TestMergeExtensions(t *testing.T) {
 	initialExtensions := []graphsync.ExtensionData{
 		{
 			Name: extensionName1,
-			Data: []byte("applesauce"),
+			Data: basicnode.NewString("applesauce"),
 		},
 		{
 			Name: extensionName2,
-			Data: []byte("hello"),
+			Data: basicnode.NewString("hello"),
 		},
 	}
 	replacementExtensions := []graphsync.ExtensionData{
 		{
 			Name: extensionName2,
-			Data: []byte("world"),
+			Data: basicnode.NewString("world"),
 		},
 		{
 			Name: extensionName3,
-			Data: []byte("cheese"),
+			Data: basicnode.NewString("cheese"),
 		},
 	}
-	defaultMergeFunc := func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error) {
-		return []byte(string(oldData) + " " + string(newData)), nil
+	defaultMergeFunc := func(name graphsync.ExtensionName, oldData datamodel.Node, newData datamodel.Node) (datamodel.Node, error) {
+		os, err := oldData.AsString()
+		if err != nil {
+			return nil, err
+		}
+		ns, err := newData.AsString()
+		if err != nil {
+			return nil, err
+		}
+		return basicnode.NewString(os + " " + ns), nil
 	}
 	root := testutil.GenerateCids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
@@ -340,10 +357,10 @@ func TestMergeExtensions(t *testing.T) {
 		require.False(t, has)
 		extData2, has := resultRequest.Extension(extensionName2)
 		require.True(t, has)
-		require.Equal(t, []byte("world"), extData2)
+		require.Equal(t, basicnode.NewString("world"), extData2)
 		extData3, has := resultRequest.Extension(extensionName3)
 		require.True(t, has)
-		require.Equal(t, []byte("cheese"), extData3)
+		require.Equal(t, basicnode.NewString("cheese"), extData3)
 	})
 	t.Run("when merging two requests", func(t *testing.T) {
 		resultRequest, err := defaultRequest.MergeExtensions(replacementExtensions, defaultMergeFunc)
@@ -354,16 +371,16 @@ func TestMergeExtensions(t *testing.T) {
 		require.Equal(t, defaultRequest.Selector(), resultRequest.Selector())
 		extData1, has := resultRequest.Extension(extensionName1)
 		require.True(t, has)
-		require.Equal(t, []byte("applesauce"), extData1)
+		require.Equal(t, basicnode.NewString("applesauce"), extData1)
 		extData2, has := resultRequest.Extension(extensionName2)
 		require.True(t, has)
-		require.Equal(t, []byte("hello world"), extData2)
+		require.Equal(t, basicnode.NewString("hello world"), extData2)
 		extData3, has := resultRequest.Extension(extensionName3)
 		require.True(t, has)
-		require.Equal(t, []byte("cheese"), extData3)
+		require.Equal(t, basicnode.NewString("cheese"), extData3)
 	})
 	t.Run("when merging errors", func(t *testing.T) {
-		errorMergeFunc := func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error) {
+		errorMergeFunc := func(name graphsync.ExtensionName, oldData datamodel.Node, newData datamodel.Node) (datamodel.Node, error) {
 			return nil, errors.New("something went wrong")
 		}
 		_, err := defaultRequest.MergeExtensions(replacementExtensions, errorMergeFunc)
@@ -377,13 +394,13 @@ func TestMergeExtensions(t *testing.T) {
 		require.Equal(t, defaultRequest.Selector(), resultRequest.Selector())
 		extData1, has := resultRequest.Extension(extensionName1)
 		require.True(t, has)
-		require.Equal(t, []byte("applesauce"), extData1)
+		require.Equal(t, basicnode.NewString("applesauce"), extData1)
 		extData2, has := resultRequest.Extension(extensionName2)
 		require.True(t, has)
-		require.Equal(t, []byte("world"), extData2)
+		require.Equal(t, basicnode.NewString("world"), extData2)
 		extData3, has := resultRequest.Extension(extensionName3)
 		require.True(t, has)
-		require.Equal(t, []byte("cheese"), extData3)
+		require.Equal(t, basicnode.NewString("cheese"), extData3)
 	})
 }
 
@@ -401,18 +418,20 @@ func TestKnownFuzzIssues(t *testing.T) {
 			"   \n\v     ",
 		"\x0600\x1a\x02\x180",
 	}
+	p := peer.ID("test peer")
+	mh := NewMessageHandler()
 	for _, input := range inputs {
 		//inputAsBytes, err := hex.DecodeString(input)
 		///require.NoError(t, err)
-		msg1, err := NewMessageHandler().FromNet(bytes.NewReader([]byte(input)))
+		msg1, err := mh.FromNetV1(p, bytes.NewReader([]byte(input)))
 		if err != nil {
 			continue
 		}
 		buf2 := new(bytes.Buffer)
-		err = NewMessageHandler().ToNet(msg1, buf2)
+		err = mh.ToNetV1(p, msg1, buf2)
 		require.NoError(t, err)
 
-		msg2, err := NewMessageHandler().FromNet(buf2)
+		msg2, err := mh.FromNetV1(p, buf2)
 		require.NoError(t, err)
 
 		require.Equal(t, msg1, msg2)

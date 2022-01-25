@@ -1,11 +1,13 @@
 package responseassembler
 
 import (
+	"bytes"
 	"context"
 
 	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	"github.com/ipfs/go-graphsync"
@@ -102,7 +104,14 @@ func (eo extensionOperation) build(builder *messagequeue.Builder) {
 }
 
 func (eo extensionOperation) size() uint64 {
-	return uint64(len(eo.extension.Data))
+	// TODO: this incurs a double-encode, this first one is just to get the expected length;
+	// can we avoid this?
+	if eo.extension.Data == nil {
+		return 0
+	}
+	var buf bytes.Buffer
+	dagcbor.Encode(eo.extension.Data, &buf)
+	return uint64(buf.Len())
 }
 
 type blockOperation struct {

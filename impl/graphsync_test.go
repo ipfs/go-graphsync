@@ -30,6 +30,7 @@ import (
 	"github.com/ipfs/go-unixfsnode"
 	unixfsbuilder "github.com/ipfs/go-unixfsnode/data/builder"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -137,7 +138,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	}
 	td.gsnet1.SetDelegate(r)
 
-	var receivedRequestData []byte
+	var receivedRequestData datamodel.Node
 	// initialize graphsync on second node to response to requests
 	gsnet := td.GraphSyncHost2()
 	gsnet.RegisterIncomingRequestHook(
@@ -164,7 +165,7 @@ func TestSendResponseToIncomingRequest(t *testing.T) {
 	// read the values sent back to requestor
 	var received gsmsg.GraphSyncMessage
 	var receivedBlocks []blocks.Block
-	var receivedExtensions [][]byte
+	var receivedExtensions []datamodel.Node
 	for {
 		var message receivedMessage
 		testutil.AssertReceive(ctx, t, r.messageReceived, &message, "did not receive complete response")
@@ -355,8 +356,8 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 			responder := td.GraphSyncHost2()
 			assertComplete := assertCompletionFunction(responder, 1)
 
-			var receivedResponseData []byte
-			var receivedRequestData []byte
+			var receivedResponseData datamodel.Node
+			var receivedRequestData datamodel.Node
 
 			requestor.RegisterIncomingResponseHook(
 				func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
@@ -537,8 +538,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 		td.blockStore1[cidlink.Link{Cid: blk.Cid()}] = blk.RawData()
 		set.Add(blk.Cid())
 	}
-	encodedCidSet, err := cidset.EncodeCidSet(set)
-	require.NoError(t, err)
+	encodedCidSet := cidset.EncodeCidSet(set)
 	extension := graphsync.ExtensionData{
 		Name: graphsync.ExtensionDoNotSendCIDs,
 		Data: encodedCidSet,
@@ -609,8 +609,7 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 		td.blockStore1[cidlink.Link{Cid: blk.Cid()}] = blk.RawData()
 	}
 
-	doNotSendFirstBlocksData, err := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(50)
-	require.NoError(t, err)
+	doNotSendFirstBlocksData := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(50)
 	extension := graphsync.ExtensionData{
 		Name: graphsync.ExtensionsDoNotSendFirstBlocks,
 		Data: doNotSendFirstBlocksData,
@@ -844,8 +843,8 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
-	var receivedReponseData []byte
-	var receivedUpdateData []byte
+	var receivedReponseData datamodel.Node
+	var receivedUpdateData datamodel.Node
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
 	assertAllResponsesReceived := assertAllResponsesReceivedFunction(requestor)
@@ -945,8 +944,8 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
-	var receivedReponseData []byte
-	var receivedUpdateData []byte
+	var receivedReponseData datamodel.Node
+	var receivedUpdateData datamodel.Node
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
 
@@ -1639,8 +1638,8 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 		blocksOutgoing++
 	})
 
-	var receivedResponseData []byte
-	var receivedRequestData []byte
+	var receivedResponseData datamodel.Node
+	var receivedRequestData datamodel.Node
 
 	requestor.RegisterIncomingResponseHook(
 		func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
@@ -1718,12 +1717,12 @@ type gsTestData struct {
 	gsnet2                     gsnet.GraphSyncNetwork
 	blockStore1, blockStore2   map[ipld.Link][]byte
 	persistence1, persistence2 ipld.LinkSystem
-	extensionData              []byte
+	extensionData              datamodel.Node
 	extensionName              graphsync.ExtensionName
 	extension                  graphsync.ExtensionData
-	extensionResponseData      []byte
+	extensionResponseData      datamodel.Node
 	extensionResponse          graphsync.ExtensionData
-	extensionUpdateData        []byte
+	extensionUpdateData        datamodel.Node
 	extensionUpdate            graphsync.ExtensionData
 }
 
@@ -1814,18 +1813,18 @@ func newOptionalGsTestData(ctx context.Context, t *testing.T, network1Protocols 
 	td.blockStore2 = make(map[ipld.Link][]byte)
 	td.persistence2 = testutil.NewTestStore(td.blockStore2)
 	// setup extension handlers
-	td.extensionData = testutil.RandomBytes(100)
+	td.extensionData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.extension = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionData,
 	}
-	td.extensionResponseData = testutil.RandomBytes(100)
+	td.extensionResponseData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionResponse = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionResponseData,
 	}
-	td.extensionUpdateData = testutil.RandomBytes(100)
+	td.extensionUpdateData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionUpdate = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionUpdateData,

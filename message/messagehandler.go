@@ -3,9 +3,7 @@ package message
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 
@@ -17,6 +15,7 @@ import (
 	pb "github.com/ipfs/go-graphsync/message/pb"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/node/bindnode"
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -53,6 +52,12 @@ func (mh *MessageHandler) FromNet(r io.Reader) (GraphSyncMessage, error) {
 	return mh.FromMsgReader(reader)
 }
 
+// FromNetV1 can read a v1.0.0 network stream to deserialized a GraphSyncMessage
+func (mh *MessageHandler) FromNetV1(p peer.ID, r io.Reader) (GraphSyncMessage, error) {
+	reader := msgio.NewVarintReaderSize(r, network.MessageSizeMax)
+	return mh.FromMsgReaderV1(p, reader)
+}
+
 // FromMsgReader can deserialize a DAG-CBOR message into a GraphySyncMessage
 func (mh *MessageHandler) FromMsgReader(r msgio.Reader) (GraphSyncMessage, error) {
 	msg, err := r.ReadMsg()
@@ -61,10 +66,8 @@ func (mh *MessageHandler) FromMsgReader(r msgio.Reader) (GraphSyncMessage, error
 	}
 
 	builder := ipldbind.Prototype.Message.Representation().NewBuilder()
-	fmt.Println(hex.EncodeToString(msg))
 	err = dagcbor.Decode(builder, bytes.NewReader(msg))
 	if err != nil {
-		fmt.Printf("dagcbor decode error %v", err)
 		return GraphSyncMessage{}, err
 	}
 
@@ -73,7 +76,7 @@ func (mh *MessageHandler) FromMsgReader(r msgio.Reader) (GraphSyncMessage, error
 	return mh.fromIPLD(ipldGSM)
 }
 
-// FromMsgReaderV11 can deserialize a protobuf message into a GraphySyncMessage
+// FromMsgReaderV11 can deserialize a v1.1.0 protobuf message into a GraphySyncMessage
 func (mh *MessageHandler) FromMsgReaderV11(r msgio.Reader) (GraphSyncMessage, error) {
 	msg, err := r.ReadMsg()
 	if err != nil {
@@ -121,22 +124,22 @@ func (mh *MessageHandler) toIPLD(gsm GraphSyncMessage) (*ipldbind.GraphSyncMessa
 			root = nil
 		}
 		ibm.Requests = append(ibm.Requests, ipldbind.GraphSyncRequest{
-			Id:       request.id.Bytes(),
-			Root:     root,
-			Selector: sel,
-			Priority: request.priority,
-			Cancel:   request.isCancel,
-			Update:   request.isUpdate,
-			// Extensions: request.extensions,
+			Id:         request.id.Bytes(),
+			Root:       root,
+			Selector:   sel,
+			Priority:   request.priority,
+			Cancel:     request.isCancel,
+			Update:     request.isUpdate,
+			Extensions: ipldbind.NewGraphSyncExtensions(request.extensions),
 		})
 	}
 
 	ibm.Responses = make([]ipldbind.GraphSyncResponse, 0, len(gsm.responses))
 	for _, response := range gsm.responses {
 		ibm.Responses = append(ibm.Responses, ipldbind.GraphSyncResponse{
-			Id:     response.requestID.Bytes(),
-			Status: response.status,
-			// Extensions: response.extensions,
+			Id:         response.requestID.Bytes(),
+			Status:     response.status,
+			Extensions: ipldbind.NewGraphSyncExtensions(response.extensions),
 		})
 	}
 
@@ -165,6 +168,10 @@ func (mh *MessageHandler) ToProtoV11(gsm GraphSyncMessage) (*pb.Message, error) 
 				return nil, err
 			}
 		}
+		ext, err := toEncodedExtensions(request.extensions)
+		if err != nil {
+			return nil, err
+		}
 		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
 			Id:         request.id.Bytes(),
 			Root:       request.root.Bytes(),
@@ -172,16 +179,21 @@ func (mh *MessageHandler) ToProtoV11(gsm GraphSyncMessage) (*pb.Message, error) 
 			Priority:   int32(request.priority),
 			Cancel:     request.isCancel,
 			Update:     request.isUpdate,
-			Extensions: request.extensions,
+			Extensions: ext,
 		})
 	}
 
 	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.responses))
 	for _, response := range gsm.responses {
+		ext, err := toEncodedExtensions(response.extensions)
+		if err != nil {
+			return nil, err
+		}
+
 		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
 			Id:         response.requestID.Bytes(),
 			Status:     int32(response.status),
-			Extensions: response.extensions,
+			Extensions: ext,
 		})
 	}
 
@@ -192,6 +204,7 @@ func (mh *MessageHandler) ToProtoV11(gsm GraphSyncMessage) (*pb.Message, error) 
 			Data:   b.RawData(),
 		})
 	}
+
 	return pbm, nil
 }
 
@@ -215,6 +228,10 @@ func (mh *MessageHandler) ToProtoV1(p peer.ID, gsm GraphSyncMessage) (*pb.Messag
 		if err != nil {
 			return nil, err
 		}
+		ext, err := toEncodedExtensions(request.extensions)
+		if err != nil {
+			return nil, err
+		}
 		pbm.Requests = append(pbm.Requests, &pb.Message_V1_0_0_Request{
 			Id:         rid,
 			Root:       request.root.Bytes(),
@@ -222,7 +239,7 @@ func (mh *MessageHandler) ToProtoV1(p peer.ID, gsm GraphSyncMessage) (*pb.Messag
 			Priority:   int32(request.priority),
 			Cancel:     request.isCancel,
 			Update:     request.isUpdate,
-			Extensions: request.extensions,
+			Extensions: ext,
 		})
 	}
 
@@ -232,10 +249,14 @@ func (mh *MessageHandler) ToProtoV1(p peer.ID, gsm GraphSyncMessage) (*pb.Messag
 		if err != nil {
 			return nil, err
 		}
+		ext, err := toEncodedExtensions(response.extensions)
+		if err != nil {
+			return nil, err
+		}
 		pbm.Responses = append(pbm.Responses, &pb.Message_V1_0_0_Response{
 			Id:         rid,
 			Status:     int32(response.status),
-			Extensions: response.extensions,
+			Extensions: ext,
 		})
 	}
 
@@ -252,13 +273,10 @@ func (mh *MessageHandler) ToProtoV1(p peer.ID, gsm GraphSyncMessage) (*pb.Messag
 // ToNet writes a GraphSyncMessage in its DAG-CBOR format to a writer,
 // prefixed with a length uvar
 func (mh *MessageHandler) ToNet(gsm GraphSyncMessage, w io.Writer) error {
-	fmt.Printf("gsm: %v\n", gsm.String())
 	msg, err := mh.toIPLD(gsm)
 	if err != nil {
 		return err
 	}
-
-	fmt.Printf("ipldgsm: %v\n", msg)
 
 	lbuf := make([]byte, binary.MaxVarintLen64)
 	buf := new(bytes.Buffer)
@@ -273,10 +291,7 @@ func (mh *MessageHandler) ToNet(gsm GraphSyncMessage, w io.Writer) error {
 
 	lbuflen := binary.PutUvarint(lbuf, uint64(buf.Len()-binary.MaxVarintLen64))
 	out := buf.Bytes()
-	// fmt.Printf("%v = %v - %v\n", uint64(buf.Len()-binary.MaxVarintLen64), hex.EncodeToString(lbuf), lbuf[:lbuflen])
 	copy(out[binary.MaxVarintLen64-lbuflen:], lbuf[:lbuflen])
-
-	fmt.Println(hex.EncodeToString(out))
 	_, err = w.Write(out[binary.MaxVarintLen64-lbuflen:])
 
 	return err
@@ -356,7 +371,6 @@ func intIdToRequestId(p peer.ID, fromV1Map map[v1RequestKey]graphsync.RequestID,
 func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessage) (GraphSyncMessage, error) {
 	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(ibm.Requests))
 	for _, req := range ibm.Requests {
-		// exts := req.Extensions
 		id, err := graphsync.ParseRequestID(req.Id)
 		if err != nil {
 			return GraphSyncMessage{}, err
@@ -369,7 +383,7 @@ func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessage) (GraphSyncMes
 		if req.Selector != nil {
 			selector = *req.Selector
 		}
-		requests[id] = newRequest(id, root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, nil)
+		requests[id] = newRequest(id, root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, req.Extensions.Values)
 	}
 
 	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(ibm.Responses))
@@ -379,7 +393,7 @@ func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessage) (GraphSyncMes
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		responses[id] = newResponse(id, graphsync.ResponseStatusCode(res.Status), nil)
+		responses[id] = newResponse(id, graphsync.ResponseStatusCode(res.Status), res.Extensions.Values)
 	}
 
 	blks := make(map[cid.Cid]blocks.Block, len(ibm.Blocks))
@@ -434,10 +448,12 @@ func (mh *MessageHandler) newMessageFromProtoV11(pbm *pb.Message) (GraphSyncMess
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		exts := req.GetExtensions()
+		exts, err := fromEncodedExtensions(req.GetExtensions())
+		if err != nil {
+			return GraphSyncMessage{}, err
+		}
 		requests[id] = newRequest(id, root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts)
 	}
-
 	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(pbm.GetResponses()))
 	for _, res := range pbm.Responses {
 		if res == nil {
@@ -447,7 +463,10 @@ func (mh *MessageHandler) newMessageFromProtoV11(pbm *pb.Message) (GraphSyncMess
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		exts := res.GetExtensions()
+		exts, err := fromEncodedExtensions(res.GetExtensions())
+		if err != nil {
+			return GraphSyncMessage{}, err
+		}
 		responses[id] = newResponse(id, graphsync.ResponseStatusCode(res.Status), exts)
 	}
 
@@ -511,7 +530,10 @@ func (mh *MessageHandler) newMessageFromProtoV1(p peer.ID, pbm *pb.Message_V1_0_
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		exts := req.GetExtensions()
+		exts, err := fromEncodedExtensions(req.GetExtensions())
+		if err != nil {
+			return GraphSyncMessage{}, err
+		}
 		requests[id] = newRequest(id, root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts)
 	}
 
@@ -524,7 +546,10 @@ func (mh *MessageHandler) newMessageFromProtoV1(p peer.ID, pbm *pb.Message_V1_0_
 		if err != nil {
 			return GraphSyncMessage{}, err
 		}
-		exts := res.GetExtensions()
+		exts, err := fromEncodedExtensions(res.GetExtensions())
+		if err != nil {
+			return GraphSyncMessage{}, err
+		}
 		responses[id] = newResponse(id, graphsync.ResponseStatusCode(res.Status), exts)
 	}
 
@@ -555,4 +580,41 @@ func (mh *MessageHandler) newMessageFromProtoV1(p peer.ID, pbm *pb.Message_V1_0_
 	return GraphSyncMessage{
 		requests, responses, blks,
 	}, nil
+}
+
+func toEncodedExtensions(in map[string]datamodel.Node) (map[string][]byte, error) {
+	out := make(map[string][]byte, len(in))
+	for name, data := range in {
+		if data == nil {
+			out[name] = nil
+		} else {
+			var buf bytes.Buffer
+			err := dagcbor.Encode(data, &buf)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = buf.Bytes()
+		}
+	}
+	return out, nil
+}
+
+func fromEncodedExtensions(in map[string][]byte) (map[string]datamodel.Node, error) {
+	if in == nil {
+		return make(map[string]datamodel.Node), nil
+	}
+	out := make(map[string]datamodel.Node, len(in))
+	for name, data := range in {
+		if len(data) == 0 {
+			out[name] = nil
+		} else {
+			nb := basicnode.Prototype.Any.NewBuilder()
+			err := dagcbor.Decode(nb, bytes.NewReader(data))
+			if err != nil {
+				return nil, err
+			}
+			out[name] = nb.Build()
+		}
+	}
+	return out, nil
 }

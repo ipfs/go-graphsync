@@ -5,7 +5,6 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 
 	"github.com/ipfs/go-graphsync"
@@ -44,13 +43,21 @@ type GraphSyncExtensions struct {
 	Values map[string]datamodel.Node
 }
 
+func NewGraphSyncExtensions(values map[string]datamodel.Node) GraphSyncExtensions {
+	keys := make([]string, 0, len(values))
+	for k := range values {
+		keys = append(keys, k)
+	}
+	return GraphSyncExtensions{keys, values}
+}
+
 // GraphSyncRequest is a struct to capture data on a request contained in a
 // GraphSyncMessage.
 type GraphSyncRequest struct {
 	Id []byte
 
 	Root       *cid.Cid
-	Selector   *ipld.Node
+	Selector   *datamodel.Node
 	Extensions GraphSyncExtensions
 	Priority   graphsync.Priority
 	Cancel     bool
@@ -119,5 +126,5 @@ type GraphSyncMessage struct {
 // NamedExtension exists just for the purpose of the constructors.
 type NamedExtension struct {
 	Name graphsync.ExtensionName
-	Data ipld.Node
+	Data datamodel.Node
 }
