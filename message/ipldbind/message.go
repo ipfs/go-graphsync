@@ -1,41 +1,15 @@
 package ipldbind
 
 import (
-	"io"
-
-	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
 
 	"github.com/ipfs/go-graphsync"
-	pb "github.com/ipfs/go-graphsync/message/pb"
 )
 
-// IsTerminalSuccessCode returns true if the response code indicates the
-// request terminated successfully.
-// DEPRECATED: use status.IsSuccess()
-func IsTerminalSuccessCode(status graphsync.ResponseStatusCode) bool {
-	return status.IsSuccess()
-}
-
-// IsTerminalFailureCode returns true if the response code indicates the
-// request terminated in failure.
-// DEPRECATED: use status.IsFailure()
-func IsTerminalFailureCode(status graphsync.ResponseStatusCode) bool {
-	return status.IsFailure()
-}
-
-// IsTerminalResponseCode returns true if the response code signals
-// the end of the request
-// DEPRECATED: use status.IsTerminal()
-func IsTerminalResponseCode(status graphsync.ResponseStatusCode) bool {
-	return status.IsTerminal()
-}
-
-// Exportable is an interface that can serialize to a protobuf
-type Exportable interface {
-	ToProto() (*pb.Message, error)
-	ToNet(w io.Writer) error
+type MessagePartWithExtensions interface {
+	ExtensionNames() []graphsync.ExtensionName
+	Extension(name graphsync.ExtensionName) (datamodel.Node, bool)
 }
 
 type GraphSyncExtensions struct {
@@ -43,12 +17,24 @@ type GraphSyncExtensions struct {
 	Values map[string]datamodel.Node
 }
 
-func NewGraphSyncExtensions(values map[string]datamodel.Node) GraphSyncExtensions {
-	keys := make([]string, 0, len(values))
-	for k := range values {
-		keys = append(keys, k)
+func NewGraphSyncExtensions(part MessagePartWithExtensions) GraphSyncExtensions {
+	names := part.ExtensionNames()
+	keys := make([]string, 0, len(names))
+	values := make(map[string]datamodel.Node, len(names))
+	for _, name := range names {
+		keys = append(keys, string(name))
+		data, _ := part.Extension(graphsync.ExtensionName(name))
+		values[string(name)] = data
 	}
 	return GraphSyncExtensions{keys, values}
+}
+
+func (gse GraphSyncExtensions) ToExtensionsList() []graphsync.ExtensionData {
+	exts := make([]graphsync.ExtensionData, 0, len(gse.Values))
+	for name, data := range gse.Values {
+		exts = append(exts, graphsync.ExtensionData{Name: graphsync.ExtensionName(name), Data: data})
+	}
+	return exts
 }
 
 // GraphSyncRequest is a struct to capture data on a request contained in a
@@ -82,39 +68,6 @@ type GraphSyncResponse struct {
 type GraphSyncBlock struct {
 	Prefix []byte
 	Data   []byte
-}
-
-func FromBlockFormat(block blocks.Block) GraphSyncBlock {
-	return GraphSyncBlock{
-		Prefix: block.Cid().Prefix().Bytes(),
-		Data:   block.RawData(),
-	}
-}
-
-func (b GraphSyncBlock) BlockFormat() *blocks.BasicBlock {
-	pref, err := cid.PrefixFromBytes(b.Prefix)
-	if err != nil {
-		panic(err) // should never happen
-	}
-
-	c, err := pref.Sum(b.Data)
-	if err != nil {
-		panic(err) // should never happen
-	}
-
-	block, err := blocks.NewBlockWithCid(b.Data, c)
-	if err != nil {
-		panic(err) // should never happen
-	}
-	return block
-}
-
-func BlockFormatSlice(bs []GraphSyncBlock) []blocks.Block {
-	blks := make([]blocks.Block, len(bs))
-	for i, b := range bs {
-		blks[i] = b.BlockFormat()
-	}
-	return blks
 }
 
 type GraphSyncMessage struct {

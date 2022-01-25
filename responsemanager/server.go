@@ -69,7 +69,14 @@ func (rm *ResponseManager) processUpdate(ctx context.Context, key responseKey, u
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithAttributes(
 			attribute.String("id", update.ID().String()),
-			attribute.StringSlice("extensions", update.ExtensionNames()),
+			attribute.StringSlice("extensions", func() []string {
+				names := update.ExtensionNames()
+				st := make([]string, 0, len(names))
+				for _, n := range names {
+					st = append(st, string(n))
+				}
+				return st
+			}()),
 		))
 
 	defer span.End()
@@ -203,7 +210,14 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 				attribute.String("id", request.ID().String()),
 				attribute.Int("priority", int(request.Priority())),
 				attribute.String("root", request.Root().String()),
-				attribute.StringSlice("extensions", request.ExtensionNames()),
+				attribute.StringSlice("extensions", func() []string {
+					names := request.ExtensionNames()
+					st := make([]string, 0, len(names))
+					for _, n := range names {
+						st = append(st, string(n))
+					}
+					return st
+				}()),
 			))
 		rctx, cancelFn := context.WithCancel(rctx)
 		sub := &subscriber{

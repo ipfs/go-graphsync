@@ -83,7 +83,7 @@ func (e *Executor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.
 	if err != nil {
 		span.RecordError(err)
 		if !ipldutil.IsContextCancelErr(err) {
-			e.manager.SendRequest(requestTask.P, gsmsg.CancelRequest(requestTask.Request.ID()))
+			e.manager.SendRequest(requestTask.P, gsmsg.NewCancelRequest(requestTask.Request.ID()))
 			if !isPausedErr(err) {
 				span.SetStatus(codes.Error, err.Error())
 				select {
@@ -168,7 +168,7 @@ func (e *Executor) traverse(rt RequestTask) error {
 func (e *Executor) processBlockHooks(p peer.ID, response graphsync.ResponseData, block graphsync.BlockData) error {
 	result := e.blockHooks.ProcessBlockHooks(p, response, block)
 	if len(result.Extensions) > 0 {
-		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
+		updateRequest := gsmsg.NewUpdateRequest(response.RequestID(), result.Extensions...)
 		e.manager.SendRequest(p, updateRequest)
 	}
 	return result.Err

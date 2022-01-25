@@ -82,7 +82,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	peerManager.AllocateAndBuildMessage(tp[1], 0, func(b *messagequeue.Builder) {
 		b.AddRequest(request)
 	})
-	cancelRequest := gsmsg.CancelRequest(id)
+	cancelRequest := gsmsg.NewCancelRequest(id)
 	peerManager.AllocateAndBuildMessage(tp[0], 0, func(b *messagequeue.Builder) {
 		b.AddRequest(cancelRequest)
 	})

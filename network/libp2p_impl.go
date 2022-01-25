@@ -15,6 +15,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	gsmsgv1 "github.com/ipfs/go-graphsync/message/v1"
 )
 
 var log = logging.Logger("graphsync_network")
@@ -36,8 +37,8 @@ func GraphsyncProtocols(protocols []protocol.ID) Option {
 func NewFromLibp2pHost(host host.Host, options ...Option) GraphSyncNetwork {
 	graphSyncNetwork := libp2pGraphSyncNetwork{
 		host:           host,
-		messageHandler: gsmsg.NewMessageHandler(),
-		protocols:      []protocol.ID{ProtocolGraphsync_1_1_0, ProtocolGraphsync_2_0_0, ProtocolGraphsync_1_0_0},
+		messageHandler: gsmsgv1.NewMessageHandler(),
+		protocols:      []protocol.ID{ProtocolGraphsync_1_0_0, ProtocolGraphsync_2_0_0},
 	}
 
 	for _, option := range options {
@@ -53,14 +54,14 @@ type libp2pGraphSyncNetwork struct {
 	host host.Host
 	// inbound messages from the network are forwarded to the receiver
 	receiver       Receiver
-	messageHandler *gsmsg.MessageHandler
+	messageHandler gsmsg.MessageHandler
 	protocols      []protocol.ID
 }
 
 type streamMessageSender struct {
 	s              network.Stream
 	opts           MessageSenderOpts
-	messageHandler *gsmsg.MessageHandler
+	messageHandler gsmsg.MessageHandler
 }
 
 func (s *streamMessageSender) Close() error {
@@ -75,7 +76,7 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg gsmsg.GraphSyncMe
 	return msgToStream(ctx, s.s, s.messageHandler, msg, s.opts.SendTimeout)
 }
 
-func msgToStream(ctx context.Context, s network.Stream, mh *gsmsg.MessageHandler, msg gsmsg.GraphSyncMessage, timeout time.Duration) error {
+func msgToStream(ctx context.Context, s network.Stream, mh gsmsg.MessageHandler, msg gsmsg.GraphSyncMessage, timeout time.Duration) error {
 	log.Debugf("Outgoing message with %d requests, %d responses, and %d blocks",
 		len(msg.Requests()), len(msg.Responses()), len(msg.Blocks()))
 
@@ -89,17 +90,12 @@ func msgToStream(ctx context.Context, s network.Stream, mh *gsmsg.MessageHandler
 
 	switch s.Protocol() {
 	case ProtocolGraphsync_1_0_0:
-		if err := mh.ToNetV1(s.Conn().RemotePeer(), msg, s); err != nil {
-			log.Debugf("error: %s", err)
-			return err
-		}
-	case ProtocolGraphsync_1_1_0:
-		if err := mh.ToNetV11(msg, s); err != nil {
+		if err := mh.ToNet(s.Conn().RemotePeer(), msg, s); err != nil {
 			log.Debugf("error: %s", err)
 			return err
 		}
 	case ProtocolGraphsync_2_0_0:
-		if err := mh.ToNet(msg, s); err != nil {
+		if err := mh.ToNet(s.Conn().RemotePeer(), msg, s); err != nil {
 			log.Debugf("error: %s", err)
 			return err
 		}
@@ -175,11 +171,9 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 		var err error
 		switch s.Protocol() {
 		case ProtocolGraphsync_1_0_0:
-			received, err = gsnet.messageHandler.FromMsgReaderV1(s.Conn().RemotePeer(), reader)
-		case ProtocolGraphsync_1_1_0:
-			received, err = gsnet.messageHandler.FromMsgReaderV11(reader)
+			received, err = gsnet.messageHandler.FromMsgReader(s.Conn().RemotePeer(), reader)
 		case ProtocolGraphsync_2_0_0:
-			received, err = gsnet.messageHandler.FromMsgReader(reader)
+			received, err = gsnet.messageHandler.FromMsgReader(s.Conn().RemotePeer(), reader)
 		default:
 			err = fmt.Errorf("unexpected protocol version %s", s.Protocol())
 		}
@@ -209,7 +203,7 @@ func (gsnet *libp2pGraphSyncNetwork) setProtocols(protocols []protocol.ID) {
 	gsnet.protocols = make([]protocol.ID, 0)
 	for _, proto := range protocols {
 		switch proto {
-		case ProtocolGraphsync_1_0_0, ProtocolGraphsync_1_1_0, ProtocolGraphsync_2_0_0:
+		case ProtocolGraphsync_1_0_0, ProtocolGraphsync_2_0_0:
 			gsnet.protocols = append([]protocol.ID{}, proto)
 		}
 	}

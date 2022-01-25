@@ -11,8 +11,6 @@ import (
 //go:embed schema.ipldsch
 var embedSchema []byte
 
-var schemaTypeSystem *schema.TypeSystem
-
 var Prototype struct {
 	Message schema.TypedPrototype
 }
@@ -22,7 +20,6 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	schemaTypeSystem = ts
 
 	Prototype.Message = bindnode.Prototype((*GraphSyncMessage)(nil), ts.TypeByName("GraphSyncMessage"))
 }

@@ -317,7 +317,7 @@ func TestUpdateHookProcessing(t *testing.T) {
 	requestID := graphsync.NewRequestID()
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
-	update := gsmsg.UpdateRequest(requestID, extensionUpdate)
+	update := gsmsg.NewUpdateRequest(requestID, extensionUpdate)
 	p := testutil.GeneratePeers(1)[0]
 	testCases := map[string]struct {
 		configure func(t *testing.T, updateHooks *hooks.RequestUpdatedHooks)

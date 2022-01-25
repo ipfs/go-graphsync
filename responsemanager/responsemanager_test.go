@@ -125,7 +125,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 
 	// send a cancellation
 	cancelRequests := []gsmsg.GraphSyncRequest{
-		gsmsg.CancelRequest(td.requestID),
+		gsmsg.NewCancelRequest(td.requestID),
 	}
 	responseManager.ProcessRequests(td.ctx, td.p, cancelRequests)
 	responseManager.synchronize()
@@ -198,7 +198,7 @@ func TestEarlyCancellation(t *testing.T) {
 
 	// send a cancellation
 	cancelRequests := []gsmsg.GraphSyncRequest{
-		gsmsg.CancelRequest(td.requestID),
+		gsmsg.NewCancelRequest(td.requestID),
 	}
 	responseManager.ProcessRequests(td.ctx, td.p, cancelRequests)
 
@@ -1146,7 +1146,7 @@ func newTestData(t *testing.T) testData {
 		gsmsg.NewRequest(td.requestID, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0), td.extension),
 	}
 	td.updateRequests = []gsmsg.GraphSyncRequest{
-		gsmsg.UpdateRequest(td.requestID, td.extensionUpdate),
+		gsmsg.NewUpdateRequest(td.requestID, td.extensionUpdate),
 	}
 	td.p = testutil.GeneratePeers(1)[0]
 	td.peristenceOptions = persistenceoptions.New()

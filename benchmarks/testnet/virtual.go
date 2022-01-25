@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	gsmsgv1 "github.com/ipfs/go-graphsync/message/v1"
 	gsnet "github.com/ipfs/go-graphsync/network"
 )
 
@@ -137,7 +138,7 @@ func (n *network) SendMessage(
 			rateLimiters[to] = rateLimiter
 		}
 
-		pbMsg, err := gsmsg.NewMessageHandler().ToProtoV11(mes)
+		pbMsg, err := gsmsgv1.NewMessageHandler().ToProto(peer.ID("foo"), mes)
 		if err != nil {
 			return err
 		}

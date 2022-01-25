@@ -3,6 +3,7 @@ package message
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strings"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -10,9 +11,17 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-msgio"
 
 	"github.com/ipfs/go-graphsync"
 )
+
+type MessageHandler interface {
+	FromNet(peer.ID, io.Reader) (GraphSyncMessage, error)
+	FromMsgReader(peer.ID, msgio.Reader) (GraphSyncMessage, error)
+	ToNet(peer.ID, GraphSyncMessage, io.Writer) error
+}
 
 // GraphSyncRequest is a struct to capture data on a request contained in a
 // GraphSyncMessage.
@@ -34,6 +43,11 @@ func (gsr GraphSyncRequest) String() string {
 		dagjson.Encode(gsr.selector, &buf)
 		sel = buf.String()
 	}
+	extStr := strings.Builder{}
+	for _, name := range gsr.ExtensionNames() {
+		extStr.WriteString(string(name))
+		extStr.WriteString("|")
+	}
 	return fmt.Sprintf("GraphSyncRequest<root=%s, selector=%s, priority=%d, id=%s, cancel=%v, update=%v, exts=%s>",
 		gsr.root.String(),
 		sel,
@@ -41,7 +55,7 @@ func (gsr GraphSyncRequest) String() string {
 		gsr.id.String(),
 		gsr.isCancel,
 		gsr.isUpdate,
-		strings.Join(gsr.ExtensionNames(), "|"),
+		extStr.String(),
 	)
 }
 
@@ -55,10 +69,15 @@ type GraphSyncResponse struct {
 
 // String returns a human-readable form of a GraphSyncResponse
 func (gsr GraphSyncResponse) String() string {
+	extStr := strings.Builder{}
+	for _, name := range gsr.ExtensionNames() {
+		extStr.WriteString(string(name))
+		extStr.WriteString("|")
+	}
 	return fmt.Sprintf("GraphSyncResponse<id=%s, status=%d, exts=%s>",
 		gsr.requestID.String(),
 		gsr.status,
-		strings.Join(gsr.ExtensionNames(), "|"),
+		extStr.String(),
 	)
 }
 
@@ -68,6 +87,14 @@ type GraphSyncMessage struct {
 	requests  map[graphsync.RequestID]GraphSyncRequest
 	responses map[graphsync.RequestID]GraphSyncResponse
 	blocks    map[cid.Cid]blocks.Block
+}
+
+func NewMessage(
+	requests map[graphsync.RequestID]GraphSyncRequest,
+	responses map[graphsync.RequestID]GraphSyncResponse,
+	blocks map[cid.Cid]blocks.Block,
+) GraphSyncMessage {
+	return GraphSyncMessage{requests, responses, blocks}
 }
 
 // String returns a human-readable (multi-line) form of a GraphSyncMessage and
@@ -87,7 +114,7 @@ func (gsm GraphSyncMessage) String() string {
 	return fmt.Sprintf("GraphSyncMessage<\n\t%s\n>", strings.Join(cts, ",\n\t"))
 }
 
-// NewRequest builds a new Graphsync request
+// NewRequest builds a new GraphSyncRequest
 func NewRequest(id graphsync.RequestID,
 	root cid.Cid,
 	selector ipld.Node,
@@ -97,13 +124,13 @@ func NewRequest(id graphsync.RequestID,
 	return newRequest(id, root, selector, priority, false, false, toExtensionsMap(extensions))
 }
 
-// CancelRequest request generates a request to cancel an in progress request
-func CancelRequest(id graphsync.RequestID) GraphSyncRequest {
+// NewCancelRequest request generates a request to cancel an in progress request
+func NewCancelRequest(id graphsync.RequestID) GraphSyncRequest {
 	return newRequest(id, cid.Cid{}, nil, 0, true, false, nil)
 }
 
-// UpdateRequest generates a new request to update an in progress request with the given extensions
-func UpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionData) GraphSyncRequest {
+// NewUpdateRequest generates a new request to update an in progress request with the given extensions
+func NewUpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionData) GraphSyncRequest {
 	return newRequest(id, cid.Cid{}, nil, 0, false, true, toExtensionsMap(extensions))
 }
 
@@ -247,10 +274,10 @@ func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) (datamodel.N
 }
 
 // ExtensionNames returns the names of the extensions included in this request
-func (gsr GraphSyncRequest) ExtensionNames() []string {
-	var extNames []string
+func (gsr GraphSyncRequest) ExtensionNames() []graphsync.ExtensionName {
+	var extNames []graphsync.ExtensionName
 	for ext := range gsr.extensions {
-		extNames = append(extNames, ext)
+		extNames = append(extNames, graphsync.ExtensionName(ext))
 	}
 	return extNames
 }
@@ -281,10 +308,10 @@ func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) (datamodel.
 }
 
 // ExtensionNames returns the names of the extensions included in this request
-func (gsr GraphSyncResponse) ExtensionNames() []string {
-	var extNames []string
+func (gsr GraphSyncResponse) ExtensionNames() []graphsync.ExtensionName {
+	var extNames []graphsync.ExtensionName
 	for ext := range gsr.extensions {
-		extNames = append(extNames, ext)
+		extNames = append(extNames, graphsync.ExtensionName(ext))
 	}
 	return extNames
 }

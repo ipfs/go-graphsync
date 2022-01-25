@@ -106,7 +106,8 @@ func TestMessageSendAndReceive(t *testing.T) {
 	receivedRequests := received.Requests()
 	require.Len(t, receivedRequests, 1, "did not add request to received message")
 	receivedRequest := receivedRequests[0]
-	require.Equal(t, sentRequest.ID(), receivedRequest.ID())
+	// TODO: for protocol v1 this shouldn't match, but for v2 it should
+	// require.Equal(t, sentRequest.ID(), receivedRequest.ID())
 	require.Equal(t, sentRequest.IsCancel(), receivedRequest.IsCancel())
 	require.Equal(t, sentRequest.Priority(), receivedRequest.Priority())
 	require.Equal(t, sentRequest.Root().String(), receivedRequest.Root().String())
@@ -119,7 +120,8 @@ func TestMessageSendAndReceive(t *testing.T) {
 	require.Len(t, receivedResponses, 1, "did not add response to received message")
 	receivedResponse := receivedResponses[0]
 	extensionData, found := receivedResponse.Extension(extensionName)
-	require.Equal(t, sentResponse.RequestID(), receivedResponse.RequestID())
+	// TODO: for protocol v1 this shouldn't match, but for v2 it should
+	// require.Equal(t, sentResponse.RequestID(), receivedResponse.RequestID())
 	require.Equal(t, sentResponse.Status(), receivedResponse.Status())
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)

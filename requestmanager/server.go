@@ -243,7 +243,7 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID, onTermina
 	if onTerminated != nil {
 		inProgressRequestStatus.onTerminated = append(inProgressRequestStatus.onTerminated, onTerminated)
 	}
-	rm.SendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(requestID))
+	rm.SendRequest(inProgressRequestStatus.p, gsmsg.NewCancelRequest(requestID))
 	rm.cancelOnError(requestID, inProgressRequestStatus, terminalError)
 }
 
@@ -311,7 +311,7 @@ func (rm *RequestManager) updateLastResponses(responses []gsmsg.GraphSyncRespons
 func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg.GraphSyncResponse) bool {
 	result := rm.responseHooks.ProcessResponseHooks(p, response)
 	if len(result.Extensions) > 0 {
-		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
+		updateRequest := gsmsg.NewUpdateRequest(response.RequestID(), result.Extensions...)
 		rm.SendRequest(p, updateRequest)
 	}
 	if result.Err != nil {
@@ -319,7 +319,7 @@ func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg
 		if !ok {
 			return false
 		}
-		rm.SendRequest(requestStatus.p, gsmsg.CancelRequest(response.RequestID()))
+		rm.SendRequest(requestStatus.p, gsmsg.NewCancelRequest(response.RequestID()))
 		rm.cancelOnError(response.RequestID(), requestStatus, result.Err)
 		return false
 	}
