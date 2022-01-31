@@ -216,21 +216,6 @@ func (gsm GraphSyncMessage) Blocks() []blocks.Block {
 	return bs
 }
 
-func (gsm GraphSyncMessage) Loggable() map[string]interface{} {
-	requests := make([]string, 0, len(gsm.requests))
-	for _, request := range gsm.requests {
-		requests = append(requests, request.id.String())
-	}
-	responses := make([]string, 0, len(gsm.responses))
-	for _, response := range gsm.responses {
-		responses = append(responses, response.requestID.String())
-	}
-	return map[string]interface{}{
-		"requests":  requests,
-		"responses": responses,
-	}
-}
-
 // Clone returns a shallow copy of this GraphSyncMessage
 func (gsm GraphSyncMessage) Clone() GraphSyncMessage {
 	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(gsm.requests))
