@@ -61,7 +61,7 @@ func (mh *MessageHandler) FromMsgReader(p peer.ID, r msgio.Reader) (message.Grap
 		return message.GraphSyncMessage{}, err
 	}
 
-	var pb pb.Message_V1_0_0
+	var pb pb.Message
 	err = proto.Unmarshal(msg, &pb)
 	r.ReleaseMsg(msg)
 	if err != nil {
@@ -91,14 +91,14 @@ func (mh *MessageHandler) ToNet(p peer.ID, gsm message.GraphSyncMessage, w io.Wr
 	return err
 }
 
-// toProto converts a GraphSyncMessage to its pb.Message_V1_0_0 equivalent
-func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.Message_V1_0_0, error) {
+// toProto converts a GraphSyncMessage to its pb.Message equivalent
+func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.Message, error) {
 	mh.mapLock.Lock()
 	defer mh.mapLock.Unlock()
 
-	pbm := new(pb.Message_V1_0_0)
+	pbm := new(pb.Message)
 	requests := gsm.Requests()
-	pbm.Requests = make([]*pb.Message_V1_0_0_Request, 0, len(requests))
+	pbm.Requests = make([]*pb.Message_Request, 0, len(requests))
 	for _, request := range requests {
 		var selector []byte
 		var err error
@@ -116,7 +116,7 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 		if err != nil {
 			return nil, err
 		}
-		pbm.Requests = append(pbm.Requests, &pb.Message_V1_0_0_Request{
+		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
 			Id:         rid,
 			Root:       request.Root().Bytes(),
 			Selector:   selector,
@@ -128,7 +128,7 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 	}
 
 	responses := gsm.Responses()
-	pbm.Responses = make([]*pb.Message_V1_0_0_Response, 0, len(responses))
+	pbm.Responses = make([]*pb.Message_Response, 0, len(responses))
 	for _, response := range responses {
 		rid, err := bytesIdToInt(p, mh.fromV1Map, mh.toV1Map, &mh.nextIntId, response.RequestID().Bytes())
 		if err != nil {
@@ -138,7 +138,7 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 		if err != nil {
 			return nil, err
 		}
-		pbm.Responses = append(pbm.Responses, &pb.Message_V1_0_0_Response{
+		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
 			Id:         rid,
 			Status:     int32(response.Status()),
 			Extensions: ext,
@@ -146,9 +146,9 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 	}
 
 	blocks := gsm.Blocks()
-	pbm.Data = make([]*pb.Message_V1_0_0_Block, 0, len(blocks))
+	pbm.Data = make([]*pb.Message_Block, 0, len(blocks))
 	for _, b := range blocks {
-		pbm.Data = append(pbm.Data, &pb.Message_V1_0_0_Block{
+		pbm.Data = append(pbm.Data, &pb.Message_Block{
 			Prefix: b.Cid().Prefix().Bytes(),
 			Data:   b.RawData(),
 		})
@@ -156,9 +156,9 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 	return pbm, nil
 }
 
-// Mapping from a pb.Message_V1_0_0 object to a GraphSyncMessage object, including
+// Mapping from a pb.Message object to a GraphSyncMessage object, including
 // RequestID (int / uuid) mapping.
-func (mh *MessageHandler) newMessageFromProto(p peer.ID, pbm *pb.Message_V1_0_0) (message.GraphSyncMessage, error) {
+func (mh *MessageHandler) newMessageFromProto(p peer.ID, pbm *pb.Message) (message.GraphSyncMessage, error) {
 	mh.mapLock.Lock()
 	defer mh.mapLock.Unlock()
 
