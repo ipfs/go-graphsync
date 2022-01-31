@@ -445,3 +445,63 @@ func TestKnownFuzzIssues(t *testing.T) {
 		require.Equal(t, msg1, msg2)
 	}
 }
+
+func TestRequestExtensionPlainBytes(t *testing.T) {
+	originalDataNode := basicnode.NewString(string([]byte{0xca, 0xfe, 0xbe, 0xef}))
+	expectedDataNode := basicnode.NewBytes([]byte{0xbe, 0xef, 0xca, 0xfe, 0x00})
+
+	id := graphsync.NewRequestID()
+	extensionName := graphsync.ExtensionName("graphsync/plainbytes")
+	extension := graphsync.ExtensionData{
+		Name: extensionName,
+		Data: originalDataNode,
+	}
+
+	builder := message.NewBuilder()
+	builder.AddRequest(message.NewUpdateRequest(id, extension))
+	gsm, err := builder.Build()
+	require.NoError(t, err)
+
+	requests := gsm.Requests()
+	require.Len(t, requests, 1, "did not add cancel request")
+	request := requests[0]
+	require.Equal(t, id, request.ID())
+	require.True(t, request.IsUpdate())
+	require.False(t, request.IsCancel())
+	extensionData, found := request.Extension(extensionName)
+	require.True(t, found)
+	require.Equal(t, extension.Data, extensionData)
+
+	mh := NewMessageHandler()
+
+	buf := new(bytes.Buffer)
+	err = mh.ToNet(peer.ID("foo"), gsm, buf)
+	require.NoError(t, err, "did not serialize protobuf message")
+
+	// We've now captured a legitimate message with nicely encoded extension data
+	// in proper DAG-CBOR, as per the (new) expectation that extension data will
+	// always be DAG-CBOR.
+	// But since we want to also handle the possibility of arbirary bytes for
+	// extensions that may already exist that are using arbirary bytes and their
+	// own encoding formats, we'll strip out the CBOR tag and rearrange the bytes
+	// a little and confirm that it comes back out as a Bytes datamodel.Node
+	// (i.e. leaving it up to the extension author to extract their bytes out
+	// of that and still use their encoding format).
+	newmsg := bytes.Replace(buf.Bytes(), []byte{0x64, 0xca, 0xfe, 0xbe, 0xef}, []byte{0xbe, 0xef, 0xca, 0xfe, 0x00}, 1)
+
+	deserialized, err := mh.FromNet(peer.ID("foo"), bytes.NewReader(newmsg))
+	require.NoError(t, err, "did not deserialize protobuf message")
+
+	deserializedRequests := deserialized.Requests()
+	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
+	deserializedRequest := deserializedRequests[0]
+	extensionData, found = deserializedRequest.Extension(extensionName)
+	require.Equal(t, request.ID(), deserializedRequest.ID())
+	require.Equal(t, request.IsCancel(), deserializedRequest.IsCancel())
+	require.Equal(t, request.IsUpdate(), deserializedRequest.IsUpdate())
+	require.Equal(t, request.Priority(), deserializedRequest.Priority())
+	require.Equal(t, request.Root().String(), deserializedRequest.Root().String())
+	require.Equal(t, request.Selector(), deserializedRequest.Selector())
+	require.True(t, found)
+	require.Equal(t, expectedDataNode, extensionData)
+}

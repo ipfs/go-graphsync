@@ -9,6 +9,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -245,7 +246,6 @@ func (mh *MessageHandler) newMessageFromProto(p peer.ID, pbm *pb.Message_V1_0_0)
 	return message.NewMessage(requests, responses, blks), nil
 }
 
-// TODO: is this a breaking protocol change? force all extension data into dag-cbor?
 func toEncodedExtensions(part MessagePartWithExtensions) (map[string][]byte, error) {
 	names := part.ExtensionNames()
 	out := make(map[string][]byte, len(names))
@@ -264,19 +264,22 @@ func toEncodedExtensions(part MessagePartWithExtensions) (map[string][]byte, err
 	return out, nil
 }
 
-// TODO: is this a breaking protocol change? force all extension data into dag-cbor?
 func fromEncodedExtensions(in map[string][]byte) ([]graphsync.ExtensionData, error) {
 	if in == nil {
 		return []graphsync.ExtensionData{}, nil
 	}
 	out := make([]graphsync.ExtensionData, 0, len(in))
-	for name, data := range in {
-		if len(data) == 0 {
+	for name, byts := range in {
+		if len(byts) == 0 {
 			out = append(out, graphsync.ExtensionData{Name: graphsync.ExtensionName(name), Data: nil})
 		} else {
-			data, err := ipldutil.DecodeNode(data)
+			data, err := ipldutil.DecodeNode(byts)
 			if err != nil {
-				return nil, err
+				// Backward-compatibility for extensions that may not be encoding data as
+				// DAG-CBOR: if we don't find valid DAG-CBOR, we just turn the whole thing
+				// into a Bytes node and let the extension handler deal with that, they
+				// can decode it however they want.
+				data = basicnode.NewBytes(byts)
 			}
 			out = append(out, graphsync.ExtensionData{Name: graphsync.ExtensionName(name), Data: data})
 		}
