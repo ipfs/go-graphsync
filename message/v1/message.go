@@ -245,7 +245,8 @@ func (mh *MessageHandler) newMessageFromProto(p peer.ID, pbm *pb.Message) (messa
 	return message.NewMessage(requests, responses, blks), nil
 }
 
-// TODO: is this a breaking protocol change? force all extension data into dag-cbor?
+// Note that even for protocol v1 we now only support DAG-CBOR encoded extension data.
+// Anything else will be rejected with an error.
 func toEncodedExtensions(part MessagePartWithExtensions) (map[string][]byte, error) {
 	names := part.ExtensionNames()
 	out := make(map[string][]byte, len(names))
@@ -264,7 +265,6 @@ func toEncodedExtensions(part MessagePartWithExtensions) (map[string][]byte, err
 	return out, nil
 }
 
-// TODO: is this a breaking protocol change? force all extension data into dag-cbor?
 func fromEncodedExtensions(in map[string][]byte) ([]graphsync.ExtensionData, error) {
 	if in == nil {
 		return []graphsync.ExtensionData{}, nil
