@@ -7,6 +7,7 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/bindnode"
@@ -17,7 +18,10 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/message/ipldbind"
+	"github.com/ipfs/go-graphsync/metadata"
 )
+
+var log = logging.Logger("graphsync")
 
 type MessageHandler struct{}
 
@@ -159,12 +163,20 @@ func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessage) (message.Grap
 
 	responses := make(map[graphsync.RequestID]message.GraphSyncResponse, len(ibm.Responses))
 	for _, res := range ibm.Responses {
-		// exts := res.Extensions
 		id, err := graphsync.ParseRequestID(res.Id)
 		if err != nil {
 			return message.GraphSyncMessage{}, err
 		}
-		responses[id] = message.NewResponse(id, graphsync.ResponseStatusCode(res.Status), res.Extensions.ToExtensionsList()...)
+		mdRaw := res.Extensions.Values[string(graphsync.ExtensionMetadata)]
+		var md metadata.Metadata
+		if mdRaw != nil {
+			md, err = metadata.DecodeMetadata(mdRaw)
+			if err != nil {
+				log.Warnf("Unable to decode metadata in response for request id %d: %w", id, err)
+			}
+		}
+
+		responses[id] = message.NewResponse(id, graphsync.ResponseStatusCode(res.Status), md, res.Extensions.ToExtensionsList()...)
 	}
 
 	blks := make(map[cid.Cid]blocks.Block, len(ibm.Blocks))

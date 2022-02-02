@@ -302,7 +302,7 @@ func (ree *requestExecutionEnv) ReleaseRequestTask(_ peer.ID, _ *peertask.Task, 
 
 func (ree *requestExecutionEnv) GetRequestTask(_ peer.ID, _ *peertask.Task, requestExecutionChan chan executor.RequestTask) {
 	var lastResponse atomic.Value
-	lastResponse.Store(gsmsg.NewResponse(ree.request.ID(), graphsync.RequestAcknowledged))
+	lastResponse.Store(gsmsg.NewResponse(ree.request.ID(), graphsync.RequestAcknowledged, nil))
 
 	requestExecution := executor.RequestTask{
 		Ctx:                  ree.ctx,

@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/linktracker"
-	"github.com/ipfs/go-graphsync/metadata"
 )
 
 var log = logging.Logger("graphsync")
@@ -73,7 +73,7 @@ func (rc *ResponseCache) AttemptLoad(requestID graphsync.RequestID, link ipld.Li
 // and tracking link metadata from a remote peer
 func (rc *ResponseCache) ProcessResponse(
 	ctx context.Context,
-	responses map[graphsync.RequestID]metadata.Metadata,
+	responses map[graphsync.RequestID]graphsync.LinkMetadata,
 	blks []blocks.Block) {
 
 	ctx, span := otel.Tracer("graphsync").Start(ctx, "cacheProcess", trace.WithAttributes(
@@ -90,10 +90,10 @@ func (rc *ResponseCache) ProcessResponse(
 	}
 
 	for requestID, md := range responses {
-		for _, item := range md {
-			log.Debugf("Traverse link %s on request ID %s", item.Link.String(), requestID.String())
-			rc.linkTracker.RecordLinkTraversal(requestID, cidlink.Link{Cid: item.Link}, item.BlockPresent)
-		}
+		md.Iterate(func(c cid.Cid, la graphsync.LinkAction) {
+			log.Debugf("Traverse link %s on request ID %s", c.String(), requestID.String())
+			rc.linkTracker.RecordLinkTraversal(requestID, cidlink.Link{Cid: c}, la == graphsync.LinkActionPresent)
+		})
 	}
 
 	// prune unused blocks right away

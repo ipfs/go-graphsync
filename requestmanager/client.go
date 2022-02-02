@@ -23,7 +23,6 @@ import (
 	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/peerstate"
@@ -73,8 +72,7 @@ type PeerHandler interface {
 // results as new responses are processed
 type AsyncLoader interface {
 	StartRequest(graphsync.RequestID, string) error
-	ProcessResponse(ctx context.Context, responses map[graphsync.RequestID]metadata.Metadata,
-		blks []blocks.Block)
+	ProcessResponse(ctx context.Context, responses map[graphsync.RequestID]graphsync.LinkMetadata, blks []blocks.Block)
 	AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) <-chan types.AsyncLoadResult
 	CompleteResponsesFor(requestID graphsync.RequestID)
 	CleanupRequest(p peer.ID, requestID graphsync.RequestID)
@@ -286,7 +284,8 @@ func (rm *RequestManager) CancelRequest(ctx context.Context, requestID graphsync
 
 // ProcessResponses ingests the given responses from the network and
 // and updates the in progress requests based on those responses.
-func (rm *RequestManager) ProcessResponses(p peer.ID, responses []gsmsg.GraphSyncResponse,
+func (rm *RequestManager) ProcessResponses(p peer.ID,
+	responses []gsmsg.GraphSyncResponse,
 	blks []blocks.Block) {
 	rm.send(&processResponsesMessage{p, responses, blks}, nil)
 }

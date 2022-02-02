@@ -190,6 +190,25 @@ type ResponseData interface {
 	// Extension returns the content for an extension on a response, or errors
 	// if extension is not present
 	Extension(name ExtensionName) (datamodel.Node, bool)
+
+	// Metadata returns a copy of the link metadata contained in this response
+	Metadata() LinkMetadata
+}
+
+// TODO: docs for these new bits
+
+type LinkAction string
+
+const (
+	LinkActionPresent = LinkAction("present")
+
+	LinkActionMissing = LinkAction("missing")
+)
+
+type LinkMetadataIterator func(cid.Cid, LinkAction)
+
+type LinkMetadata interface {
+	Iterate(LinkMetadataIterator)
 }
 
 // BlockData gives information about a block included in a graphsync response

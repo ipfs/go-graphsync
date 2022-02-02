@@ -111,7 +111,7 @@ func TestBlockHookProcessing(t *testing.T) {
 		Data: extensionUpdateData,
 	}
 	requestID := graphsync.NewRequestID()
-	response := gsmsg.NewResponse(requestID, graphsync.PartialResponse, extensionResponse)
+	response := gsmsg.NewResponse(requestID, graphsync.PartialResponse, nil, extensionResponse)
 
 	p := testutil.GeneratePeers(1)[0]
 	blockData := testutil.NewFakeBlockData()
@@ -208,7 +208,7 @@ func TestResponseHookProcessing(t *testing.T) {
 		Data: extensionUpdateData,
 	}
 	requestID := graphsync.NewRequestID()
-	response := gsmsg.NewResponse(requestID, graphsync.PartialResponse, extensionResponse)
+	response := gsmsg.NewResponse(requestID, graphsync.PartialResponse, nil, extensionResponse)
 
 	p := testutil.GeneratePeers(1)[0]
 	testCases := map[string]struct {

@@ -8,6 +8,7 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -19,7 +20,10 @@ import (
 	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/message"
 	pb "github.com/ipfs/go-graphsync/message/pb"
+	"github.com/ipfs/go-graphsync/metadata"
 )
+
+var log = logging.Logger("graphsync")
 
 type MessagePartWithExtensions interface {
 	ExtensionNames() []graphsync.ExtensionName
@@ -215,7 +219,18 @@ func (mh *MessageHandler) newMessageFromProto(p peer.ID, pbm *pb.Message) (messa
 		if err != nil {
 			return message.GraphSyncMessage{}, err
 		}
-		responses[id] = message.NewResponse(id, graphsync.ResponseStatusCode(res.Status), exts...)
+		var md metadata.Metadata
+		for _, ext := range exts {
+			if ext.Name == graphsync.ExtensionMetadata {
+				var err error
+				md, err = metadata.DecodeMetadata(ext.Data)
+				if err != nil {
+					log.Warnf("Unable to decode metadata in response for request id %d: %w", id, err)
+				}
+			}
+			break
+		}
+		responses[id] = message.NewResponse(id, graphsync.ResponseStatusCode(res.Status), md, exts...)
 	}
 
 	blks := make(map[cid.Cid]blocks.Block, len(pbm.GetData()))

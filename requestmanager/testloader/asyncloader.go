@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -35,7 +36,7 @@ type storeKey struct {
 type FakeAsyncLoader struct {
 	responseChannelsLk sync.RWMutex
 	responseChannels   map[requestKey]chan types.AsyncLoadResult
-	responses          chan map[graphsync.RequestID]metadata.Metadata
+	responses          chan map[graphsync.RequestID]graphsync.LinkMetadata
 	blks               chan []blocks.Block
 	storesRequestedLk  sync.RWMutex
 	storesRequested    map[storeKey]struct{}
@@ -46,7 +47,7 @@ type FakeAsyncLoader struct {
 func NewFakeAsyncLoader() *FakeAsyncLoader {
 	return &FakeAsyncLoader{
 		responseChannels: make(map[requestKey]chan types.AsyncLoadResult),
-		responses:        make(chan map[graphsync.RequestID]metadata.Metadata, 10),
+		responses:        make(chan map[graphsync.RequestID]graphsync.LinkMetadata, 10),
 		blks:             make(chan []blocks.Block, 10),
 		storesRequested:  make(map[storeKey]struct{}),
 	}
@@ -61,7 +62,7 @@ func (fal *FakeAsyncLoader) StartRequest(requestID graphsync.RequestID, name str
 }
 
 // ProcessResponse just records values passed to verify expectations later
-func (fal *FakeAsyncLoader) ProcessResponse(_ context.Context, responses map[graphsync.RequestID]metadata.Metadata,
+func (fal *FakeAsyncLoader) ProcessResponse(_ context.Context, responses map[graphsync.RequestID]graphsync.LinkMetadata,
 	blks []blocks.Block) {
 	fal.responses <- responses
 	fal.blks <- blks
@@ -81,9 +82,17 @@ func (fal *FakeAsyncLoader) VerifyLastProcessedBlocks(ctx context.Context, t *te
 func (fal *FakeAsyncLoader) VerifyLastProcessedResponses(ctx context.Context, t *testing.T,
 	expectedResponses map[graphsync.RequestID]metadata.Metadata) {
 	t.Helper()
-	var responses map[graphsync.RequestID]metadata.Metadata
+	var responses map[graphsync.RequestID]graphsync.LinkMetadata
 	testutil.AssertReceive(ctx, t, fal.responses, &responses, "did not process responses")
-	require.Equal(t, expectedResponses, responses, "did not process correct responses")
+	actualResponses := make(map[graphsync.RequestID]metadata.Metadata)
+	for rid, lm := range responses {
+		actualResponses[rid] = make(metadata.Metadata, 0)
+		lm.Iterate(func(c cid.Cid, la graphsync.LinkAction) {
+			actualResponses[rid] = append(actualResponses[rid],
+				metadata.Item{Link: c, BlockPresent: la == graphsync.LinkActionPresent})
+		})
+	}
+	require.Equal(t, expectedResponses, actualResponses, "did not process correct responses")
 }
 
 // VerifyNoRemainingData verifies no outstanding response channels are open for the given

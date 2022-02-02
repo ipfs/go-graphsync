@@ -15,7 +15,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/loadattemptqueue"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/responsecache"
 	"github.com/ipfs/go-graphsync/requestmanager/asyncloader/unverifiedblockstore"
@@ -108,7 +107,7 @@ func (al *AsyncLoader) StartRequest(requestID graphsync.RequestID, persistenceOp
 // neccesary
 func (al *AsyncLoader) ProcessResponse(
 	ctx context.Context,
-	responses map[graphsync.RequestID]metadata.Metadata,
+	responses map[graphsync.RequestID]graphsync.LinkMetadata,
 	blks []blocks.Block) {
 
 	requestIds := make([]string, 0, len(responses))
@@ -130,7 +129,7 @@ func (al *AsyncLoader) ProcessResponse(
 	for queue, requestIDs := range byQueue {
 		loadAttemptQueue := al.getLoadAttemptQueue(queue)
 		responseCache := al.getResponseCache(queue)
-		queueResponses := make(map[graphsync.RequestID]metadata.Metadata, len(requestIDs))
+		queueResponses := make(map[graphsync.RequestID]graphsync.LinkMetadata, len(requestIDs))
 		for _, requestID := range requestIDs {
 			queueResponses[requestID] = responses[requestID]
 		}

@@ -15,6 +15,7 @@ import (
 	"github.com/libp2p/go-msgio"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/metadata"
 )
 
 type MessageHandler interface {
@@ -64,12 +65,18 @@ func (gsr GraphSyncRequest) String() string {
 type GraphSyncResponse struct {
 	requestID  graphsync.RequestID
 	status     graphsync.ResponseStatusCode
+	metadata   metadata.Metadata
 	extensions map[string]datamodel.Node
+}
+
+type GraphSyncLinkMetadata struct {
+	linkMetadata metadata.Metadata
 }
 
 // String returns a human-readable form of a GraphSyncResponse
 func (gsr GraphSyncResponse) String() string {
 	extStr := strings.Builder{}
+	// TODO: metadata
 	for _, name := range gsr.ExtensionNames() {
 		extStr.WriteString(string(name))
 		extStr.WriteString("|")
@@ -101,8 +108,7 @@ func NewMessage(
 // its contents
 func (gsm GraphSyncMessage) String() string {
 	cts := make([]string, 0)
-	for i, req := range gsm.requests {
-		fmt.Printf("req.String(%v)\n", i)
+	for _, req := range gsm.requests {
 		cts = append(cts, req.String())
 	}
 	for _, resp := range gsm.responses {
@@ -132,6 +138,10 @@ func NewCancelRequest(id graphsync.RequestID) GraphSyncRequest {
 // NewUpdateRequest generates a new request to update an in progress request with the given extensions
 func NewUpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionData) GraphSyncRequest {
 	return newRequest(id, cid.Cid{}, nil, 0, false, true, toExtensionsMap(extensions))
+}
+
+func NewGraphSyncLinkMetadata(md metadata.Metadata) GraphSyncLinkMetadata {
+	return GraphSyncLinkMetadata{md}
 }
 
 func toExtensionsMap(extensions []graphsync.ExtensionData) (extensionsMap map[string]datamodel.Node) {
@@ -165,15 +175,21 @@ func newRequest(id graphsync.RequestID,
 // NewResponse builds a new Graphsync response
 func NewResponse(requestID graphsync.RequestID,
 	status graphsync.ResponseStatusCode,
+	md metadata.Metadata,
 	extensions ...graphsync.ExtensionData) GraphSyncResponse {
-	return newResponse(requestID, status, toExtensionsMap(extensions))
+
+	return newResponse(requestID, status, md, toExtensionsMap(extensions))
 }
 
 func newResponse(requestID graphsync.RequestID,
-	status graphsync.ResponseStatusCode, extensions map[string]datamodel.Node) GraphSyncResponse {
+	status graphsync.ResponseStatusCode,
+	responseMetadata metadata.Metadata,
+	extensions map[string]datamodel.Node) GraphSyncResponse {
+
 	return GraphSyncResponse{
 		requestID:  requestID,
 		status:     status,
+		metadata:   responseMetadata,
 		extensions: extensions,
 	}
 }
@@ -282,14 +298,18 @@ func (gsr GraphSyncResponse) Status() graphsync.ResponseStatusCode { return gsr.
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
 func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) (datamodel.Node, bool) {
-	if gsr.extensions == nil {
-		return nil, false
+	if name == graphsync.ExtensionMetadata {
+		return metadata.EncodeMetadata(gsr.metadata), true
+	} else {
+		if gsr.extensions == nil {
+			return nil, false
+		}
+		val, ok := gsr.extensions[string(name)]
+		if !ok {
+			return nil, false
+		}
+		return val, true
 	}
-	val, ok := gsr.extensions[string(name)]
-	if !ok {
-		return nil, false
-	}
-	return val, true
 }
 
 // ExtensionNames returns the names of the extensions included in this request
@@ -298,7 +318,24 @@ func (gsr GraphSyncResponse) ExtensionNames() []graphsync.ExtensionName {
 	for ext := range gsr.extensions {
 		extNames = append(extNames, graphsync.ExtensionName(ext))
 	}
+	if len(gsr.metadata) > 0 {
+		extNames = append(extNames, graphsync.ExtensionMetadata)
+	}
 	return extNames
+}
+
+func (gsr GraphSyncResponse) Metadata() graphsync.LinkMetadata {
+	return GraphSyncLinkMetadata{gsr.metadata}
+}
+
+func (gslm GraphSyncLinkMetadata) Iterate(iter graphsync.LinkMetadataIterator) {
+	for _, md := range gslm.linkMetadata {
+		action := graphsync.LinkActionPresent
+		if !md.BlockPresent {
+			action = graphsync.LinkActionMissing
+		}
+		iter(md.Link, action)
+	}
 }
 
 // ReplaceExtensions merges the extensions given extensions into the request to create a new request,

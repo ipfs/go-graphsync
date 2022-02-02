@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -91,9 +92,9 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 		},
 	}
 
-	responses := map[graphsync.RequestID]metadata.Metadata{
-		requestID1: request1Metadata,
-		requestID2: request2Metadata,
+	responses := map[graphsync.RequestID]graphsync.LinkMetadata{
+		requestID1: message.NewGraphSyncLinkMetadata(request1Metadata),
+		requestID2: message.NewGraphSyncLinkMetadata(request2Metadata),
 	}
 
 	fubs := &fakeUnverifiedBlockStore{
