@@ -83,25 +83,25 @@ func TestMessageBuilding(t *testing.T) {
 				response1 := findResponseForRequestID(t, responses, requestID1)
 				require.Equal(t, graphsync.RequestCompletedPartial, response1.Status(), "did not generate completed partial response")
 				assertMetadata(t, response1, []GraphSyncLinkMetadatum{
-					GraphSyncLinkMetadatum{Link: links[0].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
-					GraphSyncLinkMetadatum{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionMissing},
-					GraphSyncLinkMetadatum{Link: links[2].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[0].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionMissing},
+					{Link: links[2].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 				assertExtension(t, response1, extension1)
 
 				response2 := findResponseForRequestID(t, responses, requestID2)
 				require.Equal(t, graphsync.RequestCompletedFull, response2.Status(), "did not generate completed full response")
 				assertMetadata(t, response2, []GraphSyncLinkMetadatum{
-					GraphSyncLinkMetadatum{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
-					GraphSyncLinkMetadatum{Link: links[2].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
-					GraphSyncLinkMetadatum{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[2].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 
 				response3 := findResponseForRequestID(t, responses, requestID3)
 				require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
 				assertMetadata(t, response3, []GraphSyncLinkMetadatum{
-					GraphSyncLinkMetadatum{Link: links[0].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
-					GraphSyncLinkMetadatum{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[0].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 				assertExtension(t, response3, extension2)
 
@@ -170,15 +170,15 @@ func TestMessageBuilding(t *testing.T) {
 				response2 := findResponseForRequestID(t, responses, requestID2)
 				require.Equal(t, graphsync.RequestCompletedFull, response2.Status(), "did not generate completed full response")
 				assertMetadata(t, response2, []GraphSyncLinkMetadatum{
-					GraphSyncLinkMetadatum{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
-					GraphSyncLinkMetadatum{Link: links[2].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
-					GraphSyncLinkMetadatum{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[2].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 
 				response3 := findResponseForRequestID(t, responses, requestID3)
 				require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
 				assertMetadata(t, response3, []GraphSyncLinkMetadatum{
-					GraphSyncLinkMetadatum{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 				assertExtension(t, response3, extension2)
 
@@ -228,7 +228,7 @@ func TestMessageBuilding(t *testing.T) {
 				response3 := findResponseForRequestID(t, responses, requestID3)
 				require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
 				assertMetadata(t, response3, []GraphSyncLinkMetadatum{
-					GraphSyncLinkMetadatum{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 				assertExtension(t, response3, extension2)
 

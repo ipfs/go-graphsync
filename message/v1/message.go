@@ -9,7 +9,6 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -23,8 +22,6 @@ import (
 	pb "github.com/ipfs/go-graphsync/message/pb"
 	"github.com/ipfs/go-graphsync/message/v1/metadata"
 )
-
-var log = logging.Logger("graphsync")
 
 const extensionMetadata = string("graphsync/response-metadata")
 
