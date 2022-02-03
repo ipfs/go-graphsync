@@ -195,9 +195,9 @@ type ResponseData interface {
 type LinkAction string
 
 const (
-	LinkActionPresent = LinkAction("p")
+	LinkActionPresent = LinkAction("Present")
 
-	LinkActionMissing = LinkAction("m")
+	LinkActionMissing = LinkAction("Missing")
 )
 
 type LinkMetadataIterator func(cid.Cid, LinkAction)
