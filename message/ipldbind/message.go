@@ -2,6 +2,7 @@ package ipldbind
 
 import (
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipld/go-ipld-prime/datamodel"
 
 	"github.com/ipfs/go-graphsync"
@@ -50,18 +51,13 @@ type GraphSyncRequest struct {
 	Update     bool
 }
 
-type GraphSyncMetadatum struct {
-	Link         datamodel.Link
-	BlockPresent bool
-}
-
 // GraphSyncResponse is an struct to capture data on a response sent back
 // in a GraphSyncMessage.
 type GraphSyncResponse struct {
 	Id []byte
 
 	Status     graphsync.ResponseStatusCode
-	Metadata   []GraphSyncMetadatum
+	Metadata   []message.GraphSyncMetadatum
 	Extensions GraphSyncExtensions
 }
 

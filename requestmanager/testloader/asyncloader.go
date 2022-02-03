@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -80,16 +80,16 @@ func (fal *FakeAsyncLoader) VerifyLastProcessedBlocks(ctx context.Context, t *te
 // VerifyLastProcessedResponses verifies the responses passed to the last call to ProcessResponse
 // match the expected ones
 func (fal *FakeAsyncLoader) VerifyLastProcessedResponses(ctx context.Context, t *testing.T,
-	expectedResponses map[graphsync.RequestID]metadata.Metadata) {
+	expectedResponses map[graphsync.RequestID][]message.GraphSyncMetadatum) {
 	t.Helper()
 	var responses map[graphsync.RequestID]graphsync.LinkMetadata
 	testutil.AssertReceive(ctx, t, fal.responses, &responses, "did not process responses")
-	actualResponses := make(map[graphsync.RequestID]metadata.Metadata)
+	actualResponses := make(map[graphsync.RequestID][]message.GraphSyncMetadatum)
 	for rid, lm := range responses {
-		actualResponses[rid] = make(metadata.Metadata, 0)
+		actualResponses[rid] = make([]message.GraphSyncMetadatum, 0)
 		lm.Iterate(func(c cid.Cid, la graphsync.LinkAction) {
 			actualResponses[rid] = append(actualResponses[rid],
-				metadata.Item{Link: c, BlockPresent: la == graphsync.LinkActionPresent})
+				message.GraphSyncMetadatum{Link: c, Action: la})
 		})
 	}
 	require.Equal(t, expectedResponses, actualResponses, "did not process correct responses")

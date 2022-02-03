@@ -13,7 +13,6 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -41,9 +40,9 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 		requestID := graphsync.NewRequestID()
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
 			requestID: message.NewGraphSyncLinkMetadata(
-				[]metadata.Item{{
-					Link:         link.Cid,
-					BlockPresent: true,
+				[]message.GraphSyncMetadatum{{
+					Link:   link.Cid,
+					Action: graphsync.LinkActionPresent,
 				}}),
 		}
 		p := testutil.GeneratePeers(1)[0]
@@ -64,9 +63,9 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
 			requestID: message.NewGraphSyncLinkMetadata(
-				[]metadata.Item{{
-					Link:         link.(cidlink.Link).Cid,
-					BlockPresent: false,
+				[]message.GraphSyncMetadatum{{
+					Link:   link.(cidlink.Link).Cid,
+					Action: graphsync.LinkActionMissing,
 				}}),
 		}
 		p := testutil.GeneratePeers(1)[0]
@@ -108,9 +107,9 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
 			requestID: message.NewGraphSyncLinkMetadata(
-				[]metadata.Item{{
-					Link:         link.Cid,
-					BlockPresent: true,
+				[]message.GraphSyncMetadatum{{
+					Link:   link.Cid,
+					Action: graphsync.LinkActionPresent,
 				}}),
 		}
 		asyncLoader.ProcessResponse(context.Background(), responses, blocks)
@@ -135,9 +134,9 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
 			requestID: message.NewGraphSyncLinkMetadata(
-				[]metadata.Item{{
-					Link:         link.(cidlink.Link).Cid,
-					BlockPresent: false,
+				[]message.GraphSyncMetadatum{{
+					Link:   link.(cidlink.Link).Cid,
+					Action: graphsync.LinkActionMissing,
 				}}),
 		}
 		asyncLoader.ProcessResponse(context.Background(), responses, nil)
@@ -171,9 +170,9 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 		requestID := graphsync.NewRequestID()
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
 			requestID: message.NewGraphSyncLinkMetadata(
-				[]metadata.Item{{
-					Link:         link.Cid,
-					BlockPresent: true,
+				[]message.GraphSyncMetadatum{{
+					Link:   link.Cid,
+					Action: graphsync.LinkActionPresent,
 				}}),
 		}
 		p := testutil.GeneratePeers(1)[0]
@@ -265,14 +264,14 @@ func TestRequestSplittingSameBlockTwoStores(t *testing.T) {
 		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link, ipld.LinkContext{})
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
 			requestID1: message.NewGraphSyncLinkMetadata(
-				[]metadata.Item{{
-					Link:         link.Cid,
-					BlockPresent: true,
+				[]message.GraphSyncMetadatum{{
+					Link:   link.Cid,
+					Action: graphsync.LinkActionPresent,
 				}}),
 			requestID2: message.NewGraphSyncLinkMetadata(
-				[]metadata.Item{{
-					Link:         link.Cid,
-					BlockPresent: true,
+				[]message.GraphSyncMetadatum{{
+					Link:   link.Cid,
+					Action: graphsync.LinkActionPresent,
 				}}),
 		}
 		asyncLoader.ProcessResponse(context.Background(), responses, blocks)
@@ -304,9 +303,9 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link, ipld.LinkContext{})
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
 			requestID2: message.NewGraphSyncLinkMetadata(
-				[]metadata.Item{{
-					Link:         link.Cid,
-					BlockPresent: true,
+				[]message.GraphSyncMetadatum{{
+					Link:   link.Cid,
+					Action: graphsync.LinkActionPresent,
 				}}),
 		}
 		asyncLoader.ProcessResponse(context.Background(), responses, blocks)

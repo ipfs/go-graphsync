@@ -62,11 +62,6 @@ const (
 
 	// Known Graphsync Extensions
 
-	// ExtensionMetadata provides response metadata for a Graphsync request and is
-	// documented at
-	// https://github.com/ipld/specs/blob/master/block-layer/graphsync/known_extensions.md
-	ExtensionMetadata = ExtensionName("graphsync/response-metadata")
-
 	// ExtensionDoNotSendCIDs tells the responding peer not to send certain blocks if they
 	// are encountered in a traversal and is documented at
 	// https://github.com/ipld/specs/blob/master/block-layer/graphsync/known_extensions.md
@@ -200,9 +195,9 @@ type ResponseData interface {
 type LinkAction string
 
 const (
-	LinkActionPresent = LinkAction("present")
+	LinkActionPresent = LinkAction("p")
 
-	LinkActionMissing = LinkAction("missing")
+	LinkActionMissing = LinkAction("m")
 )
 
 type LinkMetadataIterator func(cid.Cid, LinkAction)

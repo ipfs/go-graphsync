@@ -3,12 +3,15 @@ package v2
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
+	"os"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/bindnode"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -18,7 +21,6 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/message/ipldbind"
-	"github.com/ipfs/go-graphsync/metadata"
 )
 
 var log = logging.Logger("graphsync")
@@ -47,7 +49,6 @@ func (mh *MessageHandler) FromMsgReader(_ peer.ID, r msgio.Reader) (message.Grap
 	if err != nil {
 		return message.GraphSyncMessage{}, err
 	}
-
 	node := builder.Build()
 	ipldGSM := bindnode.Unwrap(node).(*ipldbind.GraphSyncMessage)
 	return mh.fromIPLD(ipldGSM)
@@ -83,9 +84,14 @@ func (mh *MessageHandler) toIPLD(gsm message.GraphSyncMessage) (*ipldbind.GraphS
 	responses := gsm.Responses()
 	ibm.Responses = make([]ipldbind.GraphSyncResponse, 0, len(responses))
 	for _, response := range responses {
+		glsm, ok := response.Metadata().(message.GraphSyncLinkMetadata)
+		if !ok {
+			return nil, fmt.Errorf("unexpected metadata type")
+		}
 		ibm.Responses = append(ibm.Responses, ipldbind.GraphSyncResponse{
 			Id:         response.RequestID().Bytes(),
 			Status:     response.Status(),
+			Metadata:   glsm.Clone(),
 			Extensions: ipldbind.NewGraphSyncExtensions(response),
 		})
 	}
@@ -119,7 +125,8 @@ func (mh *MessageHandler) ToNet(_ peer.ID, gsm message.GraphSyncMessage, w io.Wr
 	if err != nil {
 		return err
 	}
-	//_, err = buf.WriteTo(w)
+	dagjson.Encode(node.Representation(), os.Stdout)
+	fmt.Println()
 
 	lbuflen := binary.PutUvarint(lbuf, uint64(buf.Len()-binary.MaxVarintLen64))
 	out := buf.Bytes()
@@ -167,16 +174,10 @@ func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessage) (message.Grap
 		if err != nil {
 			return message.GraphSyncMessage{}, err
 		}
-		mdRaw := res.Extensions.Values[string(graphsync.ExtensionMetadata)]
-		var md metadata.Metadata
-		if mdRaw != nil {
-			md, err = metadata.DecodeMetadata(mdRaw)
-			if err != nil {
-				log.Warnf("Unable to decode metadata in response for request id %d: %w", id, err)
-			}
-		}
-
-		responses[id] = message.NewResponse(id, graphsync.ResponseStatusCode(res.Status), md, res.Extensions.ToExtensionsList()...)
+		responses[id] = message.NewResponse(id,
+			graphsync.ResponseStatusCode(res.Status),
+			res.Metadata,
+			res.Extensions.ToExtensionsList()...)
 	}
 
 	blks := make(map[cid.Cid]blocks.Block, len(ibm.Blocks))

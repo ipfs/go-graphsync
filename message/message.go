@@ -15,7 +15,6 @@ import (
 	"github.com/libp2p/go-msgio"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/metadata"
 )
 
 type MessageHandler interface {
@@ -65,18 +64,22 @@ func (gsr GraphSyncRequest) String() string {
 type GraphSyncResponse struct {
 	requestID  graphsync.RequestID
 	status     graphsync.ResponseStatusCode
-	metadata   metadata.Metadata
+	metadata   []GraphSyncMetadatum
 	extensions map[string]datamodel.Node
 }
 
+type GraphSyncMetadatum struct {
+	Link   cid.Cid
+	Action graphsync.LinkAction
+}
+
 type GraphSyncLinkMetadata struct {
-	linkMetadata metadata.Metadata
+	linkMetadata []GraphSyncMetadatum
 }
 
 // String returns a human-readable form of a GraphSyncResponse
 func (gsr GraphSyncResponse) String() string {
 	extStr := strings.Builder{}
-	// TODO: metadata
 	for _, name := range gsr.ExtensionNames() {
 		extStr.WriteString(string(name))
 		extStr.WriteString("|")
@@ -140,7 +143,7 @@ func NewUpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionD
 	return newRequest(id, cid.Cid{}, nil, 0, false, true, toExtensionsMap(extensions))
 }
 
-func NewGraphSyncLinkMetadata(md metadata.Metadata) GraphSyncLinkMetadata {
+func NewGraphSyncLinkMetadata(md []GraphSyncMetadatum) GraphSyncLinkMetadata {
 	return GraphSyncLinkMetadata{md}
 }
 
@@ -161,6 +164,7 @@ func newRequest(id graphsync.RequestID,
 	isCancel bool,
 	isUpdate bool,
 	extensions map[string]datamodel.Node) GraphSyncRequest {
+
 	return GraphSyncRequest{
 		id:         id,
 		root:       root,
@@ -175,7 +179,7 @@ func newRequest(id graphsync.RequestID,
 // NewResponse builds a new Graphsync response
 func NewResponse(requestID graphsync.RequestID,
 	status graphsync.ResponseStatusCode,
-	md metadata.Metadata,
+	md []GraphSyncMetadatum,
 	extensions ...graphsync.ExtensionData) GraphSyncResponse {
 
 	return newResponse(requestID, status, md, toExtensionsMap(extensions))
@@ -183,7 +187,7 @@ func NewResponse(requestID graphsync.RequestID,
 
 func newResponse(requestID graphsync.RequestID,
 	status graphsync.ResponseStatusCode,
-	responseMetadata metadata.Metadata,
+	responseMetadata []GraphSyncMetadatum,
 	extensions map[string]datamodel.Node) GraphSyncResponse {
 
 	return GraphSyncResponse{
@@ -298,18 +302,14 @@ func (gsr GraphSyncResponse) Status() graphsync.ResponseStatusCode { return gsr.
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
 func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) (datamodel.Node, bool) {
-	if name == graphsync.ExtensionMetadata {
-		return metadata.EncodeMetadata(gsr.metadata), true
-	} else {
-		if gsr.extensions == nil {
-			return nil, false
-		}
-		val, ok := gsr.extensions[string(name)]
-		if !ok {
-			return nil, false
-		}
-		return val, true
+	if gsr.extensions == nil {
+		return nil, false
 	}
+	val, ok := gsr.extensions[string(name)]
+	if !ok {
+		return nil, false
+	}
+	return val, true
 }
 
 // ExtensionNames returns the names of the extensions included in this request
@@ -317,9 +317,6 @@ func (gsr GraphSyncResponse) ExtensionNames() []graphsync.ExtensionName {
 	var extNames []graphsync.ExtensionName
 	for ext := range gsr.extensions {
 		extNames = append(extNames, graphsync.ExtensionName(ext))
-	}
-	if len(gsr.metadata) > 0 {
-		extNames = append(extNames, graphsync.ExtensionMetadata)
 	}
 	return extNames
 }
@@ -330,12 +327,19 @@ func (gsr GraphSyncResponse) Metadata() graphsync.LinkMetadata {
 
 func (gslm GraphSyncLinkMetadata) Iterate(iter graphsync.LinkMetadataIterator) {
 	for _, md := range gslm.linkMetadata {
-		action := graphsync.LinkActionPresent
-		if !md.BlockPresent {
-			action = graphsync.LinkActionMissing
-		}
-		iter(md.Link, action)
+		iter(md.Link, md.Action)
 	}
+}
+
+func (gslm GraphSyncLinkMetadata) Clone() []GraphSyncMetadatum {
+	if gslm.linkMetadata == nil {
+		return nil
+	}
+	md := make([]GraphSyncMetadatum, 0, len(gslm.linkMetadata))
+	for _, lm := range gslm.linkMetadata {
+		md = append(md, GraphSyncMetadatum{Link: lm.Link, Action: lm.Action})
+	}
+	return md
 }
 
 // ReplaceExtensions merges the extensions given extensions into the request to create a new request,

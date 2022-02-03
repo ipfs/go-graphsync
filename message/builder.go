@@ -7,7 +7,6 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/metadata"
 )
 
 // Builder captures components of a message across multiple
@@ -17,7 +16,7 @@ type Builder struct {
 	outgoingBlocks     map[cid.Cid]blocks.Block
 	blkSize            uint64
 	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
-	outgoingResponses  map[graphsync.RequestID]metadata.Metadata
+	outgoingResponses  map[graphsync.RequestID][]GraphSyncMetadatum
 	extensions         map[graphsync.RequestID][]graphsync.ExtensionData
 	requests           map[graphsync.RequestID]GraphSyncRequest
 }
@@ -28,7 +27,7 @@ func NewBuilder() *Builder {
 		requests:           make(map[graphsync.RequestID]GraphSyncRequest),
 		outgoingBlocks:     make(map[cid.Cid]blocks.Block),
 		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
-		outgoingResponses:  make(map[graphsync.RequestID]metadata.Metadata),
+		outgoingResponses:  make(map[graphsync.RequestID][]GraphSyncMetadatum),
 		extensions:         make(map[graphsync.RequestID][]graphsync.ExtensionData),
 	}
 }
@@ -61,8 +60,8 @@ func (b *Builder) BlockSize() uint64 {
 
 // AddLink adds the given link and whether its block is present
 // to the message for the given request ID.
-func (b *Builder) AddLink(requestID graphsync.RequestID, link ipld.Link, blockPresent bool) {
-	b.outgoingResponses[requestID] = append(b.outgoingResponses[requestID], metadata.Item{Link: link.(cidlink.Link).Cid, BlockPresent: blockPresent})
+func (b *Builder) AddLink(requestID graphsync.RequestID, link ipld.Link, linkAction graphsync.LinkAction) {
+	b.outgoingResponses[requestID] = append(b.outgoingResponses[requestID], GraphSyncMetadatum{Link: link.(cidlink.Link).Cid, Action: linkAction})
 }
 
 // AddResponseCode marks the given request as completed in the message,
@@ -96,7 +95,7 @@ func (b *Builder) ScrubResponses(requestIDs []graphsync.RequestID) uint64 {
 		for _, item := range metadata {
 			block, willSendBlock := b.outgoingBlocks[item.Link]
 			_, alreadySavedBlock := savedBlocks[item.Link]
-			if item.BlockPresent && willSendBlock && !alreadySavedBlock {
+			if item.Action == graphsync.LinkActionPresent && willSendBlock && !alreadySavedBlock {
 				savedBlocks[item.Link] = block
 				newBlkSize += uint64(len(block.RawData()))
 			}

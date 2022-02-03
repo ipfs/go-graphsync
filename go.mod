@@ -3,7 +3,7 @@ module github.com/ipfs/go-graphsync
 go 1.16
 
 require (
-	github.com/google/go-cmp v0.5.6
+	github.com/google/go-cmp v0.5.7
 	github.com/google/uuid v1.3.0
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20200817222906-ea96cece81f1
 	github.com/hannahhoward/go-pubsub v0.0.0-20200423002714-8d62886cc36e
@@ -28,7 +28,7 @@ require (
 	github.com/ipfs/go-unixfs v0.3.1
 	github.com/ipfs/go-unixfsnode v1.2.0
 	github.com/ipld/go-codec-dagpb v1.3.0
-	github.com/ipld/go-ipld-prime v0.14.5-0.20220121142026-257b06219831
+	github.com/ipld/go-ipld-prime v0.14.5-0.20220202110753-c322674203f0
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-libp2p v0.16.0

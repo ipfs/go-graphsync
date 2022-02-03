@@ -403,7 +403,7 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 
 	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
 		b.AddBlock(blks[0])
-		b.AddLink(requestID1, cidlink.Link{Cid: blks[0].Cid()}, true)
+		b.AddLink(requestID1, cidlink.Link{Cid: blks[0].Cid()}, graphsync.LinkActionPresent)
 		b.SetSubscriber(requestID1, subscriber)
 	})
 	waitGroup.Wait()
@@ -431,16 +431,16 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *Builder) {
 		b.AddBlock(blks[1])
 		b.SetResponseStream(requestID1, fc1)
-		b.AddLink(requestID1, cidlink.Link{Cid: blks[1].Cid()}, true)
+		b.AddLink(requestID1, cidlink.Link{Cid: blks[1].Cid()}, graphsync.LinkActionPresent)
 	})
 	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *Builder) {
 		b.AddBlock(blks[2])
 		b.SetResponseStream(requestID1, fc1)
-		b.AddLink(requestID1, cidlink.Link{Cid: blks[2].Cid()}, true)
+		b.AddLink(requestID1, cidlink.Link{Cid: blks[2].Cid()}, graphsync.LinkActionPresent)
 	})
 	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *Builder) {
 		b.SetResponseStream(requestID2, fc2)
-		b.AddLink(requestID2, cidlink.Link{Cid: blks[3].Cid()}, true)
+		b.AddLink(requestID2, cidlink.Link{Cid: blks[3].Cid()}, graphsync.LinkActionPresent)
 		b.AddBlock(blks[3])
 	})
 

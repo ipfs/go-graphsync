@@ -13,7 +13,6 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -62,33 +61,33 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 	requestID1 := graphsync.NewRequestID()
 	requestID2 := graphsync.NewRequestID()
 
-	request1Metadata := metadata.Metadata{
-		metadata.Item{
-			Link:         blks[0].Cid(),
-			BlockPresent: true,
+	request1Metadata := []message.GraphSyncMetadatum{
+		{
+			Link:   blks[0].Cid(),
+			Action: graphsync.LinkActionPresent,
 		},
-		metadata.Item{
-			Link:         blks[1].Cid(),
-			BlockPresent: false,
+		{
+			Link:   blks[1].Cid(),
+			Action: graphsync.LinkActionMissing,
 		},
-		metadata.Item{
-			Link:         blks[3].Cid(),
-			BlockPresent: true,
+		{
+			Link:   blks[3].Cid(),
+			Action: graphsync.LinkActionPresent,
 		},
 	}
 
-	request2Metadata := metadata.Metadata{
-		metadata.Item{
-			Link:         blks[1].Cid(),
-			BlockPresent: true,
+	request2Metadata := []message.GraphSyncMetadatum{
+		{
+			Link:   blks[1].Cid(),
+			Action: graphsync.LinkActionPresent,
 		},
-		metadata.Item{
-			Link:         blks[3].Cid(),
-			BlockPresent: true,
+		{
+			Link:   blks[3].Cid(),
+			Action: graphsync.LinkActionPresent,
 		},
-		metadata.Item{
-			Link:         blks[4].Cid(),
-			BlockPresent: true,
+		{
+			Link:   blks[4].Cid(),
+			Action: graphsync.LinkActionPresent,
 		},
 	}
 
