@@ -5,13 +5,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
-	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/bindnode"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -125,8 +123,6 @@ func (mh *MessageHandler) ToNet(_ peer.ID, gsm message.GraphSyncMessage, w io.Wr
 	if err != nil {
 		return err
 	}
-	dagjson.Encode(node.Representation(), os.Stdout)
-	fmt.Println()
 
 	lbuflen := binary.PutUvarint(lbuf, uint64(buf.Len()-binary.MaxVarintLen64))
 	out := buf.Bytes()

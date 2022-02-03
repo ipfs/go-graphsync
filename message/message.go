@@ -64,17 +64,17 @@ func (gsr GraphSyncRequest) String() string {
 type GraphSyncResponse struct {
 	requestID  graphsync.RequestID
 	status     graphsync.ResponseStatusCode
-	metadata   []GraphSyncMetadatum
+	metadata   []GraphSyncLinkMetadatum
 	extensions map[string]datamodel.Node
 }
 
-type GraphSyncMetadatum struct {
+type GraphSyncLinkMetadatum struct {
 	Link   cid.Cid
 	Action graphsync.LinkAction
 }
 
 type GraphSyncLinkMetadata struct {
-	linkMetadata []GraphSyncMetadatum
+	linkMetadata []GraphSyncLinkMetadatum
 }
 
 // String returns a human-readable form of a GraphSyncResponse
@@ -143,7 +143,7 @@ func NewUpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionD
 	return newRequest(id, cid.Cid{}, nil, 0, false, true, toExtensionsMap(extensions))
 }
 
-func NewGraphSyncLinkMetadata(md []GraphSyncMetadatum) GraphSyncLinkMetadata {
+func NewLinkMetadata(md []GraphSyncLinkMetadatum) GraphSyncLinkMetadata {
 	return GraphSyncLinkMetadata{md}
 }
 
@@ -179,7 +179,7 @@ func newRequest(id graphsync.RequestID,
 // NewResponse builds a new Graphsync response
 func NewResponse(requestID graphsync.RequestID,
 	status graphsync.ResponseStatusCode,
-	md []GraphSyncMetadatum,
+	md []GraphSyncLinkMetadatum,
 	extensions ...graphsync.ExtensionData) GraphSyncResponse {
 
 	return newResponse(requestID, status, md, toExtensionsMap(extensions))
@@ -187,7 +187,7 @@ func NewResponse(requestID graphsync.RequestID,
 
 func newResponse(requestID graphsync.RequestID,
 	status graphsync.ResponseStatusCode,
-	responseMetadata []GraphSyncMetadatum,
+	responseMetadata []GraphSyncLinkMetadatum,
 	extensions map[string]datamodel.Node) GraphSyncResponse {
 
 	return GraphSyncResponse{
@@ -331,13 +331,13 @@ func (gslm GraphSyncLinkMetadata) Iterate(iter graphsync.LinkMetadataIterator) {
 	}
 }
 
-func (gslm GraphSyncLinkMetadata) Clone() []GraphSyncMetadatum {
+func (gslm GraphSyncLinkMetadata) Clone() []GraphSyncLinkMetadatum {
 	if gslm.linkMetadata == nil {
 		return nil
 	}
-	md := make([]GraphSyncMetadatum, 0, len(gslm.linkMetadata))
+	md := make([]GraphSyncLinkMetadatum, 0, len(gslm.linkMetadata))
 	for _, lm := range gslm.linkMetadata {
-		md = append(md, GraphSyncMetadatum{Link: lm.Link, Action: lm.Action})
+		md = append(md, GraphSyncLinkMetadatum{Link: lm.Link, Action: lm.Action})
 	}
 	return md
 }

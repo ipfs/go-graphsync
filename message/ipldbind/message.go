@@ -57,7 +57,7 @@ type GraphSyncResponse struct {
 	Id []byte
 
 	Status     graphsync.ResponseStatusCode
-	Metadata   []message.GraphSyncMetadatum
+	Metadata   []message.GraphSyncLinkMetadatum
 	Extensions GraphSyncExtensions
 }
 

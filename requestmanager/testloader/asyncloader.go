@@ -80,16 +80,16 @@ func (fal *FakeAsyncLoader) VerifyLastProcessedBlocks(ctx context.Context, t *te
 // VerifyLastProcessedResponses verifies the responses passed to the last call to ProcessResponse
 // match the expected ones
 func (fal *FakeAsyncLoader) VerifyLastProcessedResponses(ctx context.Context, t *testing.T,
-	expectedResponses map[graphsync.RequestID][]message.GraphSyncMetadatum) {
+	expectedResponses map[graphsync.RequestID][]message.GraphSyncLinkMetadatum) {
 	t.Helper()
 	var responses map[graphsync.RequestID]graphsync.LinkMetadata
 	testutil.AssertReceive(ctx, t, fal.responses, &responses, "did not process responses")
-	actualResponses := make(map[graphsync.RequestID][]message.GraphSyncMetadatum)
+	actualResponses := make(map[graphsync.RequestID][]message.GraphSyncLinkMetadatum)
 	for rid, lm := range responses {
-		actualResponses[rid] = make([]message.GraphSyncMetadatum, 0)
+		actualResponses[rid] = make([]message.GraphSyncLinkMetadatum, 0)
 		lm.Iterate(func(c cid.Cid, la graphsync.LinkAction) {
 			actualResponses[rid] = append(actualResponses[rid],
-				message.GraphSyncMetadatum{Link: c, Action: la})
+				message.GraphSyncLinkMetadatum{Link: c, Action: la})
 		})
 	}
 	require.Equal(t, expectedResponses, actualResponses, "did not process correct responses")

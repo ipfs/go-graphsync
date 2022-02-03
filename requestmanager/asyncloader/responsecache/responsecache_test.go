@@ -61,7 +61,7 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 	requestID1 := graphsync.NewRequestID()
 	requestID2 := graphsync.NewRequestID()
 
-	request1Metadata := []message.GraphSyncMetadatum{
+	request1Metadata := []message.GraphSyncLinkMetadatum{
 		{
 			Link:   blks[0].Cid(),
 			Action: graphsync.LinkActionPresent,
@@ -76,7 +76,7 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 		},
 	}
 
-	request2Metadata := []message.GraphSyncMetadatum{
+	request2Metadata := []message.GraphSyncLinkMetadatum{
 		{
 			Link:   blks[1].Cid(),
 			Action: graphsync.LinkActionPresent,
@@ -92,8 +92,8 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 	}
 
 	responses := map[graphsync.RequestID]graphsync.LinkMetadata{
-		requestID1: message.NewGraphSyncLinkMetadata(request1Metadata),
-		requestID2: message.NewGraphSyncLinkMetadata(request2Metadata),
+		requestID1: message.NewLinkMetadata(request1Metadata),
+		requestID2: message.NewLinkMetadata(request2Metadata),
 	}
 
 	fubs := &fakeUnverifiedBlockStore{

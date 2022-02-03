@@ -68,7 +68,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, expectedByts, actualByts)
 
-	deserialized, err := mh.newMessageFromProto(peer.ID("foo"), pbMessage)
+	deserialized, err := mh.fromProto(peer.ID("foo"), pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedRequests := deserialized.Requests()
 	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
@@ -117,7 +117,7 @@ func TestAppendingResponses(t *testing.T) {
 	require.Equal(t, int32(status), pbResponse.Status)
 	require.Equal(t, []byte("stest extension data"), pbResponse.Extensions["graphsync/awesome"])
 
-	deserialized, err := mh.newMessageFromProto(p, pbMessage)
+	deserialized, err := mh.fromProto(p, pbMessage)
 	require.NoError(t, err, "deserializing protobuf message errored")
 	deserializedResponses := deserialized.Responses()
 	require.Len(t, deserializedResponses, 1, "did not add response to deserialized message")

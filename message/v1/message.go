@@ -75,7 +75,7 @@ func (mh *MessageHandler) FromMsgReader(p peer.ID, r msgio.Reader) (message.Grap
 		return message.GraphSyncMessage{}, err
 	}
 
-	return mh.newMessageFromProto(p, &pb)
+	return mh.fromProto(p, &pb)
 }
 
 // ToNet writes a GraphSyncMessage in its v1.0.0 protobuf format to a writer
@@ -165,7 +165,7 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 
 // Mapping from a pb.Message object to a GraphSyncMessage object, including
 // RequestID (int / uuid) mapping.
-func (mh *MessageHandler) newMessageFromProto(p peer.ID, pbm *pb.Message) (message.GraphSyncMessage, error) {
+func (mh *MessageHandler) fromProto(p peer.ID, pbm *pb.Message) (message.GraphSyncMessage, error) {
 	mh.mapLock.Lock()
 	defer mh.mapLock.Unlock()
 
@@ -288,12 +288,12 @@ func toEncodedExtensions(part MessagePartWithExtensions, linkMetadata graphsync.
 	return out, nil
 }
 
-func fromEncodedExtensions(in map[string][]byte) ([]graphsync.ExtensionData, []message.GraphSyncMetadatum, error) {
+func fromEncodedExtensions(in map[string][]byte) ([]graphsync.ExtensionData, []message.GraphSyncLinkMetadatum, error) {
 	if in == nil {
 		return []graphsync.ExtensionData{}, nil, nil
 	}
 	out := make([]graphsync.ExtensionData, 0, len(in))
-	var md []message.GraphSyncMetadatum
+	var md []message.GraphSyncLinkMetadatum
 	for name, data := range in {
 		var node datamodel.Node
 		var err error

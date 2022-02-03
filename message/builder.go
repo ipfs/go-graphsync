@@ -16,7 +16,7 @@ type Builder struct {
 	outgoingBlocks     map[cid.Cid]blocks.Block
 	blkSize            uint64
 	completedResponses map[graphsync.RequestID]graphsync.ResponseStatusCode
-	outgoingResponses  map[graphsync.RequestID][]GraphSyncMetadatum
+	outgoingResponses  map[graphsync.RequestID][]GraphSyncLinkMetadatum
 	extensions         map[graphsync.RequestID][]graphsync.ExtensionData
 	requests           map[graphsync.RequestID]GraphSyncRequest
 }
@@ -27,7 +27,7 @@ func NewBuilder() *Builder {
 		requests:           make(map[graphsync.RequestID]GraphSyncRequest),
 		outgoingBlocks:     make(map[cid.Cid]blocks.Block),
 		completedResponses: make(map[graphsync.RequestID]graphsync.ResponseStatusCode),
-		outgoingResponses:  make(map[graphsync.RequestID][]GraphSyncMetadatum),
+		outgoingResponses:  make(map[graphsync.RequestID][]GraphSyncLinkMetadatum),
 		extensions:         make(map[graphsync.RequestID][]graphsync.ExtensionData),
 	}
 }
@@ -61,7 +61,7 @@ func (b *Builder) BlockSize() uint64 {
 // AddLink adds the given link and whether its block is present
 // to the message for the given request ID.
 func (b *Builder) AddLink(requestID graphsync.RequestID, link ipld.Link, linkAction graphsync.LinkAction) {
-	b.outgoingResponses[requestID] = append(b.outgoingResponses[requestID], GraphSyncMetadatum{Link: link.(cidlink.Link).Cid, Action: linkAction})
+	b.outgoingResponses[requestID] = append(b.outgoingResponses[requestID], GraphSyncLinkMetadatum{Link: link.(cidlink.Link).Cid, Action: linkAction})
 }
 
 // AddResponseCode marks the given request as completed in the message,

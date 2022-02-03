@@ -1,4 +1,4 @@
-package v2
+package v1
 
 import (
 	"testing"
@@ -11,6 +11,7 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 )
 
@@ -51,10 +52,12 @@ func TestIPLDRoundTrip(t *testing.T) {
 		blks[1].Cid(): blks[1],
 	}
 
+	mh := NewMessageHandler()
+	p := peer.ID("blip")
 	gsm := message.NewMessage(requests, responses, blocks)
-	igsm, err := NewMessageHandler().toIPLD(gsm)
+	pgsm, err := mh.ToProto(p, gsm)
 	require.NoError(t, err)
-	rtgsm, err := NewMessageHandler().fromIPLD(igsm)
+	rtgsm, err := mh.fromProto(p, pgsm)
 	require.NoError(t, err)
 
 	rtreq := rtgsm.Requests()

@@ -18,14 +18,17 @@ type Item struct {
 // serialized back and forth to bytes
 type Metadata []Item
 
-func (md Metadata) ToGraphSyncMetadata() []message.GraphSyncMetadatum {
-	gsm := make([]message.GraphSyncMetadatum, 0, len(md))
+func (md Metadata) ToGraphSyncMetadata() []message.GraphSyncLinkMetadatum {
+	if len(md) == 0 {
+		return nil
+	}
+	gsm := make([]message.GraphSyncLinkMetadatum, 0, len(md))
 	for _, ii := range md {
 		action := graphsync.LinkActionPresent
-		if ii.BlockPresent {
+		if !ii.BlockPresent {
 			action = graphsync.LinkActionMissing
 		}
-		gsm = append(gsm, message.GraphSyncMetadatum{Link: ii.Link, Action: action})
+		gsm = append(gsm, message.GraphSyncLinkMetadatum{Link: ii.Link, Action: action})
 	}
 	return gsm
 }

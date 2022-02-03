@@ -39,8 +39,8 @@ func TestAsyncLoadInitialLoadSucceedsResponsePresent(t *testing.T) {
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		requestID := graphsync.NewRequestID()
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
-			requestID: message.NewGraphSyncLinkMetadata(
-				[]message.GraphSyncMetadatum{{
+			requestID: message.NewLinkMetadata(
+				[]message.GraphSyncLinkMetadatum{{
 					Link:   link.Cid,
 					Action: graphsync.LinkActionPresent,
 				}}),
@@ -62,8 +62,8 @@ func TestAsyncLoadInitialLoadFails(t *testing.T) {
 		requestID := graphsync.NewRequestID()
 
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
-			requestID: message.NewGraphSyncLinkMetadata(
-				[]message.GraphSyncMetadatum{{
+			requestID: message.NewLinkMetadata(
+				[]message.GraphSyncLinkMetadatum{{
 					Link:   link.(cidlink.Link).Cid,
 					Action: graphsync.LinkActionMissing,
 				}}),
@@ -106,8 +106,8 @@ func TestAsyncLoadInitialLoadIndeterminateThenSucceeds(t *testing.T) {
 		st.AssertAttemptLoadWithoutResult(ctx, t, resultChan)
 
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
-			requestID: message.NewGraphSyncLinkMetadata(
-				[]message.GraphSyncMetadatum{{
+			requestID: message.NewLinkMetadata(
+				[]message.GraphSyncLinkMetadatum{{
 					Link:   link.Cid,
 					Action: graphsync.LinkActionPresent,
 				}}),
@@ -133,8 +133,8 @@ func TestAsyncLoadInitialLoadIndeterminateThenFails(t *testing.T) {
 		st.AssertAttemptLoadWithoutResult(ctx, t, resultChan)
 
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
-			requestID: message.NewGraphSyncLinkMetadata(
-				[]message.GraphSyncMetadatum{{
+			requestID: message.NewLinkMetadata(
+				[]message.GraphSyncLinkMetadatum{{
 					Link:   link.(cidlink.Link).Cid,
 					Action: graphsync.LinkActionMissing,
 				}}),
@@ -169,8 +169,8 @@ func TestAsyncLoadTwiceLoadsLocallySecondTime(t *testing.T) {
 	withLoader(st, func(ctx context.Context, asyncLoader *AsyncLoader) {
 		requestID := graphsync.NewRequestID()
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
-			requestID: message.NewGraphSyncLinkMetadata(
-				[]message.GraphSyncMetadatum{{
+			requestID: message.NewLinkMetadata(
+				[]message.GraphSyncLinkMetadatum{{
 					Link:   link.Cid,
 					Action: graphsync.LinkActionPresent,
 				}}),
@@ -263,13 +263,13 @@ func TestRequestSplittingSameBlockTwoStores(t *testing.T) {
 		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link, ipld.LinkContext{})
 		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link, ipld.LinkContext{})
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
-			requestID1: message.NewGraphSyncLinkMetadata(
-				[]message.GraphSyncMetadatum{{
+			requestID1: message.NewLinkMetadata(
+				[]message.GraphSyncLinkMetadatum{{
 					Link:   link.Cid,
 					Action: graphsync.LinkActionPresent,
 				}}),
-			requestID2: message.NewGraphSyncLinkMetadata(
-				[]message.GraphSyncMetadatum{{
+			requestID2: message.NewLinkMetadata(
+				[]message.GraphSyncLinkMetadatum{{
 					Link:   link.Cid,
 					Action: graphsync.LinkActionPresent,
 				}}),
@@ -302,8 +302,8 @@ func TestRequestSplittingSameBlockOnlyOneResponse(t *testing.T) {
 		resultChan1 := asyncLoader.AsyncLoad(p, requestID1, link, ipld.LinkContext{})
 		resultChan2 := asyncLoader.AsyncLoad(p, requestID2, link, ipld.LinkContext{})
 		responses := map[graphsync.RequestID]graphsync.LinkMetadata{
-			requestID2: message.NewGraphSyncLinkMetadata(
-				[]message.GraphSyncMetadatum{{
+			requestID2: message.NewLinkMetadata(
+				[]message.GraphSyncLinkMetadatum{{
 					Link:   link.Cid,
 					Action: graphsync.LinkActionPresent,
 				}}),
