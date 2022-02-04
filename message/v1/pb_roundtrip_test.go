@@ -7,12 +7,14 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
+	pb "github.com/ipfs/go-graphsync/message/pb"
 	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestIPLDRoundTrip(t *testing.T) {
@@ -54,10 +56,24 @@ func TestIPLDRoundTrip(t *testing.T) {
 
 	mh := NewMessageHandler()
 	p := peer.ID("blip")
+
+	// message format
 	gsm := message.NewMessage(requests, responses, blocks)
+	// proto internal format
 	pgsm, err := mh.ToProto(p, gsm)
 	require.NoError(t, err)
-	rtgsm, err := mh.fromProto(p, pgsm)
+
+	// protobuf binary format
+	buf, err := proto.Marshal(pgsm)
+	require.NoError(t, err)
+
+	// back to proto internal format
+	var rtpgsm pb.Message
+	err = proto.Unmarshal(buf, &rtpgsm)
+	require.NoError(t, err)
+
+	// back to bindnode internal format
+	rtgsm, err := mh.fromProto(p, &rtpgsm)
 	require.NoError(t, err)
 
 	rtreq := rtgsm.Requests()

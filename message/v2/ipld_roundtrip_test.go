@@ -1,15 +1,19 @@
 package v2
 
 import (
+	"bytes"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/message/ipldbind"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
+	"github.com/ipld/go-ipld-prime/node/bindnode"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 )
@@ -51,10 +55,29 @@ func TestIPLDRoundTrip(t *testing.T) {
 		blks[1].Cid(): blks[1],
 	}
 
+	// message format
 	gsm := message.NewMessage(requests, responses, blocks)
+	// bindnode internal format
 	igsm, err := NewMessageHandler().toIPLD(gsm)
 	require.NoError(t, err)
-	rtgsm, err := NewMessageHandler().fromIPLD(igsm)
+
+	// ipld TypedNode format
+	var buf bytes.Buffer
+	node := bindnode.Wrap(igsm, ipldbind.Prototype.Message.Type())
+
+	// dag-cbor binary format
+	err = dagcbor.Encode(node.Representation(), &buf)
+	require.NoError(t, err)
+
+	// back to bindnode internal format
+	builder := ipldbind.Prototype.Message.Representation().NewBuilder()
+	err = dagcbor.Decode(builder, &buf)
+	require.NoError(t, err)
+	rtnode := builder.Build()
+	rtigsm := bindnode.Unwrap(rtnode).(*ipldbind.GraphSyncMessage)
+
+	// back to message format
+	rtgsm, err := NewMessageHandler().fromIPLD(rtigsm)
 	require.NoError(t, err)
 
 	rtreq := rtgsm.Requests()
