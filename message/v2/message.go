@@ -20,8 +20,12 @@ import (
 	"github.com/ipfs/go-graphsync/message/ipldbind"
 )
 
+// MessageHandler is used to hold per-peer state for each connection. There is
+// no state to hold for the v2 protocol, so this exists to provide a consistent
+// interface between the protocol versions.
 type MessageHandler struct{}
 
+// NewMessageHandler creates a new MessageHandler
 func NewMessageHandler() *MessageHandler {
 	return &MessageHandler{}
 }
@@ -86,7 +90,7 @@ func (mh *MessageHandler) toIPLD(gsm message.GraphSyncMessage) (*ipldbind.GraphS
 		ibm.Responses = append(ibm.Responses, ipldbind.GraphSyncResponse{
 			Id:         response.RequestID().Bytes(),
 			Status:     response.Status(),
-			Metadata:   glsm.Clone(),
+			Metadata:   glsm.RawMetadata(),
 			Extensions: ipldbind.NewGraphSyncExtensions(response),
 		})
 	}

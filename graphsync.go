@@ -190,19 +190,28 @@ type ResponseData interface {
 	Metadata() LinkMetadata
 }
 
-// TODO: docs for these new bits
-
+// LinkAction is a code that is used by message metadata to communicate the
+// state and reason for blocks being included or not in a transfer
 type LinkAction string
 
 const (
+	// LinkActionPresent means the linked block was present on this machine, and
+	// is included a this message
 	LinkActionPresent = LinkAction("Present")
 
+	// LinkActionMissing means I did not have the linked block, so I skipped over
+	// this part of the traversal
 	LinkActionMissing = LinkAction("Missing")
 )
 
+// LinkMetadataIterator is used to access individual link metadata through a
+// LinkMetadata object
 type LinkMetadataIterator func(cid.Cid, LinkAction)
 
+// LinkMetadata is used to access link metadata through an Iterator
 type LinkMetadata interface {
+	// Iterate steps over individual metadata one by one using the provided
+	// callback
 	Iterate(LinkMetadataIterator)
 }
 

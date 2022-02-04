@@ -8,14 +8,14 @@ type GraphSyncLinkAction enum {
    | Present             ("p")
    # DuplicateNotSent means the linked block was present on this machine, but I
    # am not sending it (most likely duplicate)
-   # | DuplicateNotSent   ("d")
+   # TODO: | DuplicateNotSent   ("d")
    # Missing means I did not have the linked block, so I skipped over this part
    # of the traversal
    | Missing             ("m")
    # DuplicateDAGSkipped means the DAG with this link points toward has already
    # been traversed entirely in the course of this request
    # so I am skipping over it entirely
-   # | DuplicateDAGSkipped ("s")
+   # TODO: | DuplicateDAGSkipped ("s")
 } representation string
 
 type GraphSyncMetadatum struct {

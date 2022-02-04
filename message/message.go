@@ -17,10 +17,19 @@ import (
 	"github.com/ipfs/go-graphsync"
 )
 
+// MessageHandler provides a consistent interface for maintaining per-peer state
+// within the differnet protocol versions
 type MessageHandler interface {
 	FromNet(peer.ID, io.Reader) (GraphSyncMessage, error)
 	FromMsgReader(peer.ID, msgio.Reader) (GraphSyncMessage, error)
 	ToNet(peer.ID, GraphSyncMessage, io.Writer) error
+}
+
+// MessagePartWithExtensions is an interface for accessing metadata on both
+// requests and responses, which have a consistent extension accessor mechanism
+type MessagePartWithExtensions interface {
+	ExtensionNames() []graphsync.ExtensionName
+	Extension(name graphsync.ExtensionName) (datamodel.Node, bool)
 }
 
 // GraphSyncRequest is a struct to capture data on a request contained in a
@@ -68,11 +77,16 @@ type GraphSyncResponse struct {
 	extensions map[string]datamodel.Node
 }
 
+// GraphSyncLinkMetadatum is used for holding individual pieces of metadata,
+// this is not intended for public consumption and is used within
+// GraphSyncLinkMetadata to contain the metadata
 type GraphSyncLinkMetadatum struct {
 	Link   cid.Cid
 	Action graphsync.LinkAction
 }
 
+// GraphSyncLinkMetadata is a graphsync.LinkMetadata compatible type that is
+// used for holding and accessing the metadata for a request
 type GraphSyncLinkMetadata struct {
 	linkMetadata []GraphSyncLinkMetadatum
 }
@@ -99,6 +113,8 @@ type GraphSyncMessage struct {
 	blocks    map[cid.Cid]blocks.Block
 }
 
+// NewMessage generates a new message containing the provided requests,
+// responses and blocks
 func NewMessage(
 	requests map[graphsync.RequestID]GraphSyncRequest,
 	responses map[graphsync.RequestID]GraphSyncResponse,
@@ -143,6 +159,8 @@ func NewUpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionD
 	return newRequest(id, cid.Cid{}, nil, 0, false, true, toExtensionsMap(extensions))
 }
 
+// NewLinkMetadata generates a new graphsync.LinkMetadata compatible object,
+// used for accessing the metadata in a message
 func NewLinkMetadata(md []GraphSyncLinkMetadatum) GraphSyncLinkMetadata {
 	return GraphSyncLinkMetadata{md}
 }
@@ -198,10 +216,13 @@ func newResponse(requestID graphsync.RequestID,
 	}
 }
 
+// Empty returns true if this message contains no meaningful content: requests,
+// responses, or blocks
 func (gsm GraphSyncMessage) Empty() bool {
 	return len(gsm.blocks) == 0 && len(gsm.requests) == 0 && len(gsm.responses) == 0
 }
 
+// Requests provides a copy of the requests in this message
 func (gsm GraphSyncMessage) Requests() []GraphSyncRequest {
 	requests := make([]GraphSyncRequest, 0, len(gsm.requests))
 	for _, request := range gsm.requests {
@@ -220,6 +241,7 @@ func (gsm GraphSyncMessage) ResponseCodes() map[graphsync.RequestID]graphsync.Re
 	return codes
 }
 
+// Responses provides a copy of the responses in this message
 func (gsm GraphSyncMessage) Responses() []GraphSyncResponse {
 	responses := make([]GraphSyncResponse, 0, len(gsm.responses))
 	for _, response := range gsm.responses {
@@ -228,6 +250,7 @@ func (gsm GraphSyncMessage) Responses() []GraphSyncResponse {
 	return responses
 }
 
+// Blocks provides a copy of all of the blocks in this message
 func (gsm GraphSyncMessage) Blocks() []blocks.Block {
 	bs := make([]blocks.Block, 0, len(gsm.blocks))
 	for _, block := range gsm.blocks {
@@ -321,25 +344,25 @@ func (gsr GraphSyncResponse) ExtensionNames() []graphsync.ExtensionName {
 	return extNames
 }
 
+// Metadata returns an instance of a graphsync.LinkMetadata for accessing the
+// individual metadatum via an iterator
 func (gsr GraphSyncResponse) Metadata() graphsync.LinkMetadata {
 	return GraphSyncLinkMetadata{gsr.metadata}
 }
 
+// Iterate over the metadata one by one via a graphsync.LinkMetadataIterator
+// callback function
 func (gslm GraphSyncLinkMetadata) Iterate(iter graphsync.LinkMetadataIterator) {
 	for _, md := range gslm.linkMetadata {
 		iter(md.Link, md.Action)
 	}
 }
 
-func (gslm GraphSyncLinkMetadata) Clone() []GraphSyncLinkMetadatum {
-	if gslm.linkMetadata == nil {
-		return nil
-	}
-	md := make([]GraphSyncLinkMetadatum, 0, len(gslm.linkMetadata))
-	for _, lm := range gslm.linkMetadata {
-		md = append(md, GraphSyncLinkMetadatum{Link: lm.Link, Action: lm.Action})
-	}
-	return md
+// RawMetadata accesses the raw GraphSyncLinkMetadatum contained in this object,
+// this is not exposed via the graphsync.LinkMetadata API and in general the
+// Iterate() method should be used instead for accessing the individual metadata
+func (gslm GraphSyncLinkMetadata) RawMetadata() []GraphSyncLinkMetadatum {
+	return gslm.linkMetadata
 }
 
 // ReplaceExtensions merges the extensions given extensions into the request to create a new request,

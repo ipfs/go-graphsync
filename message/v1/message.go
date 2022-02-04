@@ -25,16 +25,15 @@ import (
 
 const extensionMetadata = string("graphsync/response-metadata")
 
-type MessagePartWithExtensions interface {
-	ExtensionNames() []graphsync.ExtensionName
-	Extension(name graphsync.ExtensionName) (datamodel.Node, bool)
-}
-
 type v1RequestKey struct {
 	p  peer.ID
 	id int32
 }
 
+// MessageHandler is used to hold per-peer state for each connection. For the v1
+// protocol, we need to maintain a mapping of old style integer RequestIDs and
+// the newer UUID forms. This happens on a per-peer basis and needs to work
+// for both incoming and outgoing messages.
 type MessageHandler struct {
 	mapLock sync.Mutex
 	// each host can have multiple peerIDs, so our integer requestID mapping for
@@ -255,7 +254,7 @@ func (mh *MessageHandler) fromProto(p peer.ID, pbm *pb.Message) (message.GraphSy
 
 // Note that even for protocol v1 we now only support DAG-CBOR encoded extension data.
 // Anything else will be rejected with an error.
-func toEncodedExtensions(part MessagePartWithExtensions, linkMetadata graphsync.LinkMetadata) (map[string][]byte, error) {
+func toEncodedExtensions(part message.MessagePartWithExtensions, linkMetadata graphsync.LinkMetadata) (map[string][]byte, error) {
 	names := part.ExtensionNames()
 	out := make(map[string][]byte, len(names))
 	for _, name := range names {

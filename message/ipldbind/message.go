@@ -8,17 +8,17 @@ import (
 	"github.com/ipfs/go-graphsync"
 )
 
-type MessagePartWithExtensions interface {
-	ExtensionNames() []graphsync.ExtensionName
-	Extension(name graphsync.ExtensionName) (datamodel.Node, bool)
-}
-
+// GraphSyncExtensions is a container for representing extension data for
+// bindnode, it's converted to a graphsync.ExtensionData list by
+// ToExtensionsList()
 type GraphSyncExtensions struct {
 	Keys   []string
 	Values map[string]datamodel.Node
 }
 
-func NewGraphSyncExtensions(part MessagePartWithExtensions) GraphSyncExtensions {
+// NewGraphSyncExtensions creates GraphSyncExtensions from either a request or
+// response object
+func NewGraphSyncExtensions(part message.MessagePartWithExtensions) GraphSyncExtensions {
 	names := part.ExtensionNames()
 	keys := make([]string, 0, len(names))
 	values := make(map[string]datamodel.Node, len(names))
@@ -30,6 +30,8 @@ func NewGraphSyncExtensions(part MessagePartWithExtensions) GraphSyncExtensions 
 	return GraphSyncExtensions{keys, values}
 }
 
+// ToExtensionsList creates a list of graphsync.ExtensionData objects from a
+// GraphSyncExtensions
 func (gse GraphSyncExtensions) ToExtensionsList() []graphsync.ExtensionData {
 	exts := make([]graphsync.ExtensionData, 0, len(gse.Values))
 	for name, data := range gse.Values {
@@ -61,18 +63,22 @@ type GraphSyncResponse struct {
 	Extensions GraphSyncExtensions
 }
 
+// GraphSyncBlock is a container for representing extension data for bindnode,
+// it's converted to a block.Block by the message translation layer
 type GraphSyncBlock struct {
 	Prefix []byte
 	Data   []byte
 }
 
+// GraphSyncMessage is a container for representing extension data for bindnode,
+// it's converted to a message.GraphSyncMessage by the message translation layer
 type GraphSyncMessage struct {
 	Requests  []GraphSyncRequest
 	Responses []GraphSyncResponse
 	Blocks    []GraphSyncBlock
 }
 
-// NamedExtension exists just for the purpose of the constructors.
+// NamedExtension exists just for the purpose of the constructors
 type NamedExtension struct {
 	Name graphsync.ExtensionName
 	Data datamodel.Node
