@@ -98,7 +98,7 @@ func (rm *RequestManager) newRequest(parentSpan trace.Span, p peer.ID, root ipld
 		inProgressChan:       make(chan graphsync.ResponseProgress),
 		inProgressErr:        make(chan error),
 	}
-	requestStatus.lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
+	requestStatus.lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged, nil))
 	rm.inProgressRequestStatuses[request.ID()] = requestStatus
 
 	rm.connManager.Protect(p, requestID.Tag())
@@ -259,7 +259,10 @@ func (rm *RequestManager) cancelOnError(requestID graphsync.RequestID, ipr *inPr
 	}
 }
 
-func (rm *RequestManager) processResponses(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block) {
+func (rm *RequestManager) processResponses(p peer.ID,
+	responses []gsmsg.GraphSyncResponse,
+	blks []blocks.Block) {
+
 	log.Debugf("beginning processing responses for peer %s", p)
 	requestIds := make([]string, 0, len(responses))
 	for _, r := range responses {
@@ -272,8 +275,11 @@ func (rm *RequestManager) processResponses(p peer.ID, responses []gsmsg.GraphSyn
 	defer span.End()
 	filteredResponses := rm.processExtensions(responses, p)
 	filteredResponses = rm.filterResponsesForPeer(filteredResponses, p)
+	responseMetadata := make(map[graphsync.RequestID]graphsync.LinkMetadata, len(responses))
+	for _, response := range responses {
+		responseMetadata[response.RequestID()] = response.Metadata()
+	}
 	rm.updateLastResponses(filteredResponses)
-	responseMetadata := metadataForResponses(filteredResponses)
 	rm.asyncLoader.ProcessResponse(ctx, responseMetadata, blks)
 	rm.processTerminations(filteredResponses)
 	log.Debugf("end processing responses for peer %s", p)

@@ -3,6 +3,7 @@ package v1
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 
@@ -19,18 +20,20 @@ import (
 	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/message"
 	pb "github.com/ipfs/go-graphsync/message/pb"
+	"github.com/ipfs/go-graphsync/message/v1/metadata"
 )
 
-type MessagePartWithExtensions interface {
-	ExtensionNames() []graphsync.ExtensionName
-	Extension(name graphsync.ExtensionName) (datamodel.Node, bool)
-}
+const extensionMetadata = string("graphsync/response-metadata")
 
 type v1RequestKey struct {
 	p  peer.ID
 	id int32
 }
 
+// MessageHandler is used to hold per-peer state for each connection. For the v1
+// protocol, we need to maintain a mapping of old style integer RequestIDs and
+// the newer UUID forms. This happens on a per-peer basis and needs to work
+// for both incoming and outgoing messages.
 type MessageHandler struct {
 	mapLock sync.Mutex
 	// each host can have multiple peerIDs, so our integer requestID mapping for
@@ -68,7 +71,7 @@ func (mh *MessageHandler) FromMsgReader(p peer.ID, r msgio.Reader) (message.Grap
 		return message.GraphSyncMessage{}, err
 	}
 
-	return mh.newMessageFromProto(p, &pb)
+	return mh.fromProto(p, &pb)
 }
 
 // ToNet writes a GraphSyncMessage in its v1.0.0 protobuf format to a writer
@@ -112,7 +115,7 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 		if err != nil {
 			return nil, err
 		}
-		ext, err := toEncodedExtensions(request)
+		ext, err := toEncodedExtensions(request, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +137,7 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 		if err != nil {
 			return nil, err
 		}
-		ext, err := toEncodedExtensions(response)
+		ext, err := toEncodedExtensions(response, response.Metadata())
 		if err != nil {
 			return nil, err
 		}
@@ -158,7 +161,7 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 
 // Mapping from a pb.Message object to a GraphSyncMessage object, including
 // RequestID (int / uuid) mapping.
-func (mh *MessageHandler) newMessageFromProto(p peer.ID, pbm *pb.Message) (message.GraphSyncMessage, error) {
+func (mh *MessageHandler) fromProto(p peer.ID, pbm *pb.Message) (message.GraphSyncMessage, error) {
 	mh.mapLock.Lock()
 	defer mh.mapLock.Unlock()
 
@@ -179,9 +182,13 @@ func (mh *MessageHandler) newMessageFromProto(p peer.ID, pbm *pb.Message) (messa
 			continue
 		}
 
-		exts, err := fromEncodedExtensions(req.GetExtensions())
+		exts, metadata, err := fromEncodedExtensions(req.GetExtensions())
 		if err != nil {
 			return message.GraphSyncMessage{}, err
+		}
+
+		if metadata != nil {
+			return message.GraphSyncMessage{}, fmt.Errorf("received unexpected metadata in request extensions for request id: %s", id)
 		}
 
 		if req.Update {
@@ -211,11 +218,11 @@ func (mh *MessageHandler) newMessageFromProto(p peer.ID, pbm *pb.Message) (messa
 		if err != nil {
 			return message.GraphSyncMessage{}, err
 		}
-		exts, err := fromEncodedExtensions(res.GetExtensions())
+		exts, metadata, err := fromEncodedExtensions(res.GetExtensions())
 		if err != nil {
 			return message.GraphSyncMessage{}, err
 		}
-		responses[id] = message.NewResponse(id, graphsync.ResponseStatusCode(res.Status), exts...)
+		responses[id] = message.NewResponse(id, graphsync.ResponseStatusCode(res.Status), metadata, exts...)
 	}
 
 	blks := make(map[cid.Cid]blocks.Block, len(pbm.GetData()))
@@ -247,7 +254,7 @@ func (mh *MessageHandler) newMessageFromProto(p peer.ID, pbm *pb.Message) (messa
 
 // Note that even for protocol v1 we now only support DAG-CBOR encoded extension data.
 // Anything else will be rejected with an error.
-func toEncodedExtensions(part MessagePartWithExtensions) (map[string][]byte, error) {
+func toEncodedExtensions(part message.MessagePartWithExtensions, linkMetadata graphsync.LinkMetadata) (map[string][]byte, error) {
 	names := part.ExtensionNames()
 	out := make(map[string][]byte, len(names))
 	for _, name := range names {
@@ -262,26 +269,47 @@ func toEncodedExtensions(part MessagePartWithExtensions) (map[string][]byte, err
 			out[string(name)] = byts
 		}
 	}
+	if linkMetadata != nil {
+		md := make(metadata.Metadata, 0)
+		linkMetadata.Iterate(func(c cid.Cid, la graphsync.LinkAction) {
+			md = append(md, metadata.Item{Link: c, BlockPresent: la == graphsync.LinkActionPresent})
+		})
+		mdNode := metadata.EncodeMetadata(md)
+		mdByts, err := ipldutil.EncodeNode(mdNode)
+		if err != nil {
+			return nil, err
+		}
+		out[extensionMetadata] = mdByts
+	}
 	return out, nil
 }
 
-func fromEncodedExtensions(in map[string][]byte) ([]graphsync.ExtensionData, error) {
+func fromEncodedExtensions(in map[string][]byte) ([]graphsync.ExtensionData, []message.GraphSyncLinkMetadatum, error) {
 	if in == nil {
-		return []graphsync.ExtensionData{}, nil
+		return []graphsync.ExtensionData{}, nil, nil
 	}
 	out := make([]graphsync.ExtensionData, 0, len(in))
+	var md []message.GraphSyncLinkMetadatum
 	for name, data := range in {
-		if len(data) == 0 {
-			out = append(out, graphsync.ExtensionData{Name: graphsync.ExtensionName(name), Data: nil})
-		} else {
-			data, err := ipldutil.DecodeNode(data)
+		var node datamodel.Node
+		var err error
+		if len(data) > 0 {
+			node, err = ipldutil.DecodeNode(data)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
-			out = append(out, graphsync.ExtensionData{Name: graphsync.ExtensionName(name), Data: data})
+			if name == string(extensionMetadata) {
+				mdd, err := metadata.DecodeMetadata(node)
+				if err != nil {
+					return nil, nil, err
+				}
+				md = mdd.ToGraphSyncMetadata()
+			} else {
+				out = append(out, graphsync.ExtensionData{Name: graphsync.ExtensionName(name), Data: node})
+			}
 		}
 	}
-	return out, nil
+	return out, md, nil
 }
 
 // Maps a []byte slice form of a RequestID (uuid) to an integer format as used

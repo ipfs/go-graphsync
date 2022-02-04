@@ -131,7 +131,11 @@ func (bo blockOperation) build(builder *messagequeue.Builder) {
 		}
 		builder.AddBlock(block)
 	}
-	builder.AddLink(bo.requestID, bo.link, bo.data != nil)
+	action := graphsync.LinkActionPresent
+	if bo.data == nil {
+		action = graphsync.LinkActionMissing
+	}
+	builder.AddLink(bo.requestID, bo.link, action)
 	builder.AddBlockData(bo.requestID, bo.Block())
 }
 

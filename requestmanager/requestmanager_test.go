@@ -8,6 +8,7 @@ import (
 	"time"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -21,7 +22,6 @@ import (
 	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/testloader"
@@ -60,24 +60,16 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	require.Equal(t, blockChain2.Selector(), requestRecords[1].gsr.Selector(), "did not encode selector properly")
 
 	firstBlocks := append(td.blockChain.AllBlocks(), blockChain2.Blocks(0, 3)...)
-	firstMetadata1 := metadataForBlocks(td.blockChain.AllBlocks(), true)
-	firstMetadataEncoded1 := metadata.EncodeMetadata(firstMetadata1)
-	firstMetadata2 := metadataForBlocks(blockChain2.Blocks(0, 3), true)
-	firstMetadataEncoded2 := metadata.EncodeMetadata(firstMetadata2)
+	firstMetadata1 := metadataForBlocks(td.blockChain.AllBlocks(), graphsync.LinkActionPresent)
+	firstMetadata2 := metadataForBlocks(blockChain2.Blocks(0, 3), graphsync.LinkActionPresent)
 	firstResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
-			Name: graphsync.ExtensionMetadata,
-			Data: firstMetadataEncoded1,
-		}),
-		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.PartialResponse, graphsync.ExtensionData{
-			Name: graphsync.ExtensionMetadata,
-			Data: firstMetadataEncoded2,
-		}),
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, firstMetadata1),
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.PartialResponse, firstMetadata2),
 	}
 
 	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
 	td.fal.VerifyLastProcessedBlocks(ctx, t, firstBlocks)
-	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
 		requestRecords[0].gsr.ID(): firstMetadata1,
 		requestRecords[1].gsr.ID(): firstMetadata2,
 	})
@@ -92,18 +84,14 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[1].gsr.ID().Tag())
 
 	moreBlocks := blockChain2.RemainderBlocks(3)
-	moreMetadata := metadataForBlocks(moreBlocks, true)
-	moreMetadataEncoded := metadata.EncodeMetadata(moreMetadata)
+	moreMetadata := metadataForBlocks(moreBlocks, graphsync.LinkActionPresent)
 	moreResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
-			Name: graphsync.ExtensionMetadata,
-			Data: moreMetadataEncoded,
-		}),
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
 
 	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
 	td.fal.VerifyLastProcessedBlocks(ctx, t, moreBlocks)
-	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
 		requestRecords[1].gsr.ID(): moreMetadata,
 	})
 
@@ -135,7 +123,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().Tag(), requestRecords[1].gsr.ID().Tag())
 
 	firstBlocks := td.blockChain.Blocks(0, 3)
-	firstMetadata := encodedMetadataForBlocks(t, firstBlocks, true)
+	firstMetadata := metadataForBlocks(firstBlocks, graphsync.LinkActionPresent)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.PartialResponse, firstMetadata),
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.PartialResponse, firstMetadata),
@@ -153,7 +141,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 	require.Equal(t, requestRecords[0].gsr.ID(), rr.gsr.ID())
 
 	moreBlocks := td.blockChain.RemainderBlocks(3)
-	moreMetadata := encodedMetadataForBlocks(t, moreBlocks, true)
+	moreMetadata := metadataForBlocks(moreBlocks, graphsync.LinkActionPresent)
 	moreResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
@@ -200,7 +188,7 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 
 	go func() {
 		firstBlocks := td.blockChain.Blocks(0, 3)
-		firstMetadata := encodedMetadataForBlocks(t, firstBlocks, true)
+		firstMetadata := metadataForBlocks(firstBlocks, graphsync.LinkActionPresent)
 		firstResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.PartialResponse, firstMetadata),
 		}
@@ -245,7 +233,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
 
 	firstBlocks := td.blockChain.Blocks(0, 3)
-	firstMetadata := encodedMetadataForBlocks(t, firstBlocks, true)
+	firstMetadata := metadataForBlocks(firstBlocks, graphsync.LinkActionPresent)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.PartialResponse, firstMetadata),
 	}
@@ -255,7 +243,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	managerCancel()
 
 	moreBlocks := td.blockChain.RemainderBlocks(3)
-	moreMetadata := encodedMetadataForBlocks(t, moreBlocks, true)
+	moreMetadata := metadataForBlocks(moreBlocks, graphsync.LinkActionPresent)
 	moreResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
@@ -279,7 +267,7 @@ func TestFailedRequest(t *testing.T) {
 	td.tcm.AssertProtectedWithTags(t, peers[0], rr.gsr.ID().Tag())
 
 	failedResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound),
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound, nil),
 	}
 	td.requestManager.ProcessResponses(peers[0], failedResponses, nil)
 
@@ -307,7 +295,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 
 	// failure comes in later over network
 	failedResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound),
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound, nil),
 	}
 
 	td.requestManager.ProcessResponses(peers[0], failedResponses, nil)
@@ -336,7 +324,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
-	md := encodedMetadataForBlocks(t, td.blockChain.AllBlocks(), true)
+	md := metadataForBlocks(td.blockChain.AllBlocks(), graphsync.LinkActionPresent)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
@@ -359,7 +347,7 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 
 	rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
 
-	md := encodedMetadataForBlocks(t, td.blockChain.AllBlocks(), false)
+	md := metadataForBlocks(td.blockChain.AllBlocks(), graphsync.LinkActionMissing)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedPartial, md),
 	}
@@ -451,10 +439,8 @@ func TestEncodingExtensions(t *testing.T) {
 		expectedUpdate := basicnode.NewBytes(testutil.RandomBytes(100))
 		firstResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
-				graphsync.PartialResponse, graphsync.ExtensionData{
-					Name: graphsync.ExtensionMetadata,
-					Data: nil,
-				},
+				graphsync.PartialResponse,
+				nil,
 				graphsync.ExtensionData{
 					Name: td.extensionName1,
 					Data: expectedData,
@@ -484,10 +470,8 @@ func TestEncodingExtensions(t *testing.T) {
 
 		secondResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
-				graphsync.PartialResponse, graphsync.ExtensionData{
-					Name: graphsync.ExtensionMetadata,
-					Data: nil,
-				},
+				graphsync.PartialResponse,
+				nil,
 				graphsync.ExtensionData{
 					Name: td.extensionName1,
 					Data: nextExpectedData,
@@ -565,14 +549,11 @@ func TestBlockHooks(t *testing.T) {
 		expectedUpdate := basicnode.NewBytes(testutil.RandomBytes(100))
 
 		firstBlocks := td.blockChain.Blocks(0, 3)
-		firstMetadata := metadataForBlocks(firstBlocks, true)
-		firstMetadataEncoded := metadata.EncodeMetadata(firstMetadata)
+		firstMetadata := metadataForBlocks(firstBlocks, graphsync.LinkActionPresent)
 		firstResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
-				graphsync.PartialResponse, graphsync.ExtensionData{
-					Name: graphsync.ExtensionMetadata,
-					Data: firstMetadataEncoded,
-				},
+				graphsync.PartialResponse,
+				firstMetadata,
 				graphsync.ExtensionData{
 					Name: td.extensionName1,
 					Data: expectedData,
@@ -595,7 +576,7 @@ func TestBlockHooks(t *testing.T) {
 
 		td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
 		td.fal.VerifyLastProcessedBlocks(ctx, t, firstBlocks)
-		td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+		td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
 			rr.gsr.ID(): firstMetadata,
 		})
 		td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), firstBlocks)
@@ -610,9 +591,12 @@ func TestBlockHooks(t *testing.T) {
 			testutil.AssertReceive(ctx, t, receivedResponses, &receivedResponse, "did not receive response data")
 			require.Equal(t, firstResponses[0].RequestID(), receivedResponse.RequestID(), "did not receive correct response ID")
 			require.Equal(t, firstResponses[0].Status(), receivedResponse.Status(), "did not receive correct response status")
-			metadata, has := receivedResponse.Extension(graphsync.ExtensionMetadata)
-			require.True(t, has)
-			require.Equal(t, firstMetadataEncoded, metadata, "should receive correct metadata")
+			md := make([]gsmsg.GraphSyncLinkMetadatum, 0)
+			receivedResponse.Metadata().Iterate(func(c cid.Cid, la graphsync.LinkAction) {
+				md = append(md, gsmsg.GraphSyncLinkMetadatum{Link: c, Action: graphsync.LinkActionPresent})
+			})
+			require.Greater(t, len(md), 0)
+			require.Equal(t, firstMetadata, md, "should receive correct metadata")
 			receivedExtensionData, _ := receivedResponse.Extension(td.extensionName1)
 			require.Equal(t, expectedData, receivedExtensionData, "should receive correct response extension data")
 			var receivedBlock graphsync.BlockData
@@ -625,14 +609,11 @@ func TestBlockHooks(t *testing.T) {
 		nextExpectedUpdate1 := basicnode.NewBytes(testutil.RandomBytes(100))
 		nextExpectedUpdate2 := basicnode.NewBytes(testutil.RandomBytes(100))
 		nextBlocks := td.blockChain.RemainderBlocks(3)
-		nextMetadata := metadataForBlocks(nextBlocks, true)
-		nextMetadataEncoded := metadata.EncodeMetadata(nextMetadata)
+		nextMetadata := metadataForBlocks(nextBlocks, graphsync.LinkActionPresent)
 		secondResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
-				graphsync.RequestCompletedFull, graphsync.ExtensionData{
-					Name: graphsync.ExtensionMetadata,
-					Data: nextMetadataEncoded,
-				},
+				graphsync.RequestCompletedFull,
+				nextMetadata,
 				graphsync.ExtensionData{
 					Name: td.extensionName1,
 					Data: nextExpectedData,
@@ -658,7 +639,7 @@ func TestBlockHooks(t *testing.T) {
 		}
 		td.requestManager.ProcessResponses(peers[0], secondResponses, nextBlocks)
 		td.fal.VerifyLastProcessedBlocks(ctx, t, nextBlocks)
-		td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+		td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
 			rr.gsr.ID(): nextMetadata,
 		})
 		td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), nextBlocks)
@@ -676,9 +657,12 @@ func TestBlockHooks(t *testing.T) {
 			testutil.AssertReceive(ctx, t, receivedResponses, &receivedResponse, "did not receive response data")
 			require.Equal(t, secondResponses[0].RequestID(), receivedResponse.RequestID(), "did not receive correct response ID")
 			require.Equal(t, secondResponses[0].Status(), receivedResponse.Status(), "did not receive correct response status")
-			metadata, has := receivedResponse.Extension(graphsync.ExtensionMetadata)
-			require.True(t, has)
-			require.Equal(t, nextMetadataEncoded, metadata, "should receive correct metadata")
+			md := make([]gsmsg.GraphSyncLinkMetadatum, 0)
+			receivedResponse.Metadata().Iterate(func(c cid.Cid, la graphsync.LinkAction) {
+				md = append(md, gsmsg.GraphSyncLinkMetadatum{Link: c, Action: graphsync.LinkActionPresent})
+			})
+			require.Greater(t, len(md), 0)
+			require.Equal(t, nextMetadata, md, "should receive correct metadata")
 			receivedExtensionData, _ := receivedResponse.Extension(td.extensionName1)
 			require.Equal(t, nextExpectedData, receivedExtensionData, "should receive correct response extension data")
 			var receivedBlock graphsync.BlockData
@@ -720,19 +704,14 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "chainstore", key)
 
-	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
-	mdEncoded := metadata.EncodeMetadata(md)
-	mdExt := graphsync.ExtensionData{
-		Name: graphsync.ExtensionMetadata,
-		Data: mdEncoded,
-	}
+	md := metadataForBlocks(td.blockChain.AllBlocks(), graphsync.LinkActionPresent)
 	responses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, mdExt),
-		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, mdExt),
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, md),
+		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
 	td.fal.VerifyLastProcessedBlocks(ctx, t, td.blockChain.AllBlocks())
-	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
 		requestRecords[0].gsr.ID(): md,
 		requestRecords[1].gsr.ID(): md,
 	})
@@ -782,18 +761,13 @@ func TestOutgoingRequestListeners(t *testing.T) {
 		t.Fatal("should fire outgoing request listener")
 	}
 
-	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
-	mdEncoded := metadata.EncodeMetadata(md)
-	mdExt := graphsync.ExtensionData{
-		Name: graphsync.ExtensionMetadata,
-		Data: mdEncoded,
-	}
+	md := metadataForBlocks(td.blockChain.AllBlocks(), graphsync.LinkActionPresent)
 	responses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, mdExt),
+		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
 	td.fal.VerifyLastProcessedBlocks(ctx, t, td.blockChain.AllBlocks())
-	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID]metadata.Metadata{
+	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
 		requestRecords[0].gsr.ID(): md,
 	})
 	td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
@@ -834,13 +808,9 @@ func TestPauseResume(t *testing.T) {
 	rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
 
 	// Start processing responses
-	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
-	mdEncoded := metadata.EncodeMetadata(md)
+	md := metadataForBlocks(td.blockChain.AllBlocks(), graphsync.LinkActionPresent)
 	responses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
-			Name: graphsync.ExtensionMetadata,
-			Data: mdEncoded,
-		}),
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
 	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
@@ -919,13 +889,9 @@ func TestPauseResumeExternal(t *testing.T) {
 	rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
 
 	// Start processing responses
-	md := metadataForBlocks(td.blockChain.AllBlocks(), true)
-	mdEncoded := metadata.EncodeMetadata(md)
+	md := metadataForBlocks(td.blockChain.AllBlocks(), graphsync.LinkActionPresent)
 	responses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, graphsync.ExtensionData{
-			Name: graphsync.ExtensionMetadata,
-			Data: mdEncoded,
-		}),
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
 	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
@@ -1037,25 +1003,15 @@ func readNNetworkRequests(ctx context.Context, t *testing.T, td *testData, count
 	return sorted
 }
 
-func metadataForBlocks(blks []blocks.Block, present bool) metadata.Metadata {
-	md := make(metadata.Metadata, 0, len(blks))
+func metadataForBlocks(blks []blocks.Block, action graphsync.LinkAction) []gsmsg.GraphSyncLinkMetadatum {
+	md := make([]gsmsg.GraphSyncLinkMetadatum, 0, len(blks))
 	for _, block := range blks {
-		md = append(md, metadata.Item{
-			Link:         block.Cid(),
-			BlockPresent: present,
+		md = append(md, gsmsg.GraphSyncLinkMetadatum{
+			Link:   block.Cid(),
+			Action: action,
 		})
 	}
 	return md
-}
-
-func encodedMetadataForBlocks(t *testing.T, blks []blocks.Block, present bool) graphsync.ExtensionData {
-	t.Helper()
-	md := metadataForBlocks(blks, present)
-	metadataEncoded := metadata.EncodeMetadata(md)
-	return graphsync.ExtensionData{
-		Name: graphsync.ExtensionMetadata,
-		Data: metadataEncoded,
-	}
 }
 
 type testData struct {

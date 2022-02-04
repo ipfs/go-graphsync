@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/metadata"
+	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -61,39 +61,39 @@ func TestResponseCacheManagingLinks(t *testing.T) {
 	requestID1 := graphsync.NewRequestID()
 	requestID2 := graphsync.NewRequestID()
 
-	request1Metadata := metadata.Metadata{
-		metadata.Item{
-			Link:         blks[0].Cid(),
-			BlockPresent: true,
+	request1Metadata := []message.GraphSyncLinkMetadatum{
+		{
+			Link:   blks[0].Cid(),
+			Action: graphsync.LinkActionPresent,
 		},
-		metadata.Item{
-			Link:         blks[1].Cid(),
-			BlockPresent: false,
+		{
+			Link:   blks[1].Cid(),
+			Action: graphsync.LinkActionMissing,
 		},
-		metadata.Item{
-			Link:         blks[3].Cid(),
-			BlockPresent: true,
-		},
-	}
-
-	request2Metadata := metadata.Metadata{
-		metadata.Item{
-			Link:         blks[1].Cid(),
-			BlockPresent: true,
-		},
-		metadata.Item{
-			Link:         blks[3].Cid(),
-			BlockPresent: true,
-		},
-		metadata.Item{
-			Link:         blks[4].Cid(),
-			BlockPresent: true,
+		{
+			Link:   blks[3].Cid(),
+			Action: graphsync.LinkActionPresent,
 		},
 	}
 
-	responses := map[graphsync.RequestID]metadata.Metadata{
-		requestID1: request1Metadata,
-		requestID2: request2Metadata,
+	request2Metadata := []message.GraphSyncLinkMetadatum{
+		{
+			Link:   blks[1].Cid(),
+			Action: graphsync.LinkActionPresent,
+		},
+		{
+			Link:   blks[3].Cid(),
+			Action: graphsync.LinkActionPresent,
+		},
+		{
+			Link:   blks[4].Cid(),
+			Action: graphsync.LinkActionPresent,
+		},
+	}
+
+	responses := map[graphsync.RequestID]graphsync.LinkMetadata{
+		requestID1: message.NewLinkMetadata(request1Metadata),
+		requestID2: message.NewLinkMetadata(request2Metadata),
 	}
 
 	fubs := &fakeUnverifiedBlockStore{

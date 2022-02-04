@@ -3,6 +3,7 @@ package v2
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -19,8 +20,12 @@ import (
 	"github.com/ipfs/go-graphsync/message/ipldbind"
 )
 
+// MessageHandler is used to hold per-peer state for each connection. There is
+// no state to hold for the v2 protocol, so this exists to provide a consistent
+// interface between the protocol versions.
 type MessageHandler struct{}
 
+// NewMessageHandler creates a new MessageHandler
 func NewMessageHandler() *MessageHandler {
 	return &MessageHandler{}
 }
@@ -43,7 +48,6 @@ func (mh *MessageHandler) FromMsgReader(_ peer.ID, r msgio.Reader) (message.Grap
 	if err != nil {
 		return message.GraphSyncMessage{}, err
 	}
-
 	node := builder.Build()
 	ipldGSM := bindnode.Unwrap(node).(*ipldbind.GraphSyncMessage)
 	return mh.fromIPLD(ipldGSM)
@@ -79,9 +83,14 @@ func (mh *MessageHandler) toIPLD(gsm message.GraphSyncMessage) (*ipldbind.GraphS
 	responses := gsm.Responses()
 	ibm.Responses = make([]ipldbind.GraphSyncResponse, 0, len(responses))
 	for _, response := range responses {
+		glsm, ok := response.Metadata().(message.GraphSyncLinkMetadata)
+		if !ok {
+			return nil, fmt.Errorf("unexpected metadata type")
+		}
 		ibm.Responses = append(ibm.Responses, ipldbind.GraphSyncResponse{
 			Id:         response.RequestID().Bytes(),
 			Status:     response.Status(),
+			Metadata:   glsm.RawMetadata(),
 			Extensions: ipldbind.NewGraphSyncExtensions(response),
 		})
 	}
@@ -115,7 +124,6 @@ func (mh *MessageHandler) ToNet(_ peer.ID, gsm message.GraphSyncMessage, w io.Wr
 	if err != nil {
 		return err
 	}
-	//_, err = buf.WriteTo(w)
 
 	lbuflen := binary.PutUvarint(lbuf, uint64(buf.Len()-binary.MaxVarintLen64))
 	out := buf.Bytes()
@@ -159,12 +167,14 @@ func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessage) (message.Grap
 
 	responses := make(map[graphsync.RequestID]message.GraphSyncResponse, len(ibm.Responses))
 	for _, res := range ibm.Responses {
-		// exts := res.Extensions
 		id, err := graphsync.ParseRequestID(res.Id)
 		if err != nil {
 			return message.GraphSyncMessage{}, err
 		}
-		responses[id] = message.NewResponse(id, graphsync.ResponseStatusCode(res.Status), res.Extensions.ToExtensionsList()...)
+		responses[id] = message.NewResponse(id,
+			graphsync.ResponseStatusCode(res.Status),
+			res.Metadata,
+			res.Extensions.ToExtensionsList()...)
 	}
 
 	blks := make(map[cid.Cid]blocks.Block, len(ibm.Blocks))

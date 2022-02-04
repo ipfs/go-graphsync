@@ -62,11 +62,6 @@ const (
 
 	// Known Graphsync Extensions
 
-	// ExtensionMetadata provides response metadata for a Graphsync request and is
-	// documented at
-	// https://github.com/ipld/specs/blob/master/block-layer/graphsync/known_extensions.md
-	ExtensionMetadata = ExtensionName("graphsync/response-metadata")
-
 	// ExtensionDoNotSendCIDs tells the responding peer not to send certain blocks if they
 	// are encountered in a traversal and is documented at
 	// https://github.com/ipld/specs/blob/master/block-layer/graphsync/known_extensions.md
@@ -190,6 +185,34 @@ type ResponseData interface {
 	// Extension returns the content for an extension on a response, or errors
 	// if extension is not present
 	Extension(name ExtensionName) (datamodel.Node, bool)
+
+	// Metadata returns a copy of the link metadata contained in this response
+	Metadata() LinkMetadata
+}
+
+// LinkAction is a code that is used by message metadata to communicate the
+// state and reason for blocks being included or not in a transfer
+type LinkAction string
+
+const (
+	// LinkActionPresent means the linked block was present on this machine, and
+	// is included a this message
+	LinkActionPresent = LinkAction("Present")
+
+	// LinkActionMissing means I did not have the linked block, so I skipped over
+	// this part of the traversal
+	LinkActionMissing = LinkAction("Missing")
+)
+
+// LinkMetadataIterator is used to access individual link metadata through a
+// LinkMetadata object
+type LinkMetadataIterator func(cid.Cid, LinkAction)
+
+// LinkMetadata is used to access link metadata through an Iterator
+type LinkMetadata interface {
+	// Iterate steps over individual metadata one by one using the provided
+	// callback
+	Iterate(LinkMetadataIterator)
 }
 
 // BlockData gives information about a block included in a graphsync response

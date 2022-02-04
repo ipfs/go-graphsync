@@ -2,10 +2,8 @@ package metadata
 
 import (
 	"math/rand"
-	"os"
 	"testing"
 
-	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/fluent"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
@@ -39,6 +37,4 @@ func TestDecodeEncodeMetadata(t *testing.T) {
 	decodedMetadataFromNode, err := DecodeMetadata(nd)
 	require.NoError(t, err)
 	require.Equal(t, decodedMetadata, decodedMetadataFromNode, "metadata not equal to IPLD encoding")
-
-	dagjson.Encode(nd, os.Stdout)
 }
