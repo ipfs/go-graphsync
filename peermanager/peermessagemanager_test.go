@@ -92,7 +92,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	require.Equal(t, tp[0], firstMessage.p, "first message sent to incorrect peer")
 	request = firstMessage.message.Requests()[0]
 	require.Equal(t, id, request.ID())
-	require.False(t, request.IsCancel())
+	require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 	require.Equal(t, priority, request.Priority())
 	require.Equal(t, selector, request.Selector())
 
@@ -101,7 +101,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	require.Equal(t, tp[1], secondMessage.p, "second message sent to incorrect peer")
 	request = secondMessage.message.Requests()[0]
 	require.Equal(t, id, request.ID())
-	require.False(t, request.IsCancel())
+	require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 	require.Equal(t, priority, request.Priority())
 	require.Equal(t, selector, request.Selector())
 
@@ -111,7 +111,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	require.Equal(t, tp[0], thirdMessage.p, "third message sent to incorrect peer")
 	request = thirdMessage.message.Requests()[0]
 	require.Equal(t, id, request.ID())
-	require.True(t, request.IsCancel())
+	require.Equal(t, request.Type(), graphsync.RequestTypeCancel)
 
 	connectedPeers := peerManager.ConnectedPeers()
 	require.Len(t, connectedPeers, 2)

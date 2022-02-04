@@ -40,7 +40,7 @@ func TestAppendingRequests(t *testing.T) {
 	request := requests[0]
 	extensionData, found := request.Extension(extensionName)
 	require.Equal(t, id, request.ID())
-	require.False(t, request.IsCancel())
+	require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 	require.Equal(t, priority, request.Priority())
 	require.Equal(t, root.String(), request.Root().String())
 	require.Equal(t, selector, request.Selector())
@@ -55,8 +55,7 @@ func TestAppendingRequests(t *testing.T) {
 
 	gsrIpld := gsmIpld.Requests[0]
 	require.Equal(t, priority, gsrIpld.Priority)
-	require.False(t, gsrIpld.Cancel)
-	require.False(t, gsrIpld.Update)
+	require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 	require.Equal(t, root, *gsrIpld.Root)
 	require.Equal(t, selector, *gsrIpld.Selector)
 	require.Equal(t, 1, len(gsrIpld.Extensions.Keys))
@@ -72,8 +71,7 @@ func TestAppendingRequests(t *testing.T) {
 	deserializedRequest := deserializedRequests[0]
 	extensionData, found = deserializedRequest.Extension(extensionName)
 	require.Equal(t, id, deserializedRequest.ID())
-	require.False(t, deserializedRequest.IsCancel())
-	require.False(t, deserializedRequest.IsUpdate())
+	require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 	require.Equal(t, priority, deserializedRequest.Priority())
 	require.Equal(t, root.String(), deserializedRequest.Root().String())
 	require.Equal(t, selector, deserializedRequest.Selector())
@@ -174,7 +172,7 @@ func TestRequestCancel(t *testing.T) {
 	require.Len(t, requests, 1, "did not add cancel request")
 	request := requests[0]
 	require.Equal(t, id, request.ID())
-	require.True(t, request.IsCancel())
+	require.Equal(t, request.Type(), graphsync.RequestTypeCancel)
 
 	mh := NewMessageHandler()
 
@@ -187,7 +185,7 @@ func TestRequestCancel(t *testing.T) {
 	require.Len(t, deserializedRequests, 1, "did not add request to deserialized message")
 	deserializedRequest := deserializedRequests[0]
 	require.Equal(t, request.ID(), deserializedRequest.ID())
-	require.Equal(t, request.IsCancel(), deserializedRequest.IsCancel())
+	require.Equal(t, request.Type(), deserializedRequest.Type())
 }
 
 func TestRequestUpdate(t *testing.T) {
@@ -208,8 +206,7 @@ func TestRequestUpdate(t *testing.T) {
 	require.Len(t, requests, 1, "did not add cancel request")
 	request := requests[0]
 	require.Equal(t, id, request.ID())
-	require.True(t, request.IsUpdate())
-	require.False(t, request.IsCancel())
+	require.Equal(t, request.Type(), graphsync.RequestTypeUpdate)
 	extensionData, found := request.Extension(extensionName)
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
@@ -227,8 +224,7 @@ func TestRequestUpdate(t *testing.T) {
 	deserializedRequest := deserializedRequests[0]
 	extensionData, found = deserializedRequest.Extension(extensionName)
 	require.Equal(t, request.ID(), deserializedRequest.ID())
-	require.Equal(t, request.IsCancel(), deserializedRequest.IsCancel())
-	require.Equal(t, request.IsUpdate(), deserializedRequest.IsUpdate())
+	require.Equal(t, request.Type(), deserializedRequest.Type())
 	require.Equal(t, request.Priority(), deserializedRequest.Priority())
 	require.Equal(t, request.Root().String(), deserializedRequest.Root().String())
 	require.Equal(t, request.Selector(), deserializedRequest.Selector())
@@ -276,8 +272,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	deserializedRequest := deserializedRequests[0]
 	extensionData, found := deserializedRequest.Extension(extensionName)
 	require.Equal(t, request.ID(), deserializedRequest.ID())
-	require.False(t, deserializedRequest.IsCancel())
-	require.False(t, deserializedRequest.IsUpdate())
+	require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 	require.Equal(t, request.Priority(), deserializedRequest.Priority())
 	require.Equal(t, request.Root().String(), deserializedRequest.Root().String())
 	require.Equal(t, request.Selector(), deserializedRequest.Selector())

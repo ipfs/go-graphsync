@@ -70,13 +70,12 @@ func (mh *MessageHandler) toIPLD(gsm message.GraphSyncMessage) (*ipldbind.GraphS
 			rootPtr = nil
 		}
 		ibm.Requests = append(ibm.Requests, ipldbind.GraphSyncRequest{
-			Id:         request.ID().Bytes(),
-			Root:       rootPtr,
-			Selector:   selPtr,
-			Priority:   request.Priority(),
-			Cancel:     request.IsCancel(),
-			Update:     request.IsUpdate(),
-			Extensions: ipldbind.NewGraphSyncExtensions(request),
+			Id:          request.ID().Bytes(),
+			Root:        rootPtr,
+			Selector:    selPtr,
+			Priority:    request.Priority(),
+			RequestType: request.Type(),
+			Extensions:  ipldbind.NewGraphSyncExtensions(request),
 		})
 	}
 
@@ -142,12 +141,12 @@ func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessage) (message.Grap
 			return message.GraphSyncMessage{}, err
 		}
 
-		if req.Cancel {
+		if req.RequestType == graphsync.RequestTypeCancel {
 			requests[id] = message.NewCancelRequest(id)
 			continue
 		}
 
-		if req.Update {
+		if req.RequestType == graphsync.RequestTypeUpdate {
 			requests[id] = message.NewUpdateRequest(id, req.Extensions.ToExtensionsList()...)
 			continue
 		}
