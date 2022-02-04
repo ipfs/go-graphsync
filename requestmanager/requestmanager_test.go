@@ -49,8 +49,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	td.tcm.AssertProtectedWithTags(t, peers[0], requestRecords[0].gsr.ID().Tag(), requestRecords[1].gsr.ID().Tag())
 	require.Equal(t, peers[0], requestRecords[0].p)
 	require.Equal(t, peers[0], requestRecords[1].p)
-	require.False(t, requestRecords[0].gsr.IsCancel())
-	require.False(t, requestRecords[1].gsr.IsCancel())
+	require.Equal(t, requestRecords[0].gsr.Type(), graphsync.RequestTypeNew)
 	require.Equal(t, defaultPriority, requestRecords[0].gsr.Priority())
 	require.Equal(t, defaultPriority, requestRecords[1].gsr.Priority())
 
@@ -137,7 +136,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 	cancel1()
 	rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
 
-	require.True(t, rr.gsr.IsCancel())
+	require.Equal(t, rr.gsr.Type(), graphsync.RequestTypeCancel)
 	require.Equal(t, requestRecords[0].gsr.ID(), rr.gsr.ID())
 
 	moreBlocks := td.blockChain.RemainderBlocks(3)
@@ -204,7 +203,7 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 
 	rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
 
-	require.True(t, rr.gsr.IsCancel())
+	require.Equal(t, rr.gsr.Type(), graphsync.RequestTypeCancel)
 	require.Equal(t, requestRecords[0].gsr.ID(), rr.gsr.ID())
 
 	td.tcm.RefuteProtected(t, peers[0])
@@ -827,7 +826,7 @@ func TestPauseResume(t *testing.T) {
 
 	// read the outgoing cancel request
 	pauseCancel := readNNetworkRequests(requestCtx, t, td, 1)[0]
-	require.True(t, pauseCancel.gsr.IsCancel())
+	require.Equal(t, pauseCancel.gsr.Type(), graphsync.RequestTypeCancel)
 
 	// verify no further responses come through
 	time.Sleep(100 * time.Millisecond)
@@ -902,7 +901,7 @@ func TestPauseResumeExternal(t *testing.T) {
 
 	// read the outgoing cancel request
 	pauseCancel := readNNetworkRequests(requestCtx, t, td, 1)[0]
-	require.True(t, pauseCancel.gsr.IsCancel())
+	require.Equal(t, pauseCancel.gsr.Type(), graphsync.RequestTypeCancel)
 
 	// verify no further responses come through
 	time.Sleep(100 * time.Millisecond)

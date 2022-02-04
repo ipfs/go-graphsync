@@ -71,7 +71,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.Regexp(t, "something went wrong", receivedErrors[0].Error())
 				require.Len(t, ree.requestsSent, 2)
 				require.Equal(t, ree.request, ree.requestsSent[0].request)
-				require.True(t, ree.requestsSent[1].request.IsCancel())
+				require.Equal(t, ree.requestsSent[1].request.Type(), graphsync.RequestTypeCancel)
 				require.Len(t, ree.blookHooksCalled, 6)
 				require.EqualError(t, ree.terminalError, "something went wrong")
 			},
@@ -97,7 +97,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.Empty(t, receivedErrors)
 				require.Len(t, ree.requestsSent, 2)
 				require.Equal(t, ree.request, ree.requestsSent[0].request)
-				require.True(t, ree.requestsSent[1].request.IsCancel())
+				require.Equal(t, ree.requestsSent[1].request.Type(), graphsync.RequestTypeCancel)
 				require.Len(t, ree.blookHooksCalled, 6)
 				require.EqualError(t, ree.terminalError, hooks.ErrPaused{}.Error())
 			},
@@ -129,7 +129,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				tbc.VerifyResponseRangeSync(responses, 0, 6)
 				require.Empty(t, receivedErrors)
 				require.Equal(t, ree.request, ree.requestsSent[0].request)
-				require.True(t, ree.requestsSent[1].request.IsCancel())
+				require.Equal(t, ree.requestsSent[1].request.Type(), graphsync.RequestTypeCancel)
 				require.Len(t, ree.blookHooksCalled, 6)
 				require.EqualError(t, ree.terminalError, hooks.ErrPaused{}.Error())
 			},
@@ -165,7 +165,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.Regexp(t, "something went wrong", receivedErrors[0].Error())
 				require.Len(t, ree.requestsSent, 2)
 				require.Equal(t, ree.request, ree.requestsSent[0].request)
-				require.True(t, ree.requestsSent[1].request.IsCancel())
+				require.Equal(t, ree.requestsSent[1].request.Type(), graphsync.RequestTypeCancel)
 				require.Len(t, ree.blookHooksCalled, 6)
 				require.EqualError(t, ree.terminalError, "something went wrong")
 			},
@@ -179,7 +179,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				require.Empty(t, receivedErrors)
 				require.Len(t, ree.requestsSent, 2)
 				require.Equal(t, ree.request, ree.requestsSent[0].request)
-				require.True(t, ree.requestsSent[1].request.IsUpdate())
+				require.Equal(t, ree.requestsSent[1].request.Type(), graphsync.RequestTypeUpdate)
 				data, has := ree.requestsSent[1].request.Extension("something")
 				require.True(t, has)
 				str, _ := data.AsString()
@@ -326,7 +326,7 @@ func (ree *requestExecutionEnv) GetRequestTask(_ peer.ID, _ *peertask.Task, requ
 
 func (ree *requestExecutionEnv) SendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
 	ree.requestsSent = append(ree.requestsSent, requestSent{p, request})
-	if !request.IsCancel() && !request.IsUpdate() {
+	if request.Type() == graphsync.RequestTypeNew {
 		if ree.customRemoteBehavior == nil {
 			ree.fal.SuccessResponseOn(p, request.ID(), ree.tbc.Blocks(ree.loadLocallyUntil, len(ree.tbc.AllBlocks())))
 		} else {

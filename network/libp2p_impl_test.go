@@ -107,8 +107,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	require.Len(t, receivedRequests, 1, "did not add request to received message")
 	receivedRequest := receivedRequests[0]
 	require.Equal(t, sentRequest.ID(), receivedRequest.ID())
-	require.Equal(t, sentRequest.IsCancel(), receivedRequest.IsCancel())
-	require.Equal(t, sentRequest.Priority(), receivedRequest.Priority())
+	require.Equal(t, sentRequest.Type(), receivedRequest.Type())
 	require.Equal(t, sentRequest.Root().String(), receivedRequest.Root().String())
 	require.Equal(t, sentRequest.Selector(), receivedRequest.Selector())
 

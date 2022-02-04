@@ -35,13 +35,12 @@ type MessagePartWithExtensions interface {
 // GraphSyncRequest is a struct to capture data on a request contained in a
 // GraphSyncMessage.
 type GraphSyncRequest struct {
-	root       cid.Cid
-	selector   ipld.Node
-	priority   graphsync.Priority
-	id         graphsync.RequestID
-	extensions map[string]datamodel.Node
-	isCancel   bool
-	isUpdate   bool
+	root        cid.Cid
+	selector    ipld.Node
+	priority    graphsync.Priority
+	id          graphsync.RequestID
+	extensions  map[string]datamodel.Node
+	requestType graphsync.RequestType
 }
 
 // String returns a human-readable form of a GraphSyncRequest
@@ -57,13 +56,12 @@ func (gsr GraphSyncRequest) String() string {
 		extStr.WriteString(string(name))
 		extStr.WriteString("|")
 	}
-	return fmt.Sprintf("GraphSyncRequest<root=%s, selector=%s, priority=%d, id=%s, cancel=%v, update=%v, exts=%s>",
+	return fmt.Sprintf("GraphSyncRequest<root=%s, selector=%s, priority=%d, id=%s, type=%v, exts=%s>",
 		gsr.root.String(),
 		sel,
 		gsr.priority,
 		gsr.id.String(),
-		gsr.isCancel,
-		gsr.isUpdate,
+		gsr.requestType,
 		extStr.String(),
 	)
 }
@@ -146,17 +144,17 @@ func NewRequest(id graphsync.RequestID,
 	priority graphsync.Priority,
 	extensions ...graphsync.ExtensionData) GraphSyncRequest {
 
-	return newRequest(id, root, selector, priority, false, false, toExtensionsMap(extensions))
+	return newRequest(id, root, selector, priority, graphsync.RequestTypeNew, toExtensionsMap(extensions))
 }
 
 // NewCancelRequest request generates a request to cancel an in progress request
 func NewCancelRequest(id graphsync.RequestID) GraphSyncRequest {
-	return newRequest(id, cid.Cid{}, nil, 0, true, false, nil)
+	return newRequest(id, cid.Cid{}, nil, 0, graphsync.RequestTypeCancel, nil)
 }
 
 // NewUpdateRequest generates a new request to update an in progress request with the given extensions
 func NewUpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionData) GraphSyncRequest {
-	return newRequest(id, cid.Cid{}, nil, 0, false, true, toExtensionsMap(extensions))
+	return newRequest(id, cid.Cid{}, nil, 0, graphsync.RequestTypeUpdate, toExtensionsMap(extensions))
 }
 
 // NewLinkMetadata generates a new graphsync.LinkMetadata compatible object,
@@ -179,18 +177,16 @@ func newRequest(id graphsync.RequestID,
 	root cid.Cid,
 	selector ipld.Node,
 	priority graphsync.Priority,
-	isCancel bool,
-	isUpdate bool,
+	requestType graphsync.RequestType,
 	extensions map[string]datamodel.Node) GraphSyncRequest {
 
 	return GraphSyncRequest{
-		id:         id,
-		root:       root,
-		selector:   selector,
-		priority:   priority,
-		isCancel:   isCancel,
-		isUpdate:   isUpdate,
-		extensions: extensions,
+		id:          id,
+		root:        root,
+		selector:    selector,
+		priority:    priority,
+		requestType: requestType,
+		extensions:  extensions,
 	}
 }
 
@@ -310,11 +306,8 @@ func (gsr GraphSyncRequest) ExtensionNames() []graphsync.ExtensionName {
 	return extNames
 }
 
-// IsCancel returns true if this particular request is being cancelled
-func (gsr GraphSyncRequest) IsCancel() bool { return gsr.isCancel }
-
-// IsUpdate returns true if this particular request is being updated
-func (gsr GraphSyncRequest) IsUpdate() bool { return gsr.isUpdate }
+// RequestType returns the type of this request (new, cancel, update, etc.)
+func (gsr GraphSyncRequest) Type() graphsync.RequestType { return gsr.requestType }
 
 // RequestID returns the request ID for this response
 func (gsr GraphSyncResponse) RequestID() graphsync.RequestID { return gsr.requestID }
@@ -379,7 +372,7 @@ func (gsr GraphSyncRequest) ReplaceExtensions(extensions []graphsync.ExtensionDa
 // the result
 func (gsr GraphSyncRequest) MergeExtensions(extensions []graphsync.ExtensionData, mergeFunc func(name graphsync.ExtensionName, oldData datamodel.Node, newData datamodel.Node) (datamodel.Node, error)) (GraphSyncRequest, error) {
 	if gsr.extensions == nil {
-		return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.isCancel, gsr.isUpdate, toExtensionsMap(extensions)), nil
+		return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.requestType, toExtensionsMap(extensions)), nil
 	}
 	newExtensionMap := toExtensionsMap(extensions)
 	combinedExtensions := make(map[string]datamodel.Node)
@@ -403,5 +396,5 @@ func (gsr GraphSyncRequest) MergeExtensions(extensions []graphsync.ExtensionData
 		}
 		combinedExtensions[name] = oldData
 	}
-	return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.isCancel, gsr.isUpdate, combinedExtensions), nil
+	return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.requestType, combinedExtensions), nil
 }

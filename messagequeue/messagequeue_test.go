@@ -231,7 +231,7 @@ func TestDedupingMessages(t *testing.T) {
 	require.Len(t, requests, 1, "number of requests in first message was not 1")
 	request := requests[0]
 	require.Equal(t, id, request.ID())
-	require.False(t, request.IsCancel())
+	require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 	require.Equal(t, priority, request.Priority())
 	require.Equal(t, selector, request.Selector())
 
@@ -241,11 +241,11 @@ func TestDedupingMessages(t *testing.T) {
 	require.Len(t, requests, 2, "number of requests in second message was not 2")
 	for _, request := range requests {
 		if request.ID() == id2 {
-			require.False(t, request.IsCancel())
+			require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 			require.Equal(t, priority2, request.Priority())
 			require.Equal(t, selector2, request.Selector())
 		} else if request.ID() == id3 {
-			require.False(t, request.IsCancel())
+			require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 			require.Equal(t, priority3, request.Priority())
 			require.Equal(t, selector3, request.Selector())
 		} else {

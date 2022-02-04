@@ -45,12 +45,11 @@ func (gse GraphSyncExtensions) ToExtensionsList() []graphsync.ExtensionData {
 type GraphSyncRequest struct {
 	Id []byte
 
-	Root       *cid.Cid
-	Selector   *datamodel.Node
-	Extensions GraphSyncExtensions
-	Priority   graphsync.Priority
-	Cancel     bool
-	Update     bool
+	Root        *cid.Cid
+	Selector    *datamodel.Node
+	Extensions  GraphSyncExtensions
+	Priority    graphsync.Priority
+	RequestType graphsync.RequestType
 }
 
 // GraphSyncResponse is an struct to capture data on a response sent back

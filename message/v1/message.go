@@ -119,13 +119,14 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 		if err != nil {
 			return nil, err
 		}
+
 		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
 			Id:         rid,
 			Root:       request.Root().Bytes(),
 			Selector:   selector,
 			Priority:   int32(request.Priority()),
-			Cancel:     request.IsCancel(),
-			Update:     request.IsUpdate(),
+			Cancel:     request.Type() == graphsync.RequestTypeCancel,
+			Update:     request.Type() == graphsync.RequestTypeUpdate,
 			Extensions: ext,
 		})
 	}

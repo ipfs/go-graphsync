@@ -190,13 +190,14 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 
 	for _, request := range requests {
 		key := responseKey{p: p, requestID: request.ID()}
-		if request.IsCancel() {
+		switch request.Type() {
+		case graphsync.RequestTypeCancel:
 			_ = rm.abortRequest(ctx, p, request.ID(), ipldutil.ContextCancelError{})
 			continue
-		}
-		if request.IsUpdate() {
+		case graphsync.RequestTypeUpdate:
 			rm.processUpdate(ctx, key, request)
 			continue
+		default:
 		}
 		rm.connManager.Protect(p, request.ID().Tag())
 		// don't use `ctx` which has the "message" trace, but rm.ctx for a fresh trace which allows

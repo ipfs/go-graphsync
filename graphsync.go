@@ -171,8 +171,21 @@ type RequestData interface {
 	Extension(name ExtensionName) (datamodel.Node, bool)
 
 	// IsCancel returns true if this particular request is being cancelled
-	IsCancel() bool
+	Type() RequestType
 }
+
+type RequestType string
+
+const (
+	// RequestTypeNew means a new request
+	RequestTypeNew = RequestType("New")
+
+	// RequestTypeCancel means cancel the request referenced by request ID
+	RequestTypeCancel = RequestType("Cancel")
+
+	// RequestTypeUpdate means the extensions contain an update about this request
+	RequestTypeUpdate = RequestType("Update")
+)
 
 // ResponseData describes a received Graphsync response
 type ResponseData interface {
