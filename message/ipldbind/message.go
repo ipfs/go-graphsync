@@ -43,20 +43,18 @@ func (gse GraphSyncExtensions) ToExtensionsList() []graphsync.ExtensionData {
 // GraphSyncRequest is a struct to capture data on a request contained in a
 // GraphSyncMessage.
 type GraphSyncRequest struct {
-	Id []byte
-
+	Id          []byte
+	RequestType graphsync.RequestType
+	Priority    graphsync.Priority
 	Root        *cid.Cid
 	Selector    *datamodel.Node
 	Extensions  GraphSyncExtensions
-	Priority    graphsync.Priority
-	RequestType graphsync.RequestType
 }
 
 // GraphSyncResponse is an struct to capture data on a response sent back
 // in a GraphSyncMessage.
 type GraphSyncResponse struct {
-	Id []byte
-
+	Id         []byte
 	Status     graphsync.ResponseStatusCode
 	Metadata   []message.GraphSyncLinkMetadatum
 	Extensions GraphSyncExtensions
@@ -72,9 +70,13 @@ type GraphSyncBlock struct {
 // GraphSyncMessage is a container for representing extension data for bindnode,
 // it's converted to a message.GraphSyncMessage by the message translation layer
 type GraphSyncMessage struct {
-	Requests  []GraphSyncRequest
-	Responses []GraphSyncResponse
-	Blocks    []GraphSyncBlock
+	Requests  *[]GraphSyncRequest
+	Responses *[]GraphSyncResponse
+	Blocks    *[]GraphSyncBlock
+}
+
+type GraphSyncMessageRoot struct {
+	Gs2 *GraphSyncMessage
 }
 
 // NamedExtension exists just for the purpose of the constructors

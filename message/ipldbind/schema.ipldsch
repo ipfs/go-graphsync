@@ -63,28 +63,32 @@ type GraphSyncRequestType enum {
 } representation string
 
 type GraphSyncRequest struct {
-  id                GraphSyncRequestID   (rename "ID")   # unique id set on the requester side
-  root     optional Link                 (rename "Root") # a CID for the root node in the query
-  selector optional Any                  (rename "Sel")  # see https://github.com/ipld/specs/blob/master/selectors/selectors.md
-  extensions        GraphSyncExtensions  (rename "Ext")  # side channel information
-  priority          GraphSyncPriority    (rename "Pri")  # the priority (normalized). default to 1
-  requestType       GraphSyncRequestType (rename "Typ")  # the request type
-} representation map
+  id                GraphSyncRequestID   # unique id set on the requester side
+  requestType       GraphSyncRequestType # the request type
+  priority          GraphSyncPriority    # the priority (normalized). default to 1
+  root     nullable Link                 # a CID for the root node in the query
+  selector nullable Any                  # see https://github.com/ipld/specs/blob/master/selectors/selectors.md
+  extensions        GraphSyncExtensions  # side channel information
+} representation tuple
 
 type GraphSyncResponse struct {
-  id          GraphSyncRequestID          (rename "ID")   # the request id we are responding to
-  status      GraphSyncResponseStatusCode (rename "Stat") # a status code.
-  metadata    GraphSyncMetadata           (rename "Meta") # metadata about response
-  extensions  GraphSyncExtensions         (rename "Ext")  # side channel information
-} representation map
+  id          GraphSyncRequestID          # the request id we are responding to
+  status      GraphSyncResponseStatusCode # a status code.
+  metadata    GraphSyncMetadata           # metadata about response
+  extensions  GraphSyncExtensions         # side channel information
+} representation tuple
 
 type GraphSyncBlock struct {
-  prefix  Bytes (rename "Pre") # CID prefix (cid version, multicodec and multihash prefix (type + length)
-  data    Bytes (rename "Data")
-} representation map
+  prefix  Bytes # CID prefix (cid version, multicodec and multihash prefix (type + length)
+  data    Bytes
+} representation tuple
 
 type GraphSyncMessage struct {
-  requests  [GraphSyncRequest]  (rename "Reqs")
-  responses [GraphSyncResponse] (rename "Rsps")
-  blocks    [GraphSyncBlock]    (rename "Blks")
+  requests  optional [GraphSyncRequest]  (rename "req")
+  responses optional [GraphSyncResponse] (rename "rsp")
+  blocks    optional [GraphSyncBlock]    (rename "blk")
 } representation map
+
+type GraphSyncMessageRoot union {
+  | GraphSyncMessage "gs2"
+} representation keyed

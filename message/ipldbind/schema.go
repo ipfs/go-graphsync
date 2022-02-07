@@ -21,5 +21,5 @@ func init() {
 		panic(err)
 	}
 
-	Prototype.Message = bindnode.Prototype((*GraphSyncMessage)(nil), ts.TypeByName("GraphSyncMessage"))
+	Prototype.Message = bindnode.Prototype((*GraphSyncMessageRoot)(nil), ts.TypeByName("GraphSyncMessageRoot"))
 }
