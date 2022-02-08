@@ -54,7 +54,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.NoError(t, err)
 
 	gsrIpld := (*gsmIpld.Gs2.Requests)[0]
-	require.Equal(t, priority, gsrIpld.Priority)
+	require.Equal(t, priority, *gsrIpld.Priority)
 	require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 	require.Equal(t, root, *gsrIpld.Root)
 	require.Equal(t, selector, *gsrIpld.Selector)

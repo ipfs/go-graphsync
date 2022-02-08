@@ -60,24 +60,28 @@ func (mh *MessageHandler) toIPLD(gsm message.GraphSyncMessage) (*ipldbind.GraphS
 	if len(requests) > 0 {
 		ibmRequests := make([]ipldbind.GraphSyncRequest, 0, len(requests))
 		for _, request := range requests {
-			selector := request.Selector()
-			selPtr := &selector
-			if selector == nil {
-				selPtr = nil
-			}
-			root := request.Root()
-			rootPtr := &root
-			if root == cid.Undef {
-				rootPtr = nil
-			}
-			ibmRequests = append(ibmRequests, ipldbind.GraphSyncRequest{
+			req := ipldbind.GraphSyncRequest{
 				Id:          request.ID().Bytes(),
-				Root:        rootPtr,
-				Selector:    selPtr,
-				Priority:    request.Priority(),
 				RequestType: request.Type(),
 				Extensions:  ipldbind.NewGraphSyncExtensions(request),
-			})
+			}
+
+			root := request.Root()
+			if root != cid.Undef {
+				req.Root = &root
+			}
+
+			selector := request.Selector()
+			if selector != nil {
+				req.Selector = &selector
+			}
+
+			priority := request.Priority()
+			if priority != 0 {
+				req.Priority = &priority
+			}
+
+			ibmRequests = append(ibmRequests, req)
 		}
 		ibm.Requests = &ibmRequests
 	}
@@ -90,12 +94,19 @@ func (mh *MessageHandler) toIPLD(gsm message.GraphSyncMessage) (*ipldbind.GraphS
 			if !ok {
 				return nil, fmt.Errorf("unexpected metadata type")
 			}
-			ibmResponses = append(ibmResponses, ipldbind.GraphSyncResponse{
+
+			res := ipldbind.GraphSyncResponse{
 				Id:         response.RequestID().Bytes(),
 				Status:     response.Status(),
-				Metadata:   glsm.RawMetadata(),
 				Extensions: ipldbind.NewGraphSyncExtensions(response),
-			})
+			}
+
+			md := glsm.RawMetadata()
+			if len(md) > 0 {
+				res.Metadata = &md
+			}
+
+			ibmResponses = append(ibmResponses, res)
 		}
 		ibm.Responses = &ibmResponses
 	}
@@ -161,8 +172,13 @@ func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessageRoot) (message.
 				continue
 			}
 
+			var ext []graphsync.ExtensionData
+			if req.Extensions != nil {
+				ext = req.Extensions.ToExtensionsList()
+			}
+
 			if req.RequestType == graphsync.RequestTypeUpdate {
-				requests[id] = message.NewUpdateRequest(id, req.Extensions.ToExtensionsList()...)
+				requests[id] = message.NewUpdateRequest(id, ext...)
 				continue
 			}
 
@@ -176,7 +192,12 @@ func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessageRoot) (message.
 				selector = *req.Selector
 			}
 
-			requests[id] = message.NewRequest(id, root, selector, graphsync.Priority(req.Priority), req.Extensions.ToExtensionsList()...)
+			var priority graphsync.Priority
+			if req.Priority != nil {
+				priority = graphsync.Priority(*req.Priority)
+			}
+
+			requests[id] = message.NewRequest(id, root, selector, priority, ext...)
 		}
 	}
 
@@ -188,10 +209,18 @@ func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessageRoot) (message.
 			if err != nil {
 				return message.GraphSyncMessage{}, err
 			}
-			responses[id] = message.NewResponse(id,
-				graphsync.ResponseStatusCode(res.Status),
-				res.Metadata,
-				res.Extensions.ToExtensionsList()...)
+
+			var md []message.GraphSyncLinkMetadatum
+			if res.Metadata != nil {
+				md = *res.Metadata
+			}
+
+			var ext []graphsync.ExtensionData
+			if res.Extensions != nil {
+				ext = res.Extensions.ToExtensionsList()
+			}
+
+			responses[id] = message.NewResponse(id, graphsync.ResponseStatusCode(res.Status), md, ext...)
 		}
 	}
 

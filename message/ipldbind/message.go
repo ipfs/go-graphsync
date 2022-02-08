@@ -18,8 +18,11 @@ type GraphSyncExtensions struct {
 
 // NewGraphSyncExtensions creates GraphSyncExtensions from either a request or
 // response object
-func NewGraphSyncExtensions(part message.MessagePartWithExtensions) GraphSyncExtensions {
+func NewGraphSyncExtensions(part message.MessagePartWithExtensions) *GraphSyncExtensions {
 	names := part.ExtensionNames()
+	if len(names) == 0 {
+		return nil
+	}
 	keys := make([]string, 0, len(names))
 	values := make(map[string]datamodel.Node, len(names))
 	for _, name := range names {
@@ -27,7 +30,7 @@ func NewGraphSyncExtensions(part message.MessagePartWithExtensions) GraphSyncExt
 		data, _ := part.Extension(graphsync.ExtensionName(name))
 		values[string(name)] = data
 	}
-	return GraphSyncExtensions{keys, values}
+	return &GraphSyncExtensions{keys, values}
 }
 
 // ToExtensionsList creates a list of graphsync.ExtensionData objects from a
@@ -45,10 +48,10 @@ func (gse GraphSyncExtensions) ToExtensionsList() []graphsync.ExtensionData {
 type GraphSyncRequest struct {
 	Id          []byte
 	RequestType graphsync.RequestType
-	Priority    graphsync.Priority
+	Priority    *graphsync.Priority
 	Root        *cid.Cid
 	Selector    *datamodel.Node
-	Extensions  GraphSyncExtensions
+	Extensions  *GraphSyncExtensions
 }
 
 // GraphSyncResponse is an struct to capture data on a response sent back
@@ -56,8 +59,8 @@ type GraphSyncRequest struct {
 type GraphSyncResponse struct {
 	Id         []byte
 	Status     graphsync.ResponseStatusCode
-	Metadata   []message.GraphSyncLinkMetadatum
-	Extensions GraphSyncExtensions
+	Metadata   *[]message.GraphSyncLinkMetadatum
+	Extensions *GraphSyncExtensions
 }
 
 // GraphSyncBlock is a container for representing extension data for bindnode,
