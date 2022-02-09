@@ -159,7 +159,7 @@ func (qe *QueryExecutor) checkForUpdates(
 			return err
 		case <-taskData.Signals.UpdateSignal:
 			updateChan := make(chan []gsmsg.GraphSyncRequest)
-			qe.manager.GetUpdates(p, taskData.Request.ID(), updateChan)
+			qe.manager.GetUpdates(taskData.Request.ID(), updateChan)
 			select {
 			case updates := <-updateChan:
 				for _, update := range updates {
@@ -280,7 +280,7 @@ func (qe *QueryExecutor) sendResponse(ctx context.Context, p peer.ID, taskData R
 // Manager providers an interface to the response manager
 type Manager interface {
 	StartTask(task *peertask.Task, responseTaskChan chan<- ResponseTask)
-	GetUpdates(p peer.ID, requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest)
+	GetUpdates(requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest)
 	FinishTask(task *peertask.Task, err error)
 }
 

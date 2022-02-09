@@ -816,7 +816,7 @@ func TestPauseResume(t *testing.T) {
 
 	// attempt to unpause while request is not paused (note: hook on second block will keep it from
 	// reaching pause point)
-	err := td.requestManager.UnpauseRequest(rr.gsr.ID())
+	err := td.requestManager.UnpauseRequest(ctx, rr.gsr.ID())
 	require.EqualError(t, err, "request is not paused")
 	close(holdForResumeAttempt)
 	// verify responses sent read ONLY for blocks BEFORE the pause
@@ -834,7 +834,7 @@ func TestPauseResume(t *testing.T) {
 	td.fal.CleanupRequest(peers[0], rr.gsr.ID())
 
 	// unpause
-	err = td.requestManager.UnpauseRequest(rr.gsr.ID(), td.extension1, td.extension2)
+	err = td.requestManager.UnpauseRequest(ctx, rr.gsr.ID(), td.extension1, td.extension2)
 	require.NoError(t, err)
 
 	// verify the correct new request with Do-no-send-cids & other extensions
@@ -875,7 +875,7 @@ func TestPauseResumeExternal(t *testing.T) {
 	hook := func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
 		blocksReceived++
 		if blocksReceived == pauseAt {
-			err := td.requestManager.PauseRequest(responseData.RequestID())
+			err := td.requestManager.PauseRequest(ctx, responseData.RequestID())
 			require.NoError(t, err)
 			close(holdForPause)
 		}
@@ -909,7 +909,7 @@ func TestPauseResumeExternal(t *testing.T) {
 	td.fal.CleanupRequest(peers[0], rr.gsr.ID())
 
 	// unpause
-	err := td.requestManager.UnpauseRequest(rr.gsr.ID(), td.extension1, td.extension2)
+	err := td.requestManager.UnpauseRequest(ctx, rr.gsr.ID(), td.extension1, td.extension2)
 	require.NoError(t, err)
 
 	// verify the correct new request with Do-no-send-cids & other extensions

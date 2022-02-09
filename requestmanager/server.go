@@ -233,7 +233,7 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID, onTermina
 	if !ok {
 		if onTerminated != nil {
 			select {
-			case onTerminated <- graphsync.RequestNotFoundErr{}:
+			case onTerminated <- &graphsync.RequestNotFoundErr{}:
 			case <-rm.ctx.Done():
 			}
 		}
@@ -380,7 +380,7 @@ func (rm *RequestManager) validateRequest(requestID graphsync.RequestID, p peer.
 func (rm *RequestManager) unpause(id graphsync.RequestID, extensions []graphsync.ExtensionData) error {
 	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[id]
 	if !ok {
-		return graphsync.RequestNotFoundErr{}
+		return &graphsync.RequestNotFoundErr{}
 	}
 	if inProgressRequestStatus.state != graphsync.Paused {
 		return errors.New("request is not paused")
@@ -394,7 +394,7 @@ func (rm *RequestManager) unpause(id graphsync.RequestID, extensions []graphsync
 func (rm *RequestManager) pause(id graphsync.RequestID) error {
 	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[id]
 	if !ok {
-		return graphsync.RequestNotFoundErr{}
+		return &graphsync.RequestNotFoundErr{}
 	}
 	if inProgressRequestStatus.state == graphsync.Paused {
 		return errors.New("request is already paused")

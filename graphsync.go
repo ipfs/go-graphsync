@@ -486,25 +486,15 @@ type GraphExchange interface {
 	// RegisterReceiverNetworkErrorListener adds a listener for when errors occur receiving data over the wire
 	RegisterReceiverNetworkErrorListener(listener OnReceiverNetworkErrorListener) UnregisterHookFunc
 
-	// UnpauseRequest unpauses a request that was paused in a block hook based request ID
+	// Pause pauses an in progress request or response (may take 1 or more blocks to process)
+	Pause(context.Context, RequestID) error
+
+	// Unpause unpauses a request or response that was paused
 	// Can also send extensions with unpause
-	UnpauseRequest(RequestID, ...ExtensionData) error
+	Unpause(context.Context, RequestID, ...ExtensionData) error
 
-	// PauseRequest pauses an in progress request (may take 1 or more blocks to process)
-	PauseRequest(RequestID) error
-
-	// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
-	// Can also send extensions with unpause
-	UnpauseResponse(peer.ID, RequestID, ...ExtensionData) error
-
-	// PauseResponse pauses an in progress response (may take 1 or more blocks to process)
-	PauseResponse(peer.ID, RequestID) error
-
-	// CancelResponse cancels an in progress response
-	CancelResponse(peer.ID, RequestID) error
-
-	// CancelRequest cancels an in progress request
-	CancelRequest(context.Context, RequestID) error
+	// Cancel cancels an in progress request or response
+	Cancel(context.Context, RequestID) error
 
 	// Stats produces insight on the current state of a graphsync exchange
 	Stats() Stats

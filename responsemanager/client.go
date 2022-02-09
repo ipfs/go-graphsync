@@ -33,6 +33,7 @@ type inProgressResponseStatus struct {
 	ctx            context.Context
 	span           trace.Span
 	cancelFn       func()
+	peer           peer.ID
 	request        gsmsg.GraphSyncRequest
 	loader         ipld.BlockReadOpener
 	traverser      ipldutil.Traverser
@@ -41,11 +42,6 @@ type inProgressResponseStatus struct {
 	state          graphsync.RequestState
 	startTime      time.Time
 	responseStream responseassembler.ResponseStream
-}
-
-type responseKey struct {
-	p         peer.ID
-	requestID graphsync.RequestID
 }
 
 // RequestHooks is an interface for processing request hooks
@@ -107,7 +103,7 @@ type ResponseManager struct {
 	blockSentListeners    BlockSentListeners
 	networkErrorListeners NetworkErrorListeners
 	messages              chan responseManagerMessage
-	inProgressResponses   map[responseKey]*inProgressResponseStatus
+	inProgressResponses   map[graphsync.RequestID]*inProgressResponseStatus
 	connManager           network.ConnManager
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
 	maxLinksPerRequest uint64
@@ -144,7 +140,7 @@ func New(ctx context.Context,
 		blockSentListeners:    blockSentListeners,
 		networkErrorListeners: networkErrorListeners,
 		messages:              messages,
-		inProgressResponses:   make(map[responseKey]*inProgressResponseStatus),
+		inProgressResponses:   make(map[graphsync.RequestID]*inProgressResponseStatus),
 		connManager:           connManager,
 		maxLinksPerRequest:    maxLinksPerRequest,
 		responseQueue:         responseQueue,
@@ -158,9 +154,9 @@ func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, reque
 }
 
 // UnpauseResponse unpauses a response that was previously paused
-func (rm *ResponseManager) UnpauseResponse(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+func (rm *ResponseManager) UnpauseResponse(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	response := make(chan error, 1)
-	rm.send(&unpauseRequestMessage{p, requestID, response, extensions}, nil)
+	rm.send(&unpauseRequestMessage{requestID, response, extensions}, ctx.Done())
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -170,9 +166,9 @@ func (rm *ResponseManager) UnpauseResponse(p peer.ID, requestID graphsync.Reques
 }
 
 // PauseResponse pauses an in progress response (may take 1 or more blocks to process)
-func (rm *ResponseManager) PauseResponse(p peer.ID, requestID graphsync.RequestID) error {
+func (rm *ResponseManager) PauseResponse(ctx context.Context, requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
-	rm.send(&pauseRequestMessage{p, requestID, response}, nil)
+	rm.send(&pauseRequestMessage{requestID, response}, ctx.Done())
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -182,9 +178,9 @@ func (rm *ResponseManager) PauseResponse(p peer.ID, requestID graphsync.RequestI
 }
 
 // CancelResponse cancels an in progress response
-func (rm *ResponseManager) CancelResponse(p peer.ID, requestID graphsync.RequestID) error {
+func (rm *ResponseManager) CancelResponse(ctx context.Context, requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
-	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrCancelledByCommand, response}, nil)
+	rm.send(&errorRequestMessage{requestID, queryexecutor.ErrCancelledByCommand, response}, ctx.Done())
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -209,8 +205,8 @@ func (rm *ResponseManager) StartTask(task *peertask.Task, responseTaskChan chan<
 }
 
 // GetUpdates is called to read pending updates for a task and clear them
-func (rm *ResponseManager) GetUpdates(p peer.ID, requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest) {
-	rm.send(&responseUpdateRequest{responseKey{p, requestID}, updatesChan}, nil)
+func (rm *ResponseManager) GetUpdates(requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest) {
+	rm.send(&responseUpdateRequest{requestID, updatesChan}, nil)
 }
 
 // FinishTask marks a task from the task queue as done
@@ -224,9 +220,9 @@ func (rm *ResponseManager) FinishTask(task *peertask.Task, err error) {
 }
 
 // CloseWithNetworkError closes a request due to a network error
-func (rm *ResponseManager) CloseWithNetworkError(p peer.ID, requestID graphsync.RequestID) {
+func (rm *ResponseManager) CloseWithNetworkError(requestID graphsync.RequestID) {
 	done := make(chan error, 1)
-	rm.send(&errorRequestMessage{p, requestID, queryexecutor.ErrNetworkError, done}, nil)
+	rm.send(&errorRequestMessage{requestID, queryexecutor.ErrNetworkError, done}, nil)
 	select {
 	case <-rm.ctx.Done():
 	case <-done:
@@ -234,9 +230,9 @@ func (rm *ResponseManager) CloseWithNetworkError(p peer.ID, requestID graphsync.
 }
 
 // TerminateRequest indicates a request has finished sending data and should no longer be tracked
-func (rm *ResponseManager) TerminateRequest(p peer.ID, requestID graphsync.RequestID) {
+func (rm *ResponseManager) TerminateRequest(requestID graphsync.RequestID) {
 	done := make(chan struct{}, 1)
-	rm.send(&terminateRequestMessage{p, requestID, done}, nil)
+	rm.send(&terminateRequestMessage{requestID, done}, nil)
 	select {
 	case <-rm.ctx.Done():
 	case <-done:

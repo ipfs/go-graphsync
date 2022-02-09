@@ -12,8 +12,8 @@ import (
 
 // RequestCloser can cancel request on a network error
 type RequestCloser interface {
-	TerminateRequest(p peer.ID, requestID graphsync.RequestID)
-	CloseWithNetworkError(p peer.ID, requestID graphsync.RequestID)
+	TerminateRequest(requestID graphsync.RequestID)
+	CloseWithNetworkError(requestID graphsync.RequestID)
 }
 
 type subscriber struct {
@@ -33,10 +33,10 @@ func (s *subscriber) OnNext(_ notifications.Topic, event notifications.Event) {
 	}
 	switch responseEvent.Name {
 	case messagequeue.Error:
-		s.requestCloser.CloseWithNetworkError(s.p, s.request.ID())
+		s.requestCloser.CloseWithNetworkError(s.request.ID())
 		responseCode := responseEvent.Metadata.ResponseCodes[s.request.ID()]
 		if responseCode.IsTerminal() {
-			s.requestCloser.TerminateRequest(s.p, s.request.ID())
+			s.requestCloser.TerminateRequest(s.request.ID())
 		}
 		s.networkErrorListeners.NotifyNetworkErrorListeners(s.p, s.request, responseEvent.Err)
 	case messagequeue.Sent:
@@ -46,7 +46,7 @@ func (s *subscriber) OnNext(_ notifications.Topic, event notifications.Event) {
 		}
 		responseCode := responseEvent.Metadata.ResponseCodes[s.request.ID()]
 		if responseCode.IsTerminal() {
-			s.requestCloser.TerminateRequest(s.p, s.request.ID())
+			s.requestCloser.TerminateRequest(s.request.ID())
 			s.completedListeners.NotifyCompletedListeners(s.p, s.request, responseCode)
 		}
 	}

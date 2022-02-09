@@ -2,6 +2,7 @@ package graphsync
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -296,6 +297,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	responseManager.Startup()
 	responseQueue.Startup(gsConfig.maxInProgressIncomingRequests, queryExecutor)
 	network.SetDelegate((*graphSyncReceiver)(graphSync))
+
 	return graphSync
 }
 
@@ -402,34 +404,31 @@ func (gs *GraphSync) RegisterReceiverNetworkErrorListener(listener graphsync.OnR
 	return gs.receiverErrorListeners.Register(listener)
 }
 
-// UnpauseRequest unpauses a request that was paused in a block hook based request ID
+// Pause pauses an in progress request or response
+func (gs *GraphSync) Pause(ctx context.Context, requestID graphsync.RequestID) error {
+	var reqNotFound *graphsync.RequestNotFoundErr
+	if err := gs.requestManager.PauseRequest(ctx, requestID); !errors.As(err, &reqNotFound) {
+		return err
+	}
+	return gs.responseManager.PauseResponse(ctx, requestID)
+}
+
+// Unpause unpauses a request or response that was paused
 // Can also send extensions with unpause
-func (gs *GraphSync) UnpauseRequest(requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
-	return gs.requestManager.UnpauseRequest(requestID, extensions...)
+func (gs *GraphSync) Unpause(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+	var reqNotFound *graphsync.RequestNotFoundErr
+	if err := gs.requestManager.UnpauseRequest(ctx, requestID, extensions...); !errors.As(err, &reqNotFound) {
+		return err
+	}
+	return gs.responseManager.UnpauseResponse(ctx, requestID, extensions...)
 }
 
-// PauseRequest pauses an in progress request (may take 1 or more blocks to process)
-func (gs *GraphSync) PauseRequest(requestID graphsync.RequestID) error {
-	return gs.requestManager.PauseRequest(requestID)
-}
-
-// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
-func (gs *GraphSync) UnpauseResponse(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
-	return gs.responseManager.UnpauseResponse(p, requestID, extensions...)
-}
-
-// PauseResponse pauses an in progress response (may take 1 or more blocks to process)
-func (gs *GraphSync) PauseResponse(p peer.ID, requestID graphsync.RequestID) error {
-	return gs.responseManager.PauseResponse(p, requestID)
-}
-
-// CancelResponse cancels an in progress response
-func (gs *GraphSync) CancelResponse(p peer.ID, requestID graphsync.RequestID) error {
-	return gs.responseManager.CancelResponse(p, requestID)
-}
-
-// CancelRequest cancels an in progress request
-func (gs *GraphSync) CancelRequest(ctx context.Context, requestID graphsync.RequestID) error {
+// Cancel cancels an in progress request or response
+func (gs *GraphSync) Cancel(ctx context.Context, requestID graphsync.RequestID) error {
+	var reqNotFound *graphsync.RequestNotFoundErr
+	if err := gs.responseManager.CancelResponse(ctx, requestID); !errors.As(err, &reqNotFound) {
+		return err
+	}
 	return gs.requestManager.CancelRequest(ctx, requestID)
 }
 

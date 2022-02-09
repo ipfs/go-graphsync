@@ -379,7 +379,7 @@ func (fm *fauxManager) StartTask(task *peertask.Task, responseTaskChan chan<- Re
 	}()
 }
 
-func (fm *fauxManager) GetUpdates(p peer.ID, requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest) {
+func (fm *fauxManager) GetUpdates(requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest) {
 }
 
 func (fm *fauxManager) FinishTask(task *peertask.Task, err error) {
