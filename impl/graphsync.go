@@ -406,7 +406,7 @@ func (gs *GraphSync) RegisterReceiverNetworkErrorListener(listener graphsync.OnR
 
 // Pause pauses an in progress request or response
 func (gs *GraphSync) Pause(ctx context.Context, requestID graphsync.RequestID) error {
-	var reqNotFound *graphsync.RequestNotFoundErr
+	var reqNotFound graphsync.RequestNotFoundErr
 	if err := gs.requestManager.PauseRequest(ctx, requestID); !errors.As(err, &reqNotFound) {
 		return err
 	}
@@ -416,7 +416,7 @@ func (gs *GraphSync) Pause(ctx context.Context, requestID graphsync.RequestID) e
 // Unpause unpauses a request or response that was paused
 // Can also send extensions with unpause
 func (gs *GraphSync) Unpause(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
-	var reqNotFound *graphsync.RequestNotFoundErr
+	var reqNotFound graphsync.RequestNotFoundErr
 	if err := gs.requestManager.UnpauseRequest(ctx, requestID, extensions...); !errors.As(err, &reqNotFound) {
 		return err
 	}
@@ -425,7 +425,7 @@ func (gs *GraphSync) Unpause(ctx context.Context, requestID graphsync.RequestID,
 
 // Cancel cancels an in progress request or response
 func (gs *GraphSync) Cancel(ctx context.Context, requestID graphsync.RequestID) error {
-	var reqNotFound *graphsync.RequestNotFoundErr
+	var reqNotFound graphsync.RequestNotFoundErr
 	if err := gs.responseManager.CancelResponse(ctx, requestID); !errors.As(err, &reqNotFound) {
 		return err
 	}
