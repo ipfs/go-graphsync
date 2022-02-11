@@ -74,7 +74,7 @@ func TestIPLDRoundTrip(t *testing.T) {
 	err = dagcbor.Decode(builder, &buf)
 	require.NoError(t, err)
 	rtnode := builder.Build()
-	rtigsm := bindnode.Unwrap(rtnode).(*ipldbind.GraphSyncMessage)
+	rtigsm := bindnode.Unwrap(rtnode).(*ipldbind.GraphSyncMessageRoot)
 
 	// back to message format
 	rtgsm, err := NewMessageHandler().fromIPLD(rtigsm)

@@ -53,8 +53,8 @@ func TestAppendingRequests(t *testing.T) {
 	require.NoError(t, err, "serialize to dag-cbor errored")
 	require.NoError(t, err)
 
-	gsrIpld := gsmIpld.Requests[0]
-	require.Equal(t, priority, gsrIpld.Priority)
+	gsrIpld := (*gsmIpld.Gs2.Requests)[0]
+	require.Equal(t, priority, *gsrIpld.Priority)
 	require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 	require.Equal(t, root, *gsrIpld.Root)
 	require.Equal(t, selector, *gsrIpld.Selector)
@@ -105,7 +105,7 @@ func TestAppendingResponses(t *testing.T) {
 
 	gsmIpld, err := mh.toIPLD(gsm)
 	require.NoError(t, err, "serialize to dag-cbor errored")
-	gsr := gsmIpld.Responses[0]
+	gsr := (*gsmIpld.Gs2.Responses)[0]
 	// no longer equal: require.Equal(t, requestID.Bytes(), gsr.Id)
 	require.Equal(t, status, gsr.Status)
 	require.Equal(t, basicnode.NewString("test extension data"), gsr.Extensions.Values["graphsync/awesome"])
@@ -140,7 +140,7 @@ func TestAppendBlock(t *testing.T) {
 	require.NoError(t, err, "serializing to dag-cbor errored")
 
 	// assert strings are in dag-cbor message
-	for _, block := range gsmIpld.Blocks {
+	for _, block := range *gsmIpld.Gs2.Blocks {
 		s := bytes.NewBuffer(block.Data).String()
 		require.True(t, contains(strs, s))
 	}
