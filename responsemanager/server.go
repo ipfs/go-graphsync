@@ -123,7 +123,7 @@ func (rm *ResponseManager) processUpdate(ctx context.Context, requestID graphsyn
 func (rm *ResponseManager) unpauseRequest(requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	inProgressResponse, ok := rm.inProgressResponses[requestID]
 	if !ok {
-		return &graphsync.RequestNotFoundErr{}
+		return graphsync.RequestNotFoundErr{}
 	}
 	if inProgressResponse.state != graphsync.Paused {
 		return errors.New("request is not paused")
@@ -147,7 +147,7 @@ func (rm *ResponseManager) abortRequest(ctx context.Context, requestID graphsync
 		rm.responseQueue.Remove(queueTopic{response.peer, requestID}, response.peer)
 	}
 	if !ok || response.state == graphsync.CompletingSend {
-		return &graphsync.RequestNotFoundErr{}
+		return graphsync.RequestNotFoundErr{}
 	}
 
 	_, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(ctx, response.span),
@@ -353,7 +353,7 @@ func (rm *ResponseManager) getUpdates(requestID graphsync.RequestID) []gsmsg.Gra
 func (rm *ResponseManager) pauseRequest(requestID graphsync.RequestID) error {
 	inProgressResponse, ok := rm.inProgressResponses[requestID]
 	if !ok || inProgressResponse.state == graphsync.CompletingSend {
-		return &graphsync.RequestNotFoundErr{}
+		return graphsync.RequestNotFoundErr{}
 	}
 	if inProgressResponse.state == graphsync.Paused {
 		return errors.New("request is already paused")
