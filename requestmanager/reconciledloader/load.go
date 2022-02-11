@@ -18,66 +18,65 @@ import (
 // as long as the request is online, it will wait for more remote items until it can load this link definitively
 // once the request is offline
 func (rl *ReconciledLoader) BlockReadOpener(lctx linking.LinkContext, link datamodel.Link) types.AsyncLoadResult {
-	// if there is a most recent offline load, store it in the list of older offline loads
-	if rl.mostRecentOfflineLoad.link != nil {
-		rl.previousOfflineLoads.store(rl.mostRecentOfflineLoad)
+	if !rl.mostRecentOfflineLoad.empty() {
+		// since we aren't retrying the most recent offline load, it's time to record it in the traversal record
+		rl.traversalRecord.RecordNextStep(
+			rl.mostRecentOfflineLoad.linkContext.LinkPath.Segments(),
+			rl.mostRecentOfflineLoad.link.(cidlink.Link).Cid,
+			rl.mostRecentOfflineLoad.successful,
+		)
 		rl.mostRecentOfflineLoad = loadAttempt{}
 	}
 
-	/*// if we are on a path that is missing fromt he remote just load local
-	if rl.pathTracker.stillOnMissingRemotePath(lctx.LinkPath) {
-		return rl.loadLocal(lctx, link)
-	}*/
+	// the private method does the actual loading, while this wrapper simply does the record keeping
+	remoteOnline, result := rl.blockReadOpener(lctx, link)
+
+	// now, either record cause we're online or cache to allow a retry if we're offline
+	if remoteOnline {
+		rl.traversalRecord.RecordNextStep(lctx.LinkPath.Segments(), link.(cidlink.Link).Cid, result.Err == nil)
+	} else {
+		rl.mostRecentOfflineLoad.link = link
+		rl.mostRecentOfflineLoad.linkContext = lctx
+		rl.mostRecentOfflineLoad.successful = result.Err == nil
+	}
+	return result
+}
+
+func (rl *ReconciledLoader) blockReadOpener(lctx linking.LinkContext, link datamodel.Link) (remoteOnline bool, result types.AsyncLoadResult) {
 
 	// catch up the remore or determine that we are offline
-	isOnline, err := rl.catchUpRemote()
+	hasRemoteData, err := rl.waitRemote()
 	if err != nil {
-		return types.AsyncLoadResult{Err: err, Local: !isOnline}
+		return hasRemoteData, types.AsyncLoadResult{Err: err, Local: !hasRemoteData}
 	}
 
 	// if we're offline just load local
-	if !isOnline {
-		// because the request is offline, we record what was loaded
-		/// from local store should request go online later -- at that point
-		// we will need to retry and reconcile with older loads
-		rl.mostRecentOfflineLoad = loadAttempt{link: link, linkContext: lctx}
-		return rl.loadLocal(lctx, link)
+	if !hasRemoteData {
+		return false, rl.loadLocal(lctx, link)
 	}
 
 	// only attempt remote load if after reconciliation we're not on a missing path
 	if !rl.pathTracker.stillOnMissingRemotePath(lctx.LinkPath) {
 		data, err := rl.loadRemote(lctx, link)
 		if data != nil {
-			return types.AsyncLoadResult{Data: data, Local: false}
+			return true, types.AsyncLoadResult{Data: data, Local: false}
 		}
 		if err != nil {
-			return types.AsyncLoadResult{Err: err, Local: false}
+			return true, types.AsyncLoadResult{Err: err, Local: false}
 		}
 	}
 	// remote had missing or duplicate block, attempt load local
-	return rl.loadLocal(lctx, link)
-
-}
-
-// catchUpRemote waits for remote items to come in until:
-// a. the request is offline or goes offline
-// b. the remote is fully caught up with previous loads
-//    from when the request was offline and has at least one more item
-func (rl *ReconciledLoader) catchUpRemote() (isOnline bool, err error) {
-	// wait till remote item queue is non-empty or request is offline
-	isOnline = rl.remoteQueue.waitItems()
-	// if we have remote items queued but previous loads that
-	// occurred while the request was offline,
-	for !rl.previousOfflineLoads.empty() && isOnline && err == nil {
-		isOnline, err = rl.reconcileStep()
-	}
-	return
+	return true, rl.loadLocal(lctx, link)
 }
 
 func (rl *ReconciledLoader) loadLocal(lctx linking.LinkContext, link datamodel.Link) types.AsyncLoadResult {
 	stream, err := rl.lsys.StorageReadOpener(lctx, link)
 	if err != nil {
 		return types.AsyncLoadResult{Err: graphsync.MissingBlockErr{Link: link}, Local: true}
+	}
+	// skip a stream copy if it's not needed
+	if br, ok := stream.(byteReader); ok {
+		return types.AsyncLoadResult{Data: br.Bytes(), Local: true}
 	}
 	localData, err := ioutil.ReadAll(stream)
 	if err != nil {
@@ -87,8 +86,10 @@ func (rl *ReconciledLoader) loadLocal(lctx linking.LinkContext, link datamodel.L
 }
 
 func (rl *ReconciledLoader) loadRemote(lctx linking.LinkContext, link datamodel.Link) ([]byte, error) {
+	rl.lock.Lock()
 	head := rl.remoteQueue.first()
-	rl.remoteQueue.consume()
+	buffered := rl.remoteQueue.consume()
+	rl.lock.Unlock()
 
 	// verify it matches the expected next load
 	if !head.link.Equals(link.(cidlink.Link).Cid) {
@@ -120,9 +121,7 @@ func (rl *ReconciledLoader) loadRemote(lctx linking.LinkContext, link datamodel.
 		trace.WithAttributes(attribute.String("cid", link.String())))
 	defer span.End()
 
-	// update our total data size buffered
-	rl.dataSize = rl.dataSize - uint64(len(head.block))
-	log.Debugw("verified block", "request_id", rl.requestID, "total_queued_bytes", rl.dataSize)
+	log.Debugw("verified block", "request_id", rl.requestID, "total_queued_bytes", buffered)
 
 	// save the block
 	buffer, committer, err := rl.lsys.StorageWriteOpener(lctx)
@@ -146,33 +145,34 @@ func (rl *ReconciledLoader) loadRemote(lctx linking.LinkContext, link datamodel.
 	return head.block, nil
 }
 
-// reconcile step attempts to reconcile the head of the previous
-// offline load queue with the head of the remote queue
-func (rl *ReconciledLoader) reconcileStep() (isStillOnline bool, err error) {
-	local := rl.previousOfflineLoads.first()
-	// if we're on a path that's missing from the remote
-	if rl.pathTracker.stillOnMissingRemotePath(local.path) {
-		rl.previousOfflineLoads.consume()
-		return true, nil
-	}
-	// ok we're on a path that both the remote and local have
-	// do they match?
+func (rl *ReconciledLoader) waitRemote() (bool, error) {
+	rl.lock.Lock()
+	defer rl.lock.Unlock()
+	for {
+		// Case 1 item is  waiting
+		if !rl.remoteQueue.empty() {
+			if rl.verifier == nil || rl.verifier.Done() {
+				rl.verifier = nil
+				return true, nil
+			}
+			path := rl.verifier.CurrentPath()
+			head := rl.remoteQueue.first()
+			rl.remoteQueue.consume()
+			err := rl.verifier.VerifyNext(head.link, head.action != graphsync.LinkActionMissing)
+			if err != nil {
+				return true, err
+			}
+			rl.pathTracker.recordRemoteLoadAttempt(path, head.action)
+			continue
 
-	remote := rl.remoteQueue.first()
-	if local.link != remote.link {
-		// return reconciliation error
-		return true, graphsync.RemoteIncorrectResponseError{
-			LocalLink:  cidlink.Link{Cid: local.link},
-			RemoteLink: cidlink.Link{Cid: remote.link},
 		}
+
+		// Case 2 no available item and channel is closed
+		if !rl.open {
+			return false, nil
+		}
+
+		// Case 3 nothing available, wait for more items
+		rl.signal.Wait()
 	}
-	// ok both match
-
-	// if remote is missing, set missing path from local load
-	rl.pathTracker.recordRemoteLoadAttempt(local.path, remote.action)
-
-	// consume both once and return
-	rl.previousOfflineLoads.consume()
-	rl.remoteQueue.consume()
-	return rl.remoteQueue.waitItems(), nil
 }

@@ -5,6 +5,8 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 )
 
+// pathTracker is just a simple utility to track whether we're on a missing
+// path for the remote
 type pathTracker struct {
 	lastMissingRemotePath datamodel.Path
 }
@@ -26,12 +28,6 @@ func (pt *pathTracker) stillOnMissingRemotePath(newPath datamodel.Path) bool {
 	}
 	// otherwise we're on a missing path
 	return true
-}
-
-// onMissingRemotePath returns whether based on the most recent path data we
-// are currently on a path that is missing from the remote
-func (pt *pathTracker) onMissingRemotePath() bool {
-	return pt.lastMissingRemotePath.Len() == 0
 }
 
 // recordRemoteLoadAttempt records the results of attempting to load from the remote

@@ -22,23 +22,11 @@ type traversalLink struct {
 	*TraversalRecord
 }
 
-func newLeaf(link *cid.Cid, successful bool) *TraversalRecord {
-	return &TraversalRecord{
-		link:          link,
-		successful:    successful,
-		childSegments: make(map[datamodel.PathSegment]int),
-	}
-}
-
-func newIntermediate() *TraversalRecord {
-	return &TraversalRecord{
-		childSegments: make(map[datamodel.PathSegment]int),
-	}
-}
-
 // NewTraversalRecord returns a new traversal record
 func NewTraversalRecord() *TraversalRecord {
-	return newIntermediate()
+	return &TraversalRecord{
+		childSegments: make(map[datamodel.PathSegment]int),
+	}
 }
 
 // RecordNextStep records the next step in the traversal into the tree
@@ -51,7 +39,7 @@ func (tr *TraversalRecord) RecordNextStep(p []datamodel.PathSegment, link cid.Ci
 	}
 	if _, ok := tr.childSegments[p[0]]; !ok {
 		child := traversalLink{
-			TraversalRecord: newIntermediate(),
+			TraversalRecord: NewTraversalRecord(),
 			segment:         p[0],
 		}
 		tr.childSegments[p[0]] = len(tr.children)
@@ -171,7 +159,7 @@ func (v *Verifier) CurrentPath() datamodel.Path {
 }
 
 func (v *Verifier) Done() bool {
-	return len(v.stack) == 0
+	return len(v.stack) == 0 || (len(v.stack) == 1 && v.stack[0].link == nil)
 }
 
 func (v *Verifier) VerifyNext(link cid.Cid, successful bool) error {
@@ -185,7 +173,7 @@ func (v *Verifier) VerifyNext(link cid.Cid, successful bool) error {
 			RemoteLink: cidlink.Link{Cid: link},
 		}
 	}
-	if next.successful == false && successful {
+	if !next.successful && successful {
 		return errors.New("verifying against tree with additional data not possible")
 	}
 	v.nextLink(successful)

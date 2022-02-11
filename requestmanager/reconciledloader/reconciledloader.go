@@ -27,6 +27,7 @@ import (
 	"sync"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader/traversalrecord"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -39,50 +40,71 @@ type settableWriter interface {
 	SetBytes([]byte) error
 }
 
-type reconiledLoaderMessage interface {
-	handle(rl *ReconciledLoader)
+type byteReader interface {
+	Bytes() []byte
 }
 
 type loadAttempt struct {
 	link        datamodel.Link
 	linkContext linking.LinkContext
+	successful  bool
+}
+
+func (lr loadAttempt) empty() bool {
+	return lr.link == nil
 }
 
 // ReconciledLoader is an instance of the reconciled loader
 type ReconciledLoader struct {
-	remoteQueue           remoteQueue
-	mostRecentOfflineLoad loadAttempt
-	previousOfflineLoads  offlineLoadQueue
-	pathTracker           pathTracker
 	requestID             graphsync.RequestID
-	dataSize              uint64
-	lsys                  linking.LinkSystem
+	lsys                  *linking.LinkSystem
+	mostRecentOfflineLoad loadAttempt
+	traversalRecord       *traversalrecord.TraversalRecord
+	pathTracker           pathTracker
+
+	lock        *sync.Mutex
+	signal      *sync.Cond
+	open        bool
+	verifier    *traversalrecord.Verifier
+	remoteQueue remoteQueue
 }
 
 // NewReconciledLoader returns a new reconciled loader for the given requestID & localStore
-func NewReconciledLoader(requestID graphsync.RequestID, localStore linking.LinkSystem) *ReconciledLoader {
+func NewReconciledLoader(requestID graphsync.RequestID, localStore *linking.LinkSystem) *ReconciledLoader {
 	lock := &sync.Mutex{}
+	traversalRecord := traversalrecord.NewTraversalRecord()
 	return &ReconciledLoader{
-		requestID: requestID,
-		lsys:      localStore,
-		remoteQueue: remoteQueue{
-			lock:   lock,
-			signal: sync.NewCond(lock),
-		},
+		requestID:       requestID,
+		lsys:            localStore,
+		lock:            lock,
+		signal:          sync.NewCond(lock),
+		traversalRecord: traversalRecord,
+		verifier:        traversalrecord.NewVerifier(traversalRecord),
 	}
 }
 
 // SetRemoteState records whether or not the request is online
 func (rl *ReconciledLoader) SetRemoteState(online bool) {
-	rl.remoteQueue.setOpen(online)
+	rl.lock.Lock()
+	defer rl.lock.Unlock()
+	wasOpen := rl.open
+	rl.open = online
+	if !rl.open && wasOpen {
+		// if the queue is closing, trigger any expecting new items
+		rl.signal.Signal()
+		return
+	}
+	if rl.open && !wasOpen {
+		// if we're opening a remote request, we need to reverify against what we've loaded so far
+		rl.verifier = traversalrecord.NewVerifier(rl.traversalRecord)
+	}
 }
 
 // Cleanup frees up some memory resources for this loader prior to throwing it away
 func (rl *ReconciledLoader) Cleanup(ctx context.Context) {
+	rl.lock.Lock()
 	rl.remoteQueue.clear()
-	for !rl.previousOfflineLoads.empty() {
-		rl.previousOfflineLoads.consume()
-	}
+	rl.lock.Unlock()
 }
 
 // RetryLastOfflineLoad retries the last offline load, assuming one is present

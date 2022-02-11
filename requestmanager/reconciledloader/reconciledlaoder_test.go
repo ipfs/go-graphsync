@@ -253,14 +253,14 @@ func TestReconciledLoader(t *testing.T) {
 			},
 			presentLocalBlocks: nil,
 			remoteSeq: []message.GraphSyncLinkMetadatum{
-				{testTree.RootBlock.Cid(), graphsync.LinkActionPresent},
-				{testTree.MiddleListBlock.Cid(), graphsync.LinkActionPresent},
-				{testTree.LeafAlphaBlock.Cid(), graphsync.LinkActionPresent},
-				{testTree.LeafAlphaBlock.Cid(), graphsync.LinkActionPresent},
-				{testTree.LeafBetaBlock.Cid(), graphsync.LinkActionPresent},
-				{testTree.LeafAlphaBlock.Cid(), graphsync.LinkActionPresent},
-				{testTree.MiddleMapBlock.Cid(), graphsync.LinkActionPresent},
-				{testTree.LeafAlphaBlock.Cid(), graphsync.LinkActionPresent},
+				{Link: testTree.RootBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.MiddleListBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafBetaBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.MiddleMapBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionPresent},
 			},
 			steps: []step{
 				goOnline{},
@@ -285,11 +285,11 @@ func TestReconciledLoader(t *testing.T) {
 			},
 			presentLocalBlocks: nil,
 			remoteSeq: []message.GraphSyncLinkMetadatum{
-				{testTree.RootBlock.Cid(), graphsync.LinkActionPresent},
+				{Link: testTree.RootBlock.Cid(), Action: graphsync.LinkActionPresent},
 				// missing the whole list tree
-				{testTree.MiddleListBlock.Cid(), graphsync.LinkActionMissing},
-				{testTree.MiddleMapBlock.Cid(), graphsync.LinkActionPresent},
-				{testTree.LeafAlphaBlock.Cid(), graphsync.LinkActionPresent},
+				{Link: testTree.MiddleListBlock.Cid(), Action: graphsync.LinkActionMissing},
+				{Link: testTree.MiddleMapBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionPresent},
 			},
 			steps: []step{
 				goOnline{},
@@ -313,11 +313,11 @@ func TestReconciledLoader(t *testing.T) {
 				testTree.LeafAlphaBlock,
 			},
 			remoteSeq: []message.GraphSyncLinkMetadatum{
-				{testTree.RootBlock.Cid(), graphsync.LinkActionPresent},
+				{Link: testTree.RootBlock.Cid(), Action: graphsync.LinkActionPresent},
 				// missing the whole list tree
-				{testTree.MiddleListBlock.Cid(), graphsync.LinkActionMissing},
-				{testTree.MiddleMapBlock.Cid(), graphsync.LinkActionPresent},
-				{testTree.LeafAlphaBlock.Cid(), graphsync.LinkActionPresent},
+				{Link: testTree.MiddleListBlock.Cid(), Action: graphsync.LinkActionMissing},
+				{Link: testTree.MiddleMapBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionPresent},
 			},
 			steps: []step{
 				goOnline{},
@@ -346,11 +346,11 @@ func TestReconciledLoader(t *testing.T) {
 				testTree.LeafAlphaBlock,
 			},
 			remoteSeq: []message.GraphSyncLinkMetadatum{
-				{testTree.RootBlock.Cid(), graphsync.LinkActionPresent},
+				{Link: testTree.RootBlock.Cid(), Action: graphsync.LinkActionPresent},
 				// missing the whole list tree
-				{testTree.MiddleListBlock.Cid(), graphsync.LinkActionMissing},
-				{testTree.MiddleMapBlock.Cid(), graphsync.LinkActionPresent},
-				{testTree.LeafAlphaBlock.Cid(), graphsync.LinkActionPresent},
+				{Link: testTree.MiddleListBlock.Cid(), Action: graphsync.LinkActionMissing},
+				{Link: testTree.MiddleMapBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionPresent},
 			},
 			steps: []step{
 				syncLoad{loadSeq: 0, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.RootBlock.RawData()}},
@@ -413,7 +413,7 @@ func TestReconciledLoader(t *testing.T) {
 				asyncLoad:    nil,
 			}
 
-			rl := reconciledloader.NewReconciledLoader(requestID, localLsys)
+			rl := reconciledloader.NewReconciledLoader(requestID, &localLsys)
 			for _, step := range data.steps {
 				step.execute(t, ts, rl)
 			}
@@ -538,12 +538,6 @@ func (i injest) execute(t *testing.T, ts *testState, rl *reconciledloader.Reconc
 	for _, lmd := range linkMetadata {
 		delete(ts.remoteBlocks, lmd.Link)
 	}
-}
-
-type terminate struct{}
-
-func (terminate) execute(t *testing.T, ts *testState, rl *reconciledloader.ReconciledLoader) {
-	rl.Cleanup(ts.ctx)
 }
 
 func syncLoadRange(tbc *testutil.TestBlockChain, from int, to int, local bool) []step {
