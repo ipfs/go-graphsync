@@ -268,10 +268,11 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td := &testData{}
 	td.t = t
 	td.ctx, td.cancel = context.WithTimeout(ctx, 10*time.Second)
+	td.peer = testutil.GeneratePeers(1)[0]
 	td.blockStore = make(map[ipld.Link][]byte)
 	td.persistence = testutil.NewTestStore(td.blockStore)
 	td.task = &peertask.Task{}
-	td.manager = &fauxManager{ctx: ctx, t: t, expectedStartTask: td.task}
+	td.manager = &fauxManager{ctx: ctx, t: t, expectedStartTask: td.task, expectedPeer: td.peer}
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()
 	td.requestID = graphsync.NewRequestID()
@@ -280,7 +281,6 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td.extensionData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.responseCode = graphsync.ResponseStatusCode(101)
-	td.peer = testutil.GeneratePeers(1)[0]
 
 	td.extension = graphsync.ExtensionData{
 		Name: td.extensionName,
@@ -367,10 +367,12 @@ type fauxManager struct {
 	t                 *testing.T
 	responseTask      ResponseTask
 	expectedStartTask *peertask.Task
+	expectedPeer      peer.ID
 }
 
-func (fm *fauxManager) StartTask(task *peertask.Task, responseTaskChan chan<- ResponseTask) {
+func (fm *fauxManager) StartTask(task *peertask.Task, p peer.ID, responseTaskChan chan<- ResponseTask) {
 	require.Same(fm.t, fm.expectedStartTask, task)
+	require.Equal(fm.t, fm.expectedPeer, p)
 	go func() {
 		select {
 		case <-fm.ctx.Done():
@@ -382,7 +384,8 @@ func (fm *fauxManager) StartTask(task *peertask.Task, responseTaskChan chan<- Re
 func (fm *fauxManager) GetUpdates(requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest) {
 }
 
-func (fm *fauxManager) FinishTask(task *peertask.Task, err error) {
+func (fm *fauxManager) FinishTask(task *peertask.Task, p peer.ID, err error) {
+	require.Equal(fm.t, fm.expectedPeer, p)
 }
 
 type fauxResponseStream struct {

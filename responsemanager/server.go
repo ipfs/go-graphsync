@@ -26,11 +26,6 @@ import (
 // The code in this file implements the internal thread for the response manager.
 // These functions can modify the internal state of the ResponseManager
 
-type queueTopic struct {
-	p         peer.ID
-	requestID graphsync.RequestID
-}
-
 func (rm *ResponseManager) cleanupInProcessResponses() {
 	for _, response := range rm.inProgressResponses {
 		response.cancelFn()
@@ -137,14 +132,14 @@ func (rm *ResponseManager) unpauseRequest(requestID graphsync.RequestID, extensi
 			return nil
 		})
 	}
-	rm.responseQueue.PushTask(inProgressResponse.peer, peertask.Task{Topic: queueTopic{inProgressResponse.peer, requestID}, Priority: math.MaxInt32, Work: 1})
+	rm.responseQueue.PushTask(inProgressResponse.peer, peertask.Task{Topic: requestID, Priority: math.MaxInt32, Work: 1})
 	return nil
 }
 
 func (rm *ResponseManager) abortRequest(ctx context.Context, requestID graphsync.RequestID, err error) error {
 	response, ok := rm.inProgressResponses[requestID]
 	if ok {
-		rm.responseQueue.Remove(queueTopic{response.peer, requestID}, response.peer)
+		rm.responseQueue.Remove(requestID, response.peer)
 	}
 	if !ok || response.state == graphsync.CompletingSend {
 		return graphsync.RequestNotFoundErr{}
@@ -258,7 +253,7 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			}
 		// TODO: Use a better work estimation metric.
 
-		rm.responseQueue.PushTask(p, peertask.Task{Topic: queueTopic{p, request.ID()}, Priority: int(request.Priority()), Work: 1})
+		rm.responseQueue.PushTask(p, peertask.Task{Topic: request.ID(), Priority: int(request.Priority()), Work: 1})
 	}
 }
 
@@ -297,20 +292,20 @@ func (rm *ResponseManager) taskDataForKey(requestID graphsync.RequestID) queryex
 	}
 }
 
-func (rm *ResponseManager) startTask(task *peertask.Task) queryexecutor.ResponseTask {
-	key := task.Topic.(queueTopic)
-	taskData := rm.taskDataForKey(key.requestID)
+func (rm *ResponseManager) startTask(task *peertask.Task, p peer.ID) queryexecutor.ResponseTask {
+	requestID := task.Topic.(graphsync.RequestID)
+	taskData := rm.taskDataForKey(requestID)
 	if taskData.Empty {
-		rm.responseQueue.TaskDone(key.p, task)
+		rm.responseQueue.TaskDone(p, task)
 	}
 
 	return taskData
 }
 
-func (rm *ResponseManager) finishTask(task *peertask.Task, err error) {
-	key := task.Topic.(queueTopic)
-	rm.responseQueue.TaskDone(key.p, task)
-	response, ok := rm.inProgressResponses[key.requestID]
+func (rm *ResponseManager) finishTask(task *peertask.Task, p peer.ID, err error) {
+	requestID := task.Topic.(graphsync.RequestID)
+	rm.responseQueue.TaskDone(p, task)
+	response, ok := rm.inProgressResponses[requestID]
 	if !ok {
 		return
 	}
@@ -318,7 +313,7 @@ func (rm *ResponseManager) finishTask(task *peertask.Task, err error) {
 		response.state = graphsync.Paused
 		return
 	}
-	log.Infow("graphsync response processing complete (messages stil sending)", "request id", key.requestID.String(), "peer", key.p, "total time", time.Since(response.startTime))
+	log.Infow("graphsync response processing complete (messages stil sending)", "request id", requestID.String(), "peer", p, "total time", time.Since(response.startTime))
 
 	if err != nil {
 		response.span.RecordError(err)
@@ -327,13 +322,13 @@ func (rm *ResponseManager) finishTask(task *peertask.Task, err error) {
 	}
 
 	if ipldutil.IsContextCancelErr(err) {
-		rm.cancelledListeners.NotifyCancelledListeners(key.p, response.request)
-		rm.terminateRequest(key.requestID)
+		rm.cancelledListeners.NotifyCancelledListeners(p, response.request)
+		rm.terminateRequest(requestID)
 		return
 	}
 
 	if err == queryexecutor.ErrNetworkError {
-		rm.terminateRequest(key.requestID)
+		rm.terminateRequest(requestID)
 		return
 	}
 
@@ -385,11 +380,11 @@ func fromPeerTopics(pt *peertracker.PeerTrackerTopics) peerstate.TaskQueueState 
 	}
 	active := make([]graphsync.RequestID, 0, len(pt.Active))
 	for _, topic := range pt.Active {
-		active = append(active, topic.(queueTopic).requestID)
+		active = append(active, topic.(graphsync.RequestID))
 	}
 	pending := make([]graphsync.RequestID, 0, len(pt.Pending))
 	for _, topic := range pt.Pending {
-		pending = append(pending, topic.(queueTopic).requestID)
+		pending = append(pending, topic.(graphsync.RequestID))
 	}
 	return peerstate.TaskQueueState{
 		Active:  active,

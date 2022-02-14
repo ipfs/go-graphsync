@@ -200,8 +200,8 @@ func (rm *ResponseManager) synchronize() {
 }
 
 // StartTask starts the given task from the peer task queue
-func (rm *ResponseManager) StartTask(task *peertask.Task, responseTaskChan chan<- queryexecutor.ResponseTask) {
-	rm.send(&startTaskRequest{task, responseTaskChan}, nil)
+func (rm *ResponseManager) StartTask(task *peertask.Task, p peer.ID, responseTaskChan chan<- queryexecutor.ResponseTask) {
+	rm.send(&startTaskRequest{task, p, responseTaskChan}, nil)
 }
 
 // GetUpdates is called to read pending updates for a task and clear them
@@ -210,9 +210,9 @@ func (rm *ResponseManager) GetUpdates(requestID graphsync.RequestID, updatesChan
 }
 
 // FinishTask marks a task from the task queue as done
-func (rm *ResponseManager) FinishTask(task *peertask.Task, err error) {
+func (rm *ResponseManager) FinishTask(task *peertask.Task, p peer.ID, err error) {
 	done := make(chan struct{}, 1)
-	rm.send(&finishTaskRequest{task, err, done}, nil)
+	rm.send(&finishTaskRequest{task, p, err, done}, nil)
 	select {
 	case <-rm.ctx.Done():
 	case <-done:

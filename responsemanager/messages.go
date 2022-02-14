@@ -86,12 +86,13 @@ func (rur *responseUpdateRequest) handle(rm *ResponseManager) {
 
 type finishTaskRequest struct {
 	task *peertask.Task
+	p    peer.ID
 	err  error
 	done chan struct{}
 }
 
 func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
-	rm.finishTask(ftr.task, ftr.err)
+	rm.finishTask(ftr.task, ftr.p, ftr.err)
 	select {
 	case <-rm.ctx.Done():
 	case ftr.done <- struct{}{}:
@@ -100,11 +101,12 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 
 type startTaskRequest struct {
 	task         *peertask.Task
+	p            peer.ID
 	taskDataChan chan<- queryexecutor.ResponseTask
 }
 
 func (str *startTaskRequest) handle(rm *ResponseManager) {
-	taskData := rm.startTask(str.task)
+	taskData := rm.startTask(str.task, str.p)
 
 	select {
 	case <-rm.ctx.Done():
