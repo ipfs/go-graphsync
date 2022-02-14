@@ -1027,6 +1027,12 @@ func (frb *fakeResponseBuilder) SendExtensionData(extension graphsync.ExtensionD
 	frb.fra.sendExtensionData(frb.requestID, extension)
 }
 
+func (frb *fakeResponseBuilder) SendUpdates(extensions []graphsync.ExtensionData) {
+	for _, ext := range extensions {
+		frb.fra.sendExtensionData(frb.requestID, ext)
+	}
+}
+
 func (frb *fakeResponseBuilder) FinishRequest() graphsync.ResponseStatusCode {
 	return frb.fra.finishRequest(frb.requestID)
 }

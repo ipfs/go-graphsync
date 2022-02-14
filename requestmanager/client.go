@@ -315,6 +315,18 @@ func (rm *RequestManager) PauseRequest(ctx context.Context, requestID graphsync.
 	}
 }
 
+// UpdateRequest updates an in progress request
+func (rm *RequestManager) UpdateRequest(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+	response := make(chan error, 1)
+	rm.send(&updateRequestMessage{requestID, extensions, response}, ctx.Done())
+	select {
+	case <-rm.ctx.Done():
+		return errors.New("context cancelled")
+	case err := <-response:
+		return err
+	}
+}
+
 // GetRequestTask gets data for the given task in the request queue
 func (rm *RequestManager) GetRequestTask(p peer.ID, task *peertask.Task, requestExecutionChan chan executor.RequestTask) {
 	rm.send(&getRequestTaskMessage{p, task, requestExecutionChan}, nil)

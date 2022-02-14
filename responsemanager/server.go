@@ -360,6 +360,24 @@ func (rm *ResponseManager) pauseRequest(requestID graphsync.RequestID) error {
 	return nil
 }
 
+func (rm *ResponseManager) updateRequest(requestID graphsync.RequestID, extensions []graphsync.ExtensionData) error {
+	inProgressResponse, ok := rm.inProgressResponses[requestID]
+	if !ok || inProgressResponse.state == graphsync.CompletingSend {
+		return graphsync.RequestNotFoundErr{}
+	}
+	/* TODO: do we care?
+	if inProgressResponse.state == graphsync.Paused {
+		return errors.New("request is paused")
+	}
+	*/
+	_ = inProgressResponse.responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
+		rb.SendUpdates(extensions)
+		return nil
+	})
+	rm.responseQueue.PushTask(inProgressResponse.peer, peertask.Task{Topic: requestID, Priority: math.MaxInt32, Work: 1})
+	return nil
+}
+
 func (rm *ResponseManager) peerState(p peer.ID) peerstate.PeerState {
 	var peerState peerstate.PeerState
 	rm.responseQueue.WithPeerTopics(p, func(peerTopics *peertracker.PeerTrackerTopics) {

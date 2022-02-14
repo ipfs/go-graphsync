@@ -189,6 +189,18 @@ func (rm *ResponseManager) CancelResponse(ctx context.Context, requestID graphsy
 	}
 }
 
+// UpdateRequest updates an in progress response
+func (rm *ResponseManager) UpdateResponse(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+	response := make(chan error, 1)
+	rm.send(&updateRequestMessage{requestID, extensions, response}, ctx.Done())
+	select {
+	case <-rm.ctx.Done():
+		return errors.New("context cancelled")
+	case err := <-response:
+		return err
+	}
+}
+
 // Synchronize is a utility method that blocks until all current messages are processed
 func (rm *ResponseManager) synchronize() {
 	sync := make(chan error)

@@ -406,6 +406,21 @@ func (rm *RequestManager) pause(id graphsync.RequestID) error {
 	return nil
 }
 
+func (rm *RequestManager) update(id graphsync.RequestID, extensions []graphsync.ExtensionData) error {
+	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[id]
+	if !ok {
+		return graphsync.RequestNotFoundErr{}
+	}
+	/* TODO: do we care?
+	if inProgressRequestStatus.state == graphsync.Paused {
+		return errors.New("request is paused")
+	}
+	*/
+	inProgressRequestStatus.request = inProgressRequestStatus.request.ReplaceExtensions(extensions)
+	rm.requestQueue.PushTask(inProgressRequestStatus.p, peertask.Task{Topic: id, Priority: math.MaxInt32, Work: 1})
+	return nil
+}
+
 func (rm *RequestManager) peerStats(p peer.ID) peerstate.PeerState {
 	var peerState peerstate.PeerState
 	rm.requestQueue.WithPeerTopics(p, func(peerTopics *peertracker.PeerTrackerTopics) {
