@@ -859,6 +859,7 @@ func TestPauseResume(t *testing.T) {
 	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 }
+
 func TestPauseResumeExternal(t *testing.T) {
 	ctx := context.Background()
 	td := newTestData(ctx, t)
@@ -933,6 +934,90 @@ func TestPauseResumeExternal(t *testing.T) {
 	// verify the correct results are returned, picking up after where there request was paused
 	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
+}
+
+func TestUpdateRequest(t *testing.T) {
+	ctx := context.Background()
+	td := newTestData(ctx, t)
+
+	requestCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	requestCtx1, cancel1 := context.WithCancel(requestCtx)
+
+	peers := testutil.GeneratePeers(1)
+
+	blocksReceived := 0
+	holdForPause := make(chan struct{})
+
+	// setup hook to pause when the blocks start flowing
+	hook := func(p peer.ID, responseData graphsync.ResponseData, blockData graphsync.BlockData, hookActions graphsync.IncomingBlockHookActions) {
+		blocksReceived++
+		if blocksReceived == 1 {
+			err := td.requestManager.PauseRequest(ctx, responseData.RequestID())
+			require.NoError(t, err)
+			close(holdForPause)
+		}
+	}
+	td.blockHooks.Register(hook)
+
+	// Start request
+	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx1, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+
+	rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
+
+	// Start processing responses
+	md := metadataForBlocks(td.blockChain.AllBlocks(), graphsync.LinkActionPresent)
+	responses := []gsmsg.GraphSyncResponse{
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
+	}
+	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
+	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
+	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, 1)
+
+	// wait for the pause to occur
+	<-holdForPause
+
+	// read the outgoing cancel request
+	readNNetworkRequests(requestCtx, t, td, 1)
+
+	// verify no further responses come through
+	time.Sleep(100 * time.Millisecond)
+	testutil.AssertChannelEmpty(t, returnedResponseChan, "no response should be sent request is paused")
+	td.fal.CleanupRequest(peers[0], rr.gsr.ID())
+
+	// send an update with some custom extensions
+	ext1Name := graphsync.ExtensionName("grip grop")
+	ext1Data := "flim flam, blim blam"
+	ext2Name := graphsync.ExtensionName("Humpty/Dumpty")
+	var ext2Data int64 = 101
+
+	err := td.requestManager.UpdateRequest(ctx, rr.gsr.ID(),
+		graphsync.ExtensionData{Name: ext1Name, Data: basicnode.NewString(ext1Data)},
+		graphsync.ExtensionData{Name: ext2Name, Data: basicnode.NewInt(ext2Data)},
+	)
+	require.NoError(t, err)
+
+	// verify the correct new request and its extensions
+	updatedRequest := readNNetworkRequests(requestCtx, t, td, 1)[0]
+
+	actualData, has := updatedRequest.gsr.Extension(ext1Name)
+	require.True(t, has, "has expected extension1")
+	actualString, err := actualData.AsString()
+	require.NoError(t, err)
+	require.Equal(t, ext1Data, actualString)
+
+	actualData, has = updatedRequest.gsr.Extension(ext2Name)
+	require.True(t, has, "has expected extension2")
+	actualInt, err := actualData.AsInt()
+	require.NoError(t, err)
+	require.Equal(t, ext2Data, actualInt)
+
+	// pack down
+	cancel1()
+	errors := testutil.CollectErrors(requestCtx, t, returnedErrorChan)
+	require.Len(t, errors, 1)
+	_, ok := errors[0].(graphsync.RequestClientCancelledErr)
+	require.True(t, ok)
 }
 
 func TestStats(t *testing.T) {
