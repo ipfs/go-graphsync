@@ -427,6 +427,9 @@ func (rb fauxResponseBuilder) SendResponse(link ipld.Link, data []byte) graphsyn
 func (rb fauxResponseBuilder) SendExtensionData(ed graphsync.ExtensionData) {
 }
 
+func (rb fauxResponseBuilder) SendUpdates(ed []graphsync.ExtensionData) {
+}
+
 func (rb fauxResponseBuilder) FinishRequest() graphsync.ResponseStatusCode {
 	return rb.finishRequest
 }

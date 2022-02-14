@@ -13,6 +13,20 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 )
 
+type updateRequestMessage struct {
+	id         graphsync.RequestID
+	extensions []graphsync.ExtensionData
+	response   chan<- error
+}
+
+func (urm *updateRequestMessage) handle(rm *RequestManager) {
+	err := rm.update(urm.id, urm.extensions)
+	select {
+	case <-rm.ctx.Done():
+	case urm.response <- err:
+	}
+}
+
 type pauseRequestMessage struct {
 	id       graphsync.RequestID
 	response chan<- error

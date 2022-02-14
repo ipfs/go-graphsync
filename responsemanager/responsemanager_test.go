@@ -264,6 +264,7 @@ func TestMissingContent(t *testing.T) {
 		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestFailedContentNotFound)
 	})
+
 	t.Run("missing other block", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -500,6 +501,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 		td.assertDedupKey("applesauce")
 	})
+
 	t.Run("test pause/resume", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -517,6 +519,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		require.NoError(t, err)
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 	})
+
 	t.Run("test block hook processing", func(t *testing.T) {
 		t.Run("can send extension data", func(t *testing.T) {
 			td := newTestData(t)
@@ -816,6 +819,7 @@ func TestNetworkErrors(t *testing.T) {
 		td.assertNetworkErrors(err, 1)
 		td.assertNoCompletedResponseStatuses()
 	})
+
 	t.Run("network error final status - failure", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -828,6 +832,7 @@ func TestNetworkErrors(t *testing.T) {
 		td.assertNetworkErrors(err, 1)
 		td.assertNoCompletedResponseStatuses()
 	})
+
 	t.Run("network error block send", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -843,6 +848,7 @@ func TestNetworkErrors(t *testing.T) {
 		td.assertHasNetworkErrors(err)
 		td.assertNoCompletedResponseStatuses()
 	})
+
 	t.Run("network error while paused", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -869,6 +875,70 @@ func TestNetworkErrors(t *testing.T) {
 		td.assertRequestCleared()
 		err = responseManager.UnpauseResponse(td.ctx, td.requestID, td.extensionResponse)
 		require.Error(t, err)
+	})
+}
+
+func TestUpdateResponse(t *testing.T) {
+	t.Run("while unpaused", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := td.newResponseManager()
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+		})
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		td.assertSendBlock()
+		responseManager.synchronize()
+
+		// send an update with some custom extensions
+		ext1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("grip grop"), Data: basicnode.NewString("flim flam, blim blam")}
+		ext2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("Humpty/Dumpty"), Data: basicnode.NewInt(101)}
+
+		responseManager.UpdateResponse(td.ctx, td.requestID, ext1, ext2)
+
+		var receivedExtension sentExtension
+		testutil.AssertReceive(td.ctx, td.t, td.sentExtensions, &receivedExtension, "should send first extension response")
+		require.Equal(td.t, ext1, receivedExtension.extension, "incorrect first extension response sent")
+		testutil.AssertReceive(td.ctx, td.t, td.sentExtensions, &receivedExtension, "should send second extension response")
+		require.Equal(td.t, ext2, receivedExtension.extension, "incorrect second extension response sent")
+		td.assertNoCompletedResponseStatuses()
+	})
+
+	t.Run("while paused", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := td.newResponseManager()
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+		})
+		blkIndex := 0
+		blockCount := 3
+		td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+			blkIndex++
+			if blkIndex == blockCount {
+				hookActions.PauseResponse()
+			}
+		})
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		td.assertRequestDoesNotCompleteWhilePaused()
+		td.verifyNResponsesOnlyProcessing(blockCount)
+		td.assertPausedRequest()
+
+		// send an update with some custom extensions
+		ext1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("grip grop"), Data: basicnode.NewString("flim flam, blim blam")}
+		ext2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("Humpty/Dumpty"), Data: basicnode.NewInt(101)}
+
+		responseManager.UpdateResponse(td.ctx, td.requestID, ext1, ext2)
+		responseManager.synchronize()
+
+		var receivedExtension sentExtension
+		testutil.AssertReceive(td.ctx, td.t, td.sentExtensions, &receivedExtension, "should send first extension response")
+		require.Equal(td.t, ext1, receivedExtension.extension, "incorrect first extension response sent")
+		testutil.AssertReceive(td.ctx, td.t, td.sentExtensions, &receivedExtension, "should send second extension response")
+		require.Equal(td.t, ext2, receivedExtension.extension, "incorrect second extension response sent")
+		td.assertNoCompletedResponseStatuses()
 	})
 }
 
@@ -1025,6 +1095,12 @@ func (frb *fakeResponseBuilder) SendResponse(link ipld.Link, data []byte) graphs
 
 func (frb *fakeResponseBuilder) SendExtensionData(extension graphsync.ExtensionData) {
 	frb.fra.sendExtensionData(frb.requestID, extension)
+}
+
+func (frb *fakeResponseBuilder) SendUpdates(extensions []graphsync.ExtensionData) {
+	for _, ext := range extensions {
+		frb.fra.sendExtensionData(frb.requestID, ext)
+	}
 }
 
 func (frb *fakeResponseBuilder) FinishRequest() graphsync.ResponseStatusCode {

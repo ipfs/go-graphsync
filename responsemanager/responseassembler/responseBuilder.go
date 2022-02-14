@@ -51,6 +51,14 @@ func (rb *responseBuilder) PauseRequest() {
 	rb.operations = append(rb.operations, statusOperation{rb.requestID, graphsync.RequestPaused})
 }
 
+// SendUpdates sets up a PartialResponse with just the extension data provided
+func (rb *responseBuilder) SendUpdates(extensions []graphsync.ExtensionData) {
+	for _, extension := range extensions {
+		rb.SendExtensionData(extension)
+	}
+	rb.operations = append(rb.operations, statusOperation{rb.requestID, graphsync.PartialResponse})
+}
+
 func (rb *responseBuilder) Context() context.Context {
 	return rb.ctx
 }

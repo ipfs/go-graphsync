@@ -496,6 +496,9 @@ type GraphExchange interface {
 	// Cancel cancels an in progress request or response
 	Cancel(context.Context, RequestID) error
 
+	// SendUpdate sends an update for an in progress request or response
+	SendUpdate(context.Context, RequestID, ...ExtensionData) error
+
 	// Stats produces insight on the current state of a graphsync exchange
 	Stats() Stats
 }
