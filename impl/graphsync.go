@@ -426,10 +426,10 @@ func (gs *GraphSync) Unpause(ctx context.Context, requestID graphsync.RequestID,
 // Cancel cancels an in progress request or response
 func (gs *GraphSync) Cancel(ctx context.Context, requestID graphsync.RequestID) error {
 	var reqNotFound graphsync.RequestNotFoundErr
-	if err := gs.responseManager.CancelResponse(ctx, requestID); !errors.As(err, &reqNotFound) {
+	if err := gs.requestManager.CancelRequest(ctx, requestID); !errors.As(err, &reqNotFound) {
 		return err
 	}
-	return gs.requestManager.CancelRequest(ctx, requestID)
+	return gs.responseManager.CancelResponse(ctx, requestID)
 }
 
 // Stats produces insight on the current state of a graphsync exchange
