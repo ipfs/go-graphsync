@@ -432,6 +432,16 @@ func (gs *GraphSync) Cancel(ctx context.Context, requestID graphsync.RequestID) 
 	return gs.responseManager.CancelResponse(ctx, requestID)
 }
 
+// SendUpdate sends an update for an in progress request or response
+func (gs *GraphSync) SendUpdate(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+	// TODO: error if len(extensions)==0?
+	var reqNotFound graphsync.RequestNotFoundErr
+	if err := gs.requestManager.UpdateRequest(ctx, requestID, extensions...); !errors.As(err, &reqNotFound) {
+		return err
+	}
+	return gs.responseManager.UpdateResponse(ctx, requestID, extensions...)
+}
+
 // Stats produces insight on the current state of a graphsync exchange
 func (gs *GraphSync) Stats() graphsync.Stats {
 	outgoingRequestStats := gs.requestQueue.Stats()

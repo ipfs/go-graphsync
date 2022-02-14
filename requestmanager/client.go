@@ -287,6 +287,7 @@ func (rm *RequestManager) CancelRequest(ctx context.Context, requestID graphsync
 func (rm *RequestManager) ProcessResponses(p peer.ID,
 	responses []gsmsg.GraphSyncResponse,
 	blks []blocks.Block) {
+
 	rm.send(&processResponsesMessage{p, responses, blks}, nil)
 }
 
@@ -307,6 +308,18 @@ func (rm *RequestManager) UnpauseRequest(ctx context.Context, requestID graphsyn
 func (rm *RequestManager) PauseRequest(ctx context.Context, requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
 	rm.send(&pauseRequestMessage{requestID, response}, ctx.Done())
+	select {
+	case <-rm.ctx.Done():
+		return errors.New("context cancelled")
+	case err := <-response:
+		return err
+	}
+}
+
+// UpdateRequest updates an in progress request
+func (rm *RequestManager) UpdateRequest(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+	response := make(chan error, 1)
+	rm.send(&updateRequestMessage{requestID, extensions, response}, ctx.Done())
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")

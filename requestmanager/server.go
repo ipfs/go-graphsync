@@ -406,6 +406,16 @@ func (rm *RequestManager) pause(id graphsync.RequestID) error {
 	return nil
 }
 
+func (rm *RequestManager) update(id graphsync.RequestID, extensions []graphsync.ExtensionData) error {
+	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[id]
+	if !ok {
+		return graphsync.RequestNotFoundErr{}
+	}
+	updateRequest := gsmsg.NewUpdateRequest(id, extensions...)
+	rm.SendRequest(inProgressRequestStatus.p, updateRequest)
+	return nil
+}
+
 func (rm *RequestManager) peerStats(p peer.ID) peerstate.PeerState {
 	var peerState peerstate.PeerState
 	rm.requestQueue.WithPeerTopics(p, func(peerTopics *peertracker.PeerTrackerTopics) {

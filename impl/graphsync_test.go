@@ -1708,6 +1708,130 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 	), tracing.TracesToStrings())
 }
 
+func TestSendUpdates(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	// set up pause point
+	stopPoint := 50
+	blocksSent := 0
+	requestIDChan := make(chan graphsync.RequestID, 1)
+	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+		_, has := requestData.Extension(td.extensionName)
+		if has {
+			select {
+			case requestIDChan <- requestData.ID():
+			default:
+			}
+			blocksSent++
+			if blocksSent == stopPoint {
+				hookActions.PauseResponse()
+			}
+		} else {
+			hookActions.TerminateWithError(errors.New("should have sent extension"))
+		}
+	})
+	assertOneRequestCompletes := assertCompletionFunction(responder, 1)
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	blockChain.VerifyResponseRange(ctx, progressChan, 0, stopPoint)
+	timer := time.NewTimer(100 * time.Millisecond)
+	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
+
+	requestID := <-requestIDChan
+
+	// set up extensions and listen for updates on the responder
+	responderExt1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("grip grop"), Data: basicnode.NewString("flim flam, blim blam")}
+	responderExt2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("Humpty/Dumpty"), Data: basicnode.NewInt(101)}
+
+	var responderReceivedExt1 int
+	var responderReceivedExt2 int
+	updateRequests := make(chan struct{}, 1)
+	unreg := responder.RegisterRequestUpdatedHook(func(p peer.ID, request graphsync.RequestData, update graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+		ext, found := update.Extension(responderExt1.Name)
+		if found {
+			responderReceivedExt1++
+			require.Equal(t, responderExt1.Data, ext)
+		}
+
+		ext, found = update.Extension(responderExt2.Name)
+		if found {
+			responderReceivedExt2++
+			require.Equal(t, responderExt2.Data, ext)
+		}
+
+		updateRequests <- struct{}{}
+	})
+
+	// send updates
+	requestor.SendUpdate(ctx, requestID, responderExt1, responderExt2)
+
+	// check we received what we expected
+	testutil.AssertDoesReceive(ctx, t, updateRequests, "request never completed")
+	require.Equal(t, 1, responderReceivedExt1, "got extension 1 in update")
+	require.Equal(t, 1, responderReceivedExt2, "got extension 2 in update")
+	unreg()
+
+	// set up extensions and listen for updates on the requestor
+	requestorExt1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("PING"), Data: basicnode.NewBytes(testutil.RandomBytes(100))}
+	requestorExt2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("PONG"), Data: basicnode.NewBytes(testutil.RandomBytes(100))}
+
+	updateResponses := make(chan struct{}, 1)
+
+	var requestorReceivedExt1 int
+	var requestorReceivedExt2 int
+
+	unreg = requestor.RegisterIncomingResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+		ext, found := responseData.Extension(requestorExt1.Name)
+		if found {
+			requestorReceivedExt1++
+			require.Equal(t, requestorExt1.Data, ext)
+		}
+
+		ext, found = responseData.Extension(requestorExt2.Name)
+		if found {
+			requestorReceivedExt2++
+			require.Equal(t, requestorExt2.Data, ext)
+		}
+
+		updateResponses <- struct{}{}
+	})
+
+	// send updates the other way
+	responder.SendUpdate(ctx, requestID, requestorExt1, requestorExt2)
+
+	// check we received what we expected
+	testutil.AssertDoesReceive(ctx, t, updateResponses, "request never completed")
+	require.Equal(t, 1, requestorReceivedExt1, "got extension 1 in update")
+	require.Equal(t, 1, requestorReceivedExt2, "got extension 2 in update")
+	unreg()
+
+	// finish up
+	err := responder.Unpause(ctx, requestID)
+	require.NoError(t, err)
+
+	blockChain.VerifyRemainder(ctx, progressChan, stopPoint)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
+
+	drain(requestor)
+	drain(responder)
+	assertOneRequestCompletes(ctx, t)
+}
+
 type gsTestData struct {
 	mn                         mocknet.Mocknet
 	ctx                        context.Context

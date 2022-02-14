@@ -19,6 +19,20 @@ func (prm *processRequestsMessage) handle(rm *ResponseManager) {
 	rm.processRequests(prm.p, prm.requests)
 }
 
+type updateRequestMessage struct {
+	requestID  graphsync.RequestID
+	extensions []graphsync.ExtensionData
+	response   chan error
+}
+
+func (urm *updateRequestMessage) handle(rm *ResponseManager) {
+	err := rm.updateRequest(urm.requestID, urm.extensions)
+	select {
+	case <-rm.ctx.Done():
+	case urm.response <- err:
+	}
+}
+
 type pauseRequestMessage struct {
 	requestID graphsync.RequestID
 	response  chan error
