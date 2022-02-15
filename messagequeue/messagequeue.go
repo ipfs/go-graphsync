@@ -106,7 +106,6 @@ func (mq *MessageQueue) AllocateAndBuildMessage(size uint64, buildMessageFn func
 		}
 	}
 	if mq.buildMessage(size, buildMessageFn) {
-		fmt.Printf("BUILT MSG\n")
 		mq.signalWork()
 	}
 }
@@ -251,7 +250,6 @@ func (mq *MessageQueue) sendMessage() {
 
 	for i := 0; i < mq.maxRetries; i++ { // try to send this message until we fail.
 		if mq.attemptSendAndRecovery(message, metadata) {
-			fmt.Printf("sent?\n")
 			return
 		}
 	}

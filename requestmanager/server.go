@@ -263,7 +263,6 @@ func (rm *RequestManager) processResponses(p peer.ID,
 	responses []gsmsg.GraphSyncResponse,
 	blks []blocks.Block) {
 
-	fmt.Printf("processResponses (int) %v\n", responses)
 	log.Debugf("beginning processing responses for peer %s", p)
 	requestIds := make([]string, 0, len(responses))
 	for _, r := range responses {
@@ -316,7 +315,6 @@ func (rm *RequestManager) updateLastResponses(responses []gsmsg.GraphSyncRespons
 }
 
 func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg.GraphSyncResponse) bool {
-	fmt.Printf("processExtensionsForResponse %v\n", response)
 	result := rm.responseHooks.ProcessResponseHooks(p, response)
 	if len(result.Extensions) > 0 {
 		updateRequest := gsmsg.NewUpdateRequest(response.RequestID(), result.Extensions...)
@@ -413,13 +411,7 @@ func (rm *RequestManager) update(id graphsync.RequestID, extensions []graphsync.
 	if !ok {
 		return graphsync.RequestNotFoundErr{}
 	}
-	/* TODO: do we care?
-	if inProgressRequestStatus.state == graphsync.Paused {
-		return errors.New("request is paused")
-	}
-	*/
 	updateRequest := gsmsg.NewUpdateRequest(id, extensions...)
-	fmt.Printf("sending request %v\n", updateRequest)
 	rm.SendRequest(inProgressRequestStatus.p, updateRequest)
 	return nil
 }

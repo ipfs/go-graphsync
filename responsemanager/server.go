@@ -3,7 +3,6 @@ package responsemanager
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"time"
 
@@ -366,18 +365,11 @@ func (rm *ResponseManager) updateRequest(requestID graphsync.RequestID, extensio
 	if !ok || inProgressResponse.state == graphsync.CompletingSend {
 		return graphsync.RequestNotFoundErr{}
 	}
-	/* TODO: do we care?
-	if inProgressResponse.state == graphsync.Paused {
-		return errors.New("request is paused")
-	}
-	*/
 	_ = inProgressResponse.responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 		rb.SendUpdates(extensions)
-		fmt.Printf("FinishRequest\n")
 		return nil
 	})
 
-	fmt.Printf("updateRequest\n")
 	return nil
 }
 

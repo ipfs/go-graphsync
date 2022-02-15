@@ -125,12 +125,10 @@ func CollectResponses(ctx context.Context, t testing.TB, responseChan <-chan gra
 	for {
 		select {
 		case blk, ok := <-responseChan:
-			fmt.Printf("collected %v %v\n", len(collectedBlocks), ok)
 			if !ok {
 				return collectedBlocks
 			}
 			collectedBlocks = append(collectedBlocks, blk)
-			fmt.Printf("collected %v\n", len(collectedBlocks))
 		case <-ctx.Done():
 			require.FailNow(t, "response channel never closed")
 		}
@@ -211,11 +209,10 @@ func VerifyEmptyErrors(ctx context.Context, t testing.TB, errChan <-chan error) 
 	t.Helper()
 	for {
 		select {
-		case err, ok := <-errChan:
+		case _, ok := <-errChan:
 			if !ok {
 				return
 			}
-			fmt.Printf("err: %v\n", err)
 			t.Fatal("errors were sent but shouldn't have been")
 		case <-ctx.Done():
 			t.Fatal("errors channel never closed")

@@ -1807,19 +1807,14 @@ func TestSendUpdates(t *testing.T) {
 		updateRequests <- struct{}{}
 	})
 
-	fmt.Printf("SendUpdate\n")
-
 	// send updates the other way
 	responder.SendUpdate(ctx, requestID, requestorExt1, requestorExt2)
-
-	fmt.Printf("SentUpdate\n")
 
 	// check we received what we expected
 	testutil.AssertDoesReceive(ctx, t, updateRequests, "request never completed")
 	require.Equal(t, 1, requestorReceivedExt1, "got extension 1 in update")
 	require.Equal(t, 1, requestorReceivedExt2, "got extension 2 in update")
 
-	fmt.Printf("Unpausing\n")
 	// finish up
 	err := responder.Unpause(ctx, requestID)
 	require.NoError(t, err)
