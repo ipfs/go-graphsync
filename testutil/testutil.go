@@ -125,10 +125,12 @@ func CollectResponses(ctx context.Context, t testing.TB, responseChan <-chan gra
 	for {
 		select {
 		case blk, ok := <-responseChan:
+			fmt.Printf("collected %v %v\n", len(collectedBlocks), ok)
 			if !ok {
 				return collectedBlocks
 			}
 			collectedBlocks = append(collectedBlocks, blk)
+			fmt.Printf("collected %v\n", len(collectedBlocks))
 		case <-ctx.Done():
 			require.FailNow(t, "response channel never closed")
 		}

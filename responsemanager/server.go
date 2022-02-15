@@ -3,6 +3,7 @@ package responsemanager
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"time"
 
@@ -372,9 +373,11 @@ func (rm *ResponseManager) updateRequest(requestID graphsync.RequestID, extensio
 	*/
 	_ = inProgressResponse.responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
 		rb.SendUpdates(extensions)
+		fmt.Printf("FinishRequest\n")
 		return nil
 	})
-	rm.responseQueue.PushTask(inProgressResponse.peer, peertask.Task{Topic: requestID, Priority: math.MaxInt32, Work: 1})
+
+	fmt.Printf("updateRequest\n")
 	return nil
 }
 

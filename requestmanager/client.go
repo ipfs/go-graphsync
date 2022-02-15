@@ -287,6 +287,8 @@ func (rm *RequestManager) CancelRequest(ctx context.Context, requestID graphsync
 func (rm *RequestManager) ProcessResponses(p peer.ID,
 	responses []gsmsg.GraphSyncResponse,
 	blks []blocks.Block) {
+
+	fmt.Printf("processResponses %v\n", responses)
 	rm.send(&processResponsesMessage{p, responses, blks}, nil)
 }
 
