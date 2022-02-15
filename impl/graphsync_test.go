@@ -1760,7 +1760,7 @@ func TestSendUpdates(t *testing.T) {
 	var responderReceivedExt1 int
 	var responderReceivedExt2 int
 	updateRequests := make(chan struct{}, 1)
-	responder.RegisterRequestUpdatedHook(func(p peer.ID, request graphsync.RequestData, update graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+	unreg := responder.RegisterRequestUpdatedHook(func(p peer.ID, request graphsync.RequestData, update graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
 		ext, found := update.Extension(responderExt1.Name)
 		if found {
 			responderReceivedExt1++
@@ -1783,15 +1783,18 @@ func TestSendUpdates(t *testing.T) {
 	testutil.AssertDoesReceive(ctx, t, updateRequests, "request never completed")
 	require.Equal(t, 1, responderReceivedExt1, "got extension 1 in update")
 	require.Equal(t, 1, responderReceivedExt2, "got extension 2 in update")
+	unreg()
 
 	// set up extensions and listen for updates on the requestor
 	requestorExt1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("PING"), Data: basicnode.NewBytes(testutil.RandomBytes(100))}
 	requestorExt2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("PONG"), Data: basicnode.NewBytes(testutil.RandomBytes(100))}
 
+	updateResponses := make(chan struct{}, 1)
+
 	var requestorReceivedExt1 int
 	var requestorReceivedExt2 int
 
-	requestor.RegisterIncomingResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+	unreg = requestor.RegisterIncomingResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
 		ext, found := responseData.Extension(requestorExt1.Name)
 		if found {
 			requestorReceivedExt1++
@@ -1804,16 +1807,17 @@ func TestSendUpdates(t *testing.T) {
 			require.Equal(t, requestorExt2.Data, ext)
 		}
 
-		updateRequests <- struct{}{}
+		updateResponses <- struct{}{}
 	})
 
 	// send updates the other way
 	responder.SendUpdate(ctx, requestID, requestorExt1, requestorExt2)
 
 	// check we received what we expected
-	testutil.AssertDoesReceive(ctx, t, updateRequests, "request never completed")
+	testutil.AssertDoesReceive(ctx, t, updateResponses, "request never completed")
 	require.Equal(t, 1, requestorReceivedExt1, "got extension 1 in update")
 	require.Equal(t, 1, requestorReceivedExt2, "got extension 2 in update")
+	unreg()
 
 	// finish up
 	err := responder.Unpause(ctx, requestID)
