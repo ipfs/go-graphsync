@@ -209,10 +209,11 @@ func VerifyEmptyErrors(ctx context.Context, t testing.TB, errChan <-chan error) 
 	t.Helper()
 	for {
 		select {
-		case _, ok := <-errChan:
+		case err, ok := <-errChan:
 			if !ok {
 				return
 			}
+			fmt.Printf("err: %v\n", err)
 			t.Fatal("errors were sent but shouldn't have been")
 		case <-ctx.Done():
 			t.Fatal("errors channel never closed")
