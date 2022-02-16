@@ -362,7 +362,7 @@ func (rm *ResponseManager) pauseRequest(requestID graphsync.RequestID) error {
 
 func (rm *ResponseManager) updateRequest(requestID graphsync.RequestID, extensions []graphsync.ExtensionData) error {
 	inProgressResponse, ok := rm.inProgressResponses[requestID]
-	if !ok || inProgressResponse.state == graphsync.CompletingSend {
+	if !ok {
 		return graphsync.RequestNotFoundErr{}
 	}
 	_ = inProgressResponse.responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
