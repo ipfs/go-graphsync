@@ -174,7 +174,7 @@ func TestCancellationViaCommand(t *testing.T) {
 	td.assertSendBlock()
 
 	// send a cancellation
-	err := responseManager.CancelResponse(td.p, td.requestID)
+	err := responseManager.CancelResponse(td.ctx, td.requestID)
 	require.NoError(t, err)
 	close(waitForCancel)
 
@@ -218,22 +218,33 @@ func TestStats(t *testing.T) {
 	responseManager := td.nullTaskQueueResponseManager()
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
-	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+
+	p1 := td.p
+	reqid1 := td.requestID
+	req1 := td.requests
+
 	p2 := testutil.GeneratePeers(1)[0]
-	responseManager.ProcessRequests(td.ctx, p2, td.requests)
-	peerState := responseManager.PeerState(td.p)
+	reqid2 := graphsync.NewRequestID()
+	req2 := []gsmsg.GraphSyncRequest{
+		gsmsg.NewRequest(reqid2, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0), td.extension),
+	}
+
+	responseManager.ProcessRequests(td.ctx, p1, req1)
+	responseManager.ProcessRequests(td.ctx, p2, req2)
+
+	peerState := responseManager.PeerState(p1)
 	require.Len(t, peerState.RequestStates, 1)
-	require.Equal(t, peerState.RequestStates[td.requestID], graphsync.Queued)
+	require.Equal(t, peerState.RequestStates[reqid1], graphsync.Queued)
 	require.Len(t, peerState.Pending, 1)
-	require.Equal(t, peerState.Pending[0], td.requestID)
+	require.Equal(t, peerState.Pending[0], reqid1)
 	require.Len(t, peerState.Active, 0)
 	// no inconsistencies
 	require.Len(t, peerState.Diagnostics(), 0)
 	peerState = responseManager.PeerState(p2)
 	require.Len(t, peerState.RequestStates, 1)
-	require.Equal(t, peerState.RequestStates[td.requestID], graphsync.Queued)
+	require.Equal(t, peerState.RequestStates[reqid2], graphsync.Queued)
 	require.Len(t, peerState.Pending, 1)
-	require.Equal(t, peerState.Pending[0], td.requestID)
+	require.Equal(t, peerState.Pending[0], reqid2)
 	require.Len(t, peerState.Active, 0)
 	// no inconsistencies
 	require.Len(t, peerState.Diagnostics(), 0)
@@ -502,7 +513,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		td.assertPausedRequest()
 		td.assertRequestDoesNotCompleteWhilePaused()
 		testutil.AssertChannelEmpty(t, td.sentResponses, "should not send more blocks")
-		err := responseManager.UnpauseResponse(td.p, td.requestID)
+		err := responseManager.UnpauseResponse(td.ctx, td.requestID)
 		require.NoError(t, err)
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 	})
@@ -560,7 +571,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			td.assertRequestDoesNotCompleteWhilePaused()
 			td.verifyNResponses(blockCount)
 			td.assertPausedRequest()
-			err := responseManager.UnpauseResponse(td.p, td.requestID, td.extensionResponse)
+			err := responseManager.UnpauseResponse(td.ctx, td.requestID, td.extensionResponse)
 			require.NoError(t, err)
 			td.assertReceiveExtensionResponse()
 			td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
@@ -579,7 +590,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
 				blkIndex++
 				if blkIndex == blockCount {
-					err := responseManager.PauseResponse(p, requestData.ID())
+					err := responseManager.PauseResponse(td.ctx, requestData.ID())
 					require.NoError(t, err)
 				}
 			})
@@ -587,7 +598,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			td.assertRequestDoesNotCompleteWhilePaused()
 			td.verifyNResponses(blockCount + 1)
 			td.assertPausedRequest()
-			err := responseManager.UnpauseResponse(td.p, td.requestID)
+			err := responseManager.UnpauseResponse(td.ctx, td.requestID)
 			require.NoError(t, err)
 			td.verifyNResponses(td.blockChainLength - (blockCount + 1))
 			td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
@@ -606,7 +617,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			})
 			go func() {
 				<-advance
-				err := responseManager.UnpauseResponse(td.p, td.requestID)
+				err := responseManager.UnpauseResponse(td.ctx, td.requestID)
 				require.NoError(t, err)
 			}()
 			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
@@ -780,7 +791,7 @@ func TestValidationAndExtensions(t *testing.T) {
 				td.assertCompleteRequestWith(graphsync.RequestFailedUnknown)
 
 				// cannot unpause
-				err := responseManager.UnpauseResponse(td.p, td.requestID)
+				err := responseManager.UnpauseResponse(td.ctx, td.requestID)
 				require.Error(t, err)
 			})
 		})
@@ -856,7 +867,7 @@ func TestNetworkErrors(t *testing.T) {
 		td.notifyBlockSendsNetworkError(err)
 		td.assertNetworkErrors(err, 1)
 		td.assertRequestCleared()
-		err = responseManager.UnpauseResponse(td.p, td.requestID, td.extensionResponse)
+		err = responseManager.UnpauseResponse(td.ctx, td.requestID, td.extensionResponse)
 		require.Error(t, err)
 	})
 }

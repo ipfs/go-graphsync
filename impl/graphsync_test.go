@@ -723,7 +723,7 @@ func TestPauseResume(t *testing.T) {
 	require.Len(t, responderPeerState.IncomingState.Diagnostics(), 0)
 
 	requestID := <-requestIDChan
-	err := responder.UnpauseResponse(td.host1.ID(), requestID)
+	err := responder.Unpause(ctx, requestID)
 	require.NoError(t, err)
 
 	blockChain.VerifyRemainder(ctx, progressChan, stopPoint)
@@ -793,7 +793,7 @@ func TestPauseResumeRequest(t *testing.T) {
 	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
 
 	requestID := <-requestIDChan
-	err := requestor.UnpauseRequest(requestID, td.extensionUpdate)
+	err := requestor.Unpause(ctx, requestID, td.extensionUpdate)
 	require.NoError(t, err)
 
 	blockChain.VerifyRemainder(ctx, progressChan, stopPoint)
@@ -1092,7 +1092,7 @@ func TestNetworkDisconnect(t *testing.T) {
 	require.NoError(t, td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID()))
 	require.NoError(t, td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID()))
 	requestID := <-requestIDChan
-	err := responder.UnpauseResponse(td.host1.ID(), requestID)
+	err := responder.Unpause(ctx, requestID)
 	require.NoError(t, err)
 
 	testutil.AssertReceive(ctx, t, networkError, &err, "should receive network error")

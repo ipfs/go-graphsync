@@ -20,13 +20,12 @@ func (prm *processRequestsMessage) handle(rm *ResponseManager) {
 }
 
 type pauseRequestMessage struct {
-	p         peer.ID
 	requestID graphsync.RequestID
 	response  chan error
 }
 
 func (prm *pauseRequestMessage) handle(rm *ResponseManager) {
-	err := rm.pauseRequest(prm.p, prm.requestID)
+	err := rm.pauseRequest(prm.requestID)
 	select {
 	case <-rm.ctx.Done():
 	case prm.response <- err:
@@ -34,14 +33,13 @@ func (prm *pauseRequestMessage) handle(rm *ResponseManager) {
 }
 
 type errorRequestMessage struct {
-	p         peer.ID
 	requestID graphsync.RequestID
 	err       error
 	response  chan error
 }
 
 func (erm *errorRequestMessage) handle(rm *ResponseManager) {
-	err := rm.abortRequest(rm.ctx, erm.p, erm.requestID, erm.err)
+	err := rm.abortRequest(rm.ctx, erm.requestID, erm.err)
 	select {
 	case <-rm.ctx.Done():
 	case erm.response <- err:
@@ -60,14 +58,13 @@ func (sm *synchronizeMessage) handle(rm *ResponseManager) {
 }
 
 type unpauseRequestMessage struct {
-	p          peer.ID
 	requestID  graphsync.RequestID
 	response   chan error
 	extensions []graphsync.ExtensionData
 }
 
 func (urm *unpauseRequestMessage) handle(rm *ResponseManager) {
-	err := rm.unpauseRequest(urm.p, urm.requestID, urm.extensions...)
+	err := rm.unpauseRequest(urm.requestID, urm.extensions...)
 	select {
 	case <-rm.ctx.Done():
 	case urm.response <- err:
@@ -75,12 +72,12 @@ func (urm *unpauseRequestMessage) handle(rm *ResponseManager) {
 }
 
 type responseUpdateRequest struct {
-	key        responseKey
+	requestID  graphsync.RequestID
 	updateChan chan<- []gsmsg.GraphSyncRequest
 }
 
 func (rur *responseUpdateRequest) handle(rm *ResponseManager) {
-	updates := rm.getUpdates(rur.key)
+	updates := rm.getUpdates(rur.requestID)
 	select {
 	case <-rm.ctx.Done():
 	case rur.updateChan <- updates:
@@ -89,12 +86,13 @@ func (rur *responseUpdateRequest) handle(rm *ResponseManager) {
 
 type finishTaskRequest struct {
 	task *peertask.Task
+	p    peer.ID
 	err  error
 	done chan struct{}
 }
 
 func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
-	rm.finishTask(ftr.task, ftr.err)
+	rm.finishTask(ftr.task, ftr.p, ftr.err)
 	select {
 	case <-rm.ctx.Done():
 	case ftr.done <- struct{}{}:
@@ -103,11 +101,12 @@ func (ftr *finishTaskRequest) handle(rm *ResponseManager) {
 
 type startTaskRequest struct {
 	task         *peertask.Task
+	p            peer.ID
 	taskDataChan chan<- queryexecutor.ResponseTask
 }
 
 func (str *startTaskRequest) handle(rm *ResponseManager) {
-	taskData := rm.startTask(str.task)
+	taskData := rm.startTask(str.task, str.p)
 
 	select {
 	case <-rm.ctx.Done():
@@ -129,13 +128,12 @@ func (psm *peerStateMessage) handle(rm *ResponseManager) {
 }
 
 type terminateRequestMessage struct {
-	p         peer.ID
 	requestID graphsync.RequestID
 	done      chan<- struct{}
 }
 
 func (trm *terminateRequestMessage) handle(rm *ResponseManager) {
-	rm.terminateRequest(responseKey{trm.p, trm.requestID})
+	rm.terminateRequest(trm.requestID)
 	select {
 	case <-rm.ctx.Done():
 	case trm.done <- struct{}{}:

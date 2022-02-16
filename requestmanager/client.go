@@ -292,9 +292,9 @@ func (rm *RequestManager) ProcessResponses(p peer.ID,
 
 // UnpauseRequest unpauses a request that was paused in a block hook based request ID
 // Can also send extensions with unpause
-func (rm *RequestManager) UnpauseRequest(requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+func (rm *RequestManager) UnpauseRequest(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	response := make(chan error, 1)
-	rm.send(&unpauseRequestMessage{requestID, extensions, response}, nil)
+	rm.send(&unpauseRequestMessage{requestID, extensions, response}, ctx.Done())
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -304,9 +304,9 @@ func (rm *RequestManager) UnpauseRequest(requestID graphsync.RequestID, extensio
 }
 
 // PauseRequest pauses an in progress request (may take 1 or more blocks to process)
-func (rm *RequestManager) PauseRequest(requestID graphsync.RequestID) error {
+func (rm *RequestManager) PauseRequest(ctx context.Context, requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
-	rm.send(&pauseRequestMessage{requestID, response}, nil)
+	rm.send(&pauseRequestMessage{requestID, response}, ctx.Done())
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
