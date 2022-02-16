@@ -889,13 +889,13 @@ func TestUpdateResponse(t *testing.T) {
 		})
 		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertSendBlock()
+		responseManager.synchronize()
 
 		// send an update with some custom extensions
 		ext1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("grip grop"), Data: basicnode.NewString("flim flam, blim blam")}
 		ext2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("Humpty/Dumpty"), Data: basicnode.NewInt(101)}
 
 		responseManager.UpdateResponse(td.ctx, td.requestID, ext1, ext2)
-		responseManager.synchronize()
 
 		var receivedExtension sentExtension
 		testutil.AssertReceive(td.ctx, td.t, td.sentExtensions, &receivedExtension, "should send first extension response")
