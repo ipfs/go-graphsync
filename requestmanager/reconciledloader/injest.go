@@ -17,10 +17,11 @@ func (rl *ReconciledLoader) IngestResponse(md graphsync.LinkMetadata, traceLink 
 		newItem := newRemote()
 		newItem.link = link
 		newItem.action = action
-		_, isDuplicate := duplicates[link]
-		if action == graphsync.LinkActionPresent && !isDuplicate {
-			duplicates[link] = struct{}{}
-			newItem.block = blocks[link]
+		if action == graphsync.LinkActionPresent {
+			if _, isDuplicate := duplicates[link]; !isDuplicate {
+				duplicates[link] = struct{}{}
+				newItem.block = blocks[link]
+			}
 		}
 		newItem.traceLink = traceLink
 		items = append(items, newItem)
