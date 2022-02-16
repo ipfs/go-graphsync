@@ -2,14 +2,19 @@ package v2
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"math/rand"
 	"testing"
+	"time"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
+	"github.com/ipld/go-ipld-prime/testutil/garbage"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
@@ -400,4 +405,49 @@ func TestMergeExtensions(t *testing.T) {
 		require.True(t, has)
 		require.Equal(t, basicnode.NewString("cheese"), extData3)
 	})
+}
+
+func TestGarbageFuzz(t *testing.T) {
+	p := peer.ID("foo")
+
+	seed := time.Now().Unix()
+	t.Logf("randomness seed: %v\n", seed)
+	rnd := rand.New(rand.NewSource(seed))
+
+	for i := 0; i < 10000; i++ {
+		node := garbage.Generate(rnd)
+		t.Logf("testing with: %v", nodeToString(node)) // removeme
+
+		byts := writeGarbage(node)
+		_, err := NewMessageHandler().FromNet(p, bytes.NewReader(byts))
+
+		if err == nil {
+			t.Fatalf("Expected error! Succeeded with: %v", nodeToString(node))
+		}
+	}
+}
+
+func nodeToString(node datamodel.Node) string {
+	buf := &bytes.Buffer{}
+	err := dagjson.Encode(node, buf)
+	if err != nil {
+		panic(err)
+	}
+	return buf.String()
+}
+
+func writeGarbage(node datamodel.Node) []byte {
+	lbuf := make([]byte, binary.MaxVarintLen64)
+	buf := new(bytes.Buffer)
+	buf.Write(lbuf)
+
+	err := dagcbor.Encode(node, buf)
+	if err != nil {
+		panic(err)
+	}
+
+	lbuflen := binary.PutUvarint(lbuf, uint64(buf.Len()-binary.MaxVarintLen64))
+	out := buf.Bytes()
+	copy(out[binary.MaxVarintLen64-lbuflen:], lbuf[:lbuflen])
+	return out[binary.MaxVarintLen64-lbuflen:]
 }
