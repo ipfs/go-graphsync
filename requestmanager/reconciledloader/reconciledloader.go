@@ -1,4 +1,5 @@
-/* Package reconciledloader implements a block loader that can load from two different sources:
+/*
+Package reconciledloader implements a block loader that can load from two different sources:
 - a local store
 - a series of remote responses for a given graphsync selector query
 
@@ -48,6 +49,7 @@ type loadAttempt struct {
 	link        datamodel.Link
 	linkContext linking.LinkContext
 	successful  bool
+	usedRemote  bool
 }
 
 func (lr loadAttempt) empty() bool {
@@ -58,7 +60,7 @@ func (lr loadAttempt) empty() bool {
 type ReconciledLoader struct {
 	requestID             graphsync.RequestID
 	lsys                  *linking.LinkSystem
-	mostRecentOfflineLoad loadAttempt
+	mostRecentLoadAttempt loadAttempt
 	traversalRecord       *traversalrecord.TraversalRecord
 	pathTracker           pathTracker
 
@@ -79,12 +81,11 @@ func NewReconciledLoader(requestID graphsync.RequestID, localStore *linking.Link
 		lock:            lock,
 		signal:          sync.NewCond(lock),
 		traversalRecord: traversalRecord,
-		verifier:        traversalrecord.NewVerifier(traversalRecord),
 	}
 }
 
 // SetRemoteState records whether or not the request is online
-func (rl *ReconciledLoader) SetRemoteState(online bool) {
+func (rl *ReconciledLoader) SetRemoteOnline(online bool) {
 	rl.lock.Lock()
 	defer rl.lock.Unlock()
 	wasOpen := rl.open
@@ -107,12 +108,17 @@ func (rl *ReconciledLoader) Cleanup(ctx context.Context) {
 	rl.lock.Unlock()
 }
 
-// RetryLastOfflineLoad retries the last offline load, assuming one is present
-func (rl *ReconciledLoader) RetryLastOfflineLoad() types.AsyncLoadResult {
-	if rl.mostRecentOfflineLoad.link == nil {
-		return types.AsyncLoadResult{Err: errors.New("cannot retry offline load when non is present")}
+// RetryLastLoad retries the last offline load, assuming one is present
+func (rl *ReconciledLoader) RetryLastLoad() types.AsyncLoadResult {
+	if rl.mostRecentLoadAttempt.link == nil {
+		return types.AsyncLoadResult{Err: errors.New("cannot retry offline load when none is present")}
 	}
-	retryLoadAttempt := rl.mostRecentOfflineLoad
-	rl.mostRecentOfflineLoad = loadAttempt{}
+	retryLoadAttempt := rl.mostRecentLoadAttempt
+	rl.mostRecentLoadAttempt = loadAttempt{}
+	if retryLoadAttempt.usedRemote {
+		rl.lock.Lock()
+		rl.remoteQueue.retryLast()
+		rl.lock.Unlock()
+	}
 	return rl.BlockReadOpener(retryLoadAttempt.linkContext, retryLoadAttempt.link)
 }

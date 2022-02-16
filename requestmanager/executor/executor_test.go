@@ -49,13 +49,13 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 					// pretend the remote sent five blocks before encountering a missing block
 					ree.reconciledLoader.successResponseOn(tbc.Blocks(0, 5))
 					missingCid := cidlink.Link{Cid: tbc.Blocks(5, 6)[0].Cid()}
-					ree.reconciledLoader.responseOn(missingCid, types.AsyncLoadResult{Err: graphsync.MissingBlockErr{Link: missingCid}})
+					ree.reconciledLoader.responseOn(missingCid, types.AsyncLoadResult{Err: graphsync.RemoteMissingBlockErr{Link: missingCid, Path: tbc.PathTipIndex(5)}})
 				}
 			},
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyResponseRangeSync(responses, 0, 5)
 				require.Len(t, receivedErrors, 1)
-				require.Equal(t, receivedErrors[0], graphsync.MissingBlockErr{Link: cidlink.Link{Cid: tbc.Blocks(5, 6)[0].Cid()}})
+				require.Equal(t, receivedErrors[0], graphsync.RemoteMissingBlockErr{Link: cidlink.Link{Cid: tbc.Blocks(5, 6)[0].Cid()}, Path: tbc.PathTipIndex(5)})
 				require.Equal(t, []requestSent{{ree.p, ree.request}}, ree.requestsSent)
 				// we should only call block hooks for blocks we actually received
 				require.Len(t, ree.blookHooksCalled, 5)
@@ -235,7 +235,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				data.configureRequestExecution(p, requestID, tbc, ree)
 			}
 			reconciledLoader.successResponseOn(tbc.Blocks(0, ree.loadLocallyUntil))
-			reconciledLoader.responseOn(tbc.LinkTipIndex(ree.loadLocallyUntil), types.AsyncLoadResult{Local: true, Err: graphsync.MissingBlockErr{Link: tbc.LinkTipIndex(ree.loadLocallyUntil)}})
+			reconciledLoader.responseOn(tbc.LinkTipIndex(ree.loadLocallyUntil), types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{Link: tbc.LinkTipIndex(ree.loadLocallyUntil)}})
 			var errorsReceived []error
 			errCollectionErr := make(chan error, 1)
 			go func() {
@@ -344,14 +344,14 @@ func (frl *fakeReconciledLoader) BlockReadOpener(_ linking.LinkContext, link dat
 	return <-frl.asyncLoad(link, false)
 }
 
-func (frl *fakeReconciledLoader) RetryLastOfflineLoad() types.AsyncLoadResult {
+func (frl *fakeReconciledLoader) RetryLastLoad() types.AsyncLoadResult {
 	if frl.cb != nil {
 		frl.cb(frl.lastLoad)
 	}
 	return <-frl.asyncLoad(frl.lastLoad, false)
 }
 
-func (frl *fakeReconciledLoader) SetRemoteState(online bool) {
+func (frl *fakeReconciledLoader) SetRemoteOnline(online bool) {
 	frl.online = true
 }
 func (ree *requestExecutionEnv) ReleaseRequestTask(_ peer.ID, _ *peertask.Task, err error) {

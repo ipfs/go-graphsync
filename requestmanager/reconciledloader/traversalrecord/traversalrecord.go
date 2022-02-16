@@ -113,9 +113,8 @@ func (v *Verifier) tip() *traversalLink {
 }
 
 func (v *Verifier) appendUntilLink() {
-	if v.tip().link == nil && len(v.tip().children) > 0 {
+	for v.tip().link == nil && len(v.tip().children) > 0 {
 		v.stack = append(v.stack, v.tip().children[0])
-		v.appendUntilLink()
 	}
 }
 
@@ -171,6 +170,7 @@ func (v *Verifier) VerifyNext(link cid.Cid, successful bool) error {
 		return graphsync.RemoteIncorrectResponseError{
 			LocalLink:  cidlink.Link{Cid: *next.link},
 			RemoteLink: cidlink.Link{Cid: link},
+			Path:       v.CurrentPath(),
 		}
 	}
 	if !next.successful && successful {

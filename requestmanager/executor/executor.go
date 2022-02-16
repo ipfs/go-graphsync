@@ -39,8 +39,8 @@ type BlockHooks interface {
 
 // ReconciledLoader is an interface that can be used to load blocks from a local store or a remote request
 type ReconciledLoader interface {
-	SetRemoteState(online bool)
-	RetryLastOfflineLoad() types.AsyncLoadResult
+	SetRemoteOnline(online bool)
+	RetryLastLoad() types.AsyncLoadResult
 	BlockReadOpener(lctx linking.LinkContext, link datamodel.Link) types.AsyncLoadResult
 }
 
@@ -85,7 +85,7 @@ func (e *Executor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.
 		span.RecordError(err)
 		if !ipldutil.IsContextCancelErr(err) {
 			e.manager.SendRequest(requestTask.P, gsmsg.NewCancelRequest(requestTask.Request.ID()))
-			requestTask.ReconciledLoader.SetRemoteState(false)
+			requestTask.ReconciledLoader.SetRemoteOnline(false)
 			if !isPausedErr(err) {
 				span.SetStatus(codes.Error, err.Error())
 				select {
@@ -131,17 +131,17 @@ func (e *Executor) traverse(rt RequestTask) error {
 		result := rt.ReconciledLoader.BlockReadOpener(linkContext, lnk)
 		// if we've only loaded locally so far and hit a missing block
 		// initiate remote request and retry the load operation from remote
-		if _, ok := result.Err.(graphsync.MissingBlockErr); ok && !requestSent {
+		if _, ok := result.Err.(graphsync.RemoteMissingBlockErr); ok && !requestSent {
 			requestSent = true
 
 			// tell the loader we're online now
-			rt.ReconciledLoader.SetRemoteState(true)
+			rt.ReconciledLoader.SetRemoteOnline(true)
 
 			if err := e.startRemoteRequest(rt); err != nil {
 				return err
 			}
 			// retry the load
-			result = rt.ReconciledLoader.RetryLastOfflineLoad()
+			result = rt.ReconciledLoader.RetryLastLoad()
 		}
 		log.Debugf("successfully loaded link=%s, nBlocksRead=%d", lnk, rt.Traverser.NBlocksTraversed())
 		// advance the traversal based on results
@@ -184,7 +184,7 @@ func (e *Executor) advanceTraversal(rt RequestTask, result types.AsyncLoadResult
 		case <-rt.Ctx.Done():
 			return ipldutil.ContextCancelError{}
 		case rt.InProgressErr <- result.Err:
-			if _, ok := result.Err.(graphsync.MissingBlockErr); ok {
+			if _, ok := result.Err.(graphsync.RemoteMissingBlockErr); ok {
 				rt.Traverser.Error(traversal.SkipMe{})
 			} else {
 				rt.Traverser.Error(result.Err)

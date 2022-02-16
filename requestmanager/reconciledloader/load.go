@@ -18,36 +18,33 @@ import (
 // as long as the request is online, it will wait for more remote items until it can load this link definitively
 // once the request is offline
 func (rl *ReconciledLoader) BlockReadOpener(lctx linking.LinkContext, link datamodel.Link) types.AsyncLoadResult {
-	if !rl.mostRecentOfflineLoad.empty() {
-		// since we aren't retrying the most recent offline load, it's time to record it in the traversal record
+	if !rl.mostRecentLoadAttempt.empty() {
+		// since we aren't retrying the most recent load, it's time to record it in the traversal record
 		rl.traversalRecord.RecordNextStep(
-			rl.mostRecentOfflineLoad.linkContext.LinkPath.Segments(),
-			rl.mostRecentOfflineLoad.link.(cidlink.Link).Cid,
-			rl.mostRecentOfflineLoad.successful,
+			rl.mostRecentLoadAttempt.linkContext.LinkPath.Segments(),
+			rl.mostRecentLoadAttempt.link.(cidlink.Link).Cid,
+			rl.mostRecentLoadAttempt.successful,
 		)
-		rl.mostRecentOfflineLoad = loadAttempt{}
+		rl.mostRecentLoadAttempt = loadAttempt{}
 	}
 
 	// the private method does the actual loading, while this wrapper simply does the record keeping
-	remoteOnline, result := rl.blockReadOpener(lctx, link)
+	usedRemote, result := rl.blockReadOpener(lctx, link)
 
-	// now, either record cause we're online or cache to allow a retry if we're offline
-	if remoteOnline {
-		rl.traversalRecord.RecordNextStep(lctx.LinkPath.Segments(), link.(cidlink.Link).Cid, result.Err == nil)
-	} else {
-		rl.mostRecentOfflineLoad.link = link
-		rl.mostRecentOfflineLoad.linkContext = lctx
-		rl.mostRecentOfflineLoad.successful = result.Err == nil
-	}
+	// now, we cache to allow a retry if we're offline
+	rl.mostRecentLoadAttempt.link = link
+	rl.mostRecentLoadAttempt.linkContext = lctx
+	rl.mostRecentLoadAttempt.successful = result.Err == nil
+	rl.mostRecentLoadAttempt.usedRemote = usedRemote
 	return result
 }
 
-func (rl *ReconciledLoader) blockReadOpener(lctx linking.LinkContext, link datamodel.Link) (remoteOnline bool, result types.AsyncLoadResult) {
+func (rl *ReconciledLoader) blockReadOpener(lctx linking.LinkContext, link datamodel.Link) (usedRemote bool, result types.AsyncLoadResult) {
 
 	// catch up the remore or determine that we are offline
 	hasRemoteData, err := rl.waitRemote()
 	if err != nil {
-		return hasRemoteData, types.AsyncLoadResult{Err: err, Local: !hasRemoteData}
+		return false, types.AsyncLoadResult{Err: err, Local: !hasRemoteData}
 	}
 
 	// if we're offline just load local
@@ -72,7 +69,7 @@ func (rl *ReconciledLoader) blockReadOpener(lctx linking.LinkContext, link datam
 func (rl *ReconciledLoader) loadLocal(lctx linking.LinkContext, link datamodel.Link) types.AsyncLoadResult {
 	stream, err := rl.lsys.StorageReadOpener(lctx, link)
 	if err != nil {
-		return types.AsyncLoadResult{Err: graphsync.MissingBlockErr{Link: link}, Local: true}
+		return types.AsyncLoadResult{Err: graphsync.RemoteMissingBlockErr{Link: link, Path: lctx.LinkPath}, Local: true}
 	}
 	// skip a stream copy if it's not needed
 	if br, ok := stream.(byteReader); ok {
@@ -80,7 +77,7 @@ func (rl *ReconciledLoader) loadLocal(lctx linking.LinkContext, link datamodel.L
 	}
 	localData, err := ioutil.ReadAll(stream)
 	if err != nil {
-		return types.AsyncLoadResult{Err: graphsync.MissingBlockErr{Link: link}, Local: true}
+		return types.AsyncLoadResult{Err: graphsync.RemoteMissingBlockErr{Link: link, Path: lctx.LinkPath}, Local: true}
 	}
 	return types.AsyncLoadResult{Data: localData, Local: true}
 }
@@ -96,13 +93,22 @@ func (rl *ReconciledLoader) loadRemote(lctx linking.LinkContext, link datamodel.
 		return nil, graphsync.RemoteIncorrectResponseError{
 			LocalLink:  link,
 			RemoteLink: cidlink.Link{Cid: head.link},
+			Path:       lctx.LinkPath,
 		}
 	}
 
 	// update path tracking
 	rl.pathTracker.recordRemoteLoadAttempt(lctx.LinkPath, head.action)
 
-	// if block == nil, we have no remote block to load
+	// if block == nil,
+	// it can mean:
+	// - metadata had a Missing Action (Block is missing)
+	// - metadata had a Present Action but no block data in message
+	// - block appeared twice in metadata for a single message. During
+	//   InjestResponse we decided to hold on to block data only for the
+	//   first metadata instance
+	// Regardless, when block == nil, we need to simply try to load form local
+	// datastore
 	if head.block == nil {
 		return nil, nil
 	}

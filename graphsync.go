@@ -126,16 +126,17 @@ func (e RequestNotFoundErr) Error() string {
 	return "request not found"
 }
 
-// MissingBlockErr indicates that the remote peer was missing a block
+// RemoteMissingBlockErr indicates that the remote peer was missing a block
 // in the selector requested, and we also don't have it locally.
-// It is a non-terminal error in the error stream
+// It is a  -terminal error in the error stream
 // for a request and does NOT cause a request to fail completely
-type MissingBlockErr struct {
+type RemoteMissingBlockErr struct {
 	Link ipld.Link
+	Path ipld.Path
 }
 
-func (e MissingBlockErr) Error() string {
-	return fmt.Sprintf("remote peer is missing block: %s", e.Link.String())
+func (e RemoteMissingBlockErr) Error() string {
+	return fmt.Sprintf("remote peer is missing block (%s) at path %s", e.Link.String(), e.Path)
 }
 
 // RemoteIncorrectResponseError indicates that the remote peer sent a response
@@ -144,10 +145,11 @@ func (e MissingBlockErr) Error() string {
 type RemoteIncorrectResponseError struct {
 	LocalLink  ipld.Link
 	RemoteLink ipld.Link
+	Path       ipld.Path
 }
 
 func (e RemoteIncorrectResponseError) Error() string {
-	return fmt.Sprintf("next link %s in remote traversal does not match next link %s in local traversal, possible malicious responder", e.LocalLink, e.RemoteLink)
+	return fmt.Sprintf("expected link (%s) at path %s does not match link sent by remote (%s), possible malicious responder", e.LocalLink, e.Path, e.RemoteLink)
 }
 
 var (

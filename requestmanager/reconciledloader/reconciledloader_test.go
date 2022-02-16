@@ -65,7 +65,7 @@ func TestReconciledLoader(t *testing.T) {
 					// should fail next because it's not stored locally
 					syncLoad{
 						loadSeq:        50,
-						expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.MissingBlockErr{Link: testChain.LinkTipIndex(50)}},
+						expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{Link: testChain.LinkTipIndex(50), Path: testChain.PathTipIndex(50)}},
 					},
 					// go online
 					goOnline{},
@@ -83,6 +83,53 @@ func TestReconciledLoader(t *testing.T) {
 				}...),
 				// verify we can load the remaining items from the remote
 				syncLoadRange(testChain, 51, 100, false)...),
+		},
+		"retry while offline": {
+			root:               testChain.TipLink.(cidlink.Link).Cid,
+			baseStore:          testBCStorage,
+			presentLocalBlocks: testChain.Blocks(0, 50),
+			steps: append(
+				// load first 50 locally
+				syncLoadRange(testChain, 0, 50, true),
+				[]step{
+					// should fail next because it's not stored locally
+					syncLoad{
+						loadSeq:        50,
+						expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{Link: testChain.LinkTipIndex(50), Path: testChain.PathTipIndex(50)}},
+					},
+					retry{
+						expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{Link: testChain.LinkTipIndex(50), Path: testChain.PathTipIndex(50)}},
+					},
+				}...),
+		},
+		"retry while online": {
+			root:                testChain.TipLink.(cidlink.Link).Cid,
+			baseStore:           testBCStorage,
+			presentRemoteBlocks: testChain.AllBlocks(),
+			remoteSeq:           metadataRange(testChain, 0, 100, false),
+			steps: append(append([]step{
+				goOnline{},
+				injest{metadataStart: 0, metadataEnd: 100},
+			},
+				syncLoadRange(testChain, 0, 50, false)...),
+				retry{
+					expectedResult: types.AsyncLoadResult{Data: testChain.Blocks(49, 50)[0].RawData(), Local: true},
+				}),
+		},
+		"retry online load after going offline": {
+			root:                testChain.TipLink.(cidlink.Link).Cid,
+			baseStore:           testBCStorage,
+			presentRemoteBlocks: testChain.AllBlocks(),
+			remoteSeq:           metadataRange(testChain, 0, 100, false),
+			steps: append(append([]step{
+				goOnline{},
+				injest{metadataStart: 0, metadataEnd: 100},
+			},
+				syncLoadRange(testChain, 0, 50, false)...),
+				goOffline{},
+				retry{
+					expectedResult: types.AsyncLoadResult{Data: testChain.Blocks(49, 50)[0].RawData(), Local: true},
+				}),
 		},
 		"error reconciling local results": {
 			root:                testChain.TipLink.(cidlink.Link).Cid,
@@ -102,7 +149,7 @@ func TestReconciledLoader(t *testing.T) {
 					// should fail next because it's not stored locally
 					syncLoad{
 						loadSeq:        50,
-						expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.MissingBlockErr{Link: testChain.LinkTipIndex(50)}},
+						expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{Link: testChain.LinkTipIndex(50), Path: testChain.PathTipIndex(50)}},
 					},
 					// go online
 					goOnline{},
@@ -118,6 +165,7 @@ func TestReconciledLoader(t *testing.T) {
 						expectedResult: types.AsyncLoadResult{Local: false, Err: graphsync.RemoteIncorrectResponseError{
 							LocalLink:  testChain.LinkTipIndex(30),
 							RemoteLink: testChain.LinkTipIndex(53),
+							Path:       testChain.PathTipIndex(30),
 						}},
 					},
 				}...),
@@ -142,6 +190,7 @@ func TestReconciledLoader(t *testing.T) {
 					expectedResult: types.AsyncLoadResult{Local: false, Err: graphsync.RemoteIncorrectResponseError{
 						LocalLink:  testChain.LinkTipIndex(30),
 						RemoteLink: testChain.LinkTipIndex(53),
+						Path:       testChain.PathTipIndex(30),
 					}},
 				},
 			),
@@ -162,8 +211,9 @@ func TestReconciledLoader(t *testing.T) {
 				// we should get an error that we're missing a block for our response
 				syncLoad{
 					loadSeq: 30,
-					expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.MissingBlockErr{
+					expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{
 						Link: testChain.LinkTipIndex(30),
+						Path: testChain.PathTipIndex(30),
 					}},
 				},
 			),
@@ -235,8 +285,9 @@ func TestReconciledLoader(t *testing.T) {
 				// but then it should return missing
 				syncLoad{
 					loadSeq: 50,
-					expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.MissingBlockErr{
+					expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{
 						Link: testChain.LinkTipIndex(50),
+						Path: testChain.PathTipIndex(50),
 					}},
 				},
 			),
@@ -295,7 +346,7 @@ func TestReconciledLoader(t *testing.T) {
 				goOnline{},
 				injest{metadataStart: 0, metadataEnd: 4},
 				syncLoad{loadSeq: 0, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.RootBlock.RawData()}},
-				syncLoad{loadSeq: 1, expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.MissingBlockErr{Link: testTree.MiddleListNodeLnk}}},
+				syncLoad{loadSeq: 1, expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{Link: testTree.MiddleListNodeLnk, Path: datamodel.ParsePath("linkedList")}}},
 				syncLoad{loadSeq: 6, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.MiddleMapBlock.RawData()}},
 				syncLoad{loadSeq: 7, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.LeafAlphaBlock.RawData()}},
 			},
@@ -326,7 +377,13 @@ func TestReconciledLoader(t *testing.T) {
 				syncLoad{loadSeq: 1, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.MiddleListBlock.RawData()}},
 				syncLoad{loadSeq: 2, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.LeafAlphaBlock.RawData()}},
 				syncLoad{loadSeq: 3, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.LeafAlphaBlock.RawData()}},
-				syncLoad{loadSeq: 4, expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.MissingBlockErr{Link: testTree.LeafBetaLnk}}},
+				syncLoad{
+					loadSeq: 4,
+					expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{Link: testTree.LeafBetaLnk, Path: datamodel.NewPath([]datamodel.PathSegment{
+						datamodel.PathSegmentOfString("linkedList"),
+						datamodel.PathSegmentOfInt(2),
+					})}},
+				},
 				syncLoad{loadSeq: 5, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.LeafAlphaBlock.RawData()}},
 				syncLoad{loadSeq: 6, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.MiddleMapBlock.RawData()}},
 				syncLoad{loadSeq: 7, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.LeafAlphaBlock.RawData()}},
@@ -358,13 +415,22 @@ func TestReconciledLoader(t *testing.T) {
 				syncLoad{loadSeq: 2, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.LeafAlphaBlock.RawData()}},
 				syncLoad{loadSeq: 3, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.LeafAlphaBlock.RawData()}},
 				// here we have an offline load that is missing the local beta block
-				syncLoad{loadSeq: 4, expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.MissingBlockErr{Link: testTree.LeafBetaLnk}}},
+				syncLoad{
+					loadSeq: 4,
+					expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{Link: testTree.LeafBetaLnk, Path: datamodel.NewPath([]datamodel.PathSegment{
+						datamodel.PathSegmentOfString("linkedList"),
+						datamodel.PathSegmentOfInt(2),
+					})}},
+				},
 				goOnline{},
 				injest{metadataStart: 0, metadataEnd: 4},
 				// what we want to verify here is that when we retry loading, the reconciliation still works,
 				// even though the remote is missing a brnach that's farther up the tree
 				retry{
-					expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.MissingBlockErr{Link: testTree.LeafBetaLnk}},
+					expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{Link: testTree.LeafBetaLnk, Path: datamodel.NewPath([]datamodel.PathSegment{
+						datamodel.PathSegmentOfString("linkedList"),
+						datamodel.PathSegmentOfInt(2),
+					})}},
 				},
 				syncLoad{loadSeq: 5, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.LeafAlphaBlock.RawData()}},
 				syncLoad{loadSeq: 6, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.MiddleMapBlock.RawData()}},
@@ -441,13 +507,13 @@ type step interface {
 type goOffline struct{}
 
 func (goOffline) execute(t *testing.T, ts *testState, rl *reconciledloader.ReconciledLoader) {
-	rl.SetRemoteState(false)
+	rl.SetRemoteOnline(false)
 }
 
 type goOnline struct{}
 
 func (goOnline) execute(t *testing.T, ts *testState, rl *reconciledloader.ReconciledLoader) {
-	rl.SetRemoteState(true)
+	rl.SetRemoteOnline(true)
 }
 
 type syncLoad struct {
@@ -467,7 +533,7 @@ type retry struct {
 
 func (s retry) execute(t *testing.T, ts *testState, rl *reconciledloader.ReconciledLoader) {
 	require.Nil(t, ts.asyncLoad)
-	result := rl.RetryLastOfflineLoad()
+	result := rl.RetryLastLoad()
 	require.Equal(t, s.expectedResult, result)
 }
 
@@ -493,7 +559,7 @@ func (s asyncRetry) execute(t *testing.T, ts *testState, rl *reconciledloader.Re
 	asyncLoad := make(chan types.AsyncLoadResult, 1)
 	ts.asyncLoad = asyncLoad
 	go func() {
-		result := rl.RetryLastOfflineLoad()
+		result := rl.RetryLastLoad()
 		asyncLoad <- result
 	}()
 }

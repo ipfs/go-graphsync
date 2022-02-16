@@ -45,6 +45,9 @@ type remoteQueue struct {
 	head     *remotedLinkedItem
 	tail     *remotedLinkedItem
 	dataSize uint64
+	// we hold a reference to the last consumed item in order to
+	// allow us to retry while online
+	lastConsumed *remotedLinkedItem
 }
 
 func (rq *remoteQueue) empty() bool {
@@ -59,19 +62,41 @@ func (rq *remoteQueue) first() remoteItem {
 	return rq.head.remoteItem
 }
 
+// retry last will put the last consumed item back in the queue at the front
+func (rq *remoteQueue) retryLast() {
+	if rq.lastConsumed != nil {
+		rq.head = rq.lastConsumed
+	}
+}
+
 func (rq *remoteQueue) consume() uint64 {
+	// release and clear the previous last consumed item
+	if rq.lastConsumed != nil {
+		linkedRemoteItemPool.Put(rq.lastConsumed)
+		rq.lastConsumed = nil
+	}
 	// update our total data size buffered
 	rq.dataSize -= uint64(len(rq.head.block))
+	// wipe the block reference -- if its been consumed, its saved
+	// to local store, and we don't need it - let the memory get freed
 	rq.head.block = nil
-	next := rq.head.next
-	linkedRemoteItemPool.Put(rq.head)
-	rq.head = next
+
+	// we hold the last consumed, minus the block, around so we can retry
+	rq.lastConsumed = rq.head
+
+	// advance the queue
+	rq.head = rq.head.next
 	return rq.dataSize
 }
 
 func (rq *remoteQueue) clear() {
 	for rq.head != nil {
 		rq.consume()
+	}
+	// clear any last consumed reference left over
+	if rq.lastConsumed != nil {
+		linkedRemoteItemPool.Put(rq.lastConsumed)
+		rq.lastConsumed = nil
 	}
 }
 

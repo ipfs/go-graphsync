@@ -260,7 +260,7 @@ func (rm *RequestManager) cancelOnError(requestID graphsync.RequestID, ipr *inPr
 		rm.terminateRequest(requestID, ipr)
 	} else {
 		ipr.cancelFn()
-		ipr.reconciledLoader.SetRemoteState(false)
+		ipr.reconciledLoader.SetRemoteOnline(false)
 	}
 }
 
@@ -351,7 +351,7 @@ func (rm *RequestManager) processTerminations(responses []gsmsg.GraphSyncRespons
 			}
 			ipr, ok := rm.inProgressRequestStatuses[response.RequestID()]
 			if ok && ipr.reconciledLoader != nil {
-				ipr.reconciledLoader.SetRemoteState(false)
+				ipr.reconciledLoader.SetRemoteOnline(false)
 			}
 		}
 	}

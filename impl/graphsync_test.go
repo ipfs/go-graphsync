@@ -7,13 +7,11 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
@@ -45,7 +43,6 @@ import (
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipfs/go-graphsync/ipldutil"
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/storeutil"
@@ -67,136 +64,6 @@ var protocolsForTest = map[string]struct {
 	"(v1.0 -> v2.0)": {[]protocol.ID{gsnet.ProtocolGraphsync_1_0_0}, nil},
 	"(v2.0 -> v1.0)": {nil, []protocol.ID{gsnet.ProtocolGraphsync_1_0_0}},
 	"(v1.0 -> v1.0)": {[]protocol.ID{gsnet.ProtocolGraphsync_1_0_0}, []protocol.ID{gsnet.ProtocolGraphsync_1_0_0}},
-}
-
-func TestMakeRequestToNetwork(t *testing.T) {
-
-	// create network
-	ctx := context.Background()
-	ctx, collectTracing := testutil.SetupTracing(ctx)
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	td := newGsTestData(ctx, t)
-	r := &receiver{
-		messageReceived: make(chan receivedMessage),
-	}
-	td.gsnet2.SetDelegate(r)
-	graphSync := td.GraphSyncHost1()
-
-	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
-
-	requestCtx, requestCancel := context.WithCancel(ctx)
-	defer requestCancel()
-	graphSync.Request(requestCtx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
-
-	var message receivedMessage
-	testutil.AssertReceive(ctx, t, r.messageReceived, &message, "did not receive message sent")
-
-	sender := message.sender
-	require.Equal(t, td.host1.ID(), sender, "received message from wrong node")
-
-	received := message.message
-	receivedRequests := received.Requests()
-	require.Len(t, receivedRequests, 1, "Did not add request to received message")
-	receivedRequest := receivedRequests[0]
-	receivedSpec := receivedRequest.Selector()
-	require.Equal(t, blockChain.Selector(), receivedSpec, "did not transmit selector spec correctly")
-	_, err := selector.ParseSelector(receivedSpec)
-	require.NoError(t, err, "did not receive parsible selector on other side")
-
-	returnedData, found := receivedRequest.Extension(td.extensionName)
-	require.True(t, found)
-	require.Equal(t, td.extensionData, returnedData, "Failed to encode extension")
-
-	builder := gsmsg.NewBuilder()
-	builder.AddResponseCode(receivedRequest.ID(), graphsync.RequestRejected)
-	response, err := builder.Build()
-	require.NoError(t, err)
-	td.gsnet2.SendMessage(ctx, td.host1.ID(), response)
-	drain(graphSync)
-
-	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-		"message(0)->sendMessage(0)",
-		"processResponses(0)",
-	}, tracing.TracesToStrings())
-
-	// make sure the attributes are what we expect
-	requestSpans := tracing.FindSpans("request")
-	require.Equal(t, td.host2.ID().Pretty(), testutil.AttributeValueInTraceSpan(t, requestSpans[0], "peerID").AsString())
-	require.Equal(t, blockChain.TipLink.String(), testutil.AttributeValueInTraceSpan(t, requestSpans[0], "root").AsString())
-	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, requestSpans[0], "extensions").AsStringSlice())
-	require.Equal(t, int64(0), testutil.AttributeValueInTraceSpan(t, requestSpans[0], "requestID").AsInt64())
-}
-
-func TestSendResponseToIncomingRequest(t *testing.T) {
-	// create network
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	td := newGsTestData(ctx, t)
-	r := &receiver{
-		messageReceived: make(chan receivedMessage),
-	}
-	td.gsnet1.SetDelegate(r)
-
-	var receivedRequestData datamodel.Node
-	// initialize graphsync on second node to response to requests
-	gsnet := td.GraphSyncHost2()
-	gsnet.RegisterIncomingRequestHook(
-		func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
-			var has bool
-			receivedRequestData, has = requestData.Extension(td.extensionName)
-			require.True(t, has, "did not have expected extension")
-			hookActions.SendExtensionData(td.extensionResponse)
-		},
-	)
-
-	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
-
-	requestID := graphsync.NewRequestID()
-
-	builder := gsmsg.NewBuilder()
-	builder.AddRequest(gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), td.extension))
-	message, err := builder.Build()
-	require.NoError(t, err)
-	// send request across network
-	err = td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
-	require.NoError(t, err)
-	// read the values sent back to requestor
-	var received gsmsg.GraphSyncMessage
-	var receivedBlocks []blocks.Block
-	var receivedExtensions []datamodel.Node
-	for {
-		var message receivedMessage
-		testutil.AssertReceive(ctx, t, r.messageReceived, &message, "did not receive complete response")
-
-		sender := message.sender
-		require.Equal(t, td.host2.ID(), sender, "received message from wrong node")
-
-		received = message.message
-		receivedBlocks = append(receivedBlocks, received.Blocks()...)
-		receivedResponses := received.Responses()
-		receivedExtension, found := receivedResponses[0].Extension(td.extensionName)
-		if found {
-			receivedExtensions = append(receivedExtensions, receivedExtension)
-		}
-		require.Len(t, receivedResponses, 1, "Did not receive response")
-		require.Equal(t, requestID, receivedResponses[0].RequestID(), "Sent response for incorrect request id")
-		if receivedResponses[0].Status() != graphsync.PartialResponse {
-			break
-		}
-	}
-
-	require.Len(t, receivedBlocks, blockChainLength, "Send incorrect number of blocks or there were duplicate blocks")
-	require.Equal(t, td.extensionData, receivedRequestData, "did not receive correct request extension data")
-	require.Len(t, receivedExtensions, 1, "should have sent extension responses but didn't")
-	require.Equal(t, td.extensionResponseData, receivedExtensions[0], "did not return correct extension data")
 }
 
 func TestRejectRequestsByDefault(t *testing.T) {
@@ -493,7 +360,7 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 
 	for err := range errChan {
 		// verify the error is received for leaf beta node being missing
-		require.EqualError(t, err, fmt.Sprintf("remote peer is missing block: %s", tree.LeafBetaLnk.String()))
+		require.EqualError(t, err, fmt.Sprintf("remote peer is missing block (%s) at path linkedList/2", tree.LeafBetaLnk.String()))
 	}
 	require.Equal(t, tree.LeafAlphaBlock.RawData(), td.blockStore1[tree.LeafAlphaLnk])
 	require.Equal(t, tree.MiddleListBlock.RawData(), td.blockStore1[tree.MiddleListNodeLnk])
@@ -1845,37 +1712,6 @@ func (td *gsTestData) GraphSyncHost1(options ...Option) graphsync.GraphExchange 
 
 func (td *gsTestData) GraphSyncHost2(options ...Option) graphsync.GraphExchange {
 	return New(td.ctx, td.gsnet2, td.persistence2, options...)
-}
-
-type receivedMessage struct {
-	message gsmsg.GraphSyncMessage
-	sender  peer.ID
-}
-
-// Receiver is an interface for receiving messages from the GraphSyncNetwork.
-type receiver struct {
-	messageReceived chan receivedMessage
-}
-
-func (r *receiver) ReceiveMessage(
-	ctx context.Context,
-	sender peer.ID,
-	incoming gsmsg.GraphSyncMessage) {
-
-	select {
-	case <-ctx.Done():
-	case r.messageReceived <- receivedMessage{incoming, sender}:
-	}
-}
-
-func (r *receiver) ReceiveError(_ peer.ID, err error) {
-	fmt.Println("got receive err")
-}
-
-func (r *receiver) Connected(p peer.ID) {
-}
-
-func (r *receiver) Disconnected(p peer.ID) {
 }
 
 func processResponsesTraces(t *testing.T, tracing *testutil.Collector, responseCount int) []string {

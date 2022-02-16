@@ -1,0 +1,102 @@
+@startuml Request Execution
+participant "GraphSync\nTop Level\nInterface" as TLI
+participant RequestManager
+participant TaskQueue
+participant RequestExecutor as RE
+participant ReconciledLoader
+participant TraversalRecord
+participant Verifier
+participant LocalStorage
+participant Traverser
+participant Network
+
+== Initialization ==
+
+TLI -> RequestManager ** : Setup
+TLI -> RE ** : Setup
+TLI -> TaskQueue ** : Setup
+
+== Executing A Request ==
+
+par
+note over TLI : Request Initiation
+TLI -> RequestManager : New Request
+RequestManager -> RequestManager : Create Request Context
+RequestManager -> TaskQueue : Push Request
+else
+note over RE: Request Execution
+TaskQueue -> RE : Next Request\nTo Process
+RE -> RequestManager : Initiate request execution
+RequestManager -> Traverser ** : Create to manage selector traversal
+RequestManager -> ReconciledLoader ** : create to manage 
+RequestManager -> RE : Traverser + ReconciledLoader
+note over RE: Local loading phase
+loop until traversal complete, request context cancelled, or missing block locally
+Traverser -> RE : Request to load blocks\nto perform traversal
+RE -> ReconciledLoader : Load next block
+ReconciledLoader -> LocalStorage : Load Block
+LocalStorage --> ReconciledLoader : Block or missing
+ReconciledLoader -> TraversalRecord : Record link traversal
+TraversalRecord --> ReconciledLoader
+ReconciledLoader --> RE : Block or missing
+opt block is present
+RE --> Traverser : Next block to load
+end
+end
+RE -> Network : Send Graphsync Request
+RE -> ReconciledLoader : remote online
+ReconciledLoader -> Verifier ** : Create new from traversal record
+ReconciledLoader -> RE
+note over RE: Remote loading phase
+loop until traversal complete, request context cancelled, or missing block locally
+Traverser -> RE : Request to load blocks\nto perform traversal
+RE -> ReconciledLoader : Load next block
+alt on missing path for remote
+ReconciledLoader -> LocalStorage : Load Block
+LocalStorage --> ReconciledLoader : Block or missing
+else
+loop until block loaded, missing, or error
+opt new remote responses
+  alt verification not done
+    ReconciledLoader -> Verifier : verify next response
+    alt success
+    Verifier --> ReconciledLoader : verified
+    ReconciledLoader -> ReconciledLoader : wait for more responses
+    else failure
+    Verifier --> ReconciledLoader : error
+    end
+  else verification done
+    alt next response matches current block load
+
+      alt next response contains a block
+        ReconciledLoader -> LocalStorage : store remote block
+        LocalStorage --> ReconciledLoader
+        ReconciledLoader -> ReconciledLoader : block laoded from remote
+      else next response does not contain block
+        opt next response is missing
+          ReconciledLoader -> ReconciledLoader : record missing path
+        end
+        ReconciledLoader -> LocalStorage : load block
+        LocalStorage --> ReconciledLoader : block or missing
+      end
+    else next response doesn not match
+      ReconciledLoader -> ReconciledLoader : error
+    end
+  end
+end
+opt remote goes offline
+ReconciledLoader -> LocalStorage : load block
+LocalStorage --> ReconciledLoader : block or missing
+end
+end
+ReconciledLoader -> TraversalRecord : Record link traversal
+TraversalRecord --> ReconciledLoader
+ReconciledLoader --> RE : Block, missing or error
+RE -> Traverser : Next block to load
+end
+end
+else
+Network -> RequestManager : New Responses
+RequestManager -> ReconciledLoader : Ingest Responses
+end
+@enduml

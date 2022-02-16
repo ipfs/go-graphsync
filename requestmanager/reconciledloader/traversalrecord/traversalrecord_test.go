@@ -128,6 +128,7 @@ func TestVerification(t *testing.T) {
 			expectedError: graphsync.RemoteIncorrectResponseError{
 				LocalLink:  testTree.LeafAlphaLnk,
 				RemoteLink: testTree.LeafBetaLnk,
+				Path:       datamodel.NewPath([]datamodel.PathSegment{datamodel.PathSegmentOfString("linkedList"), datamodel.PathSegmentOfInt(1)}),
 			},
 			expectedPaths: []string{
 				"",
