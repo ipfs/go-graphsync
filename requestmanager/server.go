@@ -233,7 +233,7 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID, onTermina
 	if !ok {
 		if onTerminated != nil {
 			select {
-			case onTerminated <- &graphsync.RequestNotFoundErr{}:
+			case onTerminated <- graphsync.RequestNotFoundErr{}:
 			case <-rm.ctx.Done():
 			}
 		}
