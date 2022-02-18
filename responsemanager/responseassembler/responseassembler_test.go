@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
 	"testing"
 	"time"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 
@@ -27,9 +27,9 @@ func TestResponseAssemblerSendsResponses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
-	requestID3 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
+	requestID3 := graphsync.NewRequestID()
 
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
@@ -139,7 +139,7 @@ func TestResponseAssemblerCloseStream(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -175,7 +175,7 @@ func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -194,13 +194,13 @@ func TestResponseAssemblerSendsExtensionData(t *testing.T) {
 	fph.AssertBlocks(blks[0])
 	fph.AssertResponses(expectedResponses{requestID1: graphsync.PartialResponse})
 
-	extensionData1 := testutil.RandomBytes(100)
+	extensionData1 := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
 	extension1 := graphsync.ExtensionData{
 		Name: extensionName1,
 		Data: extensionData1,
 	}
-	extensionData2 := testutil.RandomBytes(100)
+	extensionData2 := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
 	extension2 := graphsync.ExtensionData{
 		Name: extensionName2,
@@ -222,7 +222,7 @@ func TestResponseAssemblerSendsResponsesInTransaction(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -261,8 +261,8 @@ func TestResponseAssemblerIgnoreBlocks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -336,8 +336,8 @@ func TestResponseAssemblerSkipFirstBlocks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {
@@ -427,9 +427,9 @@ func TestResponseAssemblerDupKeys(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
-	requestID3 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
+	requestID3 := graphsync.NewRequestID()
 	blks := testutil.GenerateBlocksOfSize(5, 100)
 	links := make([]ipld.Link, 0, len(blks))
 	for _, block := range blks {

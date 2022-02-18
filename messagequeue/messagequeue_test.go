@@ -39,7 +39,7 @@ func TestStartupAndShutdown(t *testing.T) {
 
 	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
@@ -77,7 +77,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 
 	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
@@ -128,11 +128,11 @@ func TestProcessingNotification(t *testing.T) {
 	waitGroup.Add(1)
 	blks := testutil.GenerateBlocksOfSize(3, 128)
 
-	responseID := graphsync.RequestID(rand.Int31())
+	responseID := graphsync.NewRequestID()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: testutil.RandomBytes(100),
+		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
 	}
 	status := graphsync.RequestCompletedFull
 	blkData := testutil.NewFakeBlockData()
@@ -199,7 +199,7 @@ func TestDedupingMessages(t *testing.T) {
 	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
 	messageQueue.Startup()
 	waitGroup.Add(1)
-	id := graphsync.RequestID(rand.Int31())
+	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
@@ -210,11 +210,11 @@ func TestDedupingMessages(t *testing.T) {
 	})
 	// wait for send attempt
 	waitGroup.Wait()
-	id2 := graphsync.RequestID(rand.Int31())
+	id2 := graphsync.NewRequestID()
 	priority2 := graphsync.Priority(rand.Int31())
 	selector2 := ssb.ExploreAll(ssb.Matcher()).Node()
 	root2 := testutil.GenerateCids(1)[0]
-	id3 := graphsync.RequestID(rand.Int31())
+	id3 := graphsync.NewRequestID()
 	priority3 := graphsync.Priority(rand.Int31())
 	selector3 := ssb.ExploreIndex(0, ssb.Matcher()).Node()
 	root3 := testutil.GenerateCids(1)[0]
@@ -231,7 +231,7 @@ func TestDedupingMessages(t *testing.T) {
 	require.Len(t, requests, 1, "number of requests in first message was not 1")
 	request := requests[0]
 	require.Equal(t, id, request.ID())
-	require.False(t, request.IsCancel())
+	require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 	require.Equal(t, priority, request.Priority())
 	require.Equal(t, selector, request.Selector())
 
@@ -241,11 +241,11 @@ func TestDedupingMessages(t *testing.T) {
 	require.Len(t, requests, 2, "number of requests in second message was not 2")
 	for _, request := range requests {
 		if request.ID() == id2 {
-			require.False(t, request.IsCancel())
+			require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 			require.Equal(t, priority2, request.Priority())
 			require.Equal(t, selector2, request.Selector())
 		} else if request.ID() == id3 {
-			require.False(t, request.IsCancel())
+			require.Equal(t, request.Type(), graphsync.RequestTypeNew)
 			require.Equal(t, priority3, request.Priority())
 			require.Equal(t, selector3, request.Selector())
 		} else {
@@ -385,8 +385,8 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
 	messageSender := &fakeMessageSender{nil, fullClosedChan, resetChan, messagesSent}
 	var waitGroup sync.WaitGroup
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
@@ -403,7 +403,7 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 
 	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
 		b.AddBlock(blks[0])
-		b.AddLink(requestID1, cidlink.Link{Cid: blks[0].Cid()}, true)
+		b.AddLink(requestID1, cidlink.Link{Cid: blks[0].Cid()}, graphsync.LinkActionPresent)
 		b.SetSubscriber(requestID1, subscriber)
 	})
 	waitGroup.Wait()
@@ -431,16 +431,16 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *Builder) {
 		b.AddBlock(blks[1])
 		b.SetResponseStream(requestID1, fc1)
-		b.AddLink(requestID1, cidlink.Link{Cid: blks[1].Cid()}, true)
+		b.AddLink(requestID1, cidlink.Link{Cid: blks[1].Cid()}, graphsync.LinkActionPresent)
 	})
 	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *Builder) {
 		b.AddBlock(blks[2])
 		b.SetResponseStream(requestID1, fc1)
-		b.AddLink(requestID1, cidlink.Link{Cid: blks[2].Cid()}, true)
+		b.AddLink(requestID1, cidlink.Link{Cid: blks[2].Cid()}, graphsync.LinkActionPresent)
 	})
 	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *Builder) {
 		b.SetResponseStream(requestID2, fc2)
-		b.AddLink(requestID2, cidlink.Link{Cid: blks[3].Cid()}, true)
+		b.AddLink(requestID2, cidlink.Link{Cid: blks[3].Cid()}, graphsync.LinkActionPresent)
 		b.AddBlock(blks[3])
 	})
 

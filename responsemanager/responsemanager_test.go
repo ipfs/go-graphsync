@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-peertaskqueue/peertracker"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -28,8 +29,8 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/persistenceoptions"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
-	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
@@ -124,7 +125,7 @@ func TestCancellationQueryInProgress(t *testing.T) {
 
 	// send a cancellation
 	cancelRequests := []gsmsg.GraphSyncRequest{
-		gsmsg.CancelRequest(td.requestID),
+		gsmsg.NewCancelRequest(td.requestID),
 	}
 	responseManager.ProcessRequests(td.ctx, td.p, cancelRequests)
 	responseManager.synchronize()
@@ -173,7 +174,7 @@ func TestCancellationViaCommand(t *testing.T) {
 	td.assertSendBlock()
 
 	// send a cancellation
-	err := responseManager.CancelResponse(td.p, td.requestID)
+	err := responseManager.CancelResponse(td.ctx, td.requestID)
 	require.NoError(t, err)
 	close(waitForCancel)
 
@@ -197,7 +198,7 @@ func TestEarlyCancellation(t *testing.T) {
 
 	// send a cancellation
 	cancelRequests := []gsmsg.GraphSyncRequest{
-		gsmsg.CancelRequest(td.requestID),
+		gsmsg.NewCancelRequest(td.requestID),
 	}
 	responseManager.ProcessRequests(td.ctx, td.p, cancelRequests)
 
@@ -217,22 +218,33 @@ func TestStats(t *testing.T) {
 	responseManager := td.nullTaskQueueResponseManager()
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
 	responseManager.Startup()
-	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+
+	p1 := td.p
+	reqid1 := td.requestID
+	req1 := td.requests
+
 	p2 := testutil.GeneratePeers(1)[0]
-	responseManager.ProcessRequests(td.ctx, p2, td.requests)
-	peerState := responseManager.PeerState(td.p)
+	reqid2 := graphsync.NewRequestID()
+	req2 := []gsmsg.GraphSyncRequest{
+		gsmsg.NewRequest(reqid2, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0), td.extension),
+	}
+
+	responseManager.ProcessRequests(td.ctx, p1, req1)
+	responseManager.ProcessRequests(td.ctx, p2, req2)
+
+	peerState := responseManager.PeerState(p1)
 	require.Len(t, peerState.RequestStates, 1)
-	require.Equal(t, peerState.RequestStates[td.requestID], graphsync.Queued)
+	require.Equal(t, peerState.RequestStates[reqid1], graphsync.Queued)
 	require.Len(t, peerState.Pending, 1)
-	require.Equal(t, peerState.Pending[0], td.requestID)
+	require.Equal(t, peerState.Pending[0], reqid1)
 	require.Len(t, peerState.Active, 0)
 	// no inconsistencies
 	require.Len(t, peerState.Diagnostics(), 0)
 	peerState = responseManager.PeerState(p2)
 	require.Len(t, peerState.RequestStates, 1)
-	require.Equal(t, peerState.RequestStates[td.requestID], graphsync.Queued)
+	require.Equal(t, peerState.RequestStates[reqid2], graphsync.Queued)
 	require.Len(t, peerState.Pending, 1)
-	require.Equal(t, peerState.Pending[0], td.requestID)
+	require.Equal(t, peerState.Pending[0], reqid2)
 	require.Len(t, peerState.Active, 0)
 	// no inconsistencies
 	require.Len(t, peerState.Diagnostics(), 0)
@@ -252,6 +264,7 @@ func TestMissingContent(t *testing.T) {
 		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
 		td.assertCompleteRequestWith(graphsync.RequestFailedContentNotFound)
 	})
+
 	t.Run("missing other block", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -433,8 +446,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		for _, blk := range blks {
 			set.Add(blk.Cid())
 		}
-		data, err := cidset.EncodeCidSet(set)
-		require.NoError(t, err)
+		data := cidset.EncodeCidSet(set)
 		requests := []gsmsg.GraphSyncRequest{
 			gsmsg.NewRequest(td.requestID, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0),
 				graphsync.ExtensionData{
@@ -455,8 +467,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 			hookActions.ValidateRequest()
 		})
-		data, err := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(4)
-		require.NoError(t, err)
+		data := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(4)
 		requests := []gsmsg.GraphSyncRequest{
 			gsmsg.NewRequest(td.requestID, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0),
 				graphsync.ExtensionData{
@@ -490,6 +501,7 @@ func TestValidationAndExtensions(t *testing.T) {
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 		td.assertDedupKey("applesauce")
 	})
+
 	t.Run("test pause/resume", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -503,10 +515,11 @@ func TestValidationAndExtensions(t *testing.T) {
 		td.assertPausedRequest()
 		td.assertRequestDoesNotCompleteWhilePaused()
 		testutil.AssertChannelEmpty(t, td.sentResponses, "should not send more blocks")
-		err := responseManager.UnpauseResponse(td.p, td.requestID)
+		err := responseManager.UnpauseResponse(td.ctx, td.requestID)
 		require.NoError(t, err)
 		td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
 	})
+
 	t.Run("test block hook processing", func(t *testing.T) {
 		t.Run("can send extension data", func(t *testing.T) {
 			td := newTestData(t)
@@ -561,7 +574,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			td.assertRequestDoesNotCompleteWhilePaused()
 			td.verifyNResponses(blockCount)
 			td.assertPausedRequest()
-			err := responseManager.UnpauseResponse(td.p, td.requestID, td.extensionResponse)
+			err := responseManager.UnpauseResponse(td.ctx, td.requestID, td.extensionResponse)
 			require.NoError(t, err)
 			td.assertReceiveExtensionResponse()
 			td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
@@ -580,7 +593,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
 				blkIndex++
 				if blkIndex == blockCount {
-					err := responseManager.PauseResponse(p, requestData.ID())
+					err := responseManager.PauseResponse(td.ctx, requestData.ID())
 					require.NoError(t, err)
 				}
 			})
@@ -588,7 +601,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			td.assertRequestDoesNotCompleteWhilePaused()
 			td.verifyNResponses(blockCount + 1)
 			td.assertPausedRequest()
-			err := responseManager.UnpauseResponse(td.p, td.requestID)
+			err := responseManager.UnpauseResponse(td.ctx, td.requestID)
 			require.NoError(t, err)
 			td.verifyNResponses(td.blockChainLength - (blockCount + 1))
 			td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
@@ -607,7 +620,7 @@ func TestValidationAndExtensions(t *testing.T) {
 			})
 			go func() {
 				<-advance
-				err := responseManager.UnpauseResponse(td.p, td.requestID)
+				err := responseManager.UnpauseResponse(td.ctx, td.requestID)
 				require.NoError(t, err)
 			}()
 			responseManager.ProcessRequests(td.ctx, td.p, td.requests)
@@ -781,7 +794,7 @@ func TestValidationAndExtensions(t *testing.T) {
 				td.assertCompleteRequestWith(graphsync.RequestFailedUnknown)
 
 				// cannot unpause
-				err := responseManager.UnpauseResponse(td.p, td.requestID)
+				err := responseManager.UnpauseResponse(td.ctx, td.requestID)
 				require.Error(t, err)
 			})
 		})
@@ -806,6 +819,7 @@ func TestNetworkErrors(t *testing.T) {
 		td.assertNetworkErrors(err, 1)
 		td.assertNoCompletedResponseStatuses()
 	})
+
 	t.Run("network error final status - failure", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -818,6 +832,7 @@ func TestNetworkErrors(t *testing.T) {
 		td.assertNetworkErrors(err, 1)
 		td.assertNoCompletedResponseStatuses()
 	})
+
 	t.Run("network error block send", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -833,6 +848,7 @@ func TestNetworkErrors(t *testing.T) {
 		td.assertHasNetworkErrors(err)
 		td.assertNoCompletedResponseStatuses()
 	})
+
 	t.Run("network error while paused", func(t *testing.T) {
 		td := newTestData(t)
 		defer td.cancel()
@@ -857,8 +873,72 @@ func TestNetworkErrors(t *testing.T) {
 		td.notifyBlockSendsNetworkError(err)
 		td.assertNetworkErrors(err, 1)
 		td.assertRequestCleared()
-		err = responseManager.UnpauseResponse(td.p, td.requestID, td.extensionResponse)
+		err = responseManager.UnpauseResponse(td.ctx, td.requestID, td.extensionResponse)
 		require.Error(t, err)
+	})
+}
+
+func TestUpdateResponse(t *testing.T) {
+	t.Run("while unpaused", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := td.newResponseManager()
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+		})
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		td.assertSendBlock()
+		responseManager.synchronize()
+
+		// send an update with some custom extensions
+		ext1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("grip grop"), Data: basicnode.NewString("flim flam, blim blam")}
+		ext2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("Humpty/Dumpty"), Data: basicnode.NewInt(101)}
+
+		responseManager.UpdateResponse(td.ctx, td.requestID, ext1, ext2)
+
+		var receivedExtension sentExtension
+		testutil.AssertReceive(td.ctx, td.t, td.sentExtensions, &receivedExtension, "should send first extension response")
+		require.Equal(td.t, ext1, receivedExtension.extension, "incorrect first extension response sent")
+		testutil.AssertReceive(td.ctx, td.t, td.sentExtensions, &receivedExtension, "should send second extension response")
+		require.Equal(td.t, ext2, receivedExtension.extension, "incorrect second extension response sent")
+		td.assertNoCompletedResponseStatuses()
+	})
+
+	t.Run("while paused", func(t *testing.T) {
+		td := newTestData(t)
+		defer td.cancel()
+		responseManager := td.newResponseManager()
+		responseManager.Startup()
+		td.requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+			hookActions.ValidateRequest()
+		})
+		blkIndex := 0
+		blockCount := 3
+		td.blockHooks.Register(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+			blkIndex++
+			if blkIndex == blockCount {
+				hookActions.PauseResponse()
+			}
+		})
+		responseManager.ProcessRequests(td.ctx, td.p, td.requests)
+		td.assertRequestDoesNotCompleteWhilePaused()
+		td.verifyNResponsesOnlyProcessing(blockCount)
+		td.assertPausedRequest()
+
+		// send an update with some custom extensions
+		ext1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("grip grop"), Data: basicnode.NewString("flim flam, blim blam")}
+		ext2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("Humpty/Dumpty"), Data: basicnode.NewInt(101)}
+
+		responseManager.UpdateResponse(td.ctx, td.requestID, ext1, ext2)
+		responseManager.synchronize()
+
+		var receivedExtension sentExtension
+		testutil.AssertReceive(td.ctx, td.t, td.sentExtensions, &receivedExtension, "should send first extension response")
+		require.Equal(td.t, ext1, receivedExtension.extension, "incorrect first extension response sent")
+		testutil.AssertReceive(td.ctx, td.t, td.sentExtensions, &receivedExtension, "should send second extension response")
+		require.Equal(td.t, ext2, receivedExtension.extension, "incorrect second extension response sent")
+		td.assertNoCompletedResponseStatuses()
 	})
 }
 
@@ -1017,6 +1097,12 @@ func (frb *fakeResponseBuilder) SendExtensionData(extension graphsync.ExtensionD
 	frb.fra.sendExtensionData(frb.requestID, extension)
 }
 
+func (frb *fakeResponseBuilder) SendUpdates(extensions []graphsync.ExtensionData) {
+	for _, ext := range extensions {
+		frb.fra.sendExtensionData(frb.requestID, ext)
+	}
+}
+
 func (frb *fakeResponseBuilder) FinishRequest() graphsync.ResponseStatusCode {
 	return frb.fra.finishRequest(frb.requestID)
 }
@@ -1052,12 +1138,12 @@ type testData struct {
 	skippedFirstBlocks        chan int64
 	dedupKeys                 chan string
 	responseAssembler         *fakeResponseAssembler
-	extensionData             []byte
+	extensionData             datamodel.Node
 	extensionName             graphsync.ExtensionName
 	extension                 graphsync.ExtensionData
-	extensionResponseData     []byte
+	extensionResponseData     datamodel.Node
 	extensionResponse         graphsync.ExtensionData
-	extensionUpdateData       []byte
+	extensionUpdateData       datamodel.Node
 	extensionUpdate           graphsync.ExtensionData
 	requestID                 graphsync.RequestID
 	requests                  []gsmsg.GraphSyncRequest
@@ -1126,28 +1212,28 @@ func newTestData(t *testing.T) testData {
 		completedNotifications: td.completedNotifications,
 	}
 
-	td.extensionData = testutil.RandomBytes(100)
+	td.extensionData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.extension = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionData,
 	}
-	td.extensionResponseData = testutil.RandomBytes(100)
+	td.extensionResponseData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionResponse = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionResponseData,
 	}
-	td.extensionUpdateData = testutil.RandomBytes(100)
+	td.extensionUpdateData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionUpdate = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionUpdateData,
 	}
-	td.requestID = graphsync.RequestID(rand.Int31())
+	td.requestID = graphsync.NewRequestID()
 	td.requests = []gsmsg.GraphSyncRequest{
 		gsmsg.NewRequest(td.requestID, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0), td.extension),
 	}
 	td.updateRequests = []gsmsg.GraphSyncRequest{
-		gsmsg.UpdateRequest(td.requestID, td.extensionUpdate),
+		gsmsg.NewUpdateRequest(td.requestID, td.extensionUpdate),
 	}
 	td.p = testutil.GeneratePeers(1)[0]
 	td.peristenceOptions = persistenceoptions.New()
@@ -1321,7 +1407,7 @@ func (td *testData) notifyStatusMessagesSent() {
 
 func (td *testData) notifyBlockSendsSent() {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int31), []notifications.Event{
+	td.notifeePublisher.PublishEvents(notifications.Topic(graphsync.NewRequestID), []notifications.Event{
 		messagequeue.Event{Name: messagequeue.Sent, Metadata: messagequeue.Metadata{BlockData: td.blkNotifications}},
 	})
 	td.blkNotifications = make(map[graphsync.RequestID][]graphsync.BlockData)

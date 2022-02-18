@@ -87,7 +87,7 @@ func (qe *QueryExecutor) ExecuteTask(_ context.Context, pid peer.ID, task *peert
 	// StartTask lets us block until this task is at the top of the execution stack
 	responseTaskChan := make(chan ResponseTask)
 	var rt ResponseTask
-	qe.manager.StartTask(task, responseTaskChan)
+	qe.manager.StartTask(task, pid, responseTaskChan)
 	select {
 	case rt = <-responseTaskChan:
 	case <-qe.ctx.Done():
@@ -109,7 +109,7 @@ func (qe *QueryExecutor) ExecuteTask(_ context.Context, pid peer.ID, task *peert
 			span.SetStatus(codes.Error, err.Error())
 		}
 	}
-	qe.manager.FinishTask(task, err)
+	qe.manager.FinishTask(task, pid, err)
 	log.Debugw("finishing response execution", "id", rt.Request.ID(), "peer", pid.String(), "root_cid", rt.Request.Root().String())
 	return false
 }
@@ -159,7 +159,7 @@ func (qe *QueryExecutor) checkForUpdates(
 			return err
 		case <-taskData.Signals.UpdateSignal:
 			updateChan := make(chan []gsmsg.GraphSyncRequest)
-			qe.manager.GetUpdates(p, taskData.Request.ID(), updateChan)
+			qe.manager.GetUpdates(taskData.Request.ID(), updateChan)
 			select {
 			case updates := <-updateChan:
 				for _, update := range updates {
@@ -279,9 +279,9 @@ func (qe *QueryExecutor) sendResponse(ctx context.Context, p peer.ID, taskData R
 
 // Manager providers an interface to the response manager
 type Manager interface {
-	StartTask(task *peertask.Task, responseTaskChan chan<- ResponseTask)
-	GetUpdates(p peer.ID, requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest)
-	FinishTask(task *peertask.Task, err error)
+	StartTask(task *peertask.Task, p peer.ID, responseTaskChan chan<- ResponseTask)
+	GetUpdates(requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest)
+	FinishTask(task *peertask.Task, p peer.ID, err error)
 }
 
 // BlockHooks is an interface for processing block hooks

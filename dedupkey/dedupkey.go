@@ -1,27 +1,21 @@
 package dedupkey
 
 import (
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
-
-	"github.com/ipfs/go-graphsync/ipldutil"
 )
 
 // EncodeDedupKey returns encoded cbor data for string key
-func EncodeDedupKey(key string) ([]byte, error) {
+func EncodeDedupKey(key string) (datamodel.Node, error) {
 	nb := basicnode.Prototype.String.NewBuilder()
 	err := nb.AssignString(key)
 	if err != nil {
 		return nil, err
 	}
-	nd := nb.Build()
-	return ipldutil.EncodeNode(nd)
+	return nb.Build(), nil
 }
 
 // DecodeDedupKey returns a string key decoded from cbor data
-func DecodeDedupKey(data []byte) (string, error) {
-	nd, err := ipldutil.DecodeNode(data)
-	if err != nil {
-		return "", err
-	}
-	return nd.AsString()
+func DecodeDedupKey(data datamodel.Node) (string, error) {
+	return data.AsString()
 }

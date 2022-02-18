@@ -3,7 +3,6 @@ package hooks_test
 import (
 	"errors"
 	"io"
-	"math/rand"
 	"testing"
 
 	"github.com/ipld/go-ipld-prime"
@@ -41,20 +40,20 @@ func TestRequestHookProcessing(t *testing.T) {
 			"chainstore": fakeSystem,
 		},
 	}
-	extensionData := testutil.RandomBytes(100)
+	extensionData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionData,
 	}
-	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponseData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionResponse := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionResponseData,
 	}
 
 	root := testutil.GenerateCids(1)[0]
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
 	p := testutil.GeneratePeers(1)[0]
@@ -219,20 +218,20 @@ func TestRequestHookProcessing(t *testing.T) {
 }
 
 func TestBlockHookProcessing(t *testing.T) {
-	extensionData := testutil.RandomBytes(100)
+	extensionData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionData,
 	}
-	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponseData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionResponse := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionResponseData,
 	}
 
 	root := testutil.GenerateCids(1)[0]
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
 	p := testutil.GeneratePeers(1)[0]
@@ -297,28 +296,28 @@ func TestBlockHookProcessing(t *testing.T) {
 }
 
 func TestUpdateHookProcessing(t *testing.T) {
-	extensionData := testutil.RandomBytes(100)
+	extensionData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionData,
 	}
-	extensionUpdateData := testutil.RandomBytes(100)
+	extensionUpdateData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionUpdate := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionUpdateData,
 	}
-	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponseData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionResponse := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionResponseData,
 	}
 
 	root := testutil.GenerateCids(1)[0]
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
-	update := gsmsg.UpdateRequest(requestID, extensionUpdate)
+	update := gsmsg.NewUpdateRequest(requestID, extensionUpdate)
 	p := testutil.GeneratePeers(1)[0]
 	testCases := map[string]struct {
 		configure func(t *testing.T, updateHooks *hooks.RequestUpdatedHooks)

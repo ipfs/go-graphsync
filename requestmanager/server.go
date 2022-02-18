@@ -8,9 +8,11 @@ import (
 	"time"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-peertaskqueue/peertracker"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -28,6 +30,7 @@ import (
 	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
+	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader"
 )
 
 // The code in this file implements the internal thread for the request manager.
@@ -55,16 +58,15 @@ func (rm *RequestManager) cleanupInProcessRequests() {
 }
 
 func (rm *RequestManager) newRequest(parentSpan trace.Span, p peer.ID, root ipld.Link, selector ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, chan graphsync.ResponseProgress, chan error) {
-	requestID := rm.nextRequestID
-	rm.nextRequestID++
+	requestID := graphsync.NewRequestID()
 
-	parentSpan.SetAttributes(attribute.Int("requestID", int(requestID)))
+	parentSpan.SetAttributes(attribute.String("requestID", requestID.String()))
 	ctx, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, parentSpan), "newRequest")
 	defer span.End()
 
-	log.Infow("graphsync request initiated", "request id", requestID, "peer", p, "root", root)
+	log.Infow("graphsync request initiated", "request id", requestID.String(), "peer", p, "root", root)
 
-	request, hooksResult, err := rm.validateRequest(requestID, p, root, selector, extensions)
+	request, hooksResult, lsys, err := rm.validateRequest(requestID, p, root, selector, extensions)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -98,8 +100,9 @@ func (rm *RequestManager) newRequest(parentSpan trace.Span, p peer.ID, root ipld
 		nodeStyleChooser:     hooksResult.CustomChooser,
 		inProgressChan:       make(chan graphsync.ResponseProgress),
 		inProgressErr:        make(chan error),
+		lsys:                 lsys,
 	}
-	requestStatus.lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged))
+	requestStatus.lastResponse.Store(gsmsg.NewResponse(request.ID(), graphsync.RequestAcknowledged, nil))
 	rm.inProgressRequestStatuses[request.ID()] = requestStatus
 
 	rm.connManager.Protect(p, requestID.Tag())
@@ -112,11 +115,9 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 	if !ok {
 		return executor.RequestTask{Empty: true}
 	}
-	log.Infow("graphsync request processing begins", "request id", requestID, "peer", ipr.p, "total time", time.Since(ipr.startTime))
+	log.Infow("graphsync request processing begins", "request id", requestID.String(), "peer", ipr.p, "total time", time.Since(ipr.startTime))
 
-	var initialRequest bool
 	if ipr.traverser == nil {
-		initialRequest = true
 		var budget *traversal.Budget
 		if rm.maxLinksPerRequest > 0 {
 			budget = &traversal.Budget{
@@ -148,6 +149,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 			Budget:     budget,
 		}.Start(ctx)
 
+		ipr.reconciledLoader = reconciledloader.NewReconciledLoader(ipr.request.ID(), ipr.lsys)
 		inProgressCount := len(rm.inProgressRequestStatuses)
 		rm.outgoingRequestProcessingListeners.NotifyOutgoingRequestProcessingListeners(ipr.p, ipr.request, inProgressCount)
 	}
@@ -163,7 +165,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 		Traverser:            ipr.traverser,
 		P:                    ipr.p,
 		InProgressErr:        ipr.inProgressErr,
-		InitialRequest:       initialRequest,
+		ReconciledLoader:     ipr.reconciledLoader,
 		Empty:                false,
 	}
 }
@@ -191,7 +193,9 @@ func (rm *RequestManager) terminateRequest(requestID graphsync.RequestID, ipr *i
 	rm.connManager.Unprotect(ipr.p, requestID.Tag())
 	delete(rm.inProgressRequestStatuses, requestID)
 	ipr.cancelFn()
-	rm.asyncLoader.CleanupRequest(ipr.p, requestID)
+	if ipr.reconciledLoader != nil {
+		ipr.reconciledLoader.Cleanup(rm.ctx)
+	}
 	if ipr.traverser != nil {
 		ipr.traverserCancel()
 		ipr.traverser.Shutdown(rm.ctx)
@@ -225,7 +229,7 @@ func (rm *RequestManager) releaseRequestTask(p peer.ID, task *peertask.Task, err
 		ipr.state = graphsync.Paused
 		return
 	}
-	log.Infow("graphsync request complete", "request id", requestID, "peer", ipr.p, "total time", time.Since(ipr.startTime))
+	log.Infow("graphsync request complete", "request id", requestID.String(), "peer", ipr.p, "total time", time.Since(ipr.startTime))
 	rm.terminateRequest(requestID, ipr)
 }
 
@@ -244,7 +248,7 @@ func (rm *RequestManager) cancelRequest(requestID graphsync.RequestID, onTermina
 	if onTerminated != nil {
 		inProgressRequestStatus.onTerminated = append(inProgressRequestStatus.onTerminated, onTerminated)
 	}
-	rm.SendRequest(inProgressRequestStatus.p, gsmsg.CancelRequest(requestID))
+	rm.SendRequest(inProgressRequestStatus.p, gsmsg.NewCancelRequest(requestID))
 	rm.cancelOnError(requestID, inProgressRequestStatus, terminalError)
 }
 
@@ -256,26 +260,38 @@ func (rm *RequestManager) cancelOnError(requestID graphsync.RequestID, ipr *inPr
 		rm.terminateRequest(requestID, ipr)
 	} else {
 		ipr.cancelFn()
-		rm.asyncLoader.CompleteResponsesFor(requestID)
+		ipr.reconciledLoader.SetRemoteOnline(false)
 	}
 }
 
-func (rm *RequestManager) processResponses(p peer.ID, responses []gsmsg.GraphSyncResponse, blks []blocks.Block) {
+func (rm *RequestManager) processResponses(p peer.ID,
+	responses []gsmsg.GraphSyncResponse,
+	blks []blocks.Block) {
+
 	log.Debugf("beginning processing responses for peer %s", p)
-	requestIds := make([]int, 0, len(responses))
+	requestIds := make([]string, 0, len(responses))
 	for _, r := range responses {
-		requestIds = append(requestIds, int(r.RequestID()))
+		requestIds = append(requestIds, r.RequestID().String())
 	}
 	ctx, span := otel.Tracer("graphsync").Start(rm.ctx, "processResponses", trace.WithAttributes(
 		attribute.String("peerID", p.Pretty()),
-		attribute.IntSlice("requestIDs", requestIds),
+		attribute.StringSlice("requestIDs", requestIds),
+		attribute.Int("blockCount", len(blks)),
 	))
 	defer span.End()
 	filteredResponses := rm.processExtensions(responses, p)
 	filteredResponses = rm.filterResponsesForPeer(filteredResponses, p)
+	blkMap := make(map[cid.Cid][]byte, len(blks))
+	for _, blk := range blks {
+		blkMap[blk.Cid()] = blk.RawData()
+	}
+	for _, response := range filteredResponses {
+		reconciledLoader := rm.inProgressRequestStatuses[response.RequestID()].reconciledLoader
+		if reconciledLoader != nil {
+			reconciledLoader.IngestResponse(response.Metadata(), trace.LinkFromContext(ctx), blkMap)
+		}
+	}
 	rm.updateLastResponses(filteredResponses)
-	responseMetadata := metadataForResponses(filteredResponses)
-	rm.asyncLoader.ProcessResponse(ctx, responseMetadata, blks)
 	rm.processTerminations(filteredResponses)
 	log.Debugf("end processing responses for peer %s", p)
 }
@@ -312,7 +328,7 @@ func (rm *RequestManager) updateLastResponses(responses []gsmsg.GraphSyncRespons
 func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg.GraphSyncResponse) bool {
 	result := rm.responseHooks.ProcessResponseHooks(p, response)
 	if len(result.Extensions) > 0 {
-		updateRequest := gsmsg.UpdateRequest(response.RequestID(), result.Extensions...)
+		updateRequest := gsmsg.NewUpdateRequest(response.RequestID(), result.Extensions...)
 		rm.SendRequest(p, updateRequest)
 	}
 	if result.Err != nil {
@@ -320,7 +336,7 @@ func (rm *RequestManager) processExtensionsForResponse(p peer.ID, response gsmsg
 		if !ok {
 			return false
 		}
-		rm.SendRequest(requestStatus.p, gsmsg.CancelRequest(response.RequestID()))
+		rm.SendRequest(requestStatus.p, gsmsg.NewCancelRequest(response.RequestID()))
 		rm.cancelOnError(response.RequestID(), requestStatus, result.Err)
 		return false
 	}
@@ -333,30 +349,33 @@ func (rm *RequestManager) processTerminations(responses []gsmsg.GraphSyncRespons
 			if response.Status().IsFailure() {
 				rm.cancelOnError(response.RequestID(), rm.inProgressRequestStatuses[response.RequestID()], response.Status().AsError())
 			}
-			rm.asyncLoader.CompleteResponsesFor(response.RequestID())
+			ipr, ok := rm.inProgressRequestStatuses[response.RequestID()]
+			if ok && ipr.reconciledLoader != nil {
+				ipr.reconciledLoader.SetRemoteOnline(false)
+			}
 		}
 	}
 }
 
-func (rm *RequestManager) validateRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, hooks.RequestResult, error) {
+func (rm *RequestManager) validateRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, hooks.RequestResult, *linking.LinkSystem, error) {
 	_, err := ipldutil.EncodeNode(selectorSpec)
 	if err != nil {
-		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, err
+		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, err
 	}
 	_, err = selector.ParseSelector(selectorSpec)
 	if err != nil {
-		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, err
+		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, err
 	}
 	asCidLink, ok := root.(cidlink.Link)
 	if !ok {
-		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, fmt.Errorf("request failed: link has no cid")
+		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, fmt.Errorf("request failed: link has no cid")
 	}
 	request := gsmsg.NewRequest(requestID, asCidLink.Cid, selectorSpec, defaultPriority, extensions...)
 	hooksResult := rm.requestHooks.ProcessRequestHooks(p, request)
 	if hooksResult.PersistenceOption != "" {
 		dedupData, err := dedupkey.EncodeDedupKey(hooksResult.PersistenceOption)
 		if err != nil {
-			return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, err
+			return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, err
 		}
 		request = request.ReplaceExtensions([]graphsync.ExtensionData{
 			{
@@ -365,11 +384,15 @@ func (rm *RequestManager) validateRequest(requestID graphsync.RequestID, p peer.
 			},
 		})
 	}
-	err = rm.asyncLoader.StartRequest(requestID, hooksResult.PersistenceOption)
-	if err != nil {
-		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, err
+	lsys := rm.linkSystem
+	if hooksResult.PersistenceOption != "" {
+		var has bool
+		lsys, has = rm.persistenceOptions.GetLinkSystem(hooksResult.PersistenceOption)
+		if !has {
+			return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, errors.New("unknown persistence option")
+		}
 	}
-	return request, hooksResult, nil
+	return request, hooksResult, &lsys, nil
 }
 
 func (rm *RequestManager) unpause(id graphsync.RequestID, extensions []graphsync.ExtensionData) error {
@@ -398,6 +421,16 @@ func (rm *RequestManager) pause(id graphsync.RequestID) error {
 	case inProgressRequestStatus.pauseMessages <- struct{}{}:
 	default:
 	}
+	return nil
+}
+
+func (rm *RequestManager) update(id graphsync.RequestID, extensions []graphsync.ExtensionData) error {
+	inProgressRequestStatus, ok := rm.inProgressRequestStatuses[id]
+	if !ok {
+		return graphsync.RequestNotFoundErr{}
+	}
+	updateRequest := gsmsg.NewUpdateRequest(id, extensions...)
+	rm.SendRequest(inProgressRequestStatus.p, updateRequest)
 	return nil
 }
 

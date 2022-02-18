@@ -2,15 +2,14 @@ package message
 
 import (
 	"io"
-	"math/rand"
 	"testing"
 
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/metadata"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -20,22 +19,24 @@ func TestMessageBuilding(t *testing.T) {
 	for _, block := range blocks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
-	extensionData1 := testutil.RandomBytes(100)
+	bb := basicnode.Prototype.Bytes.NewBuilder()
+	bb.AssignBytes(testutil.RandomBytes(100))
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
 	extension1 := graphsync.ExtensionData{
 		Name: extensionName1,
-		Data: extensionData1,
+		Data: bb.Build(),
 	}
-	extensionData2 := testutil.RandomBytes(100)
+	bb = basicnode.Prototype.Bytes.NewBuilder()
+	bb.AssignBytes(testutil.RandomBytes(100))
 	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
 	extension2 := graphsync.ExtensionData{
 		Name: extensionName2,
-		Data: extensionData2,
+		Data: bb.Build(),
 	}
-	requestID1 := graphsync.RequestID(rand.Int31())
-	requestID2 := graphsync.RequestID(rand.Int31())
-	requestID3 := graphsync.RequestID(rand.Int31())
-	requestID4 := graphsync.RequestID(rand.Int31())
+	requestID1 := graphsync.NewRequestID()
+	requestID2 := graphsync.NewRequestID()
+	requestID3 := graphsync.NewRequestID()
+	requestID4 := graphsync.NewRequestID()
 	closer := io.NopCloser(nil)
 	testCases := map[string]struct {
 		build           func(*Builder)
@@ -46,20 +47,20 @@ func TestMessageBuilding(t *testing.T) {
 		"normal building": {
 			build: func(rb *Builder) {
 
-				rb.AddLink(requestID1, links[0], true)
-				rb.AddLink(requestID1, links[1], false)
-				rb.AddLink(requestID1, links[2], true)
+				rb.AddLink(requestID1, links[0], graphsync.LinkActionPresent)
+				rb.AddLink(requestID1, links[1], graphsync.LinkActionMissing)
+				rb.AddLink(requestID1, links[2], graphsync.LinkActionPresent)
 
 				rb.AddResponseCode(requestID1, graphsync.RequestCompletedPartial)
 
-				rb.AddLink(requestID2, links[1], true)
-				rb.AddLink(requestID2, links[2], true)
-				rb.AddLink(requestID2, links[1], true)
+				rb.AddLink(requestID2, links[1], graphsync.LinkActionPresent)
+				rb.AddLink(requestID2, links[2], graphsync.LinkActionPresent)
+				rb.AddLink(requestID2, links[1], graphsync.LinkActionPresent)
 
 				rb.AddResponseCode(requestID2, graphsync.RequestCompletedFull)
 
-				rb.AddLink(requestID3, links[0], true)
-				rb.AddLink(requestID3, links[1], true)
+				rb.AddLink(requestID3, links[0], graphsync.LinkActionPresent)
+				rb.AddLink(requestID3, links[1], graphsync.LinkActionPresent)
 
 				rb.AddResponseCode(requestID4, graphsync.RequestCompletedFull)
 				rb.AddExtensionData(requestID1, extension1)
@@ -81,26 +82,26 @@ func TestMessageBuilding(t *testing.T) {
 
 				response1 := findResponseForRequestID(t, responses, requestID1)
 				require.Equal(t, graphsync.RequestCompletedPartial, response1.Status(), "did not generate completed partial response")
-				assertMetadata(t, response1, metadata.Metadata{
-					metadata.Item{Link: links[0].(cidlink.Link).Cid, BlockPresent: true},
-					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: false},
-					metadata.Item{Link: links[2].(cidlink.Link).Cid, BlockPresent: true},
+				assertMetadata(t, response1, []GraphSyncLinkMetadatum{
+					{Link: links[0].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionMissing},
+					{Link: links[2].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 				assertExtension(t, response1, extension1)
 
 				response2 := findResponseForRequestID(t, responses, requestID2)
 				require.Equal(t, graphsync.RequestCompletedFull, response2.Status(), "did not generate completed full response")
-				assertMetadata(t, response2, metadata.Metadata{
-					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
-					metadata.Item{Link: links[2].(cidlink.Link).Cid, BlockPresent: true},
-					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
+				assertMetadata(t, response2, []GraphSyncLinkMetadatum{
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[2].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 
 				response3 := findResponseForRequestID(t, responses, requestID3)
 				require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
-				assertMetadata(t, response3, metadata.Metadata{
-					metadata.Item{Link: links[0].(cidlink.Link).Cid, BlockPresent: true},
-					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
+				assertMetadata(t, response3, []GraphSyncLinkMetadatum{
+					{Link: links[0].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 				assertExtension(t, response3, extension2)
 
@@ -137,19 +138,19 @@ func TestMessageBuilding(t *testing.T) {
 		"scrub response": {
 			build: func(rb *Builder) {
 
-				rb.AddLink(requestID1, links[0], true)
-				rb.AddLink(requestID1, links[1], false)
-				rb.AddLink(requestID1, links[2], true)
+				rb.AddLink(requestID1, links[0], graphsync.LinkActionPresent)
+				rb.AddLink(requestID1, links[1], graphsync.LinkActionMissing)
+				rb.AddLink(requestID1, links[2], graphsync.LinkActionPresent)
 
 				rb.AddResponseCode(requestID1, graphsync.RequestCompletedPartial)
 
-				rb.AddLink(requestID2, links[1], true)
-				rb.AddLink(requestID2, links[2], true)
-				rb.AddLink(requestID2, links[1], true)
+				rb.AddLink(requestID2, links[1], graphsync.LinkActionPresent)
+				rb.AddLink(requestID2, links[2], graphsync.LinkActionPresent)
+				rb.AddLink(requestID2, links[1], graphsync.LinkActionPresent)
 
 				rb.AddResponseCode(requestID2, graphsync.RequestCompletedFull)
 
-				rb.AddLink(requestID3, links[1], true)
+				rb.AddLink(requestID3, links[1], graphsync.LinkActionPresent)
 
 				rb.AddResponseCode(requestID4, graphsync.RequestCompletedFull)
 				rb.AddExtensionData(requestID1, extension1)
@@ -168,16 +169,16 @@ func TestMessageBuilding(t *testing.T) {
 
 				response2 := findResponseForRequestID(t, responses, requestID2)
 				require.Equal(t, graphsync.RequestCompletedFull, response2.Status(), "did not generate completed full response")
-				assertMetadata(t, response2, metadata.Metadata{
-					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
-					metadata.Item{Link: links[2].(cidlink.Link).Cid, BlockPresent: true},
-					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
+				assertMetadata(t, response2, []GraphSyncLinkMetadatum{
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[2].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 
 				response3 := findResponseForRequestID(t, responses, requestID3)
 				require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
-				assertMetadata(t, response3, metadata.Metadata{
-					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
+				assertMetadata(t, response3, []GraphSyncLinkMetadatum{
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 				assertExtension(t, response3, extension2)
 
@@ -195,19 +196,19 @@ func TestMessageBuilding(t *testing.T) {
 		"scrub multiple responses": {
 			build: func(rb *Builder) {
 
-				rb.AddLink(requestID1, links[0], true)
-				rb.AddLink(requestID1, links[1], false)
-				rb.AddLink(requestID1, links[2], true)
+				rb.AddLink(requestID1, links[0], graphsync.LinkActionPresent)
+				rb.AddLink(requestID1, links[1], graphsync.LinkActionMissing)
+				rb.AddLink(requestID1, links[2], graphsync.LinkActionPresent)
 
 				rb.AddResponseCode(requestID1, graphsync.RequestCompletedPartial)
 
-				rb.AddLink(requestID2, links[1], true)
-				rb.AddLink(requestID2, links[2], true)
-				rb.AddLink(requestID2, links[1], true)
+				rb.AddLink(requestID2, links[1], graphsync.LinkActionPresent)
+				rb.AddLink(requestID2, links[2], graphsync.LinkActionPresent)
+				rb.AddLink(requestID2, links[1], graphsync.LinkActionPresent)
 
 				rb.AddResponseCode(requestID2, graphsync.RequestCompletedFull)
 
-				rb.AddLink(requestID3, links[1], true)
+				rb.AddLink(requestID3, links[1], graphsync.LinkActionPresent)
 
 				rb.AddResponseCode(requestID4, graphsync.RequestCompletedFull)
 				rb.AddExtensionData(requestID1, extension1)
@@ -226,8 +227,8 @@ func TestMessageBuilding(t *testing.T) {
 
 				response3 := findResponseForRequestID(t, responses, requestID3)
 				require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
-				assertMetadata(t, response3, metadata.Metadata{
-					metadata.Item{Link: links[1].(cidlink.Link).Cid, BlockPresent: true},
+				assertMetadata(t, response3, []GraphSyncLinkMetadatum{
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
 				})
 				assertExtension(t, response3, extension2)
 
@@ -265,10 +266,6 @@ func assertExtension(t *testing.T, response GraphSyncResponse, extension graphsy
 	require.Equal(t, extension.Data, returnedExtensionData, "did not encode extension")
 }
 
-func assertMetadata(t *testing.T, response GraphSyncResponse, expectedMetadata metadata.Metadata) {
-	responseMetadataRaw, found := response.Extension(graphsync.ExtensionMetadata)
-	require.True(t, found, "Metadata should be included in response")
-	responseMetadata, err := metadata.DecodeMetadata(responseMetadataRaw)
-	require.NoError(t, err)
-	require.Equal(t, expectedMetadata, responseMetadata, "incorrect metadata included in response")
+func assertMetadata(t *testing.T, response GraphSyncResponse, expectedMetadata []GraphSyncLinkMetadatum) {
+	require.Equal(t, expectedMetadata, response.metadata, "incorrect metadata included in response")
 }

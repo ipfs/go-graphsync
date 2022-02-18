@@ -2,7 +2,6 @@ package hooks_test
 
 import (
 	"errors"
-	"math/rand"
 	"testing"
 
 	"github.com/ipld/go-ipld-prime"
@@ -21,7 +20,7 @@ func TestRequestHookProcessing(t *testing.T) {
 	fakeChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
 		return basicnode.Prototype.Any, nil
 	}
-	extensionData := testutil.RandomBytes(100)
+	extensionData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
@@ -29,7 +28,7 @@ func TestRequestHookProcessing(t *testing.T) {
 	}
 
 	root := testutil.GenerateCids(1)[0]
-	requestID := graphsync.RequestID(rand.Int31())
+	requestID := graphsync.NewRequestID()
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
 	p := testutil.GeneratePeers(1)[0]
@@ -100,19 +99,19 @@ func TestRequestHookProcessing(t *testing.T) {
 
 func TestBlockHookProcessing(t *testing.T) {
 
-	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponseData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extensionResponse := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionResponseData,
 	}
-	extensionUpdateData := testutil.RandomBytes(100)
+	extensionUpdateData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionUpdate := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionUpdateData,
 	}
-	requestID := graphsync.RequestID(rand.Int31())
-	response := gsmsg.NewResponse(requestID, graphsync.PartialResponse, extensionResponse)
+	requestID := graphsync.NewRequestID()
+	response := gsmsg.NewResponse(requestID, graphsync.PartialResponse, nil, extensionResponse)
 
 	p := testutil.GeneratePeers(1)[0]
 	blockData := testutil.NewFakeBlockData()
@@ -197,19 +196,19 @@ func TestBlockHookProcessing(t *testing.T) {
 
 func TestResponseHookProcessing(t *testing.T) {
 
-	extensionResponseData := testutil.RandomBytes(100)
+	extensionResponseData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionName := graphsync.ExtensionName("AppleSauce/McGee")
 	extensionResponse := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionResponseData,
 	}
-	extensionUpdateData := testutil.RandomBytes(100)
+	extensionUpdateData := basicnode.NewBytes(testutil.RandomBytes(100))
 	extensionUpdate := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: extensionUpdateData,
 	}
-	requestID := graphsync.RequestID(rand.Int31())
-	response := gsmsg.NewResponse(requestID, graphsync.PartialResponse, extensionResponse)
+	requestID := graphsync.NewRequestID()
+	response := gsmsg.NewResponse(requestID, graphsync.PartialResponse, nil, extensionResponse)
 
 	p := testutil.GeneratePeers(1)[0]
 	testCases := map[string]struct {

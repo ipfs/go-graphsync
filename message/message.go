@@ -1,61 +1,69 @@
 package message
 
 import (
-	"encoding/binary"
-	"errors"
+	"bytes"
 	"fmt"
 	"io"
+	"strings"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
-	pool "github.com/libp2p/go-buffer-pool"
-	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/ipld/go-ipld-prime/codec/dagjson"
+	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-msgio"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	pb "github.com/ipfs/go-graphsync/message/pb"
 )
 
-// IsTerminalSuccessCode returns true if the response code indicates the
-// request terminated successfully.
-// DEPRECATED: use status.IsSuccess()
-func IsTerminalSuccessCode(status graphsync.ResponseStatusCode) bool {
-	return status.IsSuccess()
+// MessageHandler provides a consistent interface for maintaining per-peer state
+// within the differnet protocol versions
+type MessageHandler interface {
+	FromNet(peer.ID, io.Reader) (GraphSyncMessage, error)
+	FromMsgReader(peer.ID, msgio.Reader) (GraphSyncMessage, error)
+	ToNet(peer.ID, GraphSyncMessage, io.Writer) error
 }
 
-// IsTerminalFailureCode returns true if the response code indicates the
-// request terminated in failure.
-// DEPRECATED: use status.IsFailure()
-func IsTerminalFailureCode(status graphsync.ResponseStatusCode) bool {
-	return status.IsFailure()
-}
-
-// IsTerminalResponseCode returns true if the response code signals
-// the end of the request
-// DEPRECATED: use status.IsTerminal()
-func IsTerminalResponseCode(status graphsync.ResponseStatusCode) bool {
-	return status.IsTerminal()
-}
-
-// Exportable is an interface that can serialize to a protobuf
-type Exportable interface {
-	ToProto() (*pb.Message, error)
-	ToNet(w io.Writer) error
+// MessagePartWithExtensions is an interface for accessing metadata on both
+// requests and responses, which have a consistent extension accessor mechanism
+type MessagePartWithExtensions interface {
+	ExtensionNames() []graphsync.ExtensionName
+	Extension(name graphsync.ExtensionName) (datamodel.Node, bool)
 }
 
 // GraphSyncRequest is a struct to capture data on a request contained in a
 // GraphSyncMessage.
 type GraphSyncRequest struct {
-	root       cid.Cid
-	selector   ipld.Node
-	priority   graphsync.Priority
-	id         graphsync.RequestID
-	extensions map[string][]byte
-	isCancel   bool
-	isUpdate   bool
+	root        cid.Cid
+	selector    ipld.Node
+	priority    graphsync.Priority
+	id          graphsync.RequestID
+	extensions  map[string]datamodel.Node
+	requestType graphsync.RequestType
+}
+
+// String returns a human-readable form of a GraphSyncRequest
+func (gsr GraphSyncRequest) String() string {
+	sel := "nil"
+	if gsr.selector != nil {
+		var buf bytes.Buffer
+		dagjson.Encode(gsr.selector, &buf)
+		sel = buf.String()
+	}
+	extStr := strings.Builder{}
+	for _, name := range gsr.ExtensionNames() {
+		extStr.WriteString(string(name))
+		extStr.WriteString("|")
+	}
+	return fmt.Sprintf("GraphSyncRequest<root=%s, selector=%s, priority=%d, id=%s, type=%v, exts=%s>",
+		gsr.root.String(),
+		sel,
+		gsr.priority,
+		gsr.id.String(),
+		gsr.requestType,
+		extStr.String(),
+	)
 }
 
 // GraphSyncResponse is an struct to capture data on a response sent back
@@ -63,38 +71,101 @@ type GraphSyncRequest struct {
 type GraphSyncResponse struct {
 	requestID  graphsync.RequestID
 	status     graphsync.ResponseStatusCode
-	extensions map[string][]byte
+	metadata   []GraphSyncLinkMetadatum
+	extensions map[string]datamodel.Node
 }
 
+// GraphSyncLinkMetadatum is used for holding individual pieces of metadata,
+// this is not intended for public consumption and is used within
+// GraphSyncLinkMetadata to contain the metadata
+type GraphSyncLinkMetadatum struct {
+	Link   cid.Cid
+	Action graphsync.LinkAction
+}
+
+// GraphSyncLinkMetadata is a graphsync.LinkMetadata compatible type that is
+// used for holding and accessing the metadata for a request
+type GraphSyncLinkMetadata struct {
+	linkMetadata []GraphSyncLinkMetadatum
+}
+
+// String returns a human-readable form of a GraphSyncResponse
+func (gsr GraphSyncResponse) String() string {
+	extStr := strings.Builder{}
+	for _, name := range gsr.ExtensionNames() {
+		extStr.WriteString(string(name))
+		extStr.WriteString("|")
+	}
+	return fmt.Sprintf("GraphSyncResponse<id=%s, status=%d, exts=%s>",
+		gsr.requestID.String(),
+		gsr.status,
+		extStr.String(),
+	)
+}
+
+// GraphSyncMessage is the internal representation form of a message sent or
+// received over the wire
 type GraphSyncMessage struct {
 	requests  map[graphsync.RequestID]GraphSyncRequest
 	responses map[graphsync.RequestID]GraphSyncResponse
 	blocks    map[cid.Cid]blocks.Block
 }
 
-// NewRequest builds a new Graphsync request
+// NewMessage generates a new message containing the provided requests,
+// responses and blocks
+func NewMessage(
+	requests map[graphsync.RequestID]GraphSyncRequest,
+	responses map[graphsync.RequestID]GraphSyncResponse,
+	blocks map[cid.Cid]blocks.Block,
+) GraphSyncMessage {
+	return GraphSyncMessage{requests, responses, blocks}
+}
+
+// String returns a human-readable (multi-line) form of a GraphSyncMessage and
+// its contents
+func (gsm GraphSyncMessage) String() string {
+	cts := make([]string, 0)
+	for _, req := range gsm.requests {
+		cts = append(cts, req.String())
+	}
+	for _, resp := range gsm.responses {
+		cts = append(cts, resp.String())
+	}
+	for _, c := range gsm.blocks {
+		cts = append(cts, fmt.Sprintf("Block<%s>", c.String()))
+	}
+	return fmt.Sprintf("GraphSyncMessage<\n\t%s\n>", strings.Join(cts, ",\n\t"))
+}
+
+// NewRequest builds a new GraphSyncRequest
 func NewRequest(id graphsync.RequestID,
 	root cid.Cid,
 	selector ipld.Node,
 	priority graphsync.Priority,
 	extensions ...graphsync.ExtensionData) GraphSyncRequest {
 
-	return newRequest(id, root, selector, priority, false, false, toExtensionsMap(extensions))
+	return newRequest(id, root, selector, priority, graphsync.RequestTypeNew, toExtensionsMap(extensions))
 }
 
-// CancelRequest request generates a request to cancel an in progress request
-func CancelRequest(id graphsync.RequestID) GraphSyncRequest {
-	return newRequest(id, cid.Cid{}, nil, 0, true, false, nil)
+// NewCancelRequest request generates a request to cancel an in progress request
+func NewCancelRequest(id graphsync.RequestID) GraphSyncRequest {
+	return newRequest(id, cid.Cid{}, nil, 0, graphsync.RequestTypeCancel, nil)
 }
 
-// UpdateRequest generates a new request to update an in progress request with the given extensions
-func UpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionData) GraphSyncRequest {
-	return newRequest(id, cid.Cid{}, nil, 0, false, true, toExtensionsMap(extensions))
+// NewUpdateRequest generates a new request to update an in progress request with the given extensions
+func NewUpdateRequest(id graphsync.RequestID, extensions ...graphsync.ExtensionData) GraphSyncRequest {
+	return newRequest(id, cid.Cid{}, nil, 0, graphsync.RequestTypeUpdate, toExtensionsMap(extensions))
 }
 
-func toExtensionsMap(extensions []graphsync.ExtensionData) (extensionsMap map[string][]byte) {
+// NewLinkMetadata generates a new graphsync.LinkMetadata compatible object,
+// used for accessing the metadata in a message
+func NewLinkMetadata(md []GraphSyncLinkMetadatum) GraphSyncLinkMetadata {
+	return GraphSyncLinkMetadata{md}
+}
+
+func toExtensionsMap(extensions []graphsync.ExtensionData) (extensionsMap map[string]datamodel.Node) {
 	if len(extensions) > 0 {
-		extensionsMap = make(map[string][]byte, len(extensions))
+		extensionsMap = make(map[string]datamodel.Node, len(extensions))
 		for _, extension := range extensions {
 			extensionsMap[string(extension.Name)] = extension.Data
 		}
@@ -106,110 +177,48 @@ func newRequest(id graphsync.RequestID,
 	root cid.Cid,
 	selector ipld.Node,
 	priority graphsync.Priority,
-	isCancel bool,
-	isUpdate bool,
-	extensions map[string][]byte) GraphSyncRequest {
+	requestType graphsync.RequestType,
+	extensions map[string]datamodel.Node) GraphSyncRequest {
+
 	return GraphSyncRequest{
-		id:         id,
-		root:       root,
-		selector:   selector,
-		priority:   priority,
-		isCancel:   isCancel,
-		isUpdate:   isUpdate,
-		extensions: extensions,
+		id:          id,
+		root:        root,
+		selector:    selector,
+		priority:    priority,
+		requestType: requestType,
+		extensions:  extensions,
 	}
 }
 
 // NewResponse builds a new Graphsync response
 func NewResponse(requestID graphsync.RequestID,
 	status graphsync.ResponseStatusCode,
+	md []GraphSyncLinkMetadatum,
 	extensions ...graphsync.ExtensionData) GraphSyncResponse {
-	return newResponse(requestID, status, toExtensionsMap(extensions))
+
+	return newResponse(requestID, status, md, toExtensionsMap(extensions))
 }
 
 func newResponse(requestID graphsync.RequestID,
-	status graphsync.ResponseStatusCode, extensions map[string][]byte) GraphSyncResponse {
+	status graphsync.ResponseStatusCode,
+	responseMetadata []GraphSyncLinkMetadatum,
+	extensions map[string]datamodel.Node) GraphSyncResponse {
+
 	return GraphSyncResponse{
 		requestID:  requestID,
 		status:     status,
+		metadata:   responseMetadata,
 		extensions: extensions,
 	}
 }
 
-func newMessageFromProto(pbm *pb.Message) (GraphSyncMessage, error) {
-	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(pbm.GetRequests()))
-	for _, req := range pbm.Requests {
-		if req == nil {
-			return GraphSyncMessage{}, errors.New("request is nil")
-		}
-		var root cid.Cid
-		var err error
-		if !req.Cancel && !req.Update {
-			root, err = cid.Cast(req.Root)
-			if err != nil {
-				return GraphSyncMessage{}, err
-			}
-		}
-
-		var selector ipld.Node
-		if !req.Cancel && !req.Update {
-			selector, err = ipldutil.DecodeNode(req.Selector)
-			if err != nil {
-				return GraphSyncMessage{}, err
-			}
-		}
-		exts := req.GetExtensions()
-		if exts == nil {
-			exts = make(map[string][]byte)
-		}
-		requests[graphsync.RequestID(req.Id)] = newRequest(graphsync.RequestID(req.Id), root, selector, graphsync.Priority(req.Priority), req.Cancel, req.Update, exts)
-	}
-
-	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(pbm.GetResponses()))
-	for _, res := range pbm.Responses {
-		if res == nil {
-			return GraphSyncMessage{}, errors.New("response is nil")
-		}
-		exts := res.GetExtensions()
-		if exts == nil {
-			exts = make(map[string][]byte)
-		}
-		responses[graphsync.RequestID(res.Id)] = newResponse(graphsync.RequestID(res.Id), graphsync.ResponseStatusCode(res.Status), exts)
-	}
-
-	blks := make(map[cid.Cid]blocks.Block, len(pbm.GetData()))
-	for _, b := range pbm.GetData() {
-		if b == nil {
-			return GraphSyncMessage{}, errors.New("block is nil")
-		}
-
-		pref, err := cid.PrefixFromBytes(b.GetPrefix())
-		if err != nil {
-			return GraphSyncMessage{}, err
-		}
-
-		c, err := pref.Sum(b.GetData())
-		if err != nil {
-			return GraphSyncMessage{}, err
-		}
-
-		blk, err := blocks.NewBlockWithCid(b.GetData(), c)
-		if err != nil {
-			return GraphSyncMessage{}, err
-		}
-
-		blks[blk.Cid()] = blk
-	}
-
-	return GraphSyncMessage{
-		requests, responses, blks,
-	}, nil
-}
-
+// Empty returns true if this message contains no meaningful content: requests,
+// responses, or blocks
 func (gsm GraphSyncMessage) Empty() bool {
 	return len(gsm.blocks) == 0 && len(gsm.requests) == 0 && len(gsm.responses) == 0
 }
 
+// Requests provides a copy of the requests in this message
 func (gsm GraphSyncMessage) Requests() []GraphSyncRequest {
 	requests := make([]GraphSyncRequest, 0, len(gsm.requests))
 	for _, request := range gsm.requests {
@@ -218,6 +227,8 @@ func (gsm GraphSyncMessage) Requests() []GraphSyncRequest {
 	return requests
 }
 
+// ResponseCodes returns a list of ResponseStatusCodes contained in the
+// responses in this GraphSyncMessage
 func (gsm GraphSyncMessage) ResponseCodes() map[graphsync.RequestID]graphsync.ResponseStatusCode {
 	codes := make(map[graphsync.RequestID]graphsync.ResponseStatusCode, len(gsm.responses))
 	for id, response := range gsm.responses {
@@ -226,6 +237,7 @@ func (gsm GraphSyncMessage) ResponseCodes() map[graphsync.RequestID]graphsync.Re
 	return codes
 }
 
+// Responses provides a copy of the responses in this message
 func (gsm GraphSyncMessage) Responses() []GraphSyncResponse {
 	responses := make([]GraphSyncResponse, 0, len(gsm.responses))
 	for _, response := range gsm.responses {
@@ -234,6 +246,7 @@ func (gsm GraphSyncMessage) Responses() []GraphSyncResponse {
 	return responses
 }
 
+// Blocks provides a copy of all of the blocks in this message
 func (gsm GraphSyncMessage) Blocks() []blocks.Block {
 	bs := make([]blocks.Block, 0, len(gsm.blocks))
 	for _, block := range gsm.blocks {
@@ -242,106 +255,7 @@ func (gsm GraphSyncMessage) Blocks() []blocks.Block {
 	return bs
 }
 
-// FromNet can read a network stream to deserialized a GraphSyncMessage
-func FromNet(r io.Reader) (GraphSyncMessage, error) {
-	reader := msgio.NewVarintReaderSize(r, network.MessageSizeMax)
-	return FromMsgReader(reader)
-}
-
-// FromMsgReader can deserialize a protobuf message into a GraphySyncMessage.
-func FromMsgReader(r msgio.Reader) (GraphSyncMessage, error) {
-	msg, err := r.ReadMsg()
-	if err != nil {
-		return GraphSyncMessage{}, err
-	}
-
-	var pb pb.Message
-	err = proto.Unmarshal(msg, &pb)
-	r.ReleaseMsg(msg)
-	if err != nil {
-		return GraphSyncMessage{}, err
-	}
-
-	return newMessageFromProto(&pb)
-}
-
-func (gsm GraphSyncMessage) ToProto() (*pb.Message, error) {
-	pbm := new(pb.Message)
-	pbm.Requests = make([]*pb.Message_Request, 0, len(gsm.requests))
-	for _, request := range gsm.requests {
-		var selector []byte
-		var err error
-		if request.selector != nil {
-			selector, err = ipldutil.EncodeNode(request.selector)
-			if err != nil {
-				return nil, err
-			}
-		}
-		pbm.Requests = append(pbm.Requests, &pb.Message_Request{
-			Id:         int32(request.id),
-			Root:       request.root.Bytes(),
-			Selector:   selector,
-			Priority:   int32(request.priority),
-			Cancel:     request.isCancel,
-			Update:     request.isUpdate,
-			Extensions: request.extensions,
-		})
-	}
-
-	pbm.Responses = make([]*pb.Message_Response, 0, len(gsm.responses))
-	for _, response := range gsm.responses {
-		pbm.Responses = append(pbm.Responses, &pb.Message_Response{
-			Id:         int32(response.requestID),
-			Status:     int32(response.status),
-			Extensions: response.extensions,
-		})
-	}
-
-	blocks := gsm.Blocks()
-	pbm.Data = make([]*pb.Message_Block, 0, len(blocks))
-	for _, b := range blocks {
-		pbm.Data = append(pbm.Data, &pb.Message_Block{
-			Data:   b.RawData(),
-			Prefix: b.Cid().Prefix().Bytes(),
-		})
-	}
-	return pbm, nil
-}
-
-func (gsm GraphSyncMessage) ToNet(w io.Writer) error {
-	msg, err := gsm.ToProto()
-	if err != nil {
-		return err
-	}
-	size := proto.Size(msg)
-	buf := pool.Get(size + binary.MaxVarintLen64)
-	defer pool.Put(buf)
-
-	n := binary.PutUvarint(buf, uint64(size))
-
-	out, err := proto.MarshalOptions{}.MarshalAppend(buf[:n], msg)
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(out)
-	return err
-}
-
-func (gsm GraphSyncMessage) Loggable() map[string]interface{} {
-	requests := make([]string, 0, len(gsm.requests))
-	for _, request := range gsm.requests {
-		requests = append(requests, fmt.Sprintf("%d", request.id))
-	}
-	responses := make([]string, 0, len(gsm.responses))
-	for _, response := range gsm.responses {
-		responses = append(responses, fmt.Sprintf("%d", response.requestID))
-	}
-	return map[string]interface{}{
-		"requests":  requests,
-		"responses": responses,
-	}
-}
-
+// Clone returns a shallow copy of this GraphSyncMessage
 func (gsm GraphSyncMessage) Clone() GraphSyncMessage {
 	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(gsm.requests))
 	for id, request := range gsm.requests {
@@ -372,7 +286,7 @@ func (gsr GraphSyncRequest) Priority() graphsync.Priority { return gsr.priority 
 
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
-func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) ([]byte, bool) {
+func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) (datamodel.Node, bool) {
 	if gsr.extensions == nil {
 		return nil, false
 	}
@@ -384,19 +298,16 @@ func (gsr GraphSyncRequest) Extension(name graphsync.ExtensionName) ([]byte, boo
 }
 
 // ExtensionNames returns the names of the extensions included in this request
-func (gsr GraphSyncRequest) ExtensionNames() []string {
-	var extNames []string
+func (gsr GraphSyncRequest) ExtensionNames() []graphsync.ExtensionName {
+	var extNames []graphsync.ExtensionName
 	for ext := range gsr.extensions {
-		extNames = append(extNames, ext)
+		extNames = append(extNames, graphsync.ExtensionName(ext))
 	}
 	return extNames
 }
 
-// IsCancel returns true if this particular request is being cancelled
-func (gsr GraphSyncRequest) IsCancel() bool { return gsr.isCancel }
-
-// IsUpdate returns true if this particular request is being updated
-func (gsr GraphSyncRequest) IsUpdate() bool { return gsr.isUpdate }
+// RequestType returns the type of this request (new, cancel, update, etc.)
+func (gsr GraphSyncRequest) Type() graphsync.RequestType { return gsr.requestType }
 
 // RequestID returns the request ID for this response
 func (gsr GraphSyncResponse) RequestID() graphsync.RequestID { return gsr.requestID }
@@ -406,7 +317,7 @@ func (gsr GraphSyncResponse) Status() graphsync.ResponseStatusCode { return gsr.
 
 // Extension returns the content for an extension on a response, or errors
 // if extension is not present
-func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) ([]byte, bool) {
+func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) (datamodel.Node, bool) {
 	if gsr.extensions == nil {
 		return nil, false
 	}
@@ -418,18 +329,44 @@ func (gsr GraphSyncResponse) Extension(name graphsync.ExtensionName) ([]byte, bo
 }
 
 // ExtensionNames returns the names of the extensions included in this request
-func (gsr GraphSyncResponse) ExtensionNames() []string {
-	var extNames []string
+func (gsr GraphSyncResponse) ExtensionNames() []graphsync.ExtensionName {
+	var extNames []graphsync.ExtensionName
 	for ext := range gsr.extensions {
-		extNames = append(extNames, ext)
+		extNames = append(extNames, graphsync.ExtensionName(ext))
 	}
 	return extNames
+}
+
+// Metadata returns an instance of a graphsync.LinkMetadata for accessing the
+// individual metadatum via an iterator
+func (gsr GraphSyncResponse) Metadata() graphsync.LinkMetadata {
+	return GraphSyncLinkMetadata{gsr.metadata}
+}
+
+// Iterate over the metadata one by one via a graphsync.LinkMetadataIterator
+// callback function
+func (gslm GraphSyncLinkMetadata) Iterate(iter graphsync.LinkMetadataIterator) {
+	for _, md := range gslm.linkMetadata {
+		iter(md.Link, md.Action)
+	}
+}
+
+// Length returns the number of metadata entries
+func (gslm GraphSyncLinkMetadata) Length() int64 {
+	return int64(len(gslm.linkMetadata))
+}
+
+// RawMetadata accesses the raw GraphSyncLinkMetadatum contained in this object,
+// this is not exposed via the graphsync.LinkMetadata API and in general the
+// Iterate() method should be used instead for accessing the individual metadata
+func (gslm GraphSyncLinkMetadata) RawMetadata() []GraphSyncLinkMetadatum {
+	return gslm.linkMetadata
 }
 
 // ReplaceExtensions merges the extensions given extensions into the request to create a new request,
 // but always uses new data
 func (gsr GraphSyncRequest) ReplaceExtensions(extensions []graphsync.ExtensionData) GraphSyncRequest {
-	req, _ := gsr.MergeExtensions(extensions, func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error) {
+	req, _ := gsr.MergeExtensions(extensions, func(name graphsync.ExtensionName, oldData datamodel.Node, newData datamodel.Node) (datamodel.Node, error) {
 		return newData, nil
 	})
 	return req
@@ -438,12 +375,12 @@ func (gsr GraphSyncRequest) ReplaceExtensions(extensions []graphsync.ExtensionDa
 // MergeExtensions merges the given list of extensions to produce a new request with the combination of the old request
 // plus the new extensions. When an old extension and a new extension are both present, mergeFunc is called to produce
 // the result
-func (gsr GraphSyncRequest) MergeExtensions(extensions []graphsync.ExtensionData, mergeFunc func(name graphsync.ExtensionName, oldData []byte, newData []byte) ([]byte, error)) (GraphSyncRequest, error) {
+func (gsr GraphSyncRequest) MergeExtensions(extensions []graphsync.ExtensionData, mergeFunc func(name graphsync.ExtensionName, oldData datamodel.Node, newData datamodel.Node) (datamodel.Node, error)) (GraphSyncRequest, error) {
 	if gsr.extensions == nil {
-		return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.isCancel, gsr.isUpdate, toExtensionsMap(extensions)), nil
+		return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.requestType, toExtensionsMap(extensions)), nil
 	}
 	newExtensionMap := toExtensionsMap(extensions)
-	combinedExtensions := make(map[string][]byte)
+	combinedExtensions := make(map[string]datamodel.Node)
 	for name, newData := range newExtensionMap {
 		oldData, ok := gsr.extensions[name]
 		if !ok {
@@ -464,5 +401,5 @@ func (gsr GraphSyncRequest) MergeExtensions(extensions []graphsync.ExtensionData
 		}
 		combinedExtensions[name] = oldData
 	}
-	return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.isCancel, gsr.isUpdate, combinedExtensions), nil
+	return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.requestType, combinedExtensions), nil
 }

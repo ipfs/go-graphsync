@@ -6,6 +6,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
 	"github.com/ipfs/go-graphsync"
@@ -48,6 +49,14 @@ func (rb *responseBuilder) FinishWithError(status graphsync.ResponseStatusCode) 
 
 func (rb *responseBuilder) PauseRequest() {
 	rb.operations = append(rb.operations, statusOperation{rb.requestID, graphsync.RequestPaused})
+}
+
+// SendUpdates sets up a PartialResponse with just the extension data provided
+func (rb *responseBuilder) SendUpdates(extensions []graphsync.ExtensionData) {
+	for _, extension := range extensions {
+		rb.SendExtensionData(extension)
+	}
+	rb.operations = append(rb.operations, statusOperation{rb.requestID, graphsync.PartialResponse})
 }
 
 func (rb *responseBuilder) Context() context.Context {
@@ -102,7 +111,13 @@ func (eo extensionOperation) build(builder *messagequeue.Builder) {
 }
 
 func (eo extensionOperation) size() uint64 {
-	return uint64(len(eo.extension.Data))
+	if eo.extension.Data == nil {
+		return 0
+	}
+	// any erorr produced by this call will be picked up during actual encode, so
+	// we can defer handling till then and let it be zero for now
+	len, _ := dagcbor.EncodedLength(eo.extension.Data)
+	return uint64(len)
 }
 
 type blockOperation struct {
@@ -122,7 +137,11 @@ func (bo blockOperation) build(builder *messagequeue.Builder) {
 		}
 		builder.AddBlock(block)
 	}
-	builder.AddLink(bo.requestID, bo.link, bo.data != nil)
+	action := graphsync.LinkActionPresent
+	if bo.data == nil {
+		action = graphsync.LinkActionMissing
+	}
+	builder.AddLink(bo.requestID, bo.link, action)
 	builder.AddBlockData(bo.requestID, bo.Block())
 }
 

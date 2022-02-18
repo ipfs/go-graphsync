@@ -8,6 +8,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -149,16 +150,19 @@ func (tbc *TestBlockChain) NodeTipIndex(fromTip int) ipld.Node {
 		return tbc.MiddleNodes[height-1]
 	}
 }
+
+// PathTipIndex returns the path to the block at the given index from the tip
+func (tbc *TestBlockChain) PathTipIndex(fromTip int) ipld.Path {
+	expectedPath := make([]datamodel.PathSegment, 0, 2*fromTip)
+	for i := 0; i < fromTip; i++ {
+		expectedPath = append(expectedPath, datamodel.PathSegmentOfString("Parents"), datamodel.PathSegmentOfInt(0))
+	}
+	return datamodel.NewPath(expectedPath)
+}
+
 func (tbc *TestBlockChain) checkResponses(responses []graphsync.ResponseProgress, start int, end int, verifyTypes bool) {
 	require.Len(tbc.t, responses, (end-start)*blockChainTraversedNodesPerBlock, "traverses all nodes")
-	expectedPath := ""
-	for i := 0; i < start; i++ {
-		if expectedPath == "" {
-			expectedPath = "Parents/0"
-		} else {
-			expectedPath = expectedPath + "/Parents/0"
-		}
-	}
+	expectedPath := tbc.PathTipIndex(start).String()
 	for i, response := range responses {
 		require.Equal(tbc.t, expectedPath, response.Path.String(), "response has correct path")
 		if i%2 == 0 {

@@ -247,7 +247,7 @@ type testData struct {
 	responseBuilder   *fauxResponseBuilder
 	blockHooks        *hooks.OutgoingBlockHooks
 	updateHooks       *hooks.RequestUpdatedHooks
-	extensionData     []byte
+	extensionData     datamodel.Node
 	extensionName     graphsync.ExtensionName
 	extension         graphsync.ExtensionData
 	requestID         graphsync.RequestID
@@ -268,19 +268,19 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td := &testData{}
 	td.t = t
 	td.ctx, td.cancel = context.WithTimeout(ctx, 10*time.Second)
+	td.peer = testutil.GeneratePeers(1)[0]
 	td.blockStore = make(map[ipld.Link][]byte)
 	td.persistence = testutil.NewTestStore(td.blockStore)
 	td.task = &peertask.Task{}
-	td.manager = &fauxManager{ctx: ctx, t: t, expectedStartTask: td.task}
+	td.manager = &fauxManager{ctx: ctx, t: t, expectedStartTask: td.task, expectedPeer: td.peer}
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()
-	td.requestID = graphsync.RequestID(rand.Int31())
+	td.requestID = graphsync.NewRequestID()
 	td.requestCid, _ = cid.Decode("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	td.requestSelector = basicnode.NewInt(rand.Int63())
-	td.extensionData = testutil.RandomBytes(100)
+	td.extensionData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.responseCode = graphsync.ResponseStatusCode(101)
-	td.peer = testutil.GeneratePeers(1)[0]
 
 	td.extension = graphsync.ExtensionData{
 		Name: td.extensionName,
@@ -367,10 +367,12 @@ type fauxManager struct {
 	t                 *testing.T
 	responseTask      ResponseTask
 	expectedStartTask *peertask.Task
+	expectedPeer      peer.ID
 }
 
-func (fm *fauxManager) StartTask(task *peertask.Task, responseTaskChan chan<- ResponseTask) {
+func (fm *fauxManager) StartTask(task *peertask.Task, p peer.ID, responseTaskChan chan<- ResponseTask) {
 	require.Same(fm.t, fm.expectedStartTask, task)
+	require.Equal(fm.t, fm.expectedPeer, p)
 	go func() {
 		select {
 		case <-fm.ctx.Done():
@@ -379,10 +381,11 @@ func (fm *fauxManager) StartTask(task *peertask.Task, responseTaskChan chan<- Re
 	}()
 }
 
-func (fm *fauxManager) GetUpdates(p peer.ID, requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest) {
+func (fm *fauxManager) GetUpdates(requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest) {
 }
 
-func (fm *fauxManager) FinishTask(task *peertask.Task, err error) {
+func (fm *fauxManager) FinishTask(task *peertask.Task, p peer.ID, err error) {
+	require.Equal(fm.t, fm.expectedPeer, p)
 }
 
 type fauxResponseStream struct {
@@ -422,6 +425,9 @@ func (rb fauxResponseBuilder) SendResponse(link ipld.Link, data []byte) graphsyn
 }
 
 func (rb fauxResponseBuilder) SendExtensionData(ed graphsync.ExtensionData) {
+}
+
+func (rb fauxResponseBuilder) SendUpdates(ed []graphsync.ExtensionData) {
 }
 
 func (rb fauxResponseBuilder) FinishRequest() graphsync.ResponseStatusCode {

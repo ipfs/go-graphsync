@@ -37,6 +37,9 @@ type ResponseBuilder interface {
 	// SendExtensionData adds extension data to the transaction.
 	SendExtensionData(graphsync.ExtensionData)
 
+	// SendUpdates sets up a PartialResponse with just the extension data provided
+	SendUpdates([]graphsync.ExtensionData)
+
 	// FinishRequest completes the response to a request.
 	FinishRequest() graphsync.ResponseStatusCode
 

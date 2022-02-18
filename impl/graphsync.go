@@ -2,6 +2,7 @@ package graphsync
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -20,13 +21,12 @@ import (
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/peerstate"
+	"github.com/ipfs/go-graphsync/persistenceoptions"
 	"github.com/ipfs/go-graphsync/requestmanager"
-	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	requestorhooks "github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager"
 	responderhooks "github.com/ipfs/go-graphsync/responsemanager/hooks"
-	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
@@ -50,7 +50,6 @@ type GraphSync struct {
 	requestManager                     *requestmanager.RequestManager
 	responseManager                    *responsemanager.ResponseManager
 	queryExecutor                      *queryexecutor.QueryExecutor
-	asyncLoader                        *asyncloader.AsyncLoader
 	responseQueue                      taskqueue.TaskQueue
 	requestQueue                       taskqueue.TaskQueue
 	requestExecutor                    *executor.Executor
@@ -230,10 +229,9 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
 
-	asyncLoader := asyncloader.New(ctx, linkSystem)
 	requestQueue := taskqueue.NewTaskQueue(ctx)
-	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest)
-	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks, asyncLoader.AsyncLoad)
+	requestManager := requestmanager.New(ctx, persistenceOptions, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest)
+	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	var ptqopts []peertaskqueue.Option
 	if gsConfig.maxInProgressIncomingRequestsPerPeer > 0 {
@@ -266,7 +264,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestManager:              requestManager,
 		responseManager:             responseManager,
 		queryExecutor:               queryExecutor,
-		asyncLoader:                 asyncLoader,
 		responseQueue:               responseQueue,
 		requestQueue:                requestQueue,
 		requestExecutor:             requestExecutor,
@@ -296,6 +293,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	responseManager.Startup()
 	responseQueue.Startup(gsConfig.maxInProgressIncomingRequests, queryExecutor)
 	network.SetDelegate((*graphSyncReceiver)(graphSync))
+
 	return graphSync
 }
 
@@ -339,19 +337,11 @@ func (gs *GraphSync) RegisterOutgoingRequestHook(hook graphsync.OnOutgoingReques
 
 // RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
 func (gs *GraphSync) RegisterPersistenceOption(name string, lsys ipld.LinkSystem) error {
-	err := gs.asyncLoader.RegisterPersistenceOption(name, lsys)
-	if err != nil {
-		return err
-	}
 	return gs.persistenceOptions.Register(name, lsys)
 }
 
 // UnregisterPersistenceOption unregisters an alternate loader/storer combo
 func (gs *GraphSync) UnregisterPersistenceOption(name string) error {
-	err := gs.asyncLoader.UnregisterPersistenceOption(name)
-	if err != nil {
-		return err
-	}
 	return gs.persistenceOptions.Unregister(name)
 }
 
@@ -402,35 +392,42 @@ func (gs *GraphSync) RegisterReceiverNetworkErrorListener(listener graphsync.OnR
 	return gs.receiverErrorListeners.Register(listener)
 }
 
-// UnpauseRequest unpauses a request that was paused in a block hook based request ID
+// Pause pauses an in progress request or response
+func (gs *GraphSync) Pause(ctx context.Context, requestID graphsync.RequestID) error {
+	var reqNotFound graphsync.RequestNotFoundErr
+	if err := gs.requestManager.PauseRequest(ctx, requestID); !errors.As(err, &reqNotFound) {
+		return err
+	}
+	return gs.responseManager.PauseResponse(ctx, requestID)
+}
+
+// Unpause unpauses a request or response that was paused
 // Can also send extensions with unpause
-func (gs *GraphSync) UnpauseRequest(requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
-	return gs.requestManager.UnpauseRequest(requestID, extensions...)
+func (gs *GraphSync) Unpause(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+	var reqNotFound graphsync.RequestNotFoundErr
+	if err := gs.requestManager.UnpauseRequest(ctx, requestID, extensions...); !errors.As(err, &reqNotFound) {
+		return err
+	}
+	return gs.responseManager.UnpauseResponse(ctx, requestID, extensions...)
 }
 
-// PauseRequest pauses an in progress request (may take 1 or more blocks to process)
-func (gs *GraphSync) PauseRequest(requestID graphsync.RequestID) error {
-	return gs.requestManager.PauseRequest(requestID)
+// Cancel cancels an in progress request or response
+func (gs *GraphSync) Cancel(ctx context.Context, requestID graphsync.RequestID) error {
+	var reqNotFound graphsync.RequestNotFoundErr
+	if err := gs.requestManager.CancelRequest(ctx, requestID); !errors.As(err, &reqNotFound) {
+		return err
+	}
+	return gs.responseManager.CancelResponse(ctx, requestID)
 }
 
-// UnpauseResponse unpauses a response that was paused in a block hook based on peer ID and request ID
-func (gs *GraphSync) UnpauseResponse(p peer.ID, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
-	return gs.responseManager.UnpauseResponse(p, requestID, extensions...)
-}
-
-// PauseResponse pauses an in progress response (may take 1 or more blocks to process)
-func (gs *GraphSync) PauseResponse(p peer.ID, requestID graphsync.RequestID) error {
-	return gs.responseManager.PauseResponse(p, requestID)
-}
-
-// CancelResponse cancels an in progress response
-func (gs *GraphSync) CancelResponse(p peer.ID, requestID graphsync.RequestID) error {
-	return gs.responseManager.CancelResponse(p, requestID)
-}
-
-// CancelRequest cancels an in progress request
-func (gs *GraphSync) CancelRequest(ctx context.Context, requestID graphsync.RequestID) error {
-	return gs.requestManager.CancelRequest(ctx, requestID)
+// SendUpdate sends an update for an in progress request or response
+func (gs *GraphSync) SendUpdate(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+	// TODO: error if len(extensions)==0?
+	var reqNotFound graphsync.RequestNotFoundErr
+	if err := gs.requestManager.UpdateRequest(ctx, requestID, extensions...); !errors.As(err, &reqNotFound) {
+		return err
+	}
+	return gs.responseManager.UpdateResponse(ctx, requestID, extensions...)
 }
 
 // Stats produces insight on the current state of a graphsync exchange

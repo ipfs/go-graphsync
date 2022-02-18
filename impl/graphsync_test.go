@@ -7,14 +7,11 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
@@ -31,12 +28,14 @@ import (
 	"github.com/ipfs/go-unixfsnode"
 	unixfsbuilder "github.com/ipfs/go-unixfsnode/data/builder"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/protocol"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
 
@@ -44,7 +43,6 @@ import (
 	"github.com/ipfs/go-graphsync/cidset"
 	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipfs/go-graphsync/ipldutil"
-	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/storeutil"
@@ -52,128 +50,20 @@ import (
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
-func TestMakeRequestToNetwork(t *testing.T) {
-
-	// create network
-	ctx := context.Background()
-	ctx, collectTracing := testutil.SetupTracing(ctx)
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	td := newGsTestData(ctx, t)
-	r := &receiver{
-		messageReceived: make(chan receivedMessage),
-	}
-	td.gsnet2.SetDelegate(r)
-	graphSync := td.GraphSyncHost1()
-
-	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence1, 100, blockChainLength)
-
-	requestCtx, requestCancel := context.WithCancel(ctx)
-	defer requestCancel()
-	graphSync.Request(requestCtx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
-
-	var message receivedMessage
-	testutil.AssertReceive(ctx, t, r.messageReceived, &message, "did not receive message sent")
-
-	sender := message.sender
-	require.Equal(t, td.host1.ID(), sender, "received message from wrong node")
-
-	received := message.message
-	receivedRequests := received.Requests()
-	require.Len(t, receivedRequests, 1, "Did not add request to received message")
-	receivedRequest := receivedRequests[0]
-	receivedSpec := receivedRequest.Selector()
-	require.Equal(t, blockChain.Selector(), receivedSpec, "did not transmit selector spec correctly")
-	_, err := selector.ParseSelector(receivedSpec)
-	require.NoError(t, err, "did not receive parsible selector on other side")
-
-	returnedData, found := receivedRequest.Extension(td.extensionName)
-	require.True(t, found)
-	require.Equal(t, td.extensionData, returnedData, "Failed to encode extension")
-
-	drain(graphSync)
-
-	tracing := collectTracing(t)
-	require.ElementsMatch(t, []string{
-		"request(0)->newRequest(0)",
-		"request(0)->executeTask(0)",
-		"request(0)->terminateRequest(0)",
-		"message(0)->sendMessage(0)",
-	}, tracing.TracesToStrings())
-
-	// make sure the attributes are what we expect
-	requestSpans := tracing.FindSpans("request")
-	require.Equal(t, td.host2.ID().Pretty(), testutil.AttributeValueInTraceSpan(t, requestSpans[0], "peerID").AsString())
-	require.Equal(t, blockChain.TipLink.String(), testutil.AttributeValueInTraceSpan(t, requestSpans[0], "root").AsString())
-	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, requestSpans[0], "extensions").AsStringSlice())
-	require.Equal(t, int64(0), testutil.AttributeValueInTraceSpan(t, requestSpans[0], "requestID").AsInt64())
-}
-
-func TestSendResponseToIncomingRequest(t *testing.T) {
-	// create network
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	td := newGsTestData(ctx, t)
-	r := &receiver{
-		messageReceived: make(chan receivedMessage),
-	}
-	td.gsnet1.SetDelegate(r)
-
-	var receivedRequestData []byte
-	// initialize graphsync on second node to response to requests
-	gsnet := td.GraphSyncHost2()
-	gsnet.RegisterIncomingRequestHook(
-		func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
-			var has bool
-			receivedRequestData, has = requestData.Extension(td.extensionName)
-			require.True(t, has, "did not have expected extension")
-			hookActions.SendExtensionData(td.extensionResponse)
-		},
-	)
-
-	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
-
-	requestID := graphsync.RequestID(rand.Int31())
-
-	builder := gsmsg.NewBuilder()
-	builder.AddRequest(gsmsg.NewRequest(requestID, blockChain.TipLink.(cidlink.Link).Cid, blockChain.Selector(), graphsync.Priority(math.MaxInt32), td.extension))
-	message, err := builder.Build()
-	require.NoError(t, err)
-	// send request across network
-	err = td.gsnet1.SendMessage(ctx, td.host2.ID(), message)
-	require.NoError(t, err)
-	// read the values sent back to requestor
-	var received gsmsg.GraphSyncMessage
-	var receivedBlocks []blocks.Block
-	var receivedExtensions [][]byte
-	for {
-		var message receivedMessage
-		testutil.AssertReceive(ctx, t, r.messageReceived, &message, "did not receive complete response")
-
-		sender := message.sender
-		require.Equal(t, td.host2.ID(), sender, "received message from wrong node")
-
-		received = message.message
-		receivedBlocks = append(receivedBlocks, received.Blocks()...)
-		receivedResponses := received.Responses()
-		receivedExtension, found := receivedResponses[0].Extension(td.extensionName)
-		if found {
-			receivedExtensions = append(receivedExtensions, receivedExtension)
-		}
-		require.Len(t, receivedResponses, 1, "Did not receive response")
-		require.Equal(t, requestID, receivedResponses[0].RequestID(), "Sent response for incorrect request id")
-		if receivedResponses[0].Status() != graphsync.PartialResponse {
-			break
-		}
-	}
-
-	require.Len(t, receivedBlocks, blockChainLength, "Send incorrect number of blocks or there were duplicate blocks")
-	require.Equal(t, td.extensionData, receivedRequestData, "did not receive correct request extension data")
-	require.Len(t, receivedExtensions, 1, "should have sent extension responses but didn't")
-	require.Equal(t, td.extensionResponseData, receivedExtensions[0], "did not return correct extension data")
+// nil means use the default protocols
+// tests data transfer for the following protocol combinations:
+// default protocol -> default protocols
+// old protocol -> default protocols
+// default protocols -> old protocol
+// old protocol -> old protocol
+var protocolsForTest = map[string]struct {
+	host1Protocols []protocol.ID
+	host2Protocols []protocol.ID
+}{
+	"(v2.0 -> v2.0)": {nil, nil},
+	"(v1.0 -> v2.0)": {[]protocol.ID{gsnet.ProtocolGraphsync_1_0_0}, nil},
+	"(v2.0 -> v1.0)": {nil, []protocol.ID{gsnet.ProtocolGraphsync_1_0_0}},
+	"(v1.0 -> v1.0)": {[]protocol.ID{gsnet.ProtocolGraphsync_1_0_0}, []protocol.ID{gsnet.ProtocolGraphsync_1_0_0}},
 }
 
 func TestRejectRequestsByDefault(t *testing.T) {
@@ -207,7 +97,7 @@ func TestRejectRequestsByDefault(t *testing.T) {
 		"request(0)->newRequest(0)",
 		"request(0)->executeTask(0)",
 		"request(0)->terminateRequest(0)",
-		"processResponses(0)->loaderProcess(0)->cacheProcess(0)",
+		"processResponses(0)",
 		"processRequests(0)->transaction(0)->execute(0)->buildMessage(0)",
 		"message(0)->sendMessage(0)",
 		"message(1)->sendMessage(0)",
@@ -261,8 +151,8 @@ func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
 
 	// has ErrBudgetExceeded exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrBudgetExceeded", "traversal budget exceeded", true)
@@ -272,7 +162,6 @@ func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
 }
 
 func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
-
 	// create network
 	ctx := context.Background()
 	ctx, collectTracing := testutil.SetupTracing(ctx)
@@ -311,8 +200,8 @@ func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
 
 	// has ContextCancelError exception recorded in the right place
 	// the requester gets a cancel, the responder gets a ErrBudgetExceeded
@@ -320,112 +209,115 @@ func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
 }
 
 func TestGraphsyncRoundTrip(t *testing.T) {
+	for pname, ps := range protocolsForTest {
+		t.Run(pname, func(t *testing.T) {
+			// create network
+			ctx := context.Background()
+			ctx, collectTracing := testutil.SetupTracing(ctx)
+			ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			td := newOptionalGsTestData(ctx, t, ps.host1Protocols, ps.host2Protocols)
 
-	// create network
-	ctx := context.Background()
-	ctx, collectTracing := testutil.SetupTracing(ctx)
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	td := newGsTestData(ctx, t)
+			// initialize graphsync on first node to make requests
+			requestor := td.GraphSyncHost1()
 
-	// initialize graphsync on first node to make requests
-	requestor := td.GraphSyncHost1()
+			// setup receiving peer to just record message coming in
+			blockChainLength := 100
+			blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
 
-	// setup receiving peer to just record message coming in
-	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
+			// initialize graphsync on second node to response to requests
+			responder := td.GraphSyncHost2()
+			assertComplete := assertCompletionFunction(responder, 1)
 
-	// initialize graphsync on second node to response to requests
-	responder := td.GraphSyncHost2()
-	assertComplete := assertCompletionFunction(responder, 1)
+			var receivedResponseData datamodel.Node
+			var receivedRequestData datamodel.Node
 
-	var receivedResponseData []byte
-	var receivedRequestData []byte
+			requestor.RegisterIncomingResponseHook(
+				func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+					data, has := responseData.Extension(td.extensionName)
+					if has {
+						receivedResponseData = data
+					}
+				})
 
-	requestor.RegisterIncomingResponseHook(
-		func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
-			data, has := responseData.Extension(td.extensionName)
-			if has {
-				receivedResponseData = data
+			responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+				var has bool
+				receivedRequestData, has = requestData.Extension(td.extensionName)
+				if !has {
+					hookActions.TerminateWithError(errors.New("Missing extension"))
+				} else {
+					hookActions.SendExtensionData(td.extensionResponse)
+				}
+			})
+
+			finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
+			responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+				select {
+				case finalResponseStatusChan <- status:
+				default:
+				}
+			})
+			progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+			blockChain.VerifyWholeChain(ctx, progressChan)
+			testutil.VerifyEmptyErrors(ctx, t, errChan)
+			require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
+
+			// verify extension roundtrip
+			require.Equal(t, td.extensionData, receivedRequestData, "did not receive correct extension request data")
+			require.Equal(t, td.extensionResponseData, receivedResponseData, "did not receive correct extension response data")
+
+			// verify listener
+			var finalResponseStatus graphsync.ResponseStatusCode
+			testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
+			require.Equal(t, graphsync.RequestCompletedFull, finalResponseStatus)
+
+			drain(requestor)
+			drain(responder)
+			assertComplete(ctx, t)
+
+			tracing := collectTracing(t)
+
+			traceStrings := tracing.TracesToStrings()
+			require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+			require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
+			require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+			require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+			require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+			require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
+			require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
+
+			processUpdateSpan := tracing.FindSpanByTraceString("response(0)")
+			require.Equal(t, int64(0), testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "priority").AsInt64())
+			require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "extensions").AsStringSlice())
+
+			// each verifyBlock span should link to a cacheProcess span that stored it
+
+			processResponsesSpans := tracing.FindSpans("processResponses")
+			processResponsesLinks := make(map[string]int64)
+			verifyBlockSpans := tracing.FindSpans("verifyBlock")
+
+			for _, verifyBlockSpan := range verifyBlockSpans {
+				require.Len(t, verifyBlockSpan.Links, 1, "verifyBlock span should have one link")
+				found := false
+				for _, prcessResponseSpan := range processResponsesSpans {
+					sid := prcessResponseSpan.SpanContext.SpanID().String()
+					if verifyBlockSpan.Links[0].SpanContext.SpanID().String() == sid {
+						found = true
+						processResponsesLinks[sid] = processResponsesLinks[sid] + 1
+						break
+					}
+				}
+				require.True(t, found, "verifyBlock should link to a known cacheProcess span")
+			}
+
+			// each cacheProcess span should be linked to one verifyBlock span per block it stored
+
+			for _, processResponseSpan := range processResponsesSpans {
+				blockCount := testutil.AttributeValueInTraceSpan(t, processResponseSpan, "blockCount").AsInt64()
+				require.Equal(t, processResponsesLinks[processResponseSpan.SpanContext.SpanID().String()], blockCount, "cacheProcess span should be linked to one verifyBlock span per block it processed")
 			}
 		})
-
-	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
-		var has bool
-		receivedRequestData, has = requestData.Extension(td.extensionName)
-		if !has {
-			hookActions.TerminateWithError(errors.New("Missing extension"))
-		} else {
-			hookActions.SendExtensionData(td.extensionResponse)
-		}
-	})
-
-	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
-	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
-		select {
-		case finalResponseStatusChan <- status:
-		default:
-		}
-	})
-	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
-
-	blockChain.VerifyWholeChain(ctx, progressChan)
-	testutil.VerifyEmptyErrors(ctx, t, errChan)
-	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
-
-	// verify extension roundtrip
-	require.Equal(t, td.extensionData, receivedRequestData, "did not receive correct extension request data")
-	require.Equal(t, td.extensionResponseData, receivedResponseData, "did not receive correct extension response data")
-
-	// verify listener
-	var finalResponseStatus graphsync.ResponseStatusCode
-	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
-	require.Equal(t, graphsync.RequestCompletedFull, finalResponseStatus)
-
-	drain(requestor)
-	drain(responder)
-	assertComplete(ctx, t)
-
-	tracing := collectTracing(t)
-
-	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
-	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
-	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
-	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
-
-	processUpdateSpan := tracing.FindSpanByTraceString("response(0)")
-	require.Equal(t, int64(0), testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "priority").AsInt64())
-	require.Equal(t, []string{string(td.extensionName)}, testutil.AttributeValueInTraceSpan(t, *processUpdateSpan, "extensions").AsStringSlice())
-
-	// each verifyBlock span should link to a cacheProcess span that stored it
-
-	cacheProcessSpans := tracing.FindSpans("cacheProcess")
-	cacheProcessLinks := make(map[string]int64)
-	verifyBlockSpans := tracing.FindSpans("verifyBlock")
-
-	for _, verifyBlockSpan := range verifyBlockSpans {
-		require.Len(t, verifyBlockSpan.Links, 1, "verifyBlock span should have one link")
-		found := false
-		for _, cacheProcessSpan := range cacheProcessSpans {
-			sid := cacheProcessSpan.SpanContext.SpanID().String()
-			if verifyBlockSpan.Links[0].SpanContext.SpanID().String() == sid {
-				found = true
-				cacheProcessLinks[sid] = cacheProcessLinks[sid] + 1
-				break
-			}
-		}
-		require.True(t, found, "verifyBlock should link to a known cacheProcess span")
-	}
-
-	// each cacheProcess span should be linked to one verifyBlock span per block it stored
-
-	for _, cacheProcessSpan := range cacheProcessSpans {
-		blockCount := testutil.AttributeValueInTraceSpan(t, cacheProcessSpan, "blockCount").AsInt64()
-		require.Equal(t, cacheProcessLinks[cacheProcessSpan.SpanContext.SpanID().String()], blockCount, "cacheProcess span should be linked to one verifyBlock span per block it processed")
 	}
 }
 
@@ -468,7 +360,7 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 
 	for err := range errChan {
 		// verify the error is received for leaf beta node being missing
-		require.EqualError(t, err, fmt.Sprintf("remote peer is missing block: %s", tree.LeafBetaLnk.String()))
+		require.EqualError(t, err, fmt.Sprintf("remote peer is missing block (%s) at path linkedList/2", tree.LeafBetaLnk.String()))
 	}
 	require.Equal(t, tree.LeafAlphaBlock.RawData(), td.blockStore1[tree.LeafAlphaLnk])
 	require.Equal(t, tree.MiddleListBlock.RawData(), td.blockStore1[tree.MiddleListNodeLnk])
@@ -491,8 +383,8 @@ func TestGraphsyncRoundTripPartial(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
 }
 
 func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
@@ -519,8 +411,7 @@ func TestGraphsyncRoundTripIgnoreCids(t *testing.T) {
 		td.blockStore1[cidlink.Link{Cid: blk.Cid()}] = blk.RawData()
 		set.Add(blk.Cid())
 	}
-	encodedCidSet, err := cidset.EncodeCidSet(set)
-	require.NoError(t, err)
+	encodedCidSet := cidset.EncodeCidSet(set)
 	extension := graphsync.ExtensionData{
 		Name: graphsync.ExtensionDoNotSendCIDs,
 		Data: encodedCidSet,
@@ -591,8 +482,7 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 		td.blockStore1[cidlink.Link{Cid: blk.Cid()}] = blk.RawData()
 	}
 
-	doNotSendFirstBlocksData, err := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(50)
-	require.NoError(t, err)
+	doNotSendFirstBlocksData := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(50)
 	extension := graphsync.ExtensionData{
 		Name: graphsync.ExtensionsDoNotSendFirstBlocks,
 		Data: doNotSendFirstBlocksData,
@@ -706,7 +596,7 @@ func TestPauseResume(t *testing.T) {
 	require.Len(t, responderPeerState.IncomingState.Diagnostics(), 0)
 
 	requestID := <-requestIDChan
-	err := responder.UnpauseResponse(td.host1.ID(), requestID)
+	err := responder.Unpause(ctx, requestID)
 	require.NoError(t, err)
 
 	blockChain.VerifyRemainder(ctx, progressChan, stopPoint)
@@ -727,8 +617,8 @@ func TestPauseResume(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
 
 	// pause recorded
 	tracing.SingleExceptionEvent(t, "response(0)->executeTask(0)", "github.com/ipfs/go-graphsync/responsemanager/hooks.ErrPaused", hooks.ErrPaused{}.Error(), false)
@@ -776,7 +666,7 @@ func TestPauseResumeRequest(t *testing.T) {
 	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
 
 	requestID := <-requestIDChan
-	err := requestor.UnpauseRequest(requestID, td.extensionUpdate)
+	err := requestor.Unpause(ctx, requestID, td.extensionUpdate)
 	require.NoError(t, err)
 
 	blockChain.VerifyRemainder(ctx, progressChan, stopPoint)
@@ -810,8 +700,8 @@ func TestPauseResumeRequest(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(1)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
 
 	// has ErrPaused exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrPaused", hooks.ErrPaused{}.Error(), false)
@@ -826,8 +716,8 @@ func TestPauseResumeViaUpdate(t *testing.T) {
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
-	var receivedReponseData []byte
-	var receivedUpdateData []byte
+	var receivedReponseData datamodel.Node
+	var receivedUpdateData datamodel.Node
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
 	assertAllResponsesReceived := assertAllResponsesReceivedFunction(requestor)
@@ -927,8 +817,8 @@ func TestPauseResumeViaUpdateOnBlockHook(t *testing.T) {
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
-	var receivedReponseData []byte
-	var receivedUpdateData []byte
+	var receivedReponseData datamodel.Node
+	var receivedUpdateData datamodel.Node
 	// initialize graphsync on first node to make requests
 	requestor := td.GraphSyncHost1()
 
@@ -1075,7 +965,7 @@ func TestNetworkDisconnect(t *testing.T) {
 	require.NoError(t, td.mn.DisconnectPeers(td.host1.ID(), td.host2.ID()))
 	require.NoError(t, td.mn.UnlinkPeers(td.host1.ID(), td.host2.ID()))
 	requestID := <-requestIDChan
-	err := responder.UnpauseResponse(td.host1.ID(), requestID)
+	err := responder.Unpause(ctx, requestID)
 	require.NoError(t, err)
 
 	testutil.AssertReceive(ctx, t, networkError, &err, "should receive network error")
@@ -1098,8 +988,8 @@ func TestNetworkDisconnect(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
 
 	// has ContextCancelError exception recorded in the right place
 	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
@@ -1239,8 +1129,8 @@ func TestGraphsyncRoundTripAlternatePersistenceAndNodes(t *testing.T) {
 	require.Contains(t, traceStrings, "request(1)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(1)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(1)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(1)->verifyBlock(0)")                             // should have one of these per block (TODO: why request(1) and not (0)?)
+	require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
+	require.Contains(t, traceStrings, "request(1)->verifyBlock(0)") // should have one of these per block (TODO: why request(1) and not (0)?)
 
 	// TODO(rvagg): this is randomly either a SkipMe or a ipldutil.ContextCancelError; confirm this is sane
 	// tracing.SingleExceptionEvent(t, "request(0)->newRequest(0)","request(0)->executeTask(0)", "SkipMe", traversal.SkipMe{}.Error(), true)
@@ -1328,8 +1218,8 @@ func TestGraphsyncRoundTripMultipleAlternatePersistence(t *testing.T) {
 	require.Contains(t, traceStrings, "request(1)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(1)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(1)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
 }
 
 // TestRoundTripLargeBlocksSlowNetwork test verifies graphsync continues to work
@@ -1583,8 +1473,8 @@ func TestUnixFSFetch(t *testing.T) {
 	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
 	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
 	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)->loaderProcess(0)->cacheProcess(0)") // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)")                             // should have one of these per block
+	require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
+	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
 }
 
 func TestGraphsyncBlockListeners(t *testing.T) {
@@ -1621,8 +1511,8 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 		blocksOutgoing++
 	})
 
-	var receivedResponseData []byte
-	var receivedRequestData []byte
+	var receivedResponseData datamodel.Node
+	var receivedRequestData datamodel.Node
 
 	requestor.RegisterIncomingResponseHook(
 		func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
@@ -1691,6 +1581,130 @@ func TestGraphsyncBlockListeners(t *testing.T) {
 	), tracing.TracesToStrings())
 }
 
+func TestSendUpdates(t *testing.T) {
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	// set up pause point
+	stopPoint := 50
+	blocksSent := 0
+	requestIDChan := make(chan graphsync.RequestID, 1)
+	responder.RegisterOutgoingBlockHook(func(p peer.ID, requestData graphsync.RequestData, blockData graphsync.BlockData, hookActions graphsync.OutgoingBlockHookActions) {
+		_, has := requestData.Extension(td.extensionName)
+		if has {
+			select {
+			case requestIDChan <- requestData.ID():
+			default:
+			}
+			blocksSent++
+			if blocksSent == stopPoint {
+				hookActions.PauseResponse()
+			}
+		} else {
+			hookActions.TerminateWithError(errors.New("should have sent extension"))
+		}
+	})
+	assertOneRequestCompletes := assertCompletionFunction(responder, 1)
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	blockChain.VerifyResponseRange(ctx, progressChan, 0, stopPoint)
+	timer := time.NewTimer(100 * time.Millisecond)
+	testutil.AssertDoesReceiveFirst(t, timer.C, "should pause request", progressChan)
+
+	requestID := <-requestIDChan
+
+	// set up extensions and listen for updates on the responder
+	responderExt1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("grip grop"), Data: basicnode.NewString("flim flam, blim blam")}
+	responderExt2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("Humpty/Dumpty"), Data: basicnode.NewInt(101)}
+
+	var responderReceivedExt1 int
+	var responderReceivedExt2 int
+	updateRequests := make(chan struct{}, 1)
+	unreg := responder.RegisterRequestUpdatedHook(func(p peer.ID, request graphsync.RequestData, update graphsync.RequestData, hookActions graphsync.RequestUpdatedHookActions) {
+		ext, found := update.Extension(responderExt1.Name)
+		if found {
+			responderReceivedExt1++
+			require.Equal(t, responderExt1.Data, ext)
+		}
+
+		ext, found = update.Extension(responderExt2.Name)
+		if found {
+			responderReceivedExt2++
+			require.Equal(t, responderExt2.Data, ext)
+		}
+
+		updateRequests <- struct{}{}
+	})
+
+	// send updates
+	requestor.SendUpdate(ctx, requestID, responderExt1, responderExt2)
+
+	// check we received what we expected
+	testutil.AssertDoesReceive(ctx, t, updateRequests, "request never completed")
+	require.Equal(t, 1, responderReceivedExt1, "got extension 1 in update")
+	require.Equal(t, 1, responderReceivedExt2, "got extension 2 in update")
+	unreg()
+
+	// set up extensions and listen for updates on the requestor
+	requestorExt1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("PING"), Data: basicnode.NewBytes(testutil.RandomBytes(100))}
+	requestorExt2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("PONG"), Data: basicnode.NewBytes(testutil.RandomBytes(100))}
+
+	updateResponses := make(chan struct{}, 1)
+
+	var requestorReceivedExt1 int
+	var requestorReceivedExt2 int
+
+	unreg = requestor.RegisterIncomingResponseHook(func(p peer.ID, responseData graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+		ext, found := responseData.Extension(requestorExt1.Name)
+		if found {
+			requestorReceivedExt1++
+			require.Equal(t, requestorExt1.Data, ext)
+		}
+
+		ext, found = responseData.Extension(requestorExt2.Name)
+		if found {
+			requestorReceivedExt2++
+			require.Equal(t, requestorExt2.Data, ext)
+		}
+
+		updateResponses <- struct{}{}
+	})
+
+	// send updates the other way
+	responder.SendUpdate(ctx, requestID, requestorExt1, requestorExt2)
+
+	// check we received what we expected
+	testutil.AssertDoesReceive(ctx, t, updateResponses, "request never completed")
+	require.Equal(t, 1, requestorReceivedExt1, "got extension 1 in update")
+	require.Equal(t, 1, requestorReceivedExt2, "got extension 2 in update")
+	unreg()
+
+	// finish up
+	err := responder.Unpause(ctx, requestID)
+	require.NoError(t, err)
+
+	blockChain.VerifyRemainder(ctx, progressChan, stopPoint)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
+
+	drain(requestor)
+	drain(responder)
+	assertOneRequestCompletes(ctx, t)
+}
+
 type gsTestData struct {
 	mn                         mocknet.Mocknet
 	ctx                        context.Context
@@ -1700,12 +1714,12 @@ type gsTestData struct {
 	gsnet2                     gsnet.GraphSyncNetwork
 	blockStore1, blockStore2   map[ipld.Link][]byte
 	persistence1, persistence2 ipld.LinkSystem
-	extensionData              []byte
+	extensionData              datamodel.Node
 	extensionName              graphsync.ExtensionName
 	extension                  graphsync.ExtensionData
-	extensionResponseData      []byte
+	extensionResponseData      datamodel.Node
 	extensionResponse          graphsync.ExtensionData
-	extensionUpdateData        []byte
+	extensionUpdateData        datamodel.Node
 	extensionUpdate            graphsync.ExtensionData
 }
 
@@ -1765,6 +1779,10 @@ func assertCancelOrCompleteFunction(gs graphsync.GraphExchange, requestCount int
 }
 
 func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
+	return newOptionalGsTestData(ctx, t, nil, nil)
+}
+
+func newOptionalGsTestData(ctx context.Context, t *testing.T, network1Protocols []protocol.ID, network2Protocols []protocol.ID) *gsTestData {
 	t.Helper()
 	td := &gsTestData{ctx: ctx}
 	td.mn = mocknet.New(ctx)
@@ -1777,25 +1795,33 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 	err = td.mn.LinkAll()
 	require.NoError(t, err, "error linking hosts")
 
-	td.gsnet1 = gsnet.NewFromLibp2pHost(td.host1)
-	td.gsnet2 = gsnet.NewFromLibp2pHost(td.host2)
+	opts := make([]gsnet.Option, 0)
+	if network1Protocols != nil {
+		opts = append(opts, gsnet.GraphsyncProtocols(network1Protocols))
+	}
+	td.gsnet1 = gsnet.NewFromLibp2pHost(td.host1, opts...)
+	opts = make([]gsnet.Option, 0)
+	if network2Protocols != nil {
+		opts = append(opts, gsnet.GraphsyncProtocols(network2Protocols))
+	}
+	td.gsnet2 = gsnet.NewFromLibp2pHost(td.host2, opts...)
 	td.blockStore1 = make(map[ipld.Link][]byte)
 	td.persistence1 = testutil.NewTestStore(td.blockStore1)
 	td.blockStore2 = make(map[ipld.Link][]byte)
 	td.persistence2 = testutil.NewTestStore(td.blockStore2)
 	// setup extension handlers
-	td.extensionData = testutil.RandomBytes(100)
+	td.extensionData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.extension = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionData,
 	}
-	td.extensionResponseData = testutil.RandomBytes(100)
+	td.extensionResponseData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionResponse = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionResponseData,
 	}
-	td.extensionUpdateData = testutil.RandomBytes(100)
+	td.extensionUpdateData = basicnode.NewBytes(testutil.RandomBytes(100))
 	td.extensionUpdate = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionUpdateData,
@@ -1812,43 +1838,6 @@ func (td *gsTestData) GraphSyncHost2(options ...Option) graphsync.GraphExchange 
 	return New(td.ctx, td.gsnet2, td.persistence2, options...)
 }
 
-type receivedMessage struct {
-	message gsmsg.GraphSyncMessage
-	sender  peer.ID
-}
-
-// Receiver is an interface for receiving messages from the GraphSyncNetwork.
-type receiver struct {
-	messageReceived chan receivedMessage
-}
-
-func (r *receiver) ReceiveMessage(
-	ctx context.Context,
-	sender peer.ID,
-	incoming gsmsg.GraphSyncMessage) {
-
-	select {
-	case <-ctx.Done():
-	case r.messageReceived <- receivedMessage{incoming, sender}:
-	}
-}
-
-func (r *receiver) ReceiveError(_ peer.ID, err error) {
-	fmt.Println("got receive err")
-}
-
-func (r *receiver) Connected(p peer.ID) {
-}
-
-func (r *receiver) Disconnected(p peer.ID) {
-}
-
 func processResponsesTraces(t *testing.T, tracing *testutil.Collector, responseCount int) []string {
-	traces := testutil.RepeatTraceStrings("processResponses({})->loaderProcess(0)->cacheProcess(0)", responseCount-1)
-	finalStub := tracing.FindSpanByTraceString(fmt.Sprintf("processResponses(%d)->loaderProcess(0)", responseCount-1))
-	require.NotNil(t, finalStub)
-	if len(testutil.AttributeValueInTraceSpan(t, *finalStub, "requestIDs").AsInt64Slice()) == 0 {
-		return append(traces, fmt.Sprintf("processResponses(%d)->loaderProcess(0)", responseCount-1))
-	}
-	return append(traces, fmt.Sprintf("processResponses(%d)->loaderProcess(0)->cacheProcess(0)", responseCount-1))
+	return testutil.RepeatTraceStrings("processResponses({})", responseCount)
 }
