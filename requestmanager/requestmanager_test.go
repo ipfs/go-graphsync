@@ -915,7 +915,6 @@ func TestUpdateRequest(t *testing.T) {
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
-	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, 1)
 
 	// wait for the pause to occur
@@ -927,7 +926,6 @@ func TestUpdateRequest(t *testing.T) {
 	// verify no further responses come through
 	time.Sleep(100 * time.Millisecond)
 	testutil.AssertChannelEmpty(t, returnedResponseChan, "no response should be sent request is paused")
-	td.fal.CleanupRequest(peers[0], rr.gsr.ID())
 
 	// send an update with some custom extensions
 	ext1Name := graphsync.ExtensionName("grip grop")
