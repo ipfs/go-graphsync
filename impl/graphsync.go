@@ -21,13 +21,12 @@ import (
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/peerstate"
+	"github.com/ipfs/go-graphsync/persistenceoptions"
 	"github.com/ipfs/go-graphsync/requestmanager"
-	"github.com/ipfs/go-graphsync/requestmanager/asyncloader"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	requestorhooks "github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager"
 	responderhooks "github.com/ipfs/go-graphsync/responsemanager/hooks"
-	"github.com/ipfs/go-graphsync/responsemanager/persistenceoptions"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
@@ -51,7 +50,6 @@ type GraphSync struct {
 	requestManager                     *requestmanager.RequestManager
 	responseManager                    *responsemanager.ResponseManager
 	queryExecutor                      *queryexecutor.QueryExecutor
-	asyncLoader                        *asyncloader.AsyncLoader
 	responseQueue                      taskqueue.TaskQueue
 	requestQueue                       taskqueue.TaskQueue
 	requestExecutor                    *executor.Executor
@@ -231,10 +229,9 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
 
-	asyncLoader := asyncloader.New(ctx, linkSystem)
 	requestQueue := taskqueue.NewTaskQueue(ctx)
-	requestManager := requestmanager.New(ctx, asyncLoader, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest)
-	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks, asyncLoader.AsyncLoad)
+	requestManager := requestmanager.New(ctx, persistenceOptions, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest)
+	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	var ptqopts []peertaskqueue.Option
 	if gsConfig.maxInProgressIncomingRequestsPerPeer > 0 {
@@ -267,7 +264,6 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestManager:              requestManager,
 		responseManager:             responseManager,
 		queryExecutor:               queryExecutor,
-		asyncLoader:                 asyncLoader,
 		responseQueue:               responseQueue,
 		requestQueue:                requestQueue,
 		requestExecutor:             requestExecutor,
@@ -341,19 +337,11 @@ func (gs *GraphSync) RegisterOutgoingRequestHook(hook graphsync.OnOutgoingReques
 
 // RegisterPersistenceOption registers an alternate loader/storer combo that can be substituted for the default
 func (gs *GraphSync) RegisterPersistenceOption(name string, lsys ipld.LinkSystem) error {
-	err := gs.asyncLoader.RegisterPersistenceOption(name, lsys)
-	if err != nil {
-		return err
-	}
 	return gs.persistenceOptions.Register(name, lsys)
 }
 
 // UnregisterPersistenceOption unregisters an alternate loader/storer combo
 func (gs *GraphSync) UnregisterPersistenceOption(name string) error {
-	err := gs.asyncLoader.UnregisterPersistenceOption(name)
-	if err != nil {
-		return err
-	}
 	return gs.persistenceOptions.Unregister(name)
 }
 

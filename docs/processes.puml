@@ -12,16 +12,17 @@ partition "Top Level Interface" {
 if (operation type) then (outgoing request or incoming response)
 partition "Graphsync Requestor Implementation" {
 :RequestManager;
-if (operation type) then (incoming response)
-partition "Verifying Queries" {
+partition "Executing Requests" {
+:TaskQueue;
 fork
-:ipld.Traverse;
+:Executor;
 fork again
-:ipld.Traverse;
+:Executor;
 fork again
-:ipld.Traverse;
+:Executor;
 end fork
 }
+if (operation type) then (verified responses)
 partition "Collecting Responses" {
 fork
 :Response Collector;
@@ -33,7 +34,7 @@ end fork
 }
 :Responses returned to client;
 stop
-else (outgoing request)
+else (request messages)
 :Send Request To Network;
 endif
 }
@@ -41,13 +42,13 @@ else (incoming request)
 partition "Graphsync Responder Implementation" {
 :ResponseManager;
 partition "Performing Queries" {
-:PeerTaskQueue;
+:TaskQueue;
 fork
-:ipld.Traverse;
+:QueryExecutor;
 fork again
-:ipld.Traverse;
+:QueryExecutor;
 fork again
-:ipld.Traverse;
+:QueryExecutor;
 end fork
 }
 }

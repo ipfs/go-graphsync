@@ -351,6 +351,11 @@ func (gslm GraphSyncLinkMetadata) Iterate(iter graphsync.LinkMetadataIterator) {
 	}
 }
 
+// Length returns the number of metadata entries
+func (gslm GraphSyncLinkMetadata) Length() int64 {
+	return int64(len(gslm.linkMetadata))
+}
+
 // RawMetadata accesses the raw GraphSyncLinkMetadatum contained in this object,
 // this is not exposed via the graphsync.LinkMetadata API and in general the
 // Iterate() method should be used instead for accessing the individual metadata

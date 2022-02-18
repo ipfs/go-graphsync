@@ -18,14 +18,12 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/dedupkey"
-	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
+	"github.com/ipfs/go-graphsync/persistenceoptions"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
-	"github.com/ipfs/go-graphsync/requestmanager/testloader"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/taskqueue"
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -67,13 +65,6 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	}
 
 	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-	td.fal.VerifyLastProcessedBlocks(ctx, t, firstBlocks)
-	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
-		requestRecords[0].gsr.ID(): firstMetadata1,
-		requestRecords[1].gsr.ID(): firstMetadata2,
-	})
-	td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
-	td.fal.SuccessResponseOn(peers[0], requestRecords[1].gsr.ID(), blockChain2.Blocks(0, 3))
 
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan1)
 	blockChain2.VerifyResponseRange(requestCtx, returnedResponseChan2, 0, 3)
@@ -89,13 +80,6 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	}
 
 	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	td.fal.VerifyLastProcessedBlocks(ctx, t, moreBlocks)
-	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
-		requestRecords[1].gsr.ID(): moreMetadata,
-	})
-
-	td.fal.SuccessResponseOn(peers[0], requestRecords[1].gsr.ID(), moreBlocks)
-
 	blockChain2.VerifyRemainder(requestCtx, returnedResponseChan2, 3)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan2)
@@ -129,9 +113,6 @@ func TestCancelRequestInProgress(t *testing.T) {
 	}
 
 	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-
-	td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), firstBlocks)
-	td.fal.SuccessResponseOn(peers[0], requestRecords[1].gsr.ID(), firstBlocks)
 	td.blockChain.VerifyResponseRange(requestCtx1, returnedResponseChan1, 0, 3)
 	cancel1()
 	rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
@@ -146,8 +127,6 @@ func TestCancelRequestInProgress(t *testing.T) {
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
 	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), moreBlocks)
-	td.fal.SuccessResponseOn(peers[0], requestRecords[1].gsr.ID(), moreBlocks)
 
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan1)
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
@@ -168,16 +147,6 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
-	postCancel := make(chan struct{}, 1)
-	loadPostCancel := make(chan struct{}, 1)
-	td.fal.OnAsyncLoad(func(graphsync.RequestID, ipld.Link, <-chan types.AsyncLoadResult) {
-		select {
-		case <-postCancel:
-			loadPostCancel <- struct{}{}
-		default:
-		}
-	})
-
 	_, returnedErrorChan1 := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
 	requestRecords := readNNetworkRequests(requestCtx, t, td, 1)
@@ -192,14 +161,12 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 			gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.PartialResponse, firstMetadata),
 		}
 		td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-		td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), firstBlocks)
 	}()
 
 	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, time.Second)
 	defer timeoutCancel()
 	err := td.requestManager.CancelRequest(timeoutCtx, requestRecords[0].gsr.ID())
 	require.NoError(t, err)
-	postCancel <- struct{}{}
 
 	rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
 
@@ -212,11 +179,6 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 	require.Len(t, errors, 1)
 	_, ok := errors[0].(graphsync.RequestClientCancelledErr)
 	require.True(t, ok)
-	select {
-	case <-loadPostCancel:
-		t.Fatalf("Loaded block after cancel")
-	case <-requestCtx.Done():
-	}
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {
@@ -237,7 +199,6 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.PartialResponse, firstMetadata),
 	}
 	td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), firstBlocks)
 	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, 3)
 	managerCancel()
 
@@ -247,7 +208,6 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, moreMetadata),
 	}
 	td.requestManager.ProcessResponses(peers[0], moreResponses, moreBlocks)
-	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), moreBlocks)
 	testutil.VerifyEmptyResponse(requestCtx, t, returnedResponseChan)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan)
 }
@@ -275,6 +235,13 @@ func TestFailedRequest(t *testing.T) {
 	td.tcm.RefuteProtected(t, peers[0])
 }
 
+/*
+TODO: Delete? These tests no longer seem relevant, or at minimum need a rearchitect
+- the new architecture will simply never fire a graphsync request if all of the data is
+preset
+
+Perhaps we should put this back in as a mode? Or make the "wait to fire" and exprimental feature?
+
 func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 	ctx := context.Background()
 	td := newTestData(ctx, t)
@@ -285,7 +252,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 
 	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
-	rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	// async loaded response responds immediately
 	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
@@ -294,7 +261,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 
 	// failure comes in later over network
 	failedResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound, nil),
+		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound),
 	}
 
 	td.requestManager.ProcessResponses(peers[0], failedResponses, nil)
@@ -316,14 +283,14 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	})
 	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
-	rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
+	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
 
 	// async loaded response responds immediately
 	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
-	md := metadataForBlocks(td.blockChain.AllBlocks(), graphsync.LinkActionPresent)
+	md := encodedMetadataForBlocks(t, td.blockChain.AllBlocks(), true)
 	firstResponses := []gsmsg.GraphSyncResponse{
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
@@ -333,6 +300,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
 	testutil.AssertDoesReceive(requestCtx, t, called, "response hooks called for response")
 }
+*/
 
 func TestRequestReturnsMissingBlocks(t *testing.T) {
 	ctx := context.Background()
@@ -351,9 +319,6 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedPartial, md),
 	}
 	td.requestManager.ProcessResponses(peers[0], firstResponses, nil)
-	for _, block := range td.blockChain.AllBlocks() {
-		td.fal.ResponseOn(peers[0], rr.gsr.ID(), cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: nil, Err: fmt.Errorf("Terrible Thing")})
-	}
 	testutil.VerifyEmptyResponse(ctx, t, returnedResponseChan)
 	errs := testutil.CollectErrors(ctx, t, returnedErrorChan)
 	require.NotEqual(t, len(errs), 0, "did not send errors")
@@ -574,11 +539,6 @@ func TestBlockHooks(t *testing.T) {
 		}
 
 		td.requestManager.ProcessResponses(peers[0], firstResponses, firstBlocks)
-		td.fal.VerifyLastProcessedBlocks(ctx, t, firstBlocks)
-		td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
-			rr.gsr.ID(): firstMetadata,
-		})
-		td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), firstBlocks)
 
 		ur := readNNetworkRequests(requestCtx, t, td, 1)[0]
 		receivedUpdateData, has := ur.gsr.Extension(td.extensionName1)
@@ -637,11 +597,6 @@ func TestBlockHooks(t *testing.T) {
 			expectedUpdateChan <- update
 		}
 		td.requestManager.ProcessResponses(peers[0], secondResponses, nextBlocks)
-		td.fal.VerifyLastProcessedBlocks(ctx, t, nextBlocks)
-		td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
-			rr.gsr.ID(): nextMetadata,
-		})
-		td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), nextBlocks)
 
 		ur = readNNetworkRequests(requestCtx, t, td, 1)[0]
 		receivedUpdateData, has = ur.gsr.Extension(td.extensionName1)
@@ -683,6 +638,8 @@ func TestOutgoingRequestHooks(t *testing.T) {
 	defer cancel()
 	peers := testutil.GeneratePeers(1)
 
+	alternateStore := testutil.NewTestStore(make(map[datamodel.Link][]byte))
+	td.persistenceOptions.Register("chainstore", alternateStore)
 	hook := func(p peer.ID, r graphsync.RequestData, ha graphsync.OutgoingRequestHookActions) {
 		_, has := r.Extension(td.extensionName1)
 		if has {
@@ -709,20 +666,11 @@ func TestOutgoingRequestHooks(t *testing.T) {
 		gsmsg.NewResponse(requestRecords[1].gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
-	td.fal.VerifyLastProcessedBlocks(ctx, t, td.blockChain.AllBlocks())
-	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
-		requestRecords[0].gsr.ID(): md,
-		requestRecords[1].gsr.ID(): md,
-	})
-	td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
-	td.fal.SuccessResponseOn(peers[0], requestRecords[1].gsr.ID(), td.blockChain.AllBlocks())
 
 	td.blockChain.VerifyWholeChainWithTypes(requestCtx, returnedResponseChan1)
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan2)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan1)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan2)
-	td.fal.VerifyStoreUsed(t, requestRecords[0].gsr.ID(), "chainstore")
-	td.fal.VerifyStoreUsed(t, requestRecords[1].gsr.ID(), "")
 }
 
 type outgoingRequestProcessingEvent struct {
@@ -765,11 +713,6 @@ func TestOutgoingRequestListeners(t *testing.T) {
 		gsmsg.NewResponse(requestRecords[0].gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
-	td.fal.VerifyLastProcessedBlocks(ctx, t, td.blockChain.AllBlocks())
-	td.fal.VerifyLastProcessedResponses(ctx, t, map[graphsync.RequestID][]gsmsg.GraphSyncLinkMetadatum{
-		requestRecords[0].gsr.ID(): md,
-	})
-	td.fal.SuccessResponseOn(peers[0], requestRecords[0].gsr.ID(), td.blockChain.AllBlocks())
 
 	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan1)
 	testutil.VerifyEmptyErrors(requestCtx, t, returnedErrorChan1)
@@ -812,7 +755,6 @@ func TestPauseResume(t *testing.T) {
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
-	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	// attempt to unpause while request is not paused (note: hook on second block will keep it from
 	// reaching pause point)
@@ -831,30 +773,32 @@ func TestPauseResume(t *testing.T) {
 	// verify no further responses come through
 	time.Sleep(100 * time.Millisecond)
 	testutil.AssertChannelEmpty(t, returnedResponseChan, "no response should be sent request is paused")
-	td.fal.CleanupRequest(peers[0], rr.gsr.ID())
 
 	// unpause
 	err = td.requestManager.UnpauseRequest(ctx, rr.gsr.ID(), td.extension1, td.extension2)
 	require.NoError(t, err)
 
-	// verify the correct new request with Do-no-send-cids & other extensions
-	resumedRequest := readNNetworkRequests(requestCtx, t, td, 1)[0]
-	doNotSendFirstBlocksData, has := resumedRequest.gsr.Extension(graphsync.ExtensionsDoNotSendFirstBlocks)
-	doNotSendFirstBlocks, err := donotsendfirstblocks.DecodeDoNotSendFirstBlocks(doNotSendFirstBlocksData)
-	require.NoError(t, err)
-	require.Equal(t, pauseAt, int(doNotSendFirstBlocks))
-	require.True(t, has)
-	ext1Data, has := resumedRequest.gsr.Extension(td.extensionName1)
-	require.True(t, has)
-	require.Equal(t, td.extensionData1, ext1Data)
-	ext2Data, has := resumedRequest.gsr.Extension(td.extensionName2)
-	require.True(t, has)
-	require.Equal(t, td.extensionData2, ext2Data)
+	/*
+		TODO: these are no longer used as the old responses are consumed upon restart, to minimize
+		network utilization -- does this make sense? Maybe we should throw out these responses while paused?
+
+		// verify the correct new request with Do-no-send-cids & other extensions
+		resumedRequest := readNNetworkRequests(requestCtx, t, td, 1)[0]
+		doNotSendFirstBlocksData, has := resumedRequest.gsr.Extension(graphsync.ExtensionsDoNotSendFirstBlocks)
+		doNotSendFirstBlocks, err := donotsendfirstblocks.DecodeDoNotSendFirstBlocks(doNotSendFirstBlocksData)
+		require.NoError(t, err)
+		require.Equal(t, pauseAt, int(doNotSendFirstBlocks))
+		require.True(t, has)
+		ext1Data, has := resumedRequest.gsr.Extension(td.extensionName1)
+		require.True(t, has)
+		require.Equal(t, td.extensionData1, ext1Data)
+		ext2Data, has := resumedRequest.gsr.Extension(td.extensionName2)
+		require.True(t, has)
+		require.Equal(t, td.extensionData2, ext2Data)
+	*/
 
 	// process responses
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.RemainderBlocks(pauseAt))
-	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
-
 	// verify the correct results are returned, picking up after where there request was paused
 	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt)
 	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
@@ -894,7 +838,6 @@ func TestPauseResumeExternal(t *testing.T) {
 		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
 	}
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.AllBlocks())
-	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 	// verify responses sent read ONLY for blocks BEFORE the pause
 	td.blockChain.VerifyResponseRange(ctx, returnedResponseChan, 0, pauseAt)
 	// wait for the pause to occur
@@ -907,13 +850,15 @@ func TestPauseResumeExternal(t *testing.T) {
 	// verify no further responses come through
 	time.Sleep(100 * time.Millisecond)
 	testutil.AssertChannelEmpty(t, returnedResponseChan, "no response should be sent request is paused")
-	td.fal.CleanupRequest(peers[0], rr.gsr.ID())
 
 	// unpause
 	err := td.requestManager.UnpauseRequest(ctx, rr.gsr.ID(), td.extension1, td.extension2)
 	require.NoError(t, err)
 
 	// verify the correct new request with Do-no-send-cids & other extensions
+	/* TODO: these are no longer used as the old responses are consumed upon restart, to minimize
+	network utilization -- does this make sense? Maybe we should throw out these responses while paused?
+
 	resumedRequest := readNNetworkRequests(requestCtx, t, td, 1)[0]
 	doNotSendFirstBlocksData, has := resumedRequest.gsr.Extension(graphsync.ExtensionsDoNotSendFirstBlocks)
 	doNotSendFirstBlocks, err := donotsendfirstblocks.DecodeDoNotSendFirstBlocks(doNotSendFirstBlocksData)
@@ -925,11 +870,10 @@ func TestPauseResumeExternal(t *testing.T) {
 	require.Equal(t, td.extensionData1, ext1Data)
 	ext2Data, has := resumedRequest.gsr.Extension(td.extensionName2)
 	require.True(t, has)
-	require.Equal(t, td.extensionData2, ext2Data)
+	require.Equal(t, td.extensionData2, ext2Data)*/
 
 	// process responses
 	td.requestManager.ProcessResponses(peers[0], responses, td.blockChain.RemainderBlocks(pauseAt))
-	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
 
 	// verify the correct results are returned, picking up after where there request was paused
 	td.blockChain.VerifyRemainder(ctx, returnedResponseChan, pauseAt)
@@ -1101,7 +1045,7 @@ func metadataForBlocks(blks []blocks.Block, action graphsync.LinkAction) []gsmsg
 type testData struct {
 	requestRecordChan                  chan requestRecord
 	fph                                *fakePeerHandler
-	fal                                *testloader.FakeAsyncLoader
+	persistenceOptions                 *persistenceoptions.PersistenceOptions
 	tcm                                *testutil.TestConnManager
 	requestHooks                       *hooks.OutgoingRequestHooks
 	responseHooks                      *hooks.IncomingResponseHooks
@@ -1109,6 +1053,8 @@ type testData struct {
 	requestManager                     *RequestManager
 	blockStore                         map[ipld.Link][]byte
 	persistence                        ipld.LinkSystem
+	localBlockStore                    map[ipld.Link][]byte
+	localPersistence                   ipld.LinkSystem
 	blockChain                         *testutil.TestBlockChain
 	extensionName1                     graphsync.ExtensionName
 	extensionData1                     datamodel.Node
@@ -1128,7 +1074,7 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td := &testData{}
 	td.requestRecordChan = make(chan requestRecord, 3)
 	td.fph = &fakePeerHandler{td.requestRecordChan}
-	td.fal = testloader.NewFakeAsyncLoader()
+	td.persistenceOptions = persistenceoptions.New()
 	td.tcm = testutil.NewTestConnManager()
 	td.requestHooks = hooks.NewRequestHooks()
 	td.responseHooks = hooks.NewResponseHooks()
@@ -1136,9 +1082,10 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
 	td.outgoingRequestProcessingListeners = listeners.NewOutgoingRequestProcessingListeners()
 	td.taskqueue = taskqueue.NewTaskQueue(ctx)
-	lsys := cidlink.DefaultLinkSystem()
-	td.requestManager = New(ctx, td.fal, lsys, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.outgoingRequestProcessingListeners, td.taskqueue, td.tcm, 0)
-	td.executor = executor.NewExecutor(td.requestManager, td.blockHooks, td.fal.AsyncLoad)
+	td.localBlockStore = make(map[ipld.Link][]byte)
+	td.localPersistence = testutil.NewTestStore(td.localBlockStore)
+	td.requestManager = New(ctx, td.persistenceOptions, td.localPersistence, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.outgoingRequestProcessingListeners, td.taskqueue, td.tcm, 0)
+	td.executor = executor.NewExecutor(td.requestManager, td.blockHooks)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()
 	td.taskqueue.Startup(6, td.executor)

@@ -1,24 +1,20 @@
 @startuml Responding To A Request
 participant "GraphSync\nTop Level\nInterface" as TLI
 participant ResponseManager
-participant "Query Executor" as QW
-participant PeerTaskQueue
+participant "QueryExecutor" as QW
+participant TaskQueue
 participant PeerTracker
 participant Traverser
 participant ResponseAssembler
 participant LinkTracker
-participant ResponseBuilder
-participant "Intercepted Loader" as ILoader
 participant Loader
 participant "Message Sending\nLayer" as Message
 
 == Initialization ==
 
 TLI -> ResponseManager ** : Setup
-ResponseManager -> QW ** : Create
-activate QW
-TLI -> PeerTaskQueue ** : Setup
-TLI -> PeerResponseManager ** : Setup
+TLI -> QW ** : Setup
+TLI -> TaskQueue ** : Setup
 
 == Responding To Request ==
 
@@ -27,10 +23,8 @@ loop until shutdown
 note over TLI : Request Queueing Loop
 TLI -> ResponseManager : Process requests
 alt new request
-ResponseManager -> PeerTaskQueue : Push Request
-PeerTaskQueue -> PeerTracker ** : Create for peer\n as neccesary
-PeerTaskQueue -> PeerTracker : Push Request
 ResponseManager -> ResponseManager : Create Request Context
+ResponseManager -> TaskQueue : Push Request
 else cancel request
 ResponseManager -> ResponseManager : Cancel Request Context
 end
@@ -38,27 +32,23 @@ end
 else
 loop until shutdown
 note over QW: Request Processing Loop
-QW -> PeerTaskQueue : Pop Request
-PeerTaskQueue -> PeerTracker : Pop Request
-PeerTracker -> PeerTaskQueue : Next Request\nTo Process
-PeerTaskQueue -> QW : Next Request\nTo Process
+TaskQueue -> QW : Next Request\nTo Process
+activate QW
 QW -> QW : Process incoming request hooks
-QW -> ILoader ** : Create w/ Request, Peer, and Loader
 QW -> Traverser ** : Create to manage selector traversal
 loop until traversal complete or request context cancelled
 note over Traverser: Selector Traversal Loop
-Traverser -> ILoader : Request to load blocks\nto perform traversal
-ILoader -> Loader : Load blocks\nfrom local storage
-Loader -> ILoader : Blocks From\nlocal storage or error
-ILoader -> Traverser : Blocks to continue\n traversal or error
-ILoader -> QW : Block or error to Send Back
+Traverser -> QW : Request to load blocks\nto perform traversal
+QW -> Loader : Load blocks\nfrom local storage
+Loader -> QW : Blocks From\nlocal storage or error
+QW -> Traverser : Blocks to continue\n traversal or error
 QW -> QW: Processing outgoing block hooks
 QW -> ResponseAssembler: Add outgoing responses
 activate ResponseAssembler
 ResponseAssembler -> LinkTracker ** : Create for peer if not already present
 ResponseAssembler -> LinkTracker : Notify block or\n error, ask whether\n block is duplicate
 LinkTracker -> ResponseAssembler : Whether to\n send block
-ResponseAssembler -> ResponseBuilder : Aggregate Response Metadata & Block
+ResponseAssembler -> ResponseAssembler : Aggregate Response Metadata & Blocks
 ResponseAssembler -> Message : Send aggregate response
 deactivate ResponseAssembler
 end
@@ -67,7 +57,7 @@ QW -> ResponseAssembler : Request Finished
 activate ResponseAssembler
 ResponseAssembler -> LinkTracker : Query If Errors\n Were Present
 LinkTracker -> ResponseAssembler : True/False\n if errors present
-ResponseAssembler -> ResponseBuilder : Aggregate request finishing
+ResponseAssembler -> ResponseAssembler : Aggregate request finishing
 ResponseAssembler -> Message : Send aggregate response
 deactivate ResponseAssembler
 end

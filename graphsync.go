@@ -127,14 +127,29 @@ func (e RequestNotFoundErr) Error() string {
 }
 
 // RemoteMissingBlockErr indicates that the remote peer was missing a block
-// in the selector requested. It is a non-terminal error in the error stream
+// in the selector requested, and we also don't have it locally.
+// It is a  -terminal error in the error stream
 // for a request and does NOT cause a request to fail completely
 type RemoteMissingBlockErr struct {
 	Link ipld.Link
+	Path ipld.Path
 }
 
 func (e RemoteMissingBlockErr) Error() string {
-	return fmt.Sprintf("remote peer is missing block: %s", e.Link.String())
+	return fmt.Sprintf("remote peer is missing block (%s) at path %s", e.Link.String(), e.Path)
+}
+
+// RemoteIncorrectResponseError indicates that the remote peer sent a response
+// to a traversal that did not correspond with the expected next link
+// in the selector traversal based on verification of data up to this point
+type RemoteIncorrectResponseError struct {
+	LocalLink  ipld.Link
+	RemoteLink ipld.Link
+	Path       ipld.Path
+}
+
+func (e RemoteIncorrectResponseError) Error() string {
+	return fmt.Sprintf("expected link (%s) at path %s does not match link sent by remote (%s), possible malicious responder", e.LocalLink, e.Path, e.RemoteLink)
 }
 
 var (
@@ -223,6 +238,8 @@ type LinkMetadataIterator func(cid.Cid, LinkAction)
 
 // LinkMetadata is used to access link metadata through an Iterator
 type LinkMetadata interface {
+	// Length returns the number of metadata entries
+	Length() int64
 	// Iterate steps over individual metadata one by one using the provided
 	// callback
 	Iterate(LinkMetadataIterator)

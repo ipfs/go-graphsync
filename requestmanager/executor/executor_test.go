@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-peertaskqueue/peertask"
-	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal"
@@ -22,7 +25,6 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
-	"github.com/ipfs/go-graphsync/requestmanager/testloader"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -45,15 +47,15 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			configureRequestExecution: func(p peer.ID, requestID graphsync.RequestID, tbc *testutil.TestBlockChain, ree *requestExecutionEnv) {
 				ree.customRemoteBehavior = func() {
 					// pretend the remote sent five blocks before encountering a missing block
-					ree.fal.SuccessResponseOn(p, requestID, tbc.Blocks(0, 5))
+					ree.reconciledLoader.successResponseOn(tbc.Blocks(0, 5))
 					missingCid := cidlink.Link{Cid: tbc.Blocks(5, 6)[0].Cid()}
-					ree.fal.ResponseOn(p, requestID, missingCid, types.AsyncLoadResult{Err: graphsync.RemoteMissingBlockErr{Link: missingCid}})
+					ree.reconciledLoader.responseOn(missingCid, types.AsyncLoadResult{Err: graphsync.RemoteMissingBlockErr{Link: missingCid, Path: tbc.PathTipIndex(5)}})
 				}
 			},
 			verifyResults: func(t *testing.T, tbc *testutil.TestBlockChain, ree *requestExecutionEnv, responses []graphsync.ResponseProgress, receivedErrors []error) {
 				tbc.VerifyResponseRangeSync(responses, 0, 5)
 				require.Len(t, receivedErrors, 1)
-				require.Equal(t, receivedErrors[0], graphsync.RemoteMissingBlockErr{Link: cidlink.Link{Cid: tbc.Blocks(5, 6)[0].Cid()}})
+				require.Equal(t, receivedErrors[0], graphsync.RemoteMissingBlockErr{Link: cidlink.Link{Cid: tbc.Blocks(5, 6)[0].Cid()}, Path: tbc.PathTipIndex(5)})
 				require.Equal(t, []requestSent{{ree.p, ree.request}}, ree.requestsSent)
 				// we should only call block hooks for blocks we actually received
 				require.Len(t, ree.blookHooksCalled, 5)
@@ -194,9 +196,11 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 			ctx := context.Background()
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			persistence := testutil.NewTestStore(make(map[ipld.Link][]byte))
+			persistence := testutil.NewTestStore(make(map[datamodel.Link][]byte))
 			tbc := testutil.SetupBlockChain(ctx, t, persistence, 100, 10)
-			fal := testloader.NewFakeAsyncLoader()
+			reconciledLoader := &fakeReconciledLoader{
+				responses: make(map[datamodel.Link]chan types.AsyncLoadResult),
+			}
 			requestID := graphsync.NewRequestID()
 			p := testutil.GeneratePeers(1)[0]
 			requestCtx, requestCancel := context.WithCancel(ctx)
@@ -209,14 +213,13 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				blockHookResults:     make(map[blockHookKey]hooks.UpdateResult),
 				doNotSendFirstBlocks: 0,
 				request:              gsmsg.NewRequest(requestID, tbc.TipLink.(cidlink.Link).Cid, tbc.Selector(), graphsync.Priority(rand.Int31())),
-				fal:                  fal,
 				tbc:                  tbc,
 				initialRequest:       true,
 				inProgressErr:        make(chan error, 1),
 				traverser: ipldutil.TraversalBuilder{
 					Root:     tbc.TipLink,
 					Selector: tbc.Selector(),
-					Visitor: func(tp traversal.Progress, node ipld.Node, tr traversal.VisitReason) error {
+					Visitor: func(tp traversal.Progress, node datamodel.Node, tr traversal.VisitReason) error {
 						responsesReceived = append(responsesReceived, graphsync.ResponseProgress{
 							Node:      node,
 							Path:      tp.Path,
@@ -225,12 +228,14 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 						return nil
 					},
 				}.Start(requestCtx),
+				reconciledLoader: reconciledLoader,
 			}
-			fal.OnAsyncLoad(ree.checkPause)
+			reconciledLoader.onAsyncLoad(ree.checkPause)
 			if data.configureRequestExecution != nil {
 				data.configureRequestExecution(p, requestID, tbc, ree)
 			}
-			ree.fal.SuccessResponseOn(p, requestID, tbc.Blocks(0, ree.loadLocallyUntil))
+			reconciledLoader.successResponseOn(tbc.Blocks(0, ree.loadLocallyUntil))
+			reconciledLoader.responseOn(tbc.LinkTipIndex(ree.loadLocallyUntil), types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{Link: tbc.LinkTipIndex(ree.loadLocallyUntil)}})
 			var errorsReceived []error
 			errCollectionErr := make(chan error, 1)
 			go func() {
@@ -247,7 +252,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 					}
 				}
 			}()
-			executor.NewExecutor(ree, ree, fal.AsyncLoad).ExecuteTask(ctx, ree.p, &peertask.Task{})
+			executor.NewExecutor(ree, ree).ExecuteTask(ctx, ree.p, &peertask.Task{})
 			require.NoError(t, <-errCollectionErr)
 			ree.traverser.Shutdown(ctx)
 			data.verifyResults(t, tbc, ree, responsesReceived, errorsReceived)
@@ -263,12 +268,12 @@ type requestSent struct {
 type blockHookKey struct {
 	p         peer.ID
 	requestID graphsync.RequestID
-	link      ipld.Link
+	link      datamodel.Link
 }
 
 type pauseKey struct {
 	requestID graphsync.RequestID
-	link      ipld.Link
+	link      datamodel.Link
 }
 
 type requestExecutionEnv struct {
@@ -282,6 +287,7 @@ type requestExecutionEnv struct {
 	externalPause        pauseKey
 	loadLocallyUntil     int
 	traverser            ipldutil.Traverser
+	reconciledLoader     *fakeReconciledLoader
 	inProgressErr        chan error
 	initialRequest       bool
 	customRemoteBehavior func()
@@ -292,9 +298,62 @@ type requestExecutionEnv struct {
 
 	// deps
 	tbc *testutil.TestBlockChain
-	fal *testloader.FakeAsyncLoader
 }
 
+type fakeReconciledLoader struct {
+	responsesLk sync.Mutex
+	responses   map[datamodel.Link]chan types.AsyncLoadResult
+	lastLoad    datamodel.Link
+	online      bool
+	cb          func(datamodel.Link)
+}
+
+func (frl *fakeReconciledLoader) onAsyncLoad(cb func(datamodel.Link)) {
+	frl.cb = cb
+}
+
+func (frl *fakeReconciledLoader) responseOn(link datamodel.Link, result types.AsyncLoadResult) {
+	response := frl.asyncLoad(link, true)
+	response <- result
+	close(response)
+}
+
+func (frl *fakeReconciledLoader) successResponseOn(blks []blocks.Block) {
+
+	for _, block := range blks {
+		frl.responseOn(cidlink.Link{Cid: block.Cid()}, types.AsyncLoadResult{Data: block.RawData(), Local: false, Err: nil})
+	}
+}
+
+func (frl *fakeReconciledLoader) asyncLoad(link datamodel.Link, force bool) chan types.AsyncLoadResult {
+	frl.responsesLk.Lock()
+	response, ok := frl.responses[link]
+	if !ok || force {
+		response = make(chan types.AsyncLoadResult, 1)
+		frl.responses[link] = response
+	}
+	frl.responsesLk.Unlock()
+	return response
+}
+
+func (frl *fakeReconciledLoader) BlockReadOpener(_ linking.LinkContext, link datamodel.Link) types.AsyncLoadResult {
+	frl.lastLoad = link
+	if frl.cb != nil {
+		frl.cb(link)
+	}
+	return <-frl.asyncLoad(link, false)
+}
+
+func (frl *fakeReconciledLoader) RetryLastLoad() types.AsyncLoadResult {
+	if frl.cb != nil {
+		frl.cb(frl.lastLoad)
+	}
+	return <-frl.asyncLoad(frl.lastLoad, false)
+}
+
+func (frl *fakeReconciledLoader) SetRemoteOnline(online bool) {
+	frl.online = true
+}
 func (ree *requestExecutionEnv) ReleaseRequestTask(_ peer.ID, _ *peertask.Task, err error) {
 	ree.terminalError = err
 	close(ree.inProgressErr)
@@ -314,7 +373,7 @@ func (ree *requestExecutionEnv) GetRequestTask(_ peer.ID, _ *peertask.Task, requ
 		P:                    ree.p,
 		InProgressErr:        ree.inProgressErr,
 		Empty:                false,
-		InitialRequest:       ree.initialRequest,
+		ReconciledLoader:     ree.reconciledLoader,
 	}
 	go func() {
 		select {
@@ -328,7 +387,7 @@ func (ree *requestExecutionEnv) SendRequest(p peer.ID, request gsmsg.GraphSyncRe
 	ree.requestsSent = append(ree.requestsSent, requestSent{p, request})
 	if request.Type() == graphsync.RequestTypeNew {
 		if ree.customRemoteBehavior == nil {
-			ree.fal.SuccessResponseOn(p, request.ID(), ree.tbc.Blocks(ree.loadLocallyUntil, len(ree.tbc.AllBlocks())))
+			ree.reconciledLoader.successResponseOn(ree.tbc.Blocks(ree.loadLocallyUntil, len(ree.tbc.AllBlocks())))
 		} else {
 			ree.customRemoteBehavior()
 		}
@@ -341,8 +400,8 @@ func (ree *requestExecutionEnv) ProcessBlockHooks(p peer.ID, response graphsync.
 	return ree.blockHookResults[bhk]
 }
 
-func (ree *requestExecutionEnv) checkPause(requestID graphsync.RequestID, link ipld.Link, result <-chan types.AsyncLoadResult) {
-	if ree.externalPause.link == link && ree.externalPause.requestID == requestID {
+func (ree *requestExecutionEnv) checkPause(link datamodel.Link) {
+	if ree.externalPause.link == link {
 		ree.externalPause = pauseKey{}
 		ree.pauseMessages <- struct{}{}
 	}

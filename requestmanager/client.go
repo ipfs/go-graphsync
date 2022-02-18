@@ -28,7 +28,7 @@ import (
 	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
+	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader"
 	"github.com/ipfs/go-graphsync/taskqueue"
 )
 
@@ -61,6 +61,8 @@ type inProgressRequestStatus struct {
 	inProgressErr        chan error
 	traverser            ipldutil.Traverser
 	traverserCancel      context.CancelFunc
+	lsys                 *ipld.LinkSystem
+	reconciledLoader     *reconciledloader.ReconciledLoader
 }
 
 // PeerHandler is an interface that can send requests to peers
@@ -68,28 +70,23 @@ type PeerHandler interface {
 	AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*messagequeue.Builder))
 }
 
-// AsyncLoader is an interface for loading links asynchronously, returning
-// results as new responses are processed
-type AsyncLoader interface {
-	StartRequest(graphsync.RequestID, string) error
-	ProcessResponse(ctx context.Context, responses map[graphsync.RequestID]graphsync.LinkMetadata, blks []blocks.Block)
-	AsyncLoad(p peer.ID, requestID graphsync.RequestID, link ipld.Link, linkContext ipld.LinkContext) <-chan types.AsyncLoadResult
-	CompleteResponsesFor(requestID graphsync.RequestID)
-	CleanupRequest(p peer.ID, requestID graphsync.RequestID)
+// PersistenceOptions is an interface for getting loaders by name
+type PersistenceOptions interface {
+	GetLinkSystem(name string) (ipld.LinkSystem, bool)
 }
 
 // RequestManager tracks outgoing requests and processes incoming reponses
 // to them.
 type RequestManager struct {
-	ctx             context.Context
-	cancel          context.CancelFunc
-	messages        chan requestManagerMessage
-	peerHandler     PeerHandler
-	rc              *responseCollector
-	asyncLoader     AsyncLoader
-	disconnectNotif *pubsub.PubSub
-	linkSystem      ipld.LinkSystem
-	connManager     network.ConnManager
+	ctx                context.Context
+	cancel             context.CancelFunc
+	messages           chan requestManagerMessage
+	peerHandler        PeerHandler
+	rc                 *responseCollector
+	persistenceOptions PersistenceOptions
+	disconnectNotif    *pubsub.PubSub
+	linkSystem         ipld.LinkSystem
+	connManager        network.ConnManager
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
 	maxLinksPerRequest uint64
 
@@ -118,7 +115,7 @@ type ResponseHooks interface {
 
 // New generates a new request manager from a context, network, and selectorQuerier
 func New(ctx context.Context,
-	asyncLoader AsyncLoader,
+	persistenceOptions PersistenceOptions,
 	linkSystem ipld.LinkSystem,
 	requestHooks RequestHooks,
 	responseHooks ResponseHooks,
@@ -132,7 +129,7 @@ func New(ctx context.Context,
 	return &RequestManager{
 		ctx:                                ctx,
 		cancel:                             cancel,
-		asyncLoader:                        asyncLoader,
+		persistenceOptions:                 persistenceOptions,
 		disconnectNotif:                    pubsub.New(disconnectDispatcher),
 		linkSystem:                         linkSystem,
 		rc:                                 newResponseCollector(ctx),
