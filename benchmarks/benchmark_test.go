@@ -64,7 +64,7 @@ func BenchmarkRoundtripSuccess(b *testing.B) {
 }
 
 func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc, tdm *tempDirMaker, diskBasedDatastore bool, limitBandwidth bool) {
-	mn := mocknet.New()
+	mn := mocknet.New(ctx)
 	if limitBandwidth {
 		mn.SetLinkDefaults(mocknet.LinkOptions{Latency: 100 * time.Millisecond, Bandwidth: 16 << 20})
 	}

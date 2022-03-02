@@ -75,7 +75,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	mn := mocknet.New()
+	mn := mocknet.New(ctx)
 
 	host1, err := mn.GenPeer()
 	require.NoError(t, err)
@@ -230,7 +230,7 @@ func TestSendMessageRetry(t *testing.T) {
 			ctx := context.Background()
 			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
-			mn := mocknet.New()
+			mn := mocknet.New(ctx)
 
 			host1, err := mn.GenPeer()
 			require.NoError(t, err)

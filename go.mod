@@ -22,16 +22,15 @@ require (
 	github.com/ipfs/go-ipfs-files v0.0.8
 	github.com/ipfs/go-ipld-cbor v0.0.5
 	github.com/ipfs/go-ipld-format v0.2.0
-	github.com/ipfs/go-log/v2 v2.5.0
+	github.com/ipfs/go-log/v2 v2.3.0
 	github.com/ipfs/go-merkledag v0.5.1
 	github.com/ipfs/go-unixfs v0.3.1
 	github.com/ipld/go-ipld-prime v0.14.4
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
 	github.com/jpillora/backoff v1.0.0
-	github.com/libp2p/go-libp2p v0.18.0-rc1
-	github.com/libp2p/go-libp2p-core v0.14.0
+	github.com/libp2p/go-libp2p v0.16.0
+	github.com/libp2p/go-libp2p-core v0.11.0
 	github.com/libp2p/go-libp2p-record v0.1.1 // indirect
-	github.com/libp2p/go-yamux/v3 v3.0.2 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/whyrusleeping/cbor-gen v0.0.0-20210219115102-f37d292932f2
 	go.opentelemetry.io/otel v1.3.0
