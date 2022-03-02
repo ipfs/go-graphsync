@@ -114,7 +114,7 @@ func NewGraphsyncTestingData(ctx context.Context, t *testing.T, host1Protocols [
 	// setup an IPLD loader/storer for blockstore 2
 	gsData.LinkSystem2 = storeutil.LinkSystemForBlockstore(gsData.Bs2)
 
-	gsData.Mn = mocknet.New()
+	gsData.Mn = mocknet.New(ctx)
 
 	// setup network
 	var err error
