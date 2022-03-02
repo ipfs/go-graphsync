@@ -1,5 +1,15 @@
 # go-data-transfer changelog
 
+# go-data-transfer v1.14.1
+
+Reverts libp2p upgrade
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Revert "Update libp2p (#295)" ([filecoin-project/go-data-transfer#309](https://github.com/filecoin-project/go-data-transfer/pull/309))
+  - Merge branch 'release/v1.14.0'
+  
 # go-data-transfer v1.14.0
 
 Update libp2p and revert missing block support for now
