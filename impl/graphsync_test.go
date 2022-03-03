@@ -3,6 +3,7 @@ package graphsync
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	chunker "github.com/ipfs/go-ipfs-chunker"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
@@ -27,6 +29,8 @@ import (
 	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
 	"github.com/ipfs/go-unixfsnode"
 	unixfsbuilder "github.com/ipfs/go-unixfsnode/data/builder"
+	unixfsfile "github.com/ipfs/go-unixfsnode/file"
+	dagpb "github.com/ipld/go-codec-dagpb"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -1348,6 +1352,111 @@ func TestUnixFSADLFetch(t *testing.T) {
 	}
 	require.True(t, sawCorrectPath)
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
+}
+
+func loadRandomUnixFxFile(ctx context.Context, t *testing.T, bs blockstore.Blockstore, size uint64, unixfsChunkSize uint64, unixfsLinksPerLevel int, useRawNodes bool) cid.Cid {
+
+	data := make([]byte, size)
+	_, err := rand.Read(data)
+	require.NoError(t, err)
+	buf := bytes.NewReader(data)
+	file := files.NewReaderFile(buf)
+
+	dagService := merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
+
+	// import to UnixFS
+	bufferedDS := ipldformat.NewBufferedDAG(ctx, dagService)
+
+	params := ihelper.DagBuilderParams{
+		Maxlinks:   unixfsLinksPerLevel,
+		RawLeaves:  useRawNodes,
+		CidBuilder: nil,
+		Dagserv:    bufferedDS,
+	}
+
+	db, err := params.New(chunker.NewSizeSplitter(file, int64(unixfsChunkSize)))
+	require.NoError(t, err, "unable to setup dag builder")
+
+	nd, err := balanced.Layout(db)
+	require.NoError(t, err, "unable to create unix fs node")
+
+	err = bufferedDS.Commit()
+	require.NoError(t, err, "unable to commit unix fs node")
+
+	return nd.Cid()
+}
+
+func TestUnixFSADLFetchMultiBlocks(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	// make a blockstore and dag service
+	bs1 := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
+
+	// make a second blockstore
+	bs2 := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
+
+	// setup an IPLD loader/storer for blockstore 1
+	persistence1 := storeutil.LinkSystemForBlockstore(bs1)
+
+	// setup an IPLD loader/storer for blockstore 2
+	persistence2 := storeutil.LinkSystemForBlockstore(bs2)
+
+	lnks := make([]dagpb.PBLink, 0, 2)
+	fileRoot1 := loadRandomUnixFxFile(ctx, t, bs2, 50*1024, 1<<10, 1024, true)
+	fileRoot2 := loadRandomUnixFxFile(ctx, t, bs2, 20*1024, 1<<10, 1024, true)
+
+	entry1, err := unixfsbuilder.BuildUnixFSDirectoryEntry("file-1", 50*1024, cidlink.Link{Cid: fileRoot1})
+	require.NoError(t, err)
+	lnks = append(lnks, entry1)
+	entry2, err := unixfsbuilder.BuildUnixFSDirectoryEntry("file-2", 20*1024, cidlink.Link{Cid: fileRoot2})
+	require.NoError(t, err)
+	lnks = append(lnks, entry2)
+
+	link, err := unixfsbuilder.BuildUnixFSDirectory(lnks, &persistence2)
+	require.NoError(t, err)
+
+	td := newGsTestData(ctx, t)
+	requestor := New(ctx, td.gsnet1, persistence1)
+	responder := New(ctx, td.gsnet2, persistence2)
+
+	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		hookActions.ValidateRequest()
+	})
+
+	// create a selector for the whole UnixFS dag
+	selector := unixfsnode.UnixFSPathSelector("file-1")
+
+	// execute the traversal
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), link, selector)
+
+	var sawCorrectPath bool
+	for response := range progressChan {
+		if response.Path.String() == "file-1" {
+			sawCorrectPath = true
+		}
+	}
+	require.True(t, sawCorrectPath)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+
+	chooser := dagpb.AddSupportToChooser(basicnode.Chooser)
+
+	proto, err := chooser(cidlink.Link{Cid: fileRoot1}, ipld.LinkContext{})
+	require.NoError(t, err)
+
+	ind, err := persistence1.Load(ipld.LinkContext{}, cidlink.Link{Cid: fileRoot1}, proto)
+	require.NoError(t, err)
+
+	nd, err := unixfsnode.Reify(ipld.LinkContext{}, ind, &persistence1)
+	require.NoError(t, err)
+
+	reader, _ := nd.(unixfsfile.StreamableByteNode)
+
+	buf := make([]byte, 50*1024)
+	r, err := reader.Read(buf)
+	require.NoError(t, err)
+	fmt.Println("read ", r)
 }
 
 func TestUnixFSFetch(t *testing.T) {
