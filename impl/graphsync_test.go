@@ -17,7 +17,6 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	chunker "github.com/ipfs/go-ipfs-chunker"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
@@ -29,7 +28,6 @@ import (
 	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
 	"github.com/ipfs/go-unixfsnode"
 	unixfsbuilder "github.com/ipfs/go-unixfsnode/data/builder"
-	unixfsfile "github.com/ipfs/go-unixfsnode/file"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -1354,42 +1352,21 @@ func TestUnixFSADLFetch(t *testing.T) {
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
 }
 
-func loadRandomUnixFxFile(ctx context.Context, t *testing.T, bs blockstore.Blockstore, size uint64, unixfsChunkSize uint64, unixfsLinksPerLevel int, useRawNodes bool) cid.Cid {
+func loadRandomUnixFxFile(ctx context.Context, t *testing.T, lsys *ipld.LinkSystem, size uint64, blockSize uint64) (datamodel.Link, uint64) {
 
 	data := make([]byte, size)
 	_, err := rand.Read(data)
 	require.NoError(t, err)
 	buf := bytes.NewReader(data)
-	file := files.NewReaderFile(buf)
-
-	dagService := merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
-
-	// import to UnixFS
-	bufferedDS := ipldformat.NewBufferedDAG(ctx, dagService)
-
-	params := ihelper.DagBuilderParams{
-		Maxlinks:   unixfsLinksPerLevel,
-		RawLeaves:  useRawNodes,
-		CidBuilder: nil,
-		Dagserv:    bufferedDS,
-	}
-
-	db, err := params.New(chunker.NewSizeSplitter(file, int64(unixfsChunkSize)))
-	require.NoError(t, err, "unable to setup dag builder")
-
-	nd, err := balanced.Layout(db)
-	require.NoError(t, err, "unable to create unix fs node")
-
-	err = bufferedDS.Commit()
-	require.NoError(t, err, "unable to commit unix fs node")
-
-	return nd.Cid()
+	fileRoot, finalSize, err := unixfsbuilder.BuildUnixFSFile(buf, fmt.Sprintf("size-%d", blockSize), lsys)
+	require.NoError(t, err)
+	return fileRoot, finalSize
 }
 
 func TestUnixFSADLFetchMultiBlocks(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
+	//ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	//defer cancel()
 
 	// make a blockstore and dag service
 	bs1 := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
@@ -1404,17 +1381,17 @@ func TestUnixFSADLFetchMultiBlocks(t *testing.T) {
 	persistence2 := storeutil.LinkSystemForBlockstore(bs2)
 
 	lnks := make([]dagpb.PBLink, 0, 2)
-	fileRoot1 := loadRandomUnixFxFile(ctx, t, bs2, 50*1024, 1<<10, 1024, true)
-	fileRoot2 := loadRandomUnixFxFile(ctx, t, bs2, 20*1024, 1<<10, 1024, true)
+	fileRoot1, fileSize1 := loadRandomUnixFxFile(ctx, t, &persistence2, 50*1024, 1<<10)
+	fileRoot2, fileSize2 := loadRandomUnixFxFile(ctx, t, &persistence2, 20*1024, 1<<10)
 
-	entry1, err := unixfsbuilder.BuildUnixFSDirectoryEntry("file-1", 50*1024, cidlink.Link{Cid: fileRoot1})
+	entry1, err := unixfsbuilder.BuildUnixFSDirectoryEntry("file-1", int64(fileSize1), fileRoot1)
 	require.NoError(t, err)
 	lnks = append(lnks, entry1)
-	entry2, err := unixfsbuilder.BuildUnixFSDirectoryEntry("file-2", 20*1024, cidlink.Link{Cid: fileRoot2})
+	entry2, err := unixfsbuilder.BuildUnixFSDirectoryEntry("file-2", int64(fileSize2), fileRoot2)
 	require.NoError(t, err)
 	lnks = append(lnks, entry2)
 
-	link, err := unixfsbuilder.BuildUnixFSDirectory(lnks, &persistence2)
+	link, _, err := unixfsbuilder.BuildUnixFSDirectory(lnks, &persistence2)
 	require.NoError(t, err)
 
 	td := newGsTestData(ctx, t)
@@ -1442,21 +1419,23 @@ func TestUnixFSADLFetchMultiBlocks(t *testing.T) {
 
 	chooser := dagpb.AddSupportToChooser(basicnode.Chooser)
 
-	proto, err := chooser(cidlink.Link{Cid: fileRoot1}, ipld.LinkContext{})
+	proto, err := chooser(fileRoot1, ipld.LinkContext{})
 	require.NoError(t, err)
 
-	ind, err := persistence1.Load(ipld.LinkContext{}, cidlink.Link{Cid: fileRoot1}, proto)
+	ind, err := persistence1.Load(ipld.LinkContext{}, fileRoot1, proto)
 	require.NoError(t, err)
 
 	nd, err := unixfsnode.Reify(ipld.LinkContext{}, ind, &persistence1)
 	require.NoError(t, err)
 
-	reader, _ := nd.(unixfsfile.StreamableByteNode)
+	lbn, ok := nd.(datamodel.LargeBytesNode)
+	require.True(t, ok)
+	reader, err := lbn.AsLargeBytes()
+	require.NoError(t, err)
 
 	buf := make([]byte, 50*1024)
-	r, err := reader.Read(buf)
+	_, err = reader.Read(buf)
 	require.NoError(t, err)
-	fmt.Println("read ", r)
 }
 
 func TestUnixFSFetch(t *testing.T) {

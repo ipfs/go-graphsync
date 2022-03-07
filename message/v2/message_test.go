@@ -61,7 +61,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.Equal(t, 1, len(gsrIpld.Extensions.Keys))
 	actualData, ok := gsrIpld.Extensions.Values["graphsync/awesome"]
 	require.True(t, ok)
-	require.Equal(t, extension.Data, actualData)
+	require.Equal(t, extension.Data, *actualData)
 
 	deserialized, err := mh.fromIPLD(gsmIpld)
 	require.NoError(t, err, "deserializing dag-cbor message errored")
@@ -108,7 +108,7 @@ func TestAppendingResponses(t *testing.T) {
 	gsr := (*gsmIpld.Gs2.Responses)[0]
 	// no longer equal: require.Equal(t, requestID.Bytes(), gsr.Id)
 	require.Equal(t, status, gsr.Status)
-	require.Equal(t, basicnode.NewString("test extension data"), gsr.Extensions.Values["graphsync/awesome"])
+	require.Equal(t, basicnode.NewString("test extension data"), *gsr.Extensions.Values["graphsync/awesome"])
 
 	deserialized, err := mh.fromIPLD(gsmIpld)
 	require.NoError(t, err, "deserializing dag-cbor message errored")
