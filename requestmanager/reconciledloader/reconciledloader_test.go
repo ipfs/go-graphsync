@@ -218,6 +218,29 @@ func TestReconciledLoader(t *testing.T) {
 				},
 			),
 		},
+		"remote skips DAG": {
+			root:                testChain.TipLink.(cidlink.Link).Cid,
+			baseStore:           testBCStorage,
+			presentRemoteBlocks: testChain.AllBlocks(),
+			remoteSeq: append(metadataRange(testChain, 0, 30, false),
+				message.GraphSyncLinkMetadatum{
+					Link:   testChain.LinkTipIndex(30).(cidlink.Link).Cid,
+					Action: graphsync.LinkActionDuplicateDAGSkipped,
+				}),
+			steps: append(append([]step{
+				goOnline{},
+				injest{metadataStart: 0, metadataEnd: 31},
+			}, syncLoadRange(testChain, 0, 30, false)...),
+				// we should get an error that we're missing a block for our response
+				syncLoad{
+					loadSeq: 30,
+					expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{
+						Link: testChain.LinkTipIndex(30),
+						Path: testChain.PathTipIndex(30),
+					}},
+				},
+			),
+		},
 		"remote missing chain that local has": {
 			root:                testChain.TipLink.(cidlink.Link).Cid,
 			baseStore:           testBCStorage,
@@ -227,6 +250,39 @@ func TestReconciledLoader(t *testing.T) {
 				message.GraphSyncLinkMetadatum{
 					Link:   testChain.LinkTipIndex(30).(cidlink.Link).Cid,
 					Action: graphsync.LinkActionMissing,
+				}),
+			steps: append(append(append(
+				[]step{
+					goOnline{},
+					injest{metadataStart: 0, metadataEnd: 31},
+				},
+				// load the blocks the remote has
+				syncLoadRange(testChain, 0, 30, false)...),
+				[]step{
+					// load the block the remote missing says it's missing locally
+					syncLoadRange(testChain, 30, 31, true)[0],
+					asyncLoad{loadSeq: 31},
+					// at this point we have no more remote responses, since it's a linear chain
+					verifyNoAsyncResult{},
+					// we'd expect the remote would terminate here, since we've sent the last missing block
+					goOffline{},
+					// this will cause us to start loading locally only again
+					verifyAsyncResult{
+						expectedResult: types.AsyncLoadResult{Local: true, Data: testChain.Blocks(31, 32)[0].RawData()},
+					},
+				}...),
+				syncLoadRange(testChain, 30, 100, true)...,
+			),
+		},
+		"remote skips chain that local has": {
+			root:                testChain.TipLink.(cidlink.Link).Cid,
+			baseStore:           testBCStorage,
+			presentRemoteBlocks: testChain.AllBlocks(),
+			presentLocalBlocks:  testChain.Blocks(30, 100),
+			remoteSeq: append(metadataRange(testChain, 0, 30, false),
+				message.GraphSyncLinkMetadatum{
+					Link:   testChain.LinkTipIndex(30).(cidlink.Link).Cid,
+					Action: graphsync.LinkActionDuplicateDAGSkipped,
 				}),
 			steps: append(append(append(
 				[]step{
@@ -326,6 +382,62 @@ func TestReconciledLoader(t *testing.T) {
 				syncLoad{loadSeq: 7, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.LeafAlphaBlock.RawData()}},
 			},
 		},
+		"remote duplicate not sentblocks can load from local": {
+			root:      testTree.RootBlock.Cid(),
+			baseStore: testTree.Storage,
+			presentRemoteBlocks: []blocks.Block{
+				testTree.RootBlock,
+				testTree.MiddleListBlock,
+				testTree.MiddleMapBlock,
+				testTree.LeafAlphaBlock,
+				testTree.LeafBetaBlock,
+			},
+			presentLocalBlocks: nil,
+			remoteSeq: []message.GraphSyncLinkMetadatum{
+				{Link: testTree.RootBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.MiddleListBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionDuplicateNotSent},
+				{Link: testTree.LeafBetaBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionDuplicateNotSent},
+				{Link: testTree.MiddleMapBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionDuplicateNotSent},
+			},
+			steps: []step{
+				goOnline{},
+				injest{metadataStart: 0, metadataEnd: 8},
+				syncLoad{loadSeq: 0, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.RootBlock.RawData()}},
+				syncLoad{loadSeq: 1, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.MiddleListBlock.RawData()}},
+				syncLoad{loadSeq: 2, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.LeafAlphaBlock.RawData()}},
+				syncLoad{loadSeq: 3, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.LeafAlphaBlock.RawData()}},
+				syncLoad{loadSeq: 4, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.LeafBetaBlock.RawData()}},
+				syncLoad{loadSeq: 5, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.LeafAlphaBlock.RawData()}},
+				syncLoad{loadSeq: 6, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.MiddleMapBlock.RawData()}},
+				syncLoad{loadSeq: 7, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.LeafAlphaBlock.RawData()}},
+			},
+		},
+		"remote duplicate not sent load from local even when present in message": {
+			root:      testTree.RootBlock.Cid(),
+			baseStore: testTree.Storage,
+			presentRemoteBlocks: []blocks.Block{
+				testTree.RootBlock,
+				testTree.MiddleListBlock,
+			},
+			presentLocalBlocks: []blocks.Block{
+				testTree.MiddleListBlock,
+			},
+			remoteSeq: []message.GraphSyncLinkMetadatum{
+				{Link: testTree.RootBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.MiddleListBlock.Cid(), Action: graphsync.LinkActionDuplicateNotSent},
+			},
+			steps: []step{
+				goOnline{},
+				injest{metadataStart: 0, metadataEnd: 2},
+				syncLoad{loadSeq: 0, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.RootBlock.RawData()}},
+				syncLoad{loadSeq: 1, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.MiddleListBlock.RawData()}},
+			},
+		},
+
 		"remote missing branch finishes to end": {
 			root:      testTree.RootBlock.Cid(),
 			baseStore: testTree.Storage,
@@ -339,6 +451,32 @@ func TestReconciledLoader(t *testing.T) {
 				{Link: testTree.RootBlock.Cid(), Action: graphsync.LinkActionPresent},
 				// missing the whole list tree
 				{Link: testTree.MiddleListBlock.Cid(), Action: graphsync.LinkActionMissing},
+				{Link: testTree.MiddleMapBlock.Cid(), Action: graphsync.LinkActionPresent},
+				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionPresent},
+			},
+			steps: []step{
+				goOnline{},
+				injest{metadataStart: 0, metadataEnd: 4},
+				syncLoad{loadSeq: 0, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.RootBlock.RawData()}},
+				syncLoad{loadSeq: 1, expectedResult: types.AsyncLoadResult{Local: true, Err: graphsync.RemoteMissingBlockErr{Link: testTree.MiddleListNodeLnk, Path: datamodel.ParsePath("linkedList")}}},
+				syncLoad{loadSeq: 6, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.MiddleMapBlock.RawData()}},
+				syncLoad{loadSeq: 7, expectedResult: types.AsyncLoadResult{Local: false, Data: testTree.LeafAlphaBlock.RawData()}},
+			},
+		},
+
+		"remote skipping branch finishes to end": {
+			root:      testTree.RootBlock.Cid(),
+			baseStore: testTree.Storage,
+			presentRemoteBlocks: []blocks.Block{
+				testTree.RootBlock,
+				testTree.MiddleMapBlock,
+				testTree.LeafAlphaBlock,
+			},
+			presentLocalBlocks: nil,
+			remoteSeq: []message.GraphSyncLinkMetadatum{
+				{Link: testTree.RootBlock.Cid(), Action: graphsync.LinkActionPresent},
+				// missing the whole list tree
+				{Link: testTree.MiddleListBlock.Cid(), Action: graphsync.LinkActionDuplicateDAGSkipped},
 				{Link: testTree.MiddleMapBlock.Cid(), Action: graphsync.LinkActionPresent},
 				{Link: testTree.LeafAlphaBlock.Cid(), Action: graphsync.LinkActionPresent},
 			},

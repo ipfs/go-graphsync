@@ -8,22 +8,22 @@ import (
 // pathTracker is just a simple utility to track whether we're on a missing
 // path for the remote
 type pathTracker struct {
-	lastMissingRemotePath datamodel.Path
+	lastUnfollowedRemotePath datamodel.Path
 }
 
-// stillOnMissingRemotePath determines whether the next link load will be from
+// stillOnUnfollowedRemotePath determines whether the next link load will be from
 // a path missing from the remote
 // if it won't be, based on the linear nature of selector traversals, it wipes
 // the last missing state
-func (pt *pathTracker) stillOnMissingRemotePath(newPath datamodel.Path) bool {
+func (pt *pathTracker) stillOnUnfollowedRemotePath(newPath datamodel.Path) bool {
 	// is there a known missing path?
-	if pt.lastMissingRemotePath.Len() == 0 {
+	if pt.lastUnfollowedRemotePath.Len() == 0 {
 		return false
 	}
 	// are we still on it?
-	if newPath.Len() <= pt.lastMissingRemotePath.Len() {
+	if newPath.Len() <= pt.lastUnfollowedRemotePath.Len() {
 		// if not, reset to no known missing remote path
-		pt.lastMissingRemotePath = datamodel.NewPath(nil)
+		pt.lastUnfollowedRemotePath = datamodel.NewPath(nil)
 		return false
 	}
 	// otherwise we're on a missing path
@@ -34,8 +34,8 @@ func (pt *pathTracker) stillOnMissingRemotePath(newPath datamodel.Path) bool {
 // at the given path
 func (pt *pathTracker) recordRemoteLoadAttempt(currentPath datamodel.Path, action graphsync.LinkAction) {
 	// if the last remote link was missing
-	if action == graphsync.LinkActionMissing {
+	if !action.DidFollowLink() {
 		// record the last known missing path
-		pt.lastMissingRemotePath = currentPath
+		pt.lastUnfollowedRemotePath = currentPath
 	}
 }

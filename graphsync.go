@@ -227,10 +227,24 @@ const (
 	// is included a this message
 	LinkActionPresent = LinkAction("Present")
 
+	// LinkActionDuplicateNotSent means the linked block was present on this machine,
+	// but I am not sending it (most likely duplicate)
+	LinkActionDuplicateNotSent = LinkAction("DuplicateNotSent")
+
 	// LinkActionMissing means I did not have the linked block, so I skipped over
 	// this part of the traversal
 	LinkActionMissing = LinkAction("Missing")
+
+	// LinkActionDuplicateDAGSkipped means the DAG with this link points toward has already
+	// been traversed entirely in the course of this request so I am skipping over it entirely
+	LinkActionDuplicateDAGSkipped = LinkAction("DuplicateDAGSkipped")
 )
+
+// DidFollowLink indicates whether the remote actually loaded the block and
+// followed it in its selector traversal
+func (l LinkAction) DidFollowLink() bool {
+	return l == LinkActionPresent || l == LinkActionDuplicateNotSent
+}
 
 // LinkMetadataIterator is used to access individual link metadata through a
 // LinkMetadata object

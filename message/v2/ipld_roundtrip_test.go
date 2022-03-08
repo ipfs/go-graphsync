@@ -41,11 +41,13 @@ func TestIPLDRoundTrip(t *testing.T) {
 		id2: message.NewRequest(id2, root2, selectorparse.CommonSelector_ExploreAllRecursively, graphsync.Priority(202)),
 	}
 
-	metadata := message.GraphSyncLinkMetadatum{Link: root2, Action: graphsync.LinkActionMissing}
+	metadata := []message.GraphSyncLinkMetadatum{{Link: root2, Action: graphsync.LinkActionMissing}, {Link: root1, Action: graphsync.LinkActionDuplicateNotSent}}
+
+	metadata2 := []message.GraphSyncLinkMetadatum{{Link: root2, Action: graphsync.LinkActionDuplicateDAGSkipped}, {Link: root1, Action: graphsync.LinkActionPresent}}
 
 	responses := map[graphsync.RequestID]message.GraphSyncResponse{
-		id1: message.NewResponse(id1, graphsync.RequestFailedContentNotFound, []message.GraphSyncLinkMetadatum{metadata}),
-		id2: message.NewResponse(id2, graphsync.PartialResponse, nil, extension2),
+		id1: message.NewResponse(id1, graphsync.RequestFailedContentNotFound, metadata),
+		id2: message.NewResponse(id2, graphsync.PartialResponse, metadata2, extension2),
 	}
 
 	blks := testutil.GenerateBlocksOfSize(2, 100)
@@ -115,11 +117,12 @@ func TestIPLDRoundTrip(t *testing.T) {
 	require.Equal(t, rtresmap[id2].Status(), graphsync.PartialResponse)
 	gslm1, ok := rtresmap[id1].Metadata().(message.GraphSyncLinkMetadata)
 	require.True(t, ok)
-	require.Len(t, gslm1.RawMetadata(), 1)
-	require.Equal(t, gslm1.RawMetadata()[0], metadata)
+	require.Len(t, gslm1.RawMetadata(), 2)
+	require.Equal(t, gslm1.RawMetadata(), metadata)
 	gslm2, ok := rtresmap[id2].Metadata().(message.GraphSyncLinkMetadata)
 	require.True(t, ok)
-	require.Empty(t, gslm2.RawMetadata())
+	require.Len(t, gslm2.RawMetadata(), 2)
+	require.Equal(t, gslm2.RawMetadata(), metadata2)
 	require.Empty(t, rtresmap[id1].ExtensionNames())
 	require.Len(t, rtresmap[id2].ExtensionNames(), 1)
 	rtext2, exists := rtresmap[id2].Extension(extension2Name)

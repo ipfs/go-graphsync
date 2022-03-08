@@ -60,7 +60,7 @@ func TestMessageBuilding(t *testing.T) {
 				rb.AddResponseCode(requestID2, graphsync.RequestCompletedFull)
 
 				rb.AddLink(requestID3, links[0], graphsync.LinkActionPresent)
-				rb.AddLink(requestID3, links[1], graphsync.LinkActionPresent)
+				rb.AddLink(requestID3, links[1], graphsync.LinkActionDuplicateNotSent)
 
 				rb.AddResponseCode(requestID4, graphsync.RequestCompletedFull)
 				rb.AddExtensionData(requestID1, extension1)
@@ -101,7 +101,7 @@ func TestMessageBuilding(t *testing.T) {
 				require.Equal(t, graphsync.PartialResponse, response3.Status(), "did not generate partial response")
 				assertMetadata(t, response3, []GraphSyncLinkMetadatum{
 					{Link: links[0].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
-					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionPresent},
+					{Link: links[1].(cidlink.Link).Cid, Action: graphsync.LinkActionDuplicateNotSent},
 				})
 				assertExtension(t, response3, extension2)
 
