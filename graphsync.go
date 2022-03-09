@@ -236,7 +236,7 @@ const (
 	LinkActionMissing = LinkAction("Missing")
 
 	// LinkActionDuplicateDAGSkipped means the DAG with this link points toward has already
-	// been traversed entirely in the course of this request so I am skipping over it entirely
+	// been traversed entirely in the course of this request so I am skipping over it
 	LinkActionDuplicateDAGSkipped = LinkAction("DuplicateDAGSkipped")
 )
 
