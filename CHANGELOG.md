@@ -1,5 +1,24 @@
 # go-data-transfer changelog
 
+# go-data-transfer v1.15.0
+
+Update to graphsync v0.13.0 with Graphsync 2.0 protocol
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - Update graphsync to 2.0 branch - absolute minimum (#300) ([filecoin-project/go-data-transfer#300](https://github.com/filecoin-project/go-data-transfer/pull/300))
+  - docs(CHANGELOG): update for v1.14.1
+  - Revert "Update libp2p (#295)" ([filecoin-project/go-data-transfer#309](https://github.com/filecoin-project/go-data-transfer/pull/309))
+  - Merge branch 'release/v1.14.0'
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +2027/-674 | 29 |
+| hannahhoward | 1 | +10/-0 | 1 |
+
 # go-data-transfer v1.14.1
 
 Reverts libp2p upgrade
