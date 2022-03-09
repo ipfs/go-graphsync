@@ -382,7 +382,7 @@ func TestReconciledLoader(t *testing.T) {
 				syncLoad{loadSeq: 7, expectedResult: types.AsyncLoadResult{Local: true, Data: testTree.LeafAlphaBlock.RawData()}},
 			},
 		},
-		"remote duplicate not sentblocks can load from local": {
+		"remote duplicate not sent, blocks can load from local": {
 			root:      testTree.RootBlock.Cid(),
 			baseStore: testTree.Storage,
 			presentRemoteBlocks: []blocks.Block{
