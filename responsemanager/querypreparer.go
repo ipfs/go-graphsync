@@ -2,10 +2,13 @@ package responsemanager
 
 import (
 	"context"
+	"io"
+	"io/ioutil"
 	"math"
 
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -89,6 +92,19 @@ func (qe *queryPreparer) prepareQuery(
 		LinkSystem: linkSystem,
 		Chooser:    result.CustomChooser,
 		Budget:     budget,
+		Visitor: func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error {
+			if lbn, ok := n.(datamodel.LargeBytesNode); ok {
+				s, err := lbn.AsLargeBytes()
+				if err != nil {
+					log.Warnf("error %s in AsLargeBytes at path %s", err.Error(), p.Path)
+				}
+				_, err = io.Copy(ioutil.Discard, s)
+				if err != nil {
+					log.Warnf("error %s reading bytes from reader at path %s", err.Error(), p.Path)
+				}
+			}
+			return nil
+		},
 	}.Start(ctx)
 
 	return linkSystem.StorageReadOpener, traverser, isPaused, nil

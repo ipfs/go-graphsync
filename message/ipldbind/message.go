@@ -13,7 +13,7 @@ import (
 // ToExtensionsList()
 type GraphSyncExtensions struct {
 	Keys   []string
-	Values map[string]datamodel.Node
+	Values map[string]*datamodel.Node
 }
 
 // NewGraphSyncExtensions creates GraphSyncExtensions from either a request or
@@ -24,11 +24,15 @@ func NewGraphSyncExtensions(part message.MessagePartWithExtensions) *GraphSyncEx
 		return nil
 	}
 	keys := make([]string, 0, len(names))
-	values := make(map[string]datamodel.Node, len(names))
+	values := make(map[string]*datamodel.Node, len(names))
 	for _, name := range names {
 		keys = append(keys, string(name))
 		data, _ := part.Extension(graphsync.ExtensionName(name))
-		values[string(name)] = data
+		if data == nil {
+			values[string(name)] = nil
+		} else {
+			values[string(name)] = &data
+		}
 	}
 	return &GraphSyncExtensions{keys, values}
 }
@@ -38,7 +42,11 @@ func NewGraphSyncExtensions(part message.MessagePartWithExtensions) *GraphSyncEx
 func (gse GraphSyncExtensions) ToExtensionsList() []graphsync.ExtensionData {
 	exts := make([]graphsync.ExtensionData, 0, len(gse.Values))
 	for name, data := range gse.Values {
-		exts = append(exts, graphsync.ExtensionData{Name: graphsync.ExtensionName(name), Data: data})
+		if data == nil {
+			exts = append(exts, graphsync.ExtensionData{Name: graphsync.ExtensionName(name), Data: nil})
+		} else {
+			exts = append(exts, graphsync.ExtensionData{Name: graphsync.ExtensionName(name), Data: *data})
+		}
 	}
 	return exts
 }
