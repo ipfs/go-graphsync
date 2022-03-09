@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"math"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-peertaskqueue/peertracker"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
@@ -134,6 +137,16 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 			Root:     cidlink.Link{Cid: ipr.request.Root()},
 			Selector: ipr.request.Selector(),
 			Visitor: func(tp traversal.Progress, node ipld.Node, tr traversal.VisitReason) error {
+				if lbn, ok := node.(datamodel.LargeBytesNode); ok {
+					s, err := lbn.AsLargeBytes()
+					if err != nil {
+						log.Warnf("error %s in AsLargeBytes at path %s", err.Error(), tp.Path)
+					}
+					_, err = io.Copy(ioutil.Discard, s)
+					if err != nil {
+						log.Warnf("error %s reading bytes from reader at path %s", err.Error(), tp.Path)
+					}
+				}
 				select {
 				case <-ctx.Done():
 				case ipr.inProgressChan <- graphsync.ResponseProgress{
