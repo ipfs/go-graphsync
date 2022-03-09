@@ -53,7 +53,7 @@ func (rl *ReconciledLoader) blockReadOpener(lctx linking.LinkContext, link datam
 	}
 
 	// only attempt remote load if after reconciliation we're not on a missing path
-	if !rl.pathTracker.stillOnMissingRemotePath(lctx.LinkPath) {
+	if !rl.pathTracker.stillOnUnfollowedRemotePath(lctx.LinkPath) {
 		data, err := rl.loadRemote(lctx, link)
 		if data != nil {
 			return true, types.AsyncLoadResult{Data: data, Local: false}
@@ -164,7 +164,7 @@ func (rl *ReconciledLoader) waitRemote() (bool, error) {
 			path := rl.verifier.CurrentPath()
 			head := rl.remoteQueue.first()
 			rl.remoteQueue.consume()
-			err := rl.verifier.VerifyNext(head.link, head.action != graphsync.LinkActionMissing)
+			err := rl.verifier.VerifyNext(head.link, head.action.DidFollowLink())
 			if err != nil {
 				return true, err
 			}
