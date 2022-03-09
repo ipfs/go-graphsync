@@ -17,7 +17,7 @@ var _ = xerrors.Errorf
 var _ = cid.Undef
 var _ = sort.Sort
 
-func (t *transferResponse1_1) MarshalCBOR(w io.Writer) error {
+func (t *TransferResponse1_1) MarshalCBOR(w io.Writer) error {
 	if t == nil {
 		_, err := w.Write(cbg.CborNull)
 		return err
@@ -133,8 +133,8 @@ func (t *transferResponse1_1) MarshalCBOR(w io.Writer) error {
 	return nil
 }
 
-func (t *transferResponse1_1) UnmarshalCBOR(r io.Reader) error {
-	*t = transferResponse1_1{}
+func (t *TransferResponse1_1) UnmarshalCBOR(r io.Reader) error {
+	*t = TransferResponse1_1{}
 
 	br := cbg.GetPeeker(r)
 	scratch := make([]byte, 8)
@@ -148,7 +148,7 @@ func (t *transferResponse1_1) UnmarshalCBOR(r io.Reader) error {
 	}
 
 	if extra > cbg.MaxLength {
-		return fmt.Errorf("transferResponse1_1: map struct too large (%d)", extra)
+		return fmt.Errorf("TransferResponse1_1: map struct too large (%d)", extra)
 	}
 
 	var name string

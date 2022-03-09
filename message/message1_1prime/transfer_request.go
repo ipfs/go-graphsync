@@ -1,16 +1,13 @@
 package message1_1
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/ipld/go-ipld-prime/schema"
 	"github.com/libp2p/go-libp2p-core/protocol"
-	cbg "github.com/whyrusleeping/cbor-gen"
 	xerrors "golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
@@ -18,22 +15,19 @@ import (
 	"github.com/filecoin-project/go-data-transfer/message/types"
 )
 
-//go:generate cbor-gen-for --map-encoding TransferRequest1_1
-
 // TransferRequest1_1 is a struct for the 1.1 Data Transfer Protocol that fulfills the datatransfer.Request interface.
 // its members are exported to be used by cbor-gen
 type TransferRequest1_1 struct {
-	BCid   *cid.Cid
-	Type   uint64
-	Paus   bool
-	Part   bool
-	Pull   bool
-	Stor   *cbg.Deferred
-	Vouch  *cbg.Deferred
-	VTyp   datatransfer.TypeIdentifier
-	XferID uint64
-
-	RestartChannel datatransfer.ChannelID
+	BaseCidPtr            *cid.Cid
+	MessageType           uint64
+	Pause                 bool
+	Partial               bool
+	Pull                  bool
+	SelectorPtr           *datamodel.Node
+	VoucherPtr            *datamodel.Node
+	VoucherTypeIdentifier datatransfer.TypeIdentifier
+	TransferId            uint64
+	RestartChannel        datatransfer.ChannelID
 }
 
 func (trq *TransferRequest1_1) MessageForProtocol(targetProtocol protocol.ID) (datatransfer.Message, error) {
@@ -51,11 +45,11 @@ func (trq *TransferRequest1_1) IsRequest() bool {
 }
 
 func (trq *TransferRequest1_1) IsRestart() bool {
-	return trq.Type == uint64(types.RestartMessage)
+	return trq.MessageType == uint64(types.RestartMessage)
 }
 
 func (trq *TransferRequest1_1) IsRestartExistingChannelRequest() bool {
-	return trq.Type == uint64(types.RestartExistingChannelRequestMessage)
+	return trq.MessageType == uint64(types.RestartExistingChannelRequestMessage)
 }
 
 func (trq *TransferRequest1_1) RestartChannelId() (datatransfer.ChannelID, error) {
@@ -66,23 +60,23 @@ func (trq *TransferRequest1_1) RestartChannelId() (datatransfer.ChannelID, error
 }
 
 func (trq *TransferRequest1_1) IsNew() bool {
-	return trq.Type == uint64(types.NewMessage)
+	return trq.MessageType == uint64(types.NewMessage)
 }
 
 func (trq *TransferRequest1_1) IsUpdate() bool {
-	return trq.Type == uint64(types.UpdateMessage)
+	return trq.MessageType == uint64(types.UpdateMessage)
 }
 
 func (trq *TransferRequest1_1) IsVoucher() bool {
-	return trq.Type == uint64(types.VoucherMessage) || trq.Type == uint64(types.NewMessage)
+	return trq.MessageType == uint64(types.VoucherMessage) || trq.MessageType == uint64(types.NewMessage)
 }
 
 func (trq *TransferRequest1_1) IsPaused() bool {
-	return trq.Paus
+	return trq.Pause
 }
 
 func (trq *TransferRequest1_1) TransferID() datatransfer.TransferID {
-	return datatransfer.TransferID(trq.XferID)
+	return datatransfer.TransferID(trq.TransferId)
 }
 
 // ========= datatransfer.Request interface
@@ -93,74 +87,61 @@ func (trq *TransferRequest1_1) IsPull() bool {
 
 // VoucherType returns the Voucher ID
 func (trq *TransferRequest1_1) VoucherType() datatransfer.TypeIdentifier {
-	return trq.VTyp
+	return trq.VoucherTypeIdentifier
 }
 
 // Voucher returns the Voucher bytes
 func (trq *TransferRequest1_1) Voucher(decoder encoding.Decoder) (encoding.Encodable, error) {
-	if trq.Vouch == nil {
+	if trq.VoucherPtr == nil {
 		return nil, xerrors.New("No voucher present to read")
 	}
-	return decoder.DecodeFromCbor(trq.Vouch.Raw)
+	return decoder.DecodeFromNode(*trq.VoucherPtr)
 }
 
 func (trq *TransferRequest1_1) EmptyVoucher() bool {
-	return trq.VTyp == datatransfer.EmptyTypeIdentifier
+	return trq.VoucherTypeIdentifier == datatransfer.EmptyTypeIdentifier
 }
 
 // BaseCid returns the Base CID
 func (trq *TransferRequest1_1) BaseCid() cid.Cid {
-	if trq.BCid == nil {
+	if trq.BaseCidPtr == nil {
 		return cid.Undef
 	}
-	return *trq.BCid
+	return *trq.BaseCidPtr
 }
 
 // Selector returns the message Selector bytes
-func (trq *TransferRequest1_1) Selector() (ipld.Node, error) {
-	if trq.Stor == nil {
+func (trq *TransferRequest1_1) Selector() (datamodel.Node, error) {
+	if trq.SelectorPtr == nil {
 		return nil, xerrors.New("No selector present to read")
 	}
-	builder := basicnode.Prototype.Any.NewBuilder()
-	reader := bytes.NewReader(trq.Stor.Raw)
-	err := dagcbor.Decode(builder, reader)
-	if err != nil {
-		return nil, xerrors.Errorf("Error decoding selector: %w", err)
-	}
-	return builder.Build(), nil
+	return *trq.SelectorPtr, nil
 }
 
 // IsCancel returns true if this is a cancel request
 func (trq *TransferRequest1_1) IsCancel() bool {
-	return trq.Type == uint64(types.CancelMessage)
+	return trq.MessageType == uint64(types.CancelMessage)
 }
 
 // IsPartial returns true if this is a partial request
 func (trq *TransferRequest1_1) IsPartial() bool {
-	return trq.Part
+	return trq.Partial
+}
+
+func (trsp *TransferRequest1_1) toIPLD() schema.TypedNode {
+	msg := TransferMessage1_1{
+		IsRequest: true,
+		Request:   trsp,
+		Response:  nil,
+	}
+	return msg.toIPLD()
 }
 
 func (trq *TransferRequest1_1) ToIPLD() (datamodel.Node, error) {
-	buf := new(bytes.Buffer)
-	err := trq.ToNet(buf)
-	if err != nil {
-		return nil, err
-	}
-	nb := basicnode.Prototype.Any.NewBuilder()
-	err = dagcbor.Decode(nb, buf)
-	if err != nil {
-		return nil, err
-	}
-	return nb.Build(), nil
+	return trq.toIPLD().Representation(), nil
 }
 
-// ToNet serializes a transfer request. It's a wrapper for MarshalCBOR to provide
-// symmetry with FromNet
+// ToNet serializes a transfer request.
 func (trq *TransferRequest1_1) ToNet(w io.Writer) error {
-	msg := TransferMessage1_1{
-		IsRq:     true,
-		Request:  trq,
-		Response: nil,
-	}
-	return msg.MarshalCBOR(w)
+	return dagcbor.Encode(trq.toIPLD().Representation(), w)
 }

@@ -16,7 +16,7 @@ var _ = xerrors.Errorf
 var _ = cid.Undef
 var _ = sort.Sort
 
-func (t *transferMessage1_1) MarshalCBOR(w io.Writer) error {
+func (t *TransferMessage1_1) MarshalCBOR(w io.Writer) error {
 	if t == nil {
 		_, err := w.Write(cbg.CborNull)
 		return err
@@ -43,7 +43,7 @@ func (t *transferMessage1_1) MarshalCBOR(w io.Writer) error {
 		return err
 	}
 
-	// t.Request (message1_1.transferRequest1_1) (struct)
+	// t.Request (message1_1.TransferRequest1_1) (struct)
 	if len("Request") > cbg.MaxLength {
 		return xerrors.Errorf("Value in field \"Request\" was too long")
 	}
@@ -59,7 +59,7 @@ func (t *transferMessage1_1) MarshalCBOR(w io.Writer) error {
 		return err
 	}
 
-	// t.Response (message1_1.transferResponse1_1) (struct)
+	// t.Response (message1_1.TransferResponse1_1) (struct)
 	if len("Response") > cbg.MaxLength {
 		return xerrors.Errorf("Value in field \"Response\" was too long")
 	}
@@ -77,8 +77,8 @@ func (t *transferMessage1_1) MarshalCBOR(w io.Writer) error {
 	return nil
 }
 
-func (t *transferMessage1_1) UnmarshalCBOR(r io.Reader) error {
-	*t = transferMessage1_1{}
+func (t *TransferMessage1_1) UnmarshalCBOR(r io.Reader) error {
+	*t = TransferMessage1_1{}
 
 	br := cbg.GetPeeker(r)
 	scratch := make([]byte, 8)
@@ -92,7 +92,7 @@ func (t *transferMessage1_1) UnmarshalCBOR(r io.Reader) error {
 	}
 
 	if extra > cbg.MaxLength {
-		return fmt.Errorf("transferMessage1_1: map struct too large (%d)", extra)
+		return fmt.Errorf("TransferMessage1_1: map struct too large (%d)", extra)
 	}
 
 	var name string
@@ -128,7 +128,7 @@ func (t *transferMessage1_1) UnmarshalCBOR(r io.Reader) error {
 			default:
 				return fmt.Errorf("booleans are either major type 7, value 20 or 21 (got %d)", extra)
 			}
-			// t.Request (message1_1.transferRequest1_1) (struct)
+			// t.Request (message1_1.TransferRequest1_1) (struct)
 		case "Request":
 
 			{
@@ -141,14 +141,14 @@ func (t *transferMessage1_1) UnmarshalCBOR(r io.Reader) error {
 					if err := br.UnreadByte(); err != nil {
 						return err
 					}
-					t.Request = new(transferRequest1_1)
+					t.Request = new(TransferRequest1_1)
 					if err := t.Request.UnmarshalCBOR(br); err != nil {
 						return xerrors.Errorf("unmarshaling t.Request pointer: %w", err)
 					}
 				}
 
 			}
-			// t.Response (message1_1.transferResponse1_1) (struct)
+			// t.Response (message1_1.TransferResponse1_1) (struct)
 		case "Response":
 
 			{
@@ -161,7 +161,7 @@ func (t *transferMessage1_1) UnmarshalCBOR(r io.Reader) error {
 					if err := br.UnreadByte(); err != nil {
 						return err
 					}
-					t.Response = new(transferResponse1_1)
+					t.Response = new(TransferResponse1_1)
 					if err := t.Response.UnmarshalCBOR(br); err != nil {
 						return xerrors.Errorf("unmarshaling t.Response pointer: %w", err)
 					}

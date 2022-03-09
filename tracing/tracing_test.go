@@ -15,8 +15,8 @@ import (
 func TestSpansIndex(t *testing.T) {
 	ctx := context.Background()
 	peers := testutil.GeneratePeers(2)
-	chid1 := datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: datatransfer.TransferID(rand.Uint64())}
-	chid2 := datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: datatransfer.TransferID(rand.Uint64())}
+	chid1 := datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: datatransfer.TransferID(rand.Uint32())}
+	chid2 := datatransfer.ChannelID{Initiator: peers[0], Responder: peers[1], ID: datatransfer.TransferID(rand.Uint32())}
 	testCases := map[string]struct {
 		operation      func(ctx context.Context, si *tracing.SpansIndex)
 		expectedTraces []string

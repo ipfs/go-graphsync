@@ -1,7 +1,7 @@
 package message
 
 import (
-	"github.com/filecoin-project/go-data-transfer/message/message1_1"
+	message1_1 "github.com/filecoin-project/go-data-transfer/message/message1_1prime"
 )
 
 var NewRequest = message1_1.NewRequest
@@ -14,5 +14,6 @@ var VoucherResultResponse = message1_1.VoucherResultResponse
 var CancelResponse = message1_1.CancelResponse
 var UpdateResponse = message1_1.UpdateResponse
 var FromNet = message1_1.FromNet
+var FromIPLD = message1_1.FromIPLD
 var CompleteResponse = message1_1.CompleteResponse
 var CancelRequest = message1_1.CancelRequest

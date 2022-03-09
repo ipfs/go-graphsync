@@ -7,6 +7,9 @@ import (
 	cbor "github.com/ipfs/go-ipld-cbor"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
+	"github.com/ipld/go-ipld-prime/schema"
 	cborgen "github.com/whyrusleeping/cbor-gen"
 	"golang.org/x/xerrors"
 )
@@ -25,8 +28,11 @@ func Encode(value Encodable) ([]byte, error) {
 		}
 		return buf.Bytes(), nil
 	}
-	if ipldEncodable, ok := value.(ipld.Node); ok {
-		buf := new(bytes.Buffer)
+	if ipldEncodable, ok := value.(datamodel.Node); ok {
+		if tn, ok := ipldEncodable.(schema.TypedNode); ok {
+			ipldEncodable = tn.Representation()
+		}
+		buf := &bytes.Buffer{}
 		err := dagcbor.Encode(ipldEncodable, buf)
 		if err != nil {
 			return nil, err
@@ -36,17 +42,30 @@ func Encode(value Encodable) ([]byte, error) {
 	return cbor.DumpObject(value)
 }
 
+func EncodeToNode(encodable Encodable) (datamodel.Node, error) {
+	byts, err := Encode(encodable)
+	if err != nil {
+		return nil, err
+	}
+	na := basicnode.Prototype.Any.NewBuilder()
+	if err := dagcbor.Decode(na, bytes.NewReader(byts)); err != nil {
+		return nil, err
+	}
+	return na.Build(), nil
+}
+
 // Decoder is CBOR decoder for a given encodable type
 type Decoder interface {
 	DecodeFromCbor([]byte) (Encodable, error)
+	DecodeFromNode(datamodel.Node) (Encodable, error)
 }
 
 // NewDecoder creates a new Decoder that will decode into new instances of the given
 // object type. It will use the decoding that is optimal for that type
 // It returns error if it's not possible to setup a decoder for this type
 func NewDecoder(decodeType Encodable) (Decoder, error) {
-	// check if type is ipld.Node, if so, just use style
-	if ipldDecodable, ok := decodeType.(ipld.Node); ok {
+	// check if type is datamodel.Node, if so, just use style
+	if ipldDecodable, ok := decodeType.(datamodel.Node); ok {
 		return &ipldDecoder{ipldDecodable.Prototype()}, nil
 	}
 	// check if type is a pointer, as we need that to make new copies
@@ -86,6 +105,14 @@ func (decoder *ipldDecoder) DecodeFromCbor(encoded []byte) (Encodable, error) {
 	return builder.Build(), nil
 }
 
+func (decoder *ipldDecoder) DecodeFromNode(node datamodel.Node) (Encodable, error) {
+	builder := decoder.style.NewBuilder()
+	if err := builder.AssignNode(node); err != nil {
+		return nil, err
+	}
+	return builder.Build(), nil
+}
+
 type cbgDecoder struct {
 	cbgType reflect.Type
 }
@@ -104,6 +131,17 @@ func (decoder *cbgDecoder) DecodeFromCbor(encoded []byte) (Encodable, error) {
 	return decoded, nil
 }
 
+func (decoder *cbgDecoder) DecodeFromNode(node datamodel.Node) (Encodable, error) {
+	if tn, ok := node.(schema.TypedNode); ok {
+		node = tn.Representation()
+	}
+	buf := &bytes.Buffer{}
+	if err := dagcbor.Encode(node, buf); err != nil {
+		return nil, err
+	}
+	return decoder.DecodeFromCbor(buf.Bytes())
+}
+
 type defaultDecoder struct {
 	ptrType reflect.Type
 }
@@ -119,4 +157,15 @@ func (decoder *defaultDecoder) DecodeFromCbor(encoded []byte) (Encodable, error)
 		return nil, err
 	}
 	return decoded, nil
+}
+
+func (decoder *defaultDecoder) DecodeFromNode(node datamodel.Node) (Encodable, error) {
+	if tn, ok := node.(schema.TypedNode); ok {
+		node = tn.Representation()
+	}
+	buf := &bytes.Buffer{}
+	if err := dagcbor.Encode(node, buf); err != nil {
+		return nil, err
+	}
+	return decoder.DecodeFromCbor(buf.Bytes())
 }

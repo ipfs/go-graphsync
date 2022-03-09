@@ -1,7 +1,6 @@
 package graphsync_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -13,7 +12,9 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/stretchr/testify/require"
@@ -194,7 +195,7 @@ func TestManager(t *testing.T) {
 		},
 		"outgoing gs request with recognized dt response can send message on update": {
 			events: fakeEvents{
-				RequestReceivedResponse: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint64())),
+				RequestReceivedResponse: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint32())),
 			},
 			requestConfig: gsRequestConfig{
 				dtIsResponse: true,
@@ -234,7 +235,7 @@ func TestManager(t *testing.T) {
 				gsData.incomingRequestHook()
 			},
 			events: fakeEvents{
-				RequestReceivedResponse: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint64())),
+				RequestReceivedResponse: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint32())),
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
@@ -289,7 +290,7 @@ func TestManager(t *testing.T) {
 		},
 		"unrecognized incoming dt request will terminate but send response": {
 			events: fakeEvents{
-				RequestReceivedResponse: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint64())),
+				RequestReceivedResponse: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint32())),
 				OnRequestReceivedErrors: []error{errors.New("something went wrong")},
 			},
 			action: func(gsData *harness) {
@@ -380,7 +381,7 @@ func TestManager(t *testing.T) {
 				gsData.outgoingBlockHook()
 			},
 			events: fakeEvents{
-				OnDataQueuedMessage: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint64())),
+				OnDataQueuedMessage: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint32())),
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
@@ -472,7 +473,7 @@ func TestManager(t *testing.T) {
 		},
 		"incoming gs request with recognized dt request can send message on update": {
 			events: fakeEvents{
-				RequestReceivedResponse: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint64())),
+				RequestReceivedResponse: testutil.NewDTResponse(t, datatransfer.TransferID(rand.Uint32())),
 			},
 			action: func(gsData *harness) {
 				gsData.incomingRequestHook()
@@ -551,7 +552,7 @@ func TestManager(t *testing.T) {
 				err := gsData.transport.CloseChannel(gsData.ctx, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other})
 				require.NoError(t, err)
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
-				gsData.fgs.AssertCancelResponseReceived(gsData.ctx, t)
+				gsData.fgs.AssertCancelReceived(gsData.ctx, t)
 			},
 		},
 		"unrecognized request cannot be closed": {
@@ -569,7 +570,7 @@ func TestManager(t *testing.T) {
 				err := gsData.transport.CloseChannel(gsData.ctx, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other})
 				require.NoError(t, err)
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
-				gsData.fgs.AssertNoCancelResponseReceived(t)
+				gsData.fgs.AssertNoCancelReceived(t)
 			},
 		},
 		"recognized incoming request can be paused": {
@@ -580,7 +581,7 @@ func TestManager(t *testing.T) {
 				err := gsData.transport.PauseChannel(gsData.ctx, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other})
 				require.NoError(t, err)
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
-				gsData.fgs.AssertPauseResponseReceived(gsData.ctx, t)
+				gsData.fgs.AssertPauseReceived(gsData.ctx, t)
 			},
 		},
 		"unrecognized request cannot be paused": {
@@ -598,7 +599,7 @@ func TestManager(t *testing.T) {
 				err := gsData.transport.PauseChannel(gsData.ctx, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.self, Initiator: gsData.other})
 				require.NoError(t, err)
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
-				gsData.fgs.AssertNoPauseResponseReceived(t)
+				gsData.fgs.AssertNoPauseReceived(t)
 			},
 		},
 
@@ -641,7 +642,7 @@ func TestManager(t *testing.T) {
 				)
 				require.NoError(t, err)
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
-				gsData.fgs.AssertResumeResponseReceived(gsData.ctx, t)
+				gsData.fgs.AssertResumeReceived(gsData.ctx, t)
 			},
 		},
 
@@ -666,7 +667,7 @@ func TestManager(t *testing.T) {
 				)
 				require.NoError(t, err)
 				require.Equal(t, 1, events.OnRequestReceivedCallCount)
-				gsData.fgs.AssertNoResumeResponseReceived(t)
+				gsData.fgs.AssertNoResumeReceived(t)
 				gsData.incomingRequestHook()
 				assertHasOutgoingMessage(t, gsData.incomingRequestHookActions.SentExtensions, gsData.incoming)
 			},
@@ -801,7 +802,7 @@ func TestManager(t *testing.T) {
 
 				ctxt, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
-				gsData.fgs.AssertCancelRequestReceived(ctxt, t)
+				gsData.fgs.AssertCancelReceived(ctxt, t)
 
 				channelsForPeer := gsData.transport.ChannelsForPeer(gsData.other)
 				require.Equal(t, channelsForPeer, ChannelsForPeer{
@@ -885,16 +886,16 @@ func TestManager(t *testing.T) {
 			},
 			check: func(t *testing.T, events *fakeEvents, gsData *harness) {
 				requestReceived := gsData.fgs.AssertRequestReceived(gsData.ctx, t)
-				extensions := make(map[graphsync.ExtensionName][]byte)
+				extensions := make(map[graphsync.ExtensionName]datamodel.Node)
 				for _, ext := range requestReceived.Extensions {
 					extensions[ext.Name] = ext.Data
 				}
-				request := testutil.NewFakeRequest(graphsync.RequestID(rand.Int31()), extensions)
+				request := testutil.NewFakeRequest(graphsync.NewRequestID(), extensions)
 				gsData.fgs.OutgoingRequestHook(gsData.other, request, gsData.outgoingRequestHookActions)
 				_ = gsData.transport.CloseChannel(gsData.ctx, datatransfer.ChannelID{ID: gsData.transferID, Responder: gsData.other, Initiator: gsData.self})
 				ctxt, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
-				gsData.fgs.AssertCancelRequestReceived(ctxt, t)
+				gsData.fgs.AssertCancelReceived(ctxt, t)
 			},
 		},
 		"request times out if we get request context cancelled error": {
@@ -946,7 +947,7 @@ func TestManager(t *testing.T) {
 
 				ctxt, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
-				gsData.fgs.AssertCancelRequestReceived(ctxt, t)
+				gsData.fgs.AssertCancelReceived(ctxt, t)
 
 				require.Nil(t, gsData.fgs.IncomingRequestHook)
 				require.Nil(t, gsData.fgs.CompletedResponseListener)
@@ -986,11 +987,11 @@ func TestManager(t *testing.T) {
 					close(completed)
 				}()
 				time.Sleep(100 * time.Millisecond)
-				extensions := make(map[graphsync.ExtensionName][]byte)
+				extensions := make(map[graphsync.ExtensionName]datamodel.Node)
 				for _, ext := range requestReceived.Extensions {
 					extensions[ext.Name] = ext.Data
 				}
-				request := testutil.NewFakeRequest(graphsync.RequestID(rand.Int31()), extensions)
+				request := testutil.NewFakeRequest(graphsync.NewRequestID(), extensions)
 				gsData.fgs.OutgoingRequestHook(gsData.other, request, gsData.outgoingRequestHookActions)
 				select {
 				case <-gsData.ctx.Done():
@@ -1047,10 +1048,10 @@ func TestManager(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 			peers := testutil.GeneratePeers(2)
-			transferID := datatransfer.TransferID(rand.Uint64())
-			requestID := graphsync.RequestID(rand.Int31())
+			transferID := datatransfer.TransferID(rand.Uint32())
+			requestID := graphsync.NewRequestID()
 			request := data.requestConfig.makeRequest(t, transferID, requestID)
-			altRequest := data.requestConfig.makeRequest(t, transferID, graphsync.RequestID(rand.Int31()))
+			altRequest := data.requestConfig.makeRequest(t, transferID, graphsync.NewRequestID())
 			response := data.responseConfig.makeResponse(t, transferID, requestID)
 			updatedRequest := data.updatedConfig.makeRequest(t, transferID, requestID)
 			block := testutil.NewFakeBlockData()
@@ -1275,11 +1276,11 @@ type dtConfig struct {
 	dtExtensionMalformed bool
 }
 
-func (dtc *dtConfig) extensions(t *testing.T, transferID datatransfer.TransferID, extName graphsync.ExtensionName) map[graphsync.ExtensionName][]byte {
-	extensions := make(map[graphsync.ExtensionName][]byte)
+func (dtc *dtConfig) extensions(t *testing.T, transferID datatransfer.TransferID, extName graphsync.ExtensionName) map[graphsync.ExtensionName]datamodel.Node {
+	extensions := make(map[graphsync.ExtensionName]datamodel.Node)
 	if !dtc.dtExtensionMissing {
 		if dtc.dtExtensionMalformed {
-			extensions[extName] = testutil.RandomBytes(100)
+			extensions[extName] = basicnode.NewInt(10)
 		} else {
 			var msg datatransfer.Message
 			if dtc.dtIsResponse {
@@ -1287,10 +1288,9 @@ func (dtc *dtConfig) extensions(t *testing.T, transferID datatransfer.TransferID
 			} else {
 				msg = testutil.NewDTRequest(t, transferID)
 			}
-			buf := new(bytes.Buffer)
-			err := msg.ToNet(buf)
+			nd, err := msg.ToIPLD()
 			require.NoError(t, err)
-			extensions[extName] = buf.Bytes()
+			extensions[extName] = nd
 		}
 	}
 	return extensions
@@ -1329,33 +1329,40 @@ func (grc *gsResponseConfig) makeResponse(t *testing.T, transferID datatransfer.
 	return testutil.NewFakeResponse(requestID, extensions, grc.status)
 }
 
-func assertDecodesToMessage(t *testing.T, data []byte, expected datatransfer.Message) {
-	buf := bytes.NewReader(data)
-	actual, err := message.FromNet(buf)
+func assertDecodesToMessage(t *testing.T, data datamodel.Node, expected datatransfer.Message) {
+	actual, err := message.FromIPLD(data)
 	require.NoError(t, err)
 	require.Equal(t, expected, actual)
 }
 
 func assertHasOutgoingMessage(t *testing.T, extensions []graphsync.ExtensionData, expected datatransfer.Message) {
-	buf := new(bytes.Buffer)
-	err := expected.ToNet(buf)
+	nd, err := expected.ToIPLD()
 	require.NoError(t, err)
-	expectedExt := graphsync.ExtensionData{
-		Name: extension.ExtensionDataTransfer1_1,
-		Data: buf.Bytes(),
+	found := false
+	for _, e := range extensions {
+		if e.Name == extension.ExtensionDataTransfer1_1 {
+			require.True(t, ipld.DeepEqual(nd, e.Data), "data matches")
+			found = true
+		}
 	}
-	require.Contains(t, extensions, expectedExt)
+	if !found {
+		require.Fail(t, "extension not found")
+	}
 }
 
 func assertHasExtensionMessage(t *testing.T, name graphsync.ExtensionName, extensions []graphsync.ExtensionData, expected datatransfer.Message) {
-	buf := new(bytes.Buffer)
-	err := expected.ToNet(buf)
+	nd, err := expected.ToIPLD()
 	require.NoError(t, err)
-	expectedExt := graphsync.ExtensionData{
-		Name: name,
-		Data: buf.Bytes(),
+	found := false
+	for _, e := range extensions {
+		if e.Name == name {
+			require.True(t, ipld.DeepEqual(nd, e.Data), "data matches")
+			found = true
+		}
 	}
-	require.Contains(t, extensions, expectedExt)
+	if !found {
+		require.Fail(t, "extension not found")
+	}
 }
 
 type mockChannelState struct {

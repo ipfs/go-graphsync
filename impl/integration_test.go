@@ -920,7 +920,6 @@ func TestAutoRestart(t *testing.T) {
 // 6. The connection is automatically re-established and the transfer completes
 func TestAutoRestartAfterBouncingInitiator(t *testing.T) {
 	t.Skip("flaky test")
-	SetDTLogLevelDebug()
 
 	runTest := func(t *testing.T, isPush bool) {
 		ctx := context.Background()
@@ -1484,13 +1483,13 @@ func TestPauseAndResume(t *testing.T) {
 			resumeResponder := make(chan struct{}, 2)
 			var subscriber datatransfer.Subscriber = func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 
-				if event.Code == datatransfer.DataQueued {
+				if event.Code == datatransfer.DataQueuedProgress {
 					if channelState.Queued() > 0 {
 						sent <- channelState.Queued()
 					}
 				}
 
-				if event.Code == datatransfer.DataReceived {
+				if event.Code == datatransfer.DataReceivedProgress {
 					if channelState.Received() > 0 {
 						received <- channelState.Received()
 					}
@@ -1784,7 +1783,7 @@ func (fgsr *fakeGraphSyncReceiver) consumeResponses(ctx context.Context, t *test
 			t.Fail()
 		case gsMessageReceived = <-fgsr.receivedMessages:
 			responses := gsMessageReceived.message.Responses()
-			if (len(responses) > 0) && gsmsg.IsTerminalResponseCode(responses[0].Status()) {
+			if (len(responses) > 0) && responses[0].Status().IsTerminal() {
 				return responses[0].Status()
 			}
 		}
@@ -1834,16 +1833,13 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 		}
 		requestReceived := messageReceived.message.(datatransfer.Request)
 
-		var buf bytes.Buffer
 		response, err := message.NewResponse(requestReceived.TransferID(), true, false, voucherResult.Type(), voucherResult)
 		require.NoError(t, err)
-		err = response.ToNet(&buf)
+		nd, err := response.ToIPLD()
 		require.NoError(t, err)
-		extData := buf.Bytes()
-
-		request := gsmsg.NewRequest(graphsync.RequestID(rand.Int31()), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
+		request := gsmsg.NewRequest(graphsync.NewRequestID(), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
 			Name: extension.ExtensionDataTransfer1_1,
-			Data: extData,
+			Data: nd,
 		})
 		builder := gsmsg.NewBuilder()
 		builder.AddRequest(request)
@@ -1852,20 +1848,17 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 		require.NoError(t, gsData.GsNet2.SendMessage(ctx, host1.ID(), gsmessage))
 
 		status := gsr.consumeResponses(ctx, t)
-		require.False(t, gsmsg.IsTerminalFailureCode(status))
+		require.False(t, status.IsFailure())
 	})
 
 	t.Run("when no request is initiated", func(t *testing.T) {
-		var buf bytes.Buffer
-		response, err := message.NewResponse(datatransfer.TransferID(rand.Uint64()), true, false, voucher.Type(), voucher)
+		response, err := message.NewResponse(datatransfer.TransferID(rand.Uint32()), true, false, voucher.Type(), voucher)
 		require.NoError(t, err)
-		err = response.ToNet(&buf)
+		nd, err := response.ToIPLD()
 		require.NoError(t, err)
-		extData := buf.Bytes()
-
-		request := gsmsg.NewRequest(graphsync.RequestID(rand.Int31()), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
+		request := gsmsg.NewRequest(graphsync.NewRequestID(), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
 			Name: extension.ExtensionDataTransfer1_1,
-			Data: extData,
+			Data: nd,
 		})
 		builder := gsmsg.NewBuilder()
 		builder.AddRequest(request)
@@ -1874,7 +1867,7 @@ func TestRespondingToPushGraphsyncRequests(t *testing.T) {
 		require.NoError(t, gsData.GsNet2.SendMessage(ctx, host1.ID(), gsmessage))
 
 		status := gsr.consumeResponses(ctx, t)
-		require.True(t, gsmsg.IsTerminalFailureCode(status))
+		require.True(t, status.IsFailure())
 	})
 }
 
@@ -1923,7 +1916,7 @@ func TestResponseHookWhenExtensionNotFound(t *testing.T) {
 		case <-r.messageReceived:
 		}
 
-		request := gsmsg.NewRequest(graphsync.RequestID(rand.Int31()), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()))
+		request := gsmsg.NewRequest(graphsync.NewRequestID(), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()))
 		builder := gsmsg.NewBuilder()
 		builder.AddRequest(request)
 		gsmessage, err := builder.Build()
@@ -1931,7 +1924,7 @@ func TestResponseHookWhenExtensionNotFound(t *testing.T) {
 		require.NoError(t, gsData.GsNet2.SendMessage(ctx, host1.ID(), gsmessage))
 
 		status := gsr.consumeResponses(ctx, t)
-		assert.False(t, gsmsg.IsTerminalFailureCode(status))
+		assert.False(t, status.IsFailure())
 	})
 }
 
@@ -1954,14 +1947,10 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 				voucher := testutil.NewFakeDTType()
 				request, err := message.NewRequest(id, false, true, voucher.Type(), voucher, testutil.GenerateCids(1)[0], gsData.AllSelector)
 				require.NoError(t, err)
-				buf := new(bytes.Buffer)
-				err = request.ToNet(buf)
-				require.NoError(t, err)
-				extData := buf.Bytes()
-
-				gsRequest := gsmsg.NewRequest(graphsync.RequestID(rand.Int31()), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
+				nd, err := request.ToIPLD()
+				gsRequest := gsmsg.NewRequest(graphsync.NewRequestID(), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
 					Name: extension.ExtensionDataTransfer1_1,
-					Data: extData,
+					Data: nd,
 				})
 
 				// initiator requests data over graphsync network
@@ -1971,7 +1960,7 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 				require.NoError(t, err)
 				require.NoError(t, gsData.GsNet1.SendMessage(ctx, gsData.Host2.ID(), gsmessage))
 				status := gsr.consumeResponses(ctx, t)
-				require.False(t, gsmsg.IsTerminalFailureCode(status))
+				require.False(t, status.IsFailure())
 			},
 		},
 		"When request is initiated, but fails validation": {
@@ -1986,13 +1975,11 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 				dtRequest, err := message.NewRequest(id, false, true, voucher.Type(), voucher, testutil.GenerateCids(1)[0], gsData.AllSelector)
 				require.NoError(t, err)
 
-				buf := new(bytes.Buffer)
-				err = dtRequest.ToNet(buf)
+				nd, err := dtRequest.ToIPLD()
 				require.NoError(t, err)
-				extData := buf.Bytes()
-				request := gsmsg.NewRequest(graphsync.RequestID(rand.Int31()), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
+				request := gsmsg.NewRequest(graphsync.NewRequestID(), link.(cidlink.Link).Cid, gsData.AllSelector, graphsync.Priority(rand.Int31()), graphsync.ExtensionData{
 					Name: extension.ExtensionDataTransfer1_1,
-					Data: extData,
+					Data: nd,
 				})
 				builder := gsmsg.NewBuilder()
 				builder.AddRequest(request)
@@ -2003,7 +1990,7 @@ func TestRespondingToPullGraphsyncRequests(t *testing.T) {
 				// because there was no previous request
 				require.NoError(t, gsData.GsNet1.SendMessage(ctx, gsData.Host2.ID(), gsmessage))
 				status := gsr.consumeResponses(ctx, t)
-				require.True(t, gsmsg.IsTerminalFailureCode(status))
+				require.True(t, status.IsFailure())
 			},
 		},
 	}
@@ -2189,7 +2176,6 @@ func (r *completeRevalidator) OnComplete(chid datatransfer.ChannelID) (bool, dat
 }
 
 func TestMultipleParallelTransfers(t *testing.T) {
-	SetDTLogLevelDebug()
 
 	// Add more sizes here to trigger more transfers.
 	sizes := []int{300000, 256000, 200000, 256000}
