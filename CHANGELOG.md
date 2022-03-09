@@ -1,5 +1,55 @@
 # go-graphsync changelog
 
+# go-graphsync v0.13.0
+
+Graphsync v0.13.0 is a major new feature release
+
+Key features:
+
+#### Graphsync 2.0 protocol
+  
+Graphsync is now a CBOR protocol with an IPLD schema. The new protocol is quite
+similar to the protobuf protocol, but slightly smaller, and includes a few major
+changes:
+- Graphsync request IDs are now UUIDs
+- Metadata is no longer an extension, but a core component of a GraphSync Protocol Response object
+- Cancel/Update is now a single enum RequestType
+- Metadata is refactored, supports not just Present/Missing but two new types
+  - DuplicateNotSent makes explicit when the remote is not sending a block for this link, even though it had it. Previous duplicates could only be detected implicitly from the absence of the block in the message
+  - DuplicateDAGSkipped indicates the provider chose not to pursue a branch within a selector request because it believes the entire DAG to be a duplciate of what it already sent
+
+#### Rebuilt loading system for ingesting and verifying remote responses
+
+We've rebuilt the system for ingesting and verifying remote responses
+- detects malicious responses immediately
+- can substitute local data if present when a remote does not have a set of data
+- will delay a network request until the local store is missing data
+
+#### Better UnixFS selector support
+
+- Now supports sending multiblock files with UnixFS selectors
+- Also supports byte range selectors on unixfs files
+
+#### Moving forward
+
+This release is 0.13.0 cause it is backwards compatible and supports Graphsync v1.0 protocol requests. This will be the last major release in the go-graphsync 0.x series. go-graphsync 1.0 will release when we remove Graphsync protocol 1.0 support
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - fix(impl): delete file
+  - Minimal alternate metadata type support (#365) ([ipfs/go-graphsync#365](https://github.com/ipfs/go-graphsync/pull/365))
+  - Fix unixfs fetch (#364) ([ipfs/go-graphsync#364](https://github.com/ipfs/go-graphsync/pull/364))
+  - [Feature] UUIDs, protocol versioning, v2 protocol w/ dag-cbor messaging (#332) ([ipfs/go-graphsync#332](https://github.com/ipfs/go-graphsync/pull/332))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Rod Vagg | 1 | +5118/-3322 | 84 |
+| Hannah Howard | 2 | +350/-65 | 16 |
+| hannahhoward | 1 | +0/-0 | 1 |
+
 # go-graphsync v0.12.0
 
 New features (UnixFS Fetching!) and additional tracing
