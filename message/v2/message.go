@@ -10,7 +10,6 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
-	"github.com/ipld/go-ipld-prime/node/bindnode"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-msgio"
@@ -49,8 +48,11 @@ func (mh *MessageHandler) FromMsgReader(_ peer.ID, r msgio.Reader) (message.Grap
 		return message.GraphSyncMessage{}, err
 	}
 	node := builder.Build()
-	ipldGSM := bindnode.Unwrap(node).(*ipldbind.GraphSyncMessageRoot)
-	return mh.fromIPLD(ipldGSM)
+	ipldGSM, err := ipldbind.SafeUnwrap(node)
+	if err != nil {
+		return message.GraphSyncMessage{}, err
+	}
+	return mh.fromIPLD(ipldGSM.(*ipldbind.GraphSyncMessageRoot))
 }
 
 // ToProto converts a GraphSyncMessage to its ipldbind.GraphSyncMessageRoot equivalent
@@ -138,7 +140,10 @@ func (mh *MessageHandler) ToNet(_ peer.ID, gsm message.GraphSyncMessage, w io.Wr
 	buf := new(bytes.Buffer)
 	buf.Write(lbuf)
 
-	node := bindnode.Wrap(msg, ipldbind.Prototype.Message.Type())
+	node, err := ipldbind.SafeWrap(msg, ipldbind.Prototype.Message.Type())
+	if err != nil {
+		return err
+	}
 	err = dagcbor.Encode(node.Representation(), buf)
 	if err != nil {
 		return err

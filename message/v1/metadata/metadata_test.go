@@ -27,7 +27,8 @@ func TestDecodeEncodeMetadata(t *testing.T) {
 	})
 
 	// verify metadata matches
-	encoded := EncodeMetadata(initialMetadata)
+	encoded, err := EncodeMetadata(initialMetadata)
+	require.NoError(t, err, "encode errored")
 
 	decodedMetadata, err := DecodeMetadata(encoded)
 	require.NoError(t, err, "decode errored")
