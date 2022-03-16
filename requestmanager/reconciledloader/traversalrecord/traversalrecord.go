@@ -4,9 +4,10 @@ import (
 	"errors"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+
+	"github.com/ipfs/go-graphsync"
 )
 
 // TraversalRecord records the links traversed by a selector and their paths in a space efficient manner

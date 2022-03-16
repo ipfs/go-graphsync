@@ -27,12 +27,13 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader/traversalrecord"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
+
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader/traversalrecord"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 )
 
 var log = logging.Logger("gs-reconciledlaoder")

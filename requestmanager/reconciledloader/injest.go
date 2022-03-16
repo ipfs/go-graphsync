@@ -2,8 +2,9 @@ package reconciledloader
 
 import (
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/ipfs/go-graphsync"
 )
 
 // IngestResponse ingests new remote items into the reconciled loader

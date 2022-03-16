@@ -2,10 +2,11 @@ package metadata
 
 import (
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime/datamodel"
+
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/message/ipldbind"
-	"github.com/ipld/go-ipld-prime/datamodel"
 )
 
 // Item is a single link traversed in a repsonse

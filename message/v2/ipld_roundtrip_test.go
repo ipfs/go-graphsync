@@ -6,15 +6,16 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/message/ipldbind"
-	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/message/ipldbind"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestIPLDRoundTrip(t *testing.T) {
