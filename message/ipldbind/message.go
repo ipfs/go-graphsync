@@ -2,10 +2,10 @@ package ipldbind
 
 import (
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipld/go-ipld-prime/datamodel"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/message"
 )
 
 // GraphSyncExtensions is a container for representing extension data for
