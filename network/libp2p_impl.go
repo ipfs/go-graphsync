@@ -249,7 +249,7 @@ func (dtnet *libp2pDataTransferNetwork) handleNewStream(s network.Stream) {
 		}
 
 		if err != nil {
-			if err != io.EOF {
+			if err != io.EOF && err != io.ErrUnexpectedEOF {
 				s.Reset() // nolint: errcheck,gosec
 				go dtnet.receiver.ReceiveError(err)
 				log.Debugf("net handleNewStream from %s error: %s", p, err)
