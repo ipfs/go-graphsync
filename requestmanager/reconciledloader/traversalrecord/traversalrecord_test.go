@@ -7,16 +7,17 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader/traversalrecord"
-	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/ipldutil"
+	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader/traversalrecord"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestTraversalRecord(t *testing.T) {

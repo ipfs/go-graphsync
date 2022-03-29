@@ -1,8 +1,9 @@
 package reconciledloader
 
 import (
-	"github.com/ipfs/go-graphsync"
 	"github.com/ipld/go-ipld-prime/datamodel"
+
+	"github.com/ipfs/go-graphsync"
 )
 
 // pathTracker is just a simple utility to track whether we're on a missing

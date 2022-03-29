@@ -8,18 +8,19 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
-	"github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/ipldutil"
+	"github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
+	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestReconciledLoader(t *testing.T) {

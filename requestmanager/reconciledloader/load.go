@@ -4,14 +4,15 @@ import (
 	"context"
 	"io/ioutil"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/requestmanager/types"
 )
 
 // BlockReadOpener synchronously loads the next block result
