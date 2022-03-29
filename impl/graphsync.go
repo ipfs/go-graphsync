@@ -85,6 +85,7 @@ type graphsyncConfigOptions struct {
 	maxLinksPerIncomingRequest           uint64
 	messageSendRetries                   int
 	sendMessageTimeout                   time.Duration
+	onlySendRemoteRequestWhenNeccesary   bool
 }
 
 // Option defines the functional option type that can be used to configure
@@ -188,6 +189,12 @@ func SendMessageTimeout(sendMessageTimeout time.Duration) Option {
 	}
 }
 
+func OnlySendRemoteRequestWhenNeccesary() Option {
+	return func(gs *graphsyncConfigOptions) {
+		gs.onlySendRemoteRequestWhenNeccesary = true
+	}
+}
+
 // New creates a new GraphSync Exchange on the given network,
 // and the given link loader+storer.
 func New(parent context.Context, network gsnet.GraphSyncNetwork,
@@ -195,13 +202,14 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	ctx, cancel := context.WithCancel(parent)
 
 	gsConfig := &graphsyncConfigOptions{
-		totalMaxMemoryResponder:       defaultTotalMaxMemory,
-		maxMemoryPerPeerResponder:     defaultMaxMemoryPerPeer,
-		maxInProgressIncomingRequests: defaultMaxInProgressRequests,
-		maxInProgressOutgoingRequests: defaultMaxInProgressRequests,
-		registerDefaultValidator:      true,
-		messageSendRetries:            defaultMessageSendRetries,
-		sendMessageTimeout:            defaultSendMessageTimeout,
+		totalMaxMemoryResponder:            defaultTotalMaxMemory,
+		maxMemoryPerPeerResponder:          defaultMaxMemoryPerPeer,
+		maxInProgressIncomingRequests:      defaultMaxInProgressRequests,
+		maxInProgressOutgoingRequests:      defaultMaxInProgressRequests,
+		registerDefaultValidator:           true,
+		messageSendRetries:                 defaultMessageSendRetries,
+		sendMessageTimeout:                 defaultSendMessageTimeout,
+		onlySendRemoteRequestWhenNeccesary: false,
 	}
 	for _, option := range options {
 		option(gsConfig)
@@ -230,7 +238,8 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
 
 	requestQueue := taskqueue.NewTaskQueue(ctx)
-	requestManager := requestmanager.New(ctx, persistenceOptions, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest)
+	requestManager := requestmanager.New(ctx, persistenceOptions, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest,
+		gsConfig.onlySendRemoteRequestWhenNeccesary)
 	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	var ptqopts []peertaskqueue.Option

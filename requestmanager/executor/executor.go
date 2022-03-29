@@ -102,21 +102,34 @@ func (e *Executor) ExecuteTask(ctx context.Context, pid peer.ID, task *peertask.
 
 // RequestTask are parameters for a single request execution
 type RequestTask struct {
-	Ctx                  context.Context
-	Span                 trace.Span
-	Request              gsmsg.GraphSyncRequest
-	LastResponse         *atomic.Value
-	DoNotSendFirstBlocks int64
-	PauseMessages        <-chan struct{}
-	Traverser            ipldutil.Traverser
-	P                    peer.ID
-	InProgressErr        chan error
-	Empty                bool
-	ReconciledLoader     ReconciledLoader
+	Ctx                    context.Context
+	Span                   trace.Span
+	Request                gsmsg.GraphSyncRequest
+	LastResponse           *atomic.Value
+	DoNotSendFirstBlocks   int64
+	PauseMessages          <-chan struct{}
+	Traverser              ipldutil.Traverser
+	P                      peer.ID
+	InProgressErr          chan error
+	Empty                  bool
+	SendRequestImmediately bool
+	ReconciledLoader       ReconciledLoader
 }
 
 func (e *Executor) traverse(rt RequestTask) error {
 	requestSent := false
+
+	if rt.SendRequestImmediately {
+		requestSent = true
+
+		// tell the loader we're online now
+		rt.ReconciledLoader.SetRemoteOnline(true)
+
+		if err := e.startRemoteRequest(rt); err != nil {
+			return err
+		}
+	}
+
 	// for initial request, start remote right away
 	for {
 		// check if traversal is complete

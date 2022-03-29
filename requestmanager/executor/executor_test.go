@@ -364,16 +364,17 @@ func (ree *requestExecutionEnv) GetRequestTask(_ peer.ID, _ *peertask.Task, requ
 	lastResponse.Store(gsmsg.NewResponse(ree.request.ID(), graphsync.RequestAcknowledged, nil))
 
 	requestExecution := executor.RequestTask{
-		Ctx:                  ree.ctx,
-		Request:              ree.request,
-		LastResponse:         &lastResponse,
-		DoNotSendFirstBlocks: ree.doNotSendFirstBlocks,
-		PauseMessages:        ree.pauseMessages,
-		Traverser:            ree.traverser,
-		P:                    ree.p,
-		InProgressErr:        ree.inProgressErr,
-		Empty:                false,
-		ReconciledLoader:     ree.reconciledLoader,
+		Ctx:                    ree.ctx,
+		Request:                ree.request,
+		LastResponse:           &lastResponse,
+		DoNotSendFirstBlocks:   ree.doNotSendFirstBlocks,
+		PauseMessages:          ree.pauseMessages,
+		Traverser:              ree.traverser,
+		P:                      ree.p,
+		InProgressErr:          ree.inProgressErr,
+		Empty:                  false,
+		SendRequestImmediately: ree.initialRequest,
+		ReconciledLoader:       ree.reconciledLoader,
 	}
 	go func() {
 		select {

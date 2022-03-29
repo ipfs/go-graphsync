@@ -235,72 +235,62 @@ func TestFailedRequest(t *testing.T) {
 	td.tcm.RefuteProtected(t, peers[0])
 }
 
-/*
-TODO: Delete? These tests no longer seem relevant, or at minimum need a rearchitect
-- the new architecture will simply never fire a graphsync request if all of the data is
-preset
+func TestOnlySendRemoteRequestsWhenNeccesary(t *testing.T) {
+	t.Run("when off", func(t *testing.T) {
+		ctx := context.Background()
+		td := newTestData(ctx, t)
 
-Perhaps we should put this back in as a mode? Or make the "wait to fire" and exprimental feature?
+		requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		peers := testutil.GeneratePeers(1)
 
-func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
-	ctx := context.Background()
-	td := newTestData(ctx, t)
+		called := make(chan struct{})
+		td.responseHooks.Register(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
+			close(called)
+		})
 
-	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	peers := testutil.GeneratePeers(1)
+		for link, data := range td.blockStore {
+			td.localBlockStore[link] = data
+		}
 
-	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+		returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
-	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
+		rr := readNNetworkRequests(requestCtx, t, td, 1)[0]
+		md := metadataForBlocks(td.blockChain.AllBlocks(), graphsync.LinkActionPresent)
+		firstResponses := []gsmsg.GraphSyncResponse{
+			gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
+		}
+		td.requestManager.ProcessResponses(peers[0], firstResponses, td.blockChain.AllBlocks())
 
-	// async loaded response responds immediately
-	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
+		// async loaded response responds immediately
+		td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
-	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
-
-	// failure comes in later over network
-	failedResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestFailedContentNotFound),
-	}
-
-	td.requestManager.ProcessResponses(peers[0], failedResponses, nil)
-	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
-
-}
-
-func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
-	ctx := context.Background()
-	td := newTestData(ctx, t)
-
-	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	peers := testutil.GeneratePeers(1)
-
-	called := make(chan struct{})
-	td.responseHooks.Register(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
-		close(called)
+		testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
+		testutil.AssertDoesReceive(requestCtx, t, called, "response hooks called for response")
 	})
-	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
-	rr := readNNetworkRequests(requestCtx, t, td.requestRecordChan, 1)[0]
+	t.Run("when on", func(t *testing.T) {
+		ctx := context.Background()
+		td := newTestData(ctx, t, func(td *testData) {
+			td.onlySendRemoteRequestWhenNeccesary = true
+		})
 
-	// async loaded response responds immediately
-	td.fal.SuccessResponseOn(peers[0], rr.gsr.ID(), td.blockChain.AllBlocks())
+		requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		peers := testutil.GeneratePeers(1)
 
-	td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
+		for link, data := range td.blockStore {
+			td.localBlockStore[link] = data
+		}
 
-	md := encodedMetadataForBlocks(t, td.blockChain.AllBlocks(), true)
-	firstResponses := []gsmsg.GraphSyncResponse{
-		gsmsg.NewResponse(rr.gsr.ID(), graphsync.RequestCompletedFull, md),
-	}
-	td.requestManager.ProcessResponses(peers[0], firstResponses, td.blockChain.AllBlocks())
+		returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+		// async loaded response responds immediately
+		td.blockChain.VerifyWholeChain(requestCtx, returnedResponseChan)
 
-	td.fal.VerifyNoRemainingData(t, rr.gsr.ID())
-	testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
-	testutil.AssertDoesReceive(requestCtx, t, called, "response hooks called for response")
+		testutil.VerifyEmptyErrors(ctx, t, returnedErrorChan)
+		testutil.AssertChannelEmpty(t, td.requestRecordChan, "should not have sent remote request but did")
+	})
 }
-*/
 
 func TestRequestReturnsMissingBlocks(t *testing.T) {
 	ctx := context.Background()
@@ -1065,9 +1055,10 @@ type testData struct {
 	taskqueue                          *taskqueue.WorkerTaskQueue
 	executor                           *executor.Executor
 	requestIds                         []graphsync.RequestID
+	onlySendRemoteRequestWhenNeccesary bool
 }
 
-func newTestData(ctx context.Context, t *testing.T) *testData {
+func newTestData(ctx context.Context, t *testing.T, options ...func(td *testData)) *testData {
 	t.Helper()
 	td := &testData{}
 	td.requestRecordChan = make(chan requestRecord, 3)
@@ -1082,7 +1073,10 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.taskqueue = taskqueue.NewTaskQueue(ctx)
 	td.localBlockStore = make(map[ipld.Link][]byte)
 	td.localPersistence = testutil.NewTestStore(td.localBlockStore)
-	td.requestManager = New(ctx, td.persistenceOptions, td.localPersistence, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.outgoingRequestProcessingListeners, td.taskqueue, td.tcm, 0)
+	for _, option := range options {
+		option(td)
+	}
+	td.requestManager = New(ctx, td.persistenceOptions, td.localPersistence, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.outgoingRequestProcessingListeners, td.taskqueue, td.tcm, 0, td.onlySendRemoteRequestWhenNeccesary)
 	td.executor = executor.NewExecutor(td.requestManager, td.blockHooks)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()

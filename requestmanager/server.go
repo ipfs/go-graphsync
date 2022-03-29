@@ -120,7 +120,12 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 	}
 	log.Infow("graphsync request processing begins", "request id", requestID.String(), "peer", ipr.p, "total time", time.Since(ipr.startTime))
 
+	var sendRequestImmediately bool
 	if ipr.traverser == nil {
+		if !rm.onlySendRemoteRequestWhenNeccesary {
+			sendRequestImmediately = true
+		}
+
 		var budget *traversal.Budget
 		if rm.maxLinksPerRequest > 0 {
 			budget = &traversal.Budget{
@@ -169,17 +174,18 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 
 	ipr.state = graphsync.Running
 	return executor.RequestTask{
-		Ctx:                  ipr.ctx,
-		Span:                 ipr.span,
-		Request:              ipr.request,
-		LastResponse:         &ipr.lastResponse,
-		DoNotSendFirstBlocks: ipr.doNotSendFirstBlocks,
-		PauseMessages:        ipr.pauseMessages,
-		Traverser:            ipr.traverser,
-		P:                    ipr.p,
-		InProgressErr:        ipr.inProgressErr,
-		ReconciledLoader:     ipr.reconciledLoader,
-		Empty:                false,
+		Ctx:                    ipr.ctx,
+		Span:                   ipr.span,
+		Request:                ipr.request,
+		LastResponse:           &ipr.lastResponse,
+		DoNotSendFirstBlocks:   ipr.doNotSendFirstBlocks,
+		PauseMessages:          ipr.pauseMessages,
+		Traverser:              ipr.traverser,
+		P:                      ipr.p,
+		InProgressErr:          ipr.inProgressErr,
+		ReconciledLoader:       ipr.reconciledLoader,
+		Empty:                  false,
+		SendRequestImmediately: sendRequestImmediately,
 	}
 }
 
