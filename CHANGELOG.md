@@ -1,5 +1,22 @@
 # go-graphsync changelog
 
+# go-graphsync v0.13.1
+
+A few small stability updates for v0.13.0
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - chore(deps): update dependencies (#369) ([ipfs/go-graphsync#369](https://github.com/ipfs/go-graphsync/pull/369))
+  - feat(ipld): wrap bindnode with panic protection (#368) ([ipfs/go-graphsync#368](https://github.com/ipfs/go-graphsync/pull/368))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Rod Vagg | 2 | +110/-46 | 18 |
+
+
 # go-graphsync v0.13.0
 
 Graphsync v0.13.0 is a major new feature release
