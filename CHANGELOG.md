@@ -1,5 +1,23 @@
 # go-data-transfer changelog
 
+# go-data-transfer v1.15.1
+
+Minor fixes and stability updates for v1.15.0
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - chore(deps): update deps (#318) ([filecoin-project/go-data-transfer#318](https://github.com/filecoin-project/go-data-transfer/pull/318))
+  - fix(channels): handle local only finished transfers (#317) ([filecoin-project/go-data-transfer#317](https://github.com/filecoin-project/go-data-transfer/pull/317))
+  - fix(network): fix new network error introduced decoding w/ go-ipld-prime (#316) ([filecoin-project/go-data-transfer#316](https://github.com/filecoin-project/go-data-transfer/pull/316))
+  - Merge branch 'release/v1.15.0'
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 3 | +20/-11 | 5 |
+
 # go-data-transfer v1.15.0
 
 Update to graphsync v0.13.0 with Graphsync 2.0 protocol
