@@ -187,10 +187,15 @@ var ChannelEvents = fsm.Events{
 		FromAny().To(datatransfer.TransferFinished).
 		FromMany(datatransfer.Failing, datatransfer.Cancelling).ToJustRecord().
 		From(datatransfer.ResponderCompleted).To(datatransfer.Completing).
-		From(datatransfer.ResponderFinalizing).To(datatransfer.ResponderFinalizingTransferFinished).Action(func(chst *internal.ChannelState) error {
-		chst.AddLog("")
-		return nil
-	}),
+		From(datatransfer.ResponderFinalizing).To(datatransfer.ResponderFinalizingTransferFinished).
+		// If we are in the requested state, it means the other party simply never responded to our
+		// our data transfer, or we never actually contacted them. In any case, it's safe to skip
+		// the finalization process and complete the transfer
+		From(datatransfer.Requested).To(datatransfer.Completing).
+		Action(func(chst *internal.ChannelState) error {
+			chst.AddLog("")
+			return nil
+		}),
 
 	fsm.Event(datatransfer.ResponderBeginsFinalization).
 		FromAny().To(datatransfer.ResponderFinalizing).

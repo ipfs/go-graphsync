@@ -132,6 +132,8 @@ func TestChannels(t *testing.T) {
 		chid, err := channelList.CreateNew(peers[0], tid1, cids[0], selector, fv1, peers[0], peers[0], peers[1])
 		require.NoError(t, err)
 		checkEvent(ctx, t, received, datatransfer.Open)
+		require.NoError(t, channelList.Accept(chid))
+		checkEvent(ctx, t, received, datatransfer.Accept)
 
 		// move the channel to `TransferFinished` state.
 		require.NoError(t, channelList.FinishTransfer(chid))
