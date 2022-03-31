@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	dagpb "github.com/ipld/go-codec-dagpb"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -1791,6 +1793,59 @@ func TestSendUpdates(t *testing.T) {
 	drain(requestor)
 	drain(responder)
 	assertOneRequestCompletes(ctx, t)
+}
+
+func TestPanicHandlingInTraversal(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// panic locally to the requestor (persistence1) in the NodeReifier to simulate something dodgy
+	// going on in a codec, or a reifier, or even a selector
+	stopPoint := 5
+	var count int
+	td.persistence1.NodeReifier = func(lc linking.LinkContext, n datamodel.Node, ls *linking.LinkSystem) (datamodel.Node, error) {
+		if count == stopPoint {
+			panic("whoa up there boi")
+		}
+		count++
+		return n, nil
+	}
+
+	// initialize graphsync on first node to make requests and set a panic callback
+	var panicObj interface{}
+	requestor := td.GraphSyncHost1(PanicCallback(func(recoverObj interface{}, debugStackTrace string) {
+		panicObj = recoverObj
+	}))
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+
+	// standard request for the whole chain
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	// we should only have received a small portion
+	blockChain.VerifyResponseRange(ctx, progressChan, 0, stopPoint)
+	// the panic should have been converted to a standard error
+	var err error
+	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
+	require.Regexp(t, regexp.MustCompile("^recovered from panic: whoa up there boi, stack trace:"), err.Error())
+	require.Len(t, td.blockStore1, int(stopPoint+1), "did not store all blocks")
+	// and out panic callback should have provided us with the original panic data
+	require.Equal(t, "whoa up there boi", panicObj)
+
+	drain(requestor)
+	drain(responder)
 }
 
 type gsTestData struct {

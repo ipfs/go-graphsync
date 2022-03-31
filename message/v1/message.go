@@ -21,6 +21,7 @@ import (
 	"github.com/ipfs/go-graphsync/message"
 	pb "github.com/ipfs/go-graphsync/message/pb"
 	"github.com/ipfs/go-graphsync/message/v1/metadata"
+	"github.com/ipfs/go-graphsync/panics"
 )
 
 const extensionMetadata = string("graphsync/response-metadata")
@@ -38,16 +39,19 @@ type MessageHandler struct {
 	mapLock sync.Mutex
 	// each host can have multiple peerIDs, so our integer requestID mapping for
 	// protocol v1.0.0 needs to be a combo of peerID and requestID
-	fromV1Map map[v1RequestKey]graphsync.RequestID
-	toV1Map   map[graphsync.RequestID]int32
-	nextIntId int32
+	fromV1Map    map[v1RequestKey]graphsync.RequestID
+	toV1Map      map[graphsync.RequestID]int32
+	nextIntId    int32
+	panicHandler panics.PanicHandler
 }
 
 // NewMessageHandler instantiates a new MessageHandler instance
-func NewMessageHandler() *MessageHandler {
+func NewMessageHandler(panicCallback panics.CallBackFn) *MessageHandler {
+	panicHandler := panics.MakeHandler(panicCallback)
 	return &MessageHandler{
-		fromV1Map: make(map[v1RequestKey]graphsync.RequestID),
-		toV1Map:   make(map[graphsync.RequestID]int32),
+		fromV1Map:    make(map[v1RequestKey]graphsync.RequestID),
+		toV1Map:      make(map[graphsync.RequestID]int32),
+		panicHandler: panicHandler,
 	}
 }
 
@@ -106,7 +110,7 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 		var selector []byte
 		var err error
 		if request.Selector() != nil {
-			selector, err = ipldutil.EncodeNode(request.Selector())
+			selector, err = ipldutil.EncodeNode(request.Selector(), mh.panicHandler)
 			if err != nil {
 				return nil, err
 			}
@@ -115,7 +119,7 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 		if err != nil {
 			return nil, err
 		}
-		ext, err := toEncodedExtensions(request, nil)
+		ext, err := toEncodedExtensions(request, nil, mh.panicHandler)
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +142,7 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 		if err != nil {
 			return nil, err
 		}
-		ext, err := toEncodedExtensions(response, response.Metadata())
+		ext, err := toEncodedExtensions(response, response.Metadata(), mh.panicHandler)
 		if err != nil {
 			return nil, err
 		}
@@ -183,7 +187,7 @@ func (mh *MessageHandler) fromProto(p peer.ID, pbm *pb.Message) (message.GraphSy
 			continue
 		}
 
-		exts, metadata, err := fromEncodedExtensions(req.GetExtensions())
+		exts, metadata, err := fromEncodedExtensions(req.GetExtensions(), mh.panicHandler)
 		if err != nil {
 			return message.GraphSyncMessage{}, err
 		}
@@ -202,7 +206,7 @@ func (mh *MessageHandler) fromProto(p peer.ID, pbm *pb.Message) (message.GraphSy
 			return message.GraphSyncMessage{}, err
 		}
 
-		selector, err := ipldutil.DecodeNode(req.Selector)
+		selector, err := ipldutil.DecodeNode(req.Selector, mh.panicHandler)
 		if err != nil {
 			return message.GraphSyncMessage{}, err
 		}
@@ -219,7 +223,7 @@ func (mh *MessageHandler) fromProto(p peer.ID, pbm *pb.Message) (message.GraphSy
 		if err != nil {
 			return message.GraphSyncMessage{}, err
 		}
-		exts, metadata, err := fromEncodedExtensions(res.GetExtensions())
+		exts, metadata, err := fromEncodedExtensions(res.GetExtensions(), mh.panicHandler)
 		if err != nil {
 			return message.GraphSyncMessage{}, err
 		}
@@ -255,7 +259,7 @@ func (mh *MessageHandler) fromProto(p peer.ID, pbm *pb.Message) (message.GraphSy
 
 // Note that even for protocol v1 we now only support DAG-CBOR encoded extension data.
 // Anything else will be rejected with an error.
-func toEncodedExtensions(part message.MessagePartWithExtensions, linkMetadata graphsync.LinkMetadata) (map[string][]byte, error) {
+func toEncodedExtensions(part message.MessagePartWithExtensions, linkMetadata graphsync.LinkMetadata, panicHandler panics.PanicHandler) (map[string][]byte, error) {
 	names := part.ExtensionNames()
 	out := make(map[string][]byte, len(names))
 	for _, name := range names {
@@ -263,7 +267,7 @@ func toEncodedExtensions(part message.MessagePartWithExtensions, linkMetadata gr
 		if !ok || data == nil {
 			out[string(name)] = nil
 		} else {
-			byts, err := ipldutil.EncodeNode(data)
+			byts, err := ipldutil.EncodeNode(data, panicHandler)
 			if err != nil {
 				return nil, err
 			}
@@ -275,11 +279,11 @@ func toEncodedExtensions(part message.MessagePartWithExtensions, linkMetadata gr
 		linkMetadata.Iterate(func(c cid.Cid, la graphsync.LinkAction) {
 			md = append(md, metadata.Item{Link: c, BlockPresent: la == graphsync.LinkActionPresent})
 		})
-		mdNode, err := metadata.EncodeMetadata(md)
+		mdNode, err := metadata.EncodeMetadata(md, panicHandler)
 		if err != nil {
 			return nil, err
 		}
-		mdByts, err := ipldutil.EncodeNode(mdNode)
+		mdByts, err := ipldutil.EncodeNode(mdNode, panicHandler)
 		if err != nil {
 			return nil, err
 		}
@@ -288,7 +292,7 @@ func toEncodedExtensions(part message.MessagePartWithExtensions, linkMetadata gr
 	return out, nil
 }
 
-func fromEncodedExtensions(in map[string][]byte) ([]graphsync.ExtensionData, []message.GraphSyncLinkMetadatum, error) {
+func fromEncodedExtensions(in map[string][]byte, panicHandler panics.PanicHandler) ([]graphsync.ExtensionData, []message.GraphSyncLinkMetadatum, error) {
 	if in == nil {
 		return []graphsync.ExtensionData{}, nil, nil
 	}
@@ -298,12 +302,12 @@ func fromEncodedExtensions(in map[string][]byte) ([]graphsync.ExtensionData, []m
 		var node datamodel.Node
 		var err error
 		if len(data) > 0 {
-			node, err = ipldutil.DecodeNode(data)
+			node, err = ipldutil.DecodeNode(data, panicHandler)
 			if err != nil {
 				return nil, nil, err
 			}
 			if name == string(extensionMetadata) {
-				mdd, err := metadata.DecodeMetadata(node)
+				mdd, err := metadata.DecodeMetadata(node, panicHandler)
 				if err != nil {
 					return nil, nil, err
 				}

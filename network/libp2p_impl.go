@@ -17,6 +17,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsmsgv1 "github.com/ipfs/go-graphsync/message/v1"
 	gsmsgv2 "github.com/ipfs/go-graphsync/message/v2"
+	"github.com/ipfs/go-graphsync/panics"
 )
 
 var log = logging.Logger("graphsync_network")
@@ -34,20 +35,30 @@ func GraphsyncProtocols(protocols []protocol.ID) Option {
 	}
 }
 
+// PanicCallback allows calling code to receive information about panics that
+// Graphsync recovers from. Graphsync recovers panics that occur during
+// message handling in order to keep the over all system running, although
+// they are still treated as standard errors in normal execution flow.
+func PanicCallback(callbackFn panics.CallBackFn) Option {
+	return func(gsnet *libp2pGraphSyncNetwork) {
+		gsnet.panicCallback = callbackFn
+	}
+}
+
 // NewFromLibp2pHost returns a GraphSyncNetwork supported by underlying Libp2p host.
 func NewFromLibp2pHost(host host.Host, options ...Option) GraphSyncNetwork {
-	messageHandlerSelector := messageHandlerSelector{
-		v1MessageHandler: gsmsgv1.NewMessageHandler(),
-		v2MessageHandler: gsmsgv2.NewMessageHandler(),
-	}
 	graphSyncNetwork := libp2pGraphSyncNetwork{
-		host:                   host,
-		messageHandlerSelector: &messageHandlerSelector,
-		protocols:              []protocol.ID{ProtocolGraphsync_2_0_0, ProtocolGraphsync_1_0_0},
+		host:      host,
+		protocols: []protocol.ID{ProtocolGraphsync_2_0_0, ProtocolGraphsync_1_0_0},
 	}
 
 	for _, option := range options {
 		option(&graphSyncNetwork)
+	}
+
+	graphSyncNetwork.messageHandlerSelector = &messageHandlerSelector{
+		v1MessageHandler: gsmsgv1.NewMessageHandler(graphSyncNetwork.panicCallback),
+		v2MessageHandler: gsmsgv2.NewMessageHandler(graphSyncNetwork.panicCallback),
 	}
 
 	return &graphSyncNetwork
@@ -94,6 +105,7 @@ type libp2pGraphSyncNetwork struct {
 	receiver               Receiver
 	protocols              []protocol.ID
 	messageHandlerSelector *messageHandlerSelector
+	panicCallback          panics.CallBackFn
 }
 
 type streamMessageSender struct {

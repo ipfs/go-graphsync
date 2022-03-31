@@ -55,7 +55,12 @@ func TestIPLDRoundTrip(t *testing.T) {
 		blks[1].Cid(): blks[1],
 	}
 
-	mh := NewMessageHandler()
+	var panicObj interface{}
+	panicCb := func(recoverObj interface{}, debugStackTrace string) {
+		panicObj = recoverObj
+	}
+
+	mh := NewMessageHandler(panicCb)
 	p := peer.ID("blip")
 
 	// message format
@@ -125,4 +130,6 @@ func TestIPLDRoundTrip(t *testing.T) {
 
 	rtblks := rtgsm.Blocks()
 	require.Len(t, rtblks, 2)
+
+	require.Nil(t, panicObj)
 }

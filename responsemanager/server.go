@@ -265,7 +265,7 @@ func (rm *ResponseManager) taskDataForKey(requestID graphsync.RequestID) queryex
 	log.Infow("graphsync response processing begins", "request id", requestID.String(), "peer", response.peer, "total time", time.Since(response.startTime))
 
 	if response.loader == nil || response.traverser == nil {
-		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.linkSystem, rm.maxLinksPerRequest, rm.panicCallback}).prepareQuery(response.ctx, response.peer, response.request, response.responseStream, response.signals)
+		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.linkSystem, rm.maxLinksPerRequest, rm.panicHandler}).prepareQuery(response.ctx, response.peer, response.request, response.responseStream, response.signals)
 		if err != nil {
 			response.state = graphsync.CompletingSend
 			response.span.RecordError(err)

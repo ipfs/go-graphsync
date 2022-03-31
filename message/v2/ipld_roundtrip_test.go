@@ -13,8 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/message/ipldbind"
+	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -57,16 +59,23 @@ func TestIPLDRoundTrip(t *testing.T) {
 		blks[1].Cid(): blks[1],
 	}
 
+	var panicObj interface{}
+	panicCb := func(recoverObj interface{}, debugStackTrace string) {
+		panicObj = recoverObj
+	}
+	panicHandler := panics.MakeHandler(panicCb)
+
 	// message format
 	gsm := message.NewMessage(requests, responses, blocks)
 	// bindnode internal format
-	igsm, err := NewMessageHandler().toIPLD(gsm)
+	igsm, err := NewMessageHandler(panicCb).toIPLD(gsm)
 	require.NoError(t, err)
 
 	// ipld TypedNode format
 	var buf bytes.Buffer
-	node, err := ipldbind.SafeWrap(igsm, ipldbind.Prototype.Message.Type())
+	node, err := ipldutil.SafeWrap(igsm, ipldbind.Prototype.Message.Type(), panicHandler)
 	require.NoError(t, err)
+	require.Nil(t, panicObj)
 
 	// dag-cbor binary format
 	err = dagcbor.Encode(node.Representation(), &buf)
@@ -77,11 +86,12 @@ func TestIPLDRoundTrip(t *testing.T) {
 	err = dagcbor.Decode(builder, &buf)
 	require.NoError(t, err)
 	rtnode := builder.Build()
-	rtigsm, err := ipldbind.SafeUnwrap(rtnode)
+	rtigsm, err := ipldutil.SafeUnwrap(rtnode, panicHandler)
 	require.NoError(t, err)
+	require.Nil(t, panicObj)
 
 	// back to message format
-	rtgsm, err := NewMessageHandler().fromIPLD(rtigsm.(*ipldbind.GraphSyncMessageRoot))
+	rtgsm, err := NewMessageHandler(panicCb).fromIPLD(rtigsm.(*ipldbind.GraphSyncMessageRoot))
 	require.NoError(t, err)
 
 	rtreq := rtgsm.Requests()
@@ -133,4 +143,6 @@ func TestIPLDRoundTrip(t *testing.T) {
 
 	rtblks := rtgsm.Blocks()
 	require.Len(t, rtblks, 2)
+
+	require.Nil(t, panicObj)
 }

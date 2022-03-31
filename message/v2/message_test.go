@@ -47,7 +47,7 @@ func TestAppendingRequests(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	mh := NewMessageHandler()
+	mh := NewMessageHandler(nil)
 
 	gsmIpld, err := mh.toIPLD(gsm)
 	require.NoError(t, err, "serialize to dag-cbor errored")
@@ -86,7 +86,7 @@ func TestAppendingResponses(t *testing.T) {
 		Data: basicnode.NewString("test extension data"),
 	}
 	requestID := graphsync.NewRequestID()
-	mh := NewMessageHandler()
+	mh := NewMessageHandler(nil)
 	status := graphsync.RequestAcknowledged
 
 	builder := message.NewBuilder()
@@ -136,7 +136,7 @@ func TestAppendBlock(t *testing.T) {
 	m, err := builder.Build()
 	require.NoError(t, err)
 
-	gsmIpld, err := NewMessageHandler().toIPLD(m)
+	gsmIpld, err := NewMessageHandler(nil).toIPLD(m)
 	require.NoError(t, err, "serializing to dag-cbor errored")
 
 	// assert strings are in dag-cbor message
@@ -174,7 +174,7 @@ func TestRequestCancel(t *testing.T) {
 	require.Equal(t, id, request.ID())
 	require.Equal(t, request.Type(), graphsync.RequestTypeCancel)
 
-	mh := NewMessageHandler()
+	mh := NewMessageHandler(nil)
 
 	buf := new(bytes.Buffer)
 	err = mh.ToNet(peer.ID("foo"), gsm, buf)
@@ -211,7 +211,7 @@ func TestRequestUpdate(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	mh := NewMessageHandler()
+	mh := NewMessageHandler(nil)
 
 	buf := new(bytes.Buffer)
 	err = mh.ToNet(peer.ID("foo"), gsm, buf)
@@ -256,7 +256,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	gsm, err := builder.Build()
 	require.NoError(t, err)
 
-	mh := NewMessageHandler()
+	mh := NewMessageHandler(nil)
 
 	buf := new(bytes.Buffer)
 	err = mh.ToNet(peer.ID("foo"), gsm, buf)

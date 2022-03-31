@@ -37,7 +37,7 @@ type queryPreparer struct {
 	linkSystem   ipld.LinkSystem
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit=
 	maxLinksPerRequest uint64
-	panicCallback      panics.CallBackFn
+	panicHandler       panics.PanicHandler
 }
 
 func (qe *queryPreparer) prepareQuery(
@@ -89,12 +89,12 @@ func (qe *queryPreparer) prepareQuery(
 		}
 	}
 	traverser := ipldutil.TraversalBuilder{
-		Root:          rootLink,
-		Selector:      request.Selector(),
-		LinkSystem:    linkSystem,
-		Chooser:       result.CustomChooser,
-		Budget:        budget,
-		PanicCallback: qe.panicCallback,
+		Root:         rootLink,
+		Selector:     request.Selector(),
+		LinkSystem:   linkSystem,
+		Chooser:      result.CustomChooser,
+		Budget:       budget,
+		PanicHandler: qe.panicHandler,
 		Visitor: func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error {
 			if lbn, ok := n.(datamodel.LargeBytesNode); ok {
 				s, err := lbn.AsLargeBytes()

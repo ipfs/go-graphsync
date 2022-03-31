@@ -41,13 +41,13 @@ func IsContextCancelErr(err error) bool {
 
 // TraversalBuilder defines parameters for an iterative traversal
 type TraversalBuilder struct {
-	Root          ipld.Link
-	Selector      ipld.Node
-	Visitor       traversal.AdvVisitFn
-	LinkSystem    ipld.LinkSystem
-	Chooser       traversal.LinkTargetNodePrototypeChooser
-	Budget        *traversal.Budget
-	PanicCallback panics.CallBackFn
+	Root         ipld.Link
+	Selector     ipld.Node
+	Visitor      traversal.AdvVisitFn
+	LinkSystem   ipld.LinkSystem
+	Chooser      traversal.LinkTargetNodePrototypeChooser
+	Budget       *traversal.Budget
+	PanicHandler panics.PanicHandler
 }
 
 // Traverser is an interface for performing a selector traversal that operates iteratively --
@@ -100,7 +100,7 @@ func (tb TraversalBuilder) Start(parentCtx context.Context) Traverser {
 		budget:       tb.Budget,
 		responses:    make(chan nextResponse),
 		stopped:      make(chan struct{}),
-		panicHandler: panics.MakeHandler(tb.PanicCallback),
+		panicHandler: tb.PanicHandler,
 	}
 	if tb.Visitor != nil {
 		t.visitor = tb.Visitor
@@ -199,10 +199,15 @@ func (t *traverser) start() {
 	// Grab the state mutex until the first StorageReadOpener call comes in.
 	t.stateMu.Lock()
 
+	panicHandler := t.panicHandler
+	if panicHandler == nil {
+		panicHandler = panics.MakeHandler(nil)
+	}
+
 	go func() {
 		defer func() {
 			// catch panics that occur in selector traversal, treat as an errored traversal
-			if err := t.panicHandler(); err != nil {
+			if err := panicHandler(recover()); err != nil {
 				t.writeDone(err)
 			}
 			close(t.stopped)
