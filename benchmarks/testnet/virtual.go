@@ -138,7 +138,7 @@ func (n *network) SendMessage(
 			rateLimiters[to] = rateLimiter
 		}
 
-		pbMsg, err := gsmsgv1.NewMessageHandler().ToProto(peer.ID("foo"), mes)
+		pbMsg, err := gsmsgv1.NewMessageHandler(nil).ToProto(peer.ID("foo"), mes)
 		if err != nil {
 			return err
 		}

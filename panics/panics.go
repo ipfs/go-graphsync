@@ -8,14 +8,13 @@ import (
 // CallBackFn is a function that will get called with information about the panic
 type CallBackFn func(recoverObj interface{}, debugStackTrace string)
 
-// PanicHandler is a function that can be called with defer to recover from panics and pass them to a callback
-// it returns an error if a recovery was needed
-type PanicHandler func() error
+// PanicHandler is a function that can be called with the result of revover() within a deferred
+// to recover from panics and pass them to a callback it returns an error if a recovery was needed
+type PanicHandler func(interface{}) error
 
 // MakeHandler makes a handler that recovers from panics and passes them to the given callback
 func MakeHandler(cb CallBackFn) PanicHandler {
-	return func() error {
-		obj := recover()
+	return func(obj interface{}) error {
 		if obj == nil {
 			return nil
 		}

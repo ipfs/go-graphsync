@@ -54,7 +54,7 @@ func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
 		b.ReportAllocs()
 		b.RunParallel(func(pb *testing.PB) {
 			buf := new(bytes.Buffer)
-			mh := v1.NewMessageHandler()
+			mh := v1.NewMessageHandler(nil)
 			for pb.Next() {
 				buf.Reset()
 
@@ -80,7 +80,7 @@ func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
 		b.ReportAllocs()
 		b.RunParallel(func(pb *testing.PB) {
 			buf := new(bytes.Buffer)
-			mh := v2.NewMessageHandler()
+			mh := v2.NewMessageHandler(nil)
 			for pb.Next() {
 				buf.Reset()
 

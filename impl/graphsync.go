@@ -192,7 +192,8 @@ func SendMessageTimeout(sendMessageTimeout time.Duration) Option {
 
 // PanicCallback allows calling code to receive information about panics that
 // Graphsync recovers from. Graphsync recovers panics that occur during
-// per-request execution in order to keep the over all system running
+// per-request execution in order to keep the over all system running, although
+// they are still treated as standard errors in normal execution flow.
 func PanicCallback(callbackFn panics.CallBackFn) Option {
 	return func(gs *graphsyncConfigOptions) {
 		gs.panicCallback = callbackFn

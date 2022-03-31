@@ -108,7 +108,7 @@ type ResponseManager struct {
 	connManager           network.ConnManager
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
 	maxLinksPerRequest uint64
-	panicCallback      panics.CallBackFn
+	panicHandler       panics.PanicHandler
 	responseQueue      taskqueue.TaskQueue
 }
 
@@ -147,7 +147,7 @@ func New(ctx context.Context,
 		connManager:           connManager,
 		maxLinksPerRequest:    maxLinksPerRequest,
 		responseQueue:         responseQueue,
-		panicCallback:         panicCallback,
+		panicHandler:          panics.MakeHandler(panicCallback),
 	}
 	return rm
 }
