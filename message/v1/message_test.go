@@ -17,7 +17,6 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -49,17 +48,11 @@ func TestAppendingRequests(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	var panicObj interface{}
-	panicCb := func(recoverObj interface{}, debugStackTrace string) {
-		panicObj = recoverObj
-	}
-	panicHandler := panics.MakeHandler(panicCb)
-
-	mh := NewMessageHandler(panicCb)
+	mh := NewMessageHandler()
 
 	pbMessage, err := mh.ToProto(peer.ID("foo"), gsm)
 	require.NoError(t, err, "serialize to protobuf errored")
-	selectorEncoded, err := ipldutil.EncodeNode(selector, panicHandler)
+	selectorEncoded, err := ipldutil.EncodeNode(selector)
 	require.NoError(t, err)
 
 	pbRequest := pbMessage.Requests[0]
@@ -89,8 +82,6 @@ func TestAppendingRequests(t *testing.T) {
 	require.Equal(t, selector, deserializedRequest.Selector())
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
-
-	require.Nil(t, panicObj)
 }
 
 func TestAppendingResponses(t *testing.T) {
@@ -101,12 +92,8 @@ func TestAppendingResponses(t *testing.T) {
 	}
 	requestID := graphsync.NewRequestID()
 	p := peer.ID("test peer")
-	var panicObj interface{}
-	panicCb := func(recoverObj interface{}, debugStackTrace string) {
-		panicObj = recoverObj
-	}
 
-	mh := NewMessageHandler(panicCb)
+	mh := NewMessageHandler()
 	status := graphsync.RequestAcknowledged
 
 	builder := message.NewBuilder()
@@ -140,8 +127,6 @@ func TestAppendingResponses(t *testing.T) {
 	require.Equal(t, response.Status(), deserializedResponse.Status())
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
-
-	require.Nil(t, panicObj)
 }
 
 func TestAppendBlock(t *testing.T) {
@@ -158,12 +143,7 @@ func TestAppendBlock(t *testing.T) {
 	m, err := builder.Build()
 	require.NoError(t, err)
 
-	var panicObj interface{}
-	panicCb := func(recoverObj interface{}, debugStackTrace string) {
-		panicObj = recoverObj
-	}
-
-	pbMessage, err := NewMessageHandler(panicCb).ToProto(peer.ID("foo"), m)
+	pbMessage, err := NewMessageHandler().ToProto(peer.ID("foo"), m)
 	require.NoError(t, err, "serializing to protobuf errored")
 
 	// assert strings are in proto message
@@ -171,8 +151,6 @@ func TestAppendBlock(t *testing.T) {
 		s := bytes.NewBuffer(block.GetData()).String()
 		require.True(t, contains(strs, s))
 	}
-
-	require.Nil(t, panicObj)
 }
 
 func contains(strs []string, x string) bool {
@@ -203,12 +181,7 @@ func TestRequestCancel(t *testing.T) {
 	require.Equal(t, id, request.ID())
 	require.Equal(t, request.Type(), graphsync.RequestTypeCancel)
 
-	var panicObj interface{}
-	panicCb := func(recoverObj interface{}, debugStackTrace string) {
-		panicObj = recoverObj
-	}
-
-	mh := NewMessageHandler(panicCb)
+	mh := NewMessageHandler()
 
 	buf := new(bytes.Buffer)
 	err = mh.ToNet(peer.ID("foo"), gsm, buf)
@@ -220,8 +193,6 @@ func TestRequestCancel(t *testing.T) {
 	deserializedRequest := deserializedRequests[0]
 	require.Equal(t, request.ID(), deserializedRequest.ID())
 	require.Equal(t, request.Type(), deserializedRequest.Type())
-
-	require.Nil(t, panicObj)
 }
 
 func TestRequestUpdate(t *testing.T) {
@@ -247,12 +218,7 @@ func TestRequestUpdate(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	var panicObj interface{}
-	panicCb := func(recoverObj interface{}, debugStackTrace string) {
-		panicObj = recoverObj
-	}
-
-	mh := NewMessageHandler(panicCb)
+	mh := NewMessageHandler()
 
 	buf := new(bytes.Buffer)
 	err = mh.ToNet(peer.ID("foo"), gsm, buf)
@@ -271,8 +237,6 @@ func TestRequestUpdate(t *testing.T) {
 	require.Equal(t, request.Selector(), deserializedRequest.Selector())
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
-
-	require.Nil(t, panicObj)
 }
 
 func TestToNetFromNetEquivalency(t *testing.T) {
@@ -299,12 +263,7 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 	gsm, err := builder.Build()
 	require.NoError(t, err)
 
-	var panicObj interface{}
-	panicCb := func(recoverObj interface{}, debugStackTrace string) {
-		panicObj = recoverObj
-	}
-
-	mh := NewMessageHandler(panicCb)
+	mh := NewMessageHandler()
 
 	buf := new(bytes.Buffer)
 	err = mh.ToNet(peer.ID("foo"), gsm, buf)
@@ -348,8 +307,6 @@ func TestToNetFromNetEquivalency(t *testing.T) {
 		_, ok := keys[b.Cid()]
 		require.True(t, ok)
 	}
-
-	require.Nil(t, panicObj)
 }
 
 func TestMergeExtensions(t *testing.T) {
@@ -468,12 +425,7 @@ func TestKnownFuzzIssues(t *testing.T) {
 	}
 	p := peer.ID("test peer")
 
-	var panicObj interface{}
-	panicCb := func(recoverObj interface{}, debugStackTrace string) {
-		panicObj = recoverObj
-	}
-
-	mh := NewMessageHandler(panicCb)
+	mh := NewMessageHandler()
 
 	for _, input := range inputs {
 		//inputAsBytes, err := hex.DecodeString(input)
@@ -491,6 +443,4 @@ func TestKnownFuzzIssues(t *testing.T) {
 
 		require.Equal(t, msg1, msg2)
 	}
-
-	require.Nil(t, panicObj)
 }

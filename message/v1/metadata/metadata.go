@@ -3,11 +3,10 @@ package metadata
 import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/node/bindnode"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/panics"
 )
 
 // Item is a single link traversed in a repsonse
@@ -37,7 +36,7 @@ func (md Metadata) ToGraphSyncMetadata() []message.GraphSyncLinkMetadatum {
 
 // DecodeMetadata assembles metadata from a raw byte array, first deserializing
 // as a node and then assembling into a metadata struct.
-func DecodeMetadata(data datamodel.Node, panicHandler panics.PanicHandler) (Metadata, error) {
+func DecodeMetadata(data datamodel.Node) (Metadata, error) {
 	if data == nil {
 		return nil, nil
 	}
@@ -46,14 +45,11 @@ func DecodeMetadata(data datamodel.Node, panicHandler panics.PanicHandler) (Meta
 	if err != nil {
 		return nil, err
 	}
-	metadata, err := ipldutil.SafeUnwrap(builder.Build(), panicHandler)
-	if err != nil {
-		return nil, err
-	}
+	metadata := bindnode.Unwrap(builder.Build())
 	return *(metadata.(*Metadata)), nil
 }
 
 // EncodeMetadata encodes metadata to an IPLD node then serializes to raw bytes
-func EncodeMetadata(entries Metadata, panicHandler panics.PanicHandler) (datamodel.Node, error) {
-	return ipldutil.SafeWrap(&entries, Prototype.Metadata.Type(), panicHandler)
+func EncodeMetadata(entries Metadata) datamodel.Node {
+	return bindnode.Wrap(&entries, Prototype.Metadata.Type())
 }

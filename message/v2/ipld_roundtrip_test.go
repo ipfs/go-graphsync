@@ -9,14 +9,13 @@ import (
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
+	"github.com/ipld/go-ipld-prime/node/bindnode"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/message/ipldbind"
-	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -59,23 +58,15 @@ func TestIPLDRoundTrip(t *testing.T) {
 		blks[1].Cid(): blks[1],
 	}
 
-	var panicObj interface{}
-	panicCb := func(recoverObj interface{}, debugStackTrace string) {
-		panicObj = recoverObj
-	}
-	panicHandler := panics.MakeHandler(panicCb)
-
 	// message format
 	gsm := message.NewMessage(requests, responses, blocks)
 	// bindnode internal format
-	igsm, err := NewMessageHandler(panicCb).toIPLD(gsm)
+	igsm, err := NewMessageHandler().toIPLD(gsm)
 	require.NoError(t, err)
 
 	// ipld TypedNode format
 	var buf bytes.Buffer
-	node, err := ipldutil.SafeWrap(igsm, ipldbind.Prototype.Message.Type(), panicHandler)
-	require.NoError(t, err)
-	require.Nil(t, panicObj)
+	node := bindnode.Wrap(igsm, ipldbind.Prototype.Message.Type())
 
 	// dag-cbor binary format
 	err = dagcbor.Encode(node.Representation(), &buf)
@@ -86,12 +77,10 @@ func TestIPLDRoundTrip(t *testing.T) {
 	err = dagcbor.Decode(builder, &buf)
 	require.NoError(t, err)
 	rtnode := builder.Build()
-	rtigsm, err := ipldutil.SafeUnwrap(rtnode, panicHandler)
-	require.NoError(t, err)
-	require.Nil(t, panicObj)
+	rtigsm := bindnode.Unwrap(rtnode)
 
 	// back to message format
-	rtgsm, err := NewMessageHandler(panicCb).fromIPLD(rtigsm.(*ipldbind.GraphSyncMessageRoot))
+	rtgsm, err := NewMessageHandler().fromIPLD(rtigsm.(*ipldbind.GraphSyncMessageRoot))
 	require.NoError(t, err)
 
 	rtreq := rtgsm.Requests()
@@ -143,6 +132,4 @@ func TestIPLDRoundTrip(t *testing.T) {
 
 	rtblks := rtgsm.Blocks()
 	require.Len(t, rtblks, 2)
-
-	require.Nil(t, panicObj)
 }
