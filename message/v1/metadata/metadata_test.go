@@ -9,7 +9,6 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -27,25 +26,15 @@ func TestDecodeEncodeMetadata(t *testing.T) {
 		}
 	})
 
-	var panicObj interface{}
-	panicCb := func(recoverObj interface{}, debugStackTrace string) {
-		panicObj = recoverObj
-	}
-	panicHandler := panics.MakeHandler(panicCb)
-
 	// verify metadata matches
-	encoded, err := EncodeMetadata(initialMetadata, panicHandler)
-	require.NoError(t, err, "encode errored")
-	require.Nil(t, panicObj)
+	encoded := EncodeMetadata(initialMetadata)
 
-	decodedMetadata, err := DecodeMetadata(encoded, panicHandler)
-	require.NoError(t, err, "decode errored")
-	require.Nil(t, panicObj)
+	decodedMetadata, err := DecodeMetadata(encoded)
+	require.NoError(t, err)
 	require.Equal(t, initialMetadata, decodedMetadata, "metadata changed during encoding and decoding")
 
 	// verify metadata is equivalent of IPLD node encoding
-	decodedMetadataFromNode, err := DecodeMetadata(nd, panicHandler)
+	decodedMetadataFromNode, err := DecodeMetadata(nd)
 	require.NoError(t, err)
-	require.Nil(t, panicObj)
 	require.Equal(t, decodedMetadata, decodedMetadataFromNode, "metadata not equal to IPLD encoding")
 }

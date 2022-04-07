@@ -90,7 +90,7 @@ type RequestManager struct {
 	connManager        network.ConnManager
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
 	maxLinksPerRequest uint64
-	panicHandler       panics.PanicHandler
+	panicCallback      panics.CallBackFn
 
 	// dont touch out side of run loop
 	inProgressRequestStatuses          map[graphsync.RequestID]*inProgressRequestStatus
@@ -145,7 +145,7 @@ func New(ctx context.Context,
 		requestQueue:                       requestQueue,
 		connManager:                        connManager,
 		maxLinksPerRequest:                 maxLinksPerRequest,
-		panicHandler:                       panics.MakeHandler(panicCallback),
+		panicCallback:                      panicCallback,
 	}
 }
 

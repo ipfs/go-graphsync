@@ -9,6 +9,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/node/bindnode"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-msgio"
@@ -17,22 +18,16 @@ import (
 	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/message/ipldbind"
-	"github.com/ipfs/go-graphsync/panics"
 )
 
 // MessageHandler is used to hold per-peer state for each connection. There is
 // no state to hold for the v2 protocol, so this exists to provide a consistent
 // interface between the protocol versions.
-type MessageHandler struct {
-	panicHandler panics.PanicHandler
-}
+type MessageHandler struct{}
 
 // NewMessageHandler creates a new MessageHandler
-func NewMessageHandler(panicCallback panics.CallBackFn) *MessageHandler {
-	panicHandler := panics.MakeHandler(panicCallback)
-	return &MessageHandler{
-		panicHandler: panicHandler,
-	}
+func NewMessageHandler() *MessageHandler {
+	return &MessageHandler{}
 }
 
 // FromNet can read a network stream to deserialized a GraphSyncMessage
@@ -48,11 +43,11 @@ func (mh *MessageHandler) FromMsgReader(_ peer.ID, r msgio.Reader) (message.Grap
 		return message.GraphSyncMessage{}, err
 	}
 
-	node, err := ipldutil.DecodeNodeInto(msg, ipldbind.Prototype.Message.Representation().NewBuilder(), mh.panicHandler)
+	node, err := ipldutil.DecodeNodeInto(msg, ipldbind.Prototype.Message.Representation().NewBuilder())
 	if err != nil {
 		return message.GraphSyncMessage{}, err
 	}
-	ipldGSM, err := ipldutil.SafeUnwrap(node, mh.panicHandler)
+	ipldGSM := bindnode.Unwrap(node)
 	if err != nil {
 		return message.GraphSyncMessage{}, err
 	}
@@ -144,11 +139,8 @@ func (mh *MessageHandler) ToNet(_ peer.ID, gsm message.GraphSyncMessage, w io.Wr
 	buf := new(bytes.Buffer)
 	buf.Write(lbuf)
 
-	node, err := ipldutil.SafeWrap(msg, ipldbind.Prototype.Message.Type(), mh.panicHandler)
-	if err != nil {
-		return err
-	}
-	err = ipldutil.EncodeNodeInto(node.Representation(), buf, mh.panicHandler)
+	node := bindnode.Wrap(msg, ipldbind.Prototype.Message.Type())
+	err = ipldutil.EncodeNodeInto(node.Representation(), buf)
 	if err != nil {
 		return err
 	}
