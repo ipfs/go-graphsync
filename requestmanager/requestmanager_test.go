@@ -988,6 +988,23 @@ func TestStats(t *testing.T) {
 	require.Len(t, peerState.Pending, 0)
 }
 
+func TestCaptureRequestIDFromContext(t *testing.T) {
+	ctx := context.Background()
+	td := newTestData(ctx, t)
+
+	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	expectedID := graphsync.NewRequestID()
+	requestCtx = context.WithValue(requestCtx, graphsync.RequestIDContextKey{}, expectedID)
+
+	peers := testutil.GeneratePeers(1)
+
+	_, _ = td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
+
+	requestRecords := readNNetworkRequests(requestCtx, t, td, 1)
+	require.Equal(t, expectedID, requestRecords[0].gsr.ID())
+}
+
 type requestRecord struct {
 	gsr gsmsg.GraphSyncRequest
 	p   peer.ID

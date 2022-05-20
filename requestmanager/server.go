@@ -60,8 +60,7 @@ func (rm *RequestManager) cleanupInProcessRequests() {
 	}
 }
 
-func (rm *RequestManager) newRequest(parentSpan trace.Span, p peer.ID, root ipld.Link, selector ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, chan graphsync.ResponseProgress, chan error) {
-	requestID := graphsync.NewRequestID()
+func (rm *RequestManager) newRequest(requestID graphsync.RequestID, parentSpan trace.Span, p peer.ID, root ipld.Link, selector ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, chan graphsync.ResponseProgress, chan error) {
 
 	parentSpan.SetAttributes(attribute.String("requestID", requestID.String()))
 	ctx, span := otel.Tracer("graphsync").Start(trace.ContextWithSpan(rm.ctx, parentSpan), "newRequest")
