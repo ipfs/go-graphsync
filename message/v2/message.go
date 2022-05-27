@@ -43,7 +43,7 @@ func (mh *MessageHandler) FromMsgReader(_ peer.ID, r msgio.Reader) (message.Grap
 		return message.GraphSyncMessage{}, err
 	}
 
-	node, err := ipldutil.DecodeNodeInto(msg, ipldbind.Prototype.Message.Representation().NewBuilder())
+	node, err := ipldutil.DecodeNodeInto(msg, ipldbind.Prototype.Message.Representation())
 	if err != nil {
 		return message.GraphSyncMessage{}, err
 	}
