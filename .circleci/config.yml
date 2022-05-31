@@ -6,7 +6,7 @@ orbs:
 executors:
   golang:
     docker:
-      - image: circleci/golang:1.16
+      - image: cimg/go:1.17
     resource_class: small
 
 commands:
