@@ -11,6 +11,8 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
+	_ "github.com/ipld/go-ipld-prime/codec/raw"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"

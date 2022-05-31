@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"strings"
@@ -47,9 +46,8 @@ type GraphSyncRequest struct {
 func (gsr GraphSyncRequest) String() string {
 	sel := "nil"
 	if gsr.selector != nil {
-		var buf bytes.Buffer
-		dagjson.Encode(gsr.selector, &buf)
-		sel = buf.String()
+		byts, _ := ipld.Encode(gsr.selector, dagjson.Encode)
+		sel = string(byts)
 	}
 	extStr := strings.Builder{}
 	for _, name := range gsr.ExtensionNames() {

@@ -9,7 +9,10 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -17,7 +20,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/message"
 	pb "github.com/ipfs/go-graphsync/message/pb"
 	"github.com/ipfs/go-graphsync/message/v1/metadata"
@@ -106,7 +108,7 @@ func (mh *MessageHandler) ToProto(p peer.ID, gsm message.GraphSyncMessage) (*pb.
 		var selector []byte
 		var err error
 		if request.Selector() != nil {
-			selector, err = ipldutil.EncodeNode(request.Selector())
+			selector, err = ipld.Encode(request.Selector(), dagcbor.Encode)
 			if err != nil {
 				return nil, err
 			}
@@ -202,7 +204,7 @@ func (mh *MessageHandler) fromProto(p peer.ID, pbm *pb.Message) (message.GraphSy
 			return message.GraphSyncMessage{}, err
 		}
 
-		selector, err := ipldutil.DecodeNode(req.Selector)
+		selector, err := ipld.DecodeUsingPrototype(req.Selector, dagcbor.Decode, basicnode.Prototype.Any)
 		if err != nil {
 			return message.GraphSyncMessage{}, err
 		}
@@ -263,7 +265,7 @@ func toEncodedExtensions(part message.MessagePartWithExtensions, linkMetadata gr
 		if !ok || data == nil {
 			out[string(name)] = nil
 		} else {
-			byts, err := ipldutil.EncodeNode(data)
+			byts, err := ipld.Encode(data, dagcbor.Encode)
 			if err != nil {
 				return nil, err
 			}
@@ -276,7 +278,7 @@ func toEncodedExtensions(part message.MessagePartWithExtensions, linkMetadata gr
 			md = append(md, metadata.Item{Link: c, BlockPresent: la == graphsync.LinkActionPresent})
 		})
 		mdNode := metadata.EncodeMetadata(md)
-		mdByts, err := ipldutil.EncodeNode(mdNode)
+		mdByts, err := ipld.Encode(mdNode, dagcbor.Encode)
 		if err != nil {
 			return nil, err
 		}
@@ -295,7 +297,7 @@ func fromEncodedExtensions(in map[string][]byte) ([]graphsync.ExtensionData, []m
 		var node datamodel.Node
 		var err error
 		if len(data) > 0 {
-			node, err = ipldutil.DecodeNode(data)
+			node, err = ipld.DecodeUsingPrototype(data, dagcbor.Decode, basicnode.Prototype.Any)
 			if err != nil {
 				return nil, nil, err
 			}

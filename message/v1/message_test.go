@@ -8,6 +8,8 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
@@ -15,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -52,7 +53,7 @@ func TestAppendingRequests(t *testing.T) {
 
 	pbMessage, err := mh.ToProto(peer.ID("foo"), gsm)
 	require.NoError(t, err, "serialize to protobuf errored")
-	selectorEncoded, err := ipldutil.EncodeNode(selector)
+	selectorEncoded, err := ipld.Encode(selector, dagcbor.Encode)
 	require.NoError(t, err)
 
 	pbRequest := pbMessage.Requests[0]

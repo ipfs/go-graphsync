@@ -1,11 +1,11 @@
 package v2
 
 import (
-	"bytes"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
@@ -65,18 +65,14 @@ func TestIPLDRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	// ipld TypedNode format
-	var buf bytes.Buffer
 	node := bindnode.Wrap(igsm, ipldbind.Prototype.Message.Type())
-
+	byts, err := ipld.Encode(node, dagcbor.Encode)
 	// dag-cbor binary format
-	err = dagcbor.Encode(node.Representation(), &buf)
 	require.NoError(t, err)
 
 	// back to bindnode internal format
-	builder := ipldbind.Prototype.Message.Representation().NewBuilder()
-	err = dagcbor.Decode(builder, &buf)
+	rtnode, err := ipld.DecodeUsingPrototype(byts, dagcbor.Decode, ipldbind.Prototype.Message.Representation())
 	require.NoError(t, err)
-	rtnode := builder.Build()
 	rtigsm := bindnode.Unwrap(rtnode)
 
 	// back to message format
