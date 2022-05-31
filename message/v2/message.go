@@ -8,6 +8,8 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/bindnode"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -15,7 +17,6 @@ import (
 	"github.com/libp2p/go-msgio"
 
 	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
 	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/message/ipldbind"
 )
@@ -43,7 +44,7 @@ func (mh *MessageHandler) FromMsgReader(_ peer.ID, r msgio.Reader) (message.Grap
 		return message.GraphSyncMessage{}, err
 	}
 
-	node, err := ipldutil.DecodeNodeInto(msg, ipldbind.Prototype.Message.Representation())
+	node, err := ipld.DecodeUsingPrototype(msg, dagcbor.Decode, ipldbind.Prototype.Message.Representation())
 	if err != nil {
 		return message.GraphSyncMessage{}, err
 	}
@@ -140,7 +141,7 @@ func (mh *MessageHandler) ToNet(_ peer.ID, gsm message.GraphSyncMessage, w io.Wr
 	buf.Write(lbuf)
 
 	node := bindnode.Wrap(msg, ipldbind.Prototype.Message.Type())
-	err = ipldutil.EncodeNodeInto(node.Representation(), buf)
+	err = ipld.EncodeStreaming(buf, node.Representation(), dagcbor.Encode)
 	if err != nil {
 		return err
 	}

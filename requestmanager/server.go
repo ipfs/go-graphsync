@@ -14,6 +14,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-peertaskqueue/peertracker"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -376,7 +377,7 @@ func (rm *RequestManager) validateRequest(requestID graphsync.RequestID, p peer.
 	if err != nil {
 		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, err
 	}
-	_, err = ipldutil.EncodeNode(selectorSpec)
+	_, err = ipld.Encode(selectorSpec, dagcbor.Encode)
 	if err != nil {
 		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, err
 	}
