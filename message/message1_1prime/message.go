@@ -27,11 +27,6 @@ func NewRequest(id datatransfer.TransferID, isRestart bool, isPull bool, vtype d
 		return nil, xerrors.Errorf("base CID must be defined")
 	}
 
-	selnode, err := encoding.EncodeToNode(selector)
-	if err != nil {
-		return nil, xerrors.Errorf("Creating request: %w", err)
-	}
-
 	var typ uint64
 	if isRestart {
 		typ = uint64(types.RestartMessage)
@@ -43,7 +38,7 @@ func NewRequest(id datatransfer.TransferID, isRestart bool, isPull bool, vtype d
 		MessageType:           typ,
 		Pull:                  isPull,
 		VoucherPtr:            &vnode,
-		SelectorPtr:           &selnode,
+		SelectorPtr:           &selector,
 		BaseCidPtr:            &baseCid,
 		VoucherTypeIdentifier: vtype,
 		TransferId:            uint64(id),
