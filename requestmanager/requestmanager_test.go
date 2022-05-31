@@ -1099,7 +1099,7 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.taskqueue = taskqueue.NewTaskQueue(ctx)
 	td.localBlockStore = make(map[ipld.Link][]byte)
 	td.localPersistence = testutil.NewTestStore(td.localBlockStore)
-	td.requestManager = New(ctx, td.persistenceOptions, td.localPersistence, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.outgoingRequestProcessingListeners, td.taskqueue, td.tcm, 0)
+	td.requestManager = New(ctx, td.persistenceOptions, td.localPersistence, td.requestHooks, td.responseHooks, td.networkErrorListeners, td.outgoingRequestProcessingListeners, td.taskqueue, td.tcm, 0, nil)
 	td.executor = executor.NewExecutor(td.requestManager, td.blockHooks)
 	td.requestManager.SetDelegate(td.fph)
 	td.requestManager.Startup()

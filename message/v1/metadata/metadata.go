@@ -3,10 +3,10 @@ package metadata
 import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/node/bindnode"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/message/ipldbind"
 )
 
 // Item is a single link traversed in a repsonse
@@ -45,14 +45,11 @@ func DecodeMetadata(data datamodel.Node) (Metadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	metadata, err := ipldbind.SafeUnwrap(builder.Build())
-	if err != nil {
-		return nil, err
-	}
+	metadata := bindnode.Unwrap(builder.Build())
 	return *(metadata.(*Metadata)), nil
 }
 
 // EncodeMetadata encodes metadata to an IPLD node then serializes to raw bytes
-func EncodeMetadata(entries Metadata) (datamodel.Node, error) {
-	return ipldbind.SafeWrap(&entries, Prototype.Metadata.Type())
+func EncodeMetadata(entries Metadata) datamodel.Node {
+	return bindnode.Wrap(&entries, Prototype.Metadata.Type())
 }

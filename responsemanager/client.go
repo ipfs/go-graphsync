@@ -16,6 +16,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
@@ -107,6 +108,7 @@ type ResponseManager struct {
 	connManager           network.ConnManager
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
 	maxLinksPerRequest uint64
+	panicCallback      panics.CallBackFn
 	responseQueue      taskqueue.TaskQueue
 }
 
@@ -123,6 +125,7 @@ func New(ctx context.Context,
 	networkErrorListeners NetworkErrorListeners,
 	connManager network.ConnManager,
 	maxLinksPerRequest uint64,
+	panicCallback panics.CallBackFn,
 	responseQueue taskqueue.TaskQueue,
 ) *ResponseManager {
 	ctx, cancelFn := context.WithCancel(ctx)
@@ -144,6 +147,7 @@ func New(ctx context.Context,
 		connManager:           connManager,
 		maxLinksPerRequest:    maxLinksPerRequest,
 		responseQueue:         responseQueue,
+		panicCallback:         panicCallback,
 	}
 	return rm
 }

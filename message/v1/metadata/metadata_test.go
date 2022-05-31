@@ -27,11 +27,10 @@ func TestDecodeEncodeMetadata(t *testing.T) {
 	})
 
 	// verify metadata matches
-	encoded, err := EncodeMetadata(initialMetadata)
-	require.NoError(t, err, "encode errored")
+	encoded := EncodeMetadata(initialMetadata)
 
 	decodedMetadata, err := DecodeMetadata(encoded)
-	require.NoError(t, err, "decode errored")
+	require.NoError(t, err)
 	require.Equal(t, initialMetadata, decodedMetadata, "metadata changed during encoding and decoding")
 
 	// verify metadata is equivalent of IPLD node encoding

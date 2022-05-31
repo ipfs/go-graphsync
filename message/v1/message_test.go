@@ -92,6 +92,7 @@ func TestAppendingResponses(t *testing.T) {
 	}
 	requestID := graphsync.NewRequestID()
 	p := peer.ID("test peer")
+
 	mh := NewMessageHandler()
 	status := graphsync.RequestAcknowledged
 
@@ -423,7 +424,9 @@ func TestKnownFuzzIssues(t *testing.T) {
 		"\x0600\x1a\x02\x180",
 	}
 	p := peer.ID("test peer")
+
 	mh := NewMessageHandler()
+
 	for _, input := range inputs {
 		//inputAsBytes, err := hex.DecodeString(input)
 		///require.NoError(t, err)

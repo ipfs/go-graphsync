@@ -19,6 +19,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
+	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/persistenceoptions"
@@ -85,6 +86,7 @@ type graphsyncConfigOptions struct {
 	maxLinksPerIncomingRequest           uint64
 	messageSendRetries                   int
 	sendMessageTimeout                   time.Duration
+	panicCallback                        panics.CallBackFn
 }
 
 // Option defines the functional option type that can be used to configure
@@ -188,6 +190,16 @@ func SendMessageTimeout(sendMessageTimeout time.Duration) Option {
 	}
 }
 
+// PanicCallback allows calling code to receive information about panics that
+// Graphsync recovers from. Graphsync recovers panics that occur during
+// per-request execution in order to keep the over all system running, although
+// they are still treated as standard errors in normal execution flow.
+func PanicCallback(callbackFn panics.CallBackFn) Option {
+	return func(gs *graphsyncConfigOptions) {
+		gs.panicCallback = callbackFn
+	}
+}
+
 // New creates a new GraphSync Exchange on the given network,
 // and the given link loader+storer.
 func New(parent context.Context, network gsnet.GraphSyncNetwork,
@@ -202,6 +214,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		registerDefaultValidator:      true,
 		messageSendRetries:            defaultMessageSendRetries,
 		sendMessageTimeout:            defaultSendMessageTimeout,
+		panicCallback:                 nil,
 	}
 	for _, option := range options {
 		option(gsConfig)
@@ -230,7 +243,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
 
 	requestQueue := taskqueue.NewTaskQueue(ctx)
-	requestManager := requestmanager.New(ctx, persistenceOptions, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest)
+	requestManager := requestmanager.New(ctx, persistenceOptions, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest, gsConfig.panicCallback)
 	requestExecutor := executor.NewExecutor(requestManager, incomingBlockHooks)
 	responseAssembler := responseassembler.New(ctx, peerManager)
 	var ptqopts []peertaskqueue.Option
@@ -251,6 +264,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		networkErrorListeners,
 		network.ConnectionManager(),
 		gsConfig.maxLinksPerIncomingRequest,
+		gsConfig.panicCallback,
 		responseQueue)
 	queryExecutor := queryexecutor.New(
 		ctx,

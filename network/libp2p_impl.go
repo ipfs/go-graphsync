@@ -17,6 +17,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsmsgv1 "github.com/ipfs/go-graphsync/message/v1"
 	gsmsgv2 "github.com/ipfs/go-graphsync/message/v2"
+	"github.com/ipfs/go-graphsync/panics"
 )
 
 var log = logging.Logger("graphsync_network")
@@ -34,20 +35,33 @@ func GraphsyncProtocols(protocols []protocol.ID) Option {
 	}
 }
 
+// PanicCallback allows calling code to receive information about panics that
+// Graphsync recovers from. Graphsync recovers panics that occur during
+// message handling in order to keep the over all system running, although
+// they are still treated as standard errors in normal execution flow.
+func PanicCallback(callbackFn panics.CallBackFn) Option {
+	return func(gsnet *libp2pGraphSyncNetwork) {
+		gsnet.panicCallback = callbackFn
+	}
+}
+
 // NewFromLibp2pHost returns a GraphSyncNetwork supported by underlying Libp2p host.
 func NewFromLibp2pHost(host host.Host, options ...Option) GraphSyncNetwork {
-	messageHandlerSelector := messageHandlerSelector{
-		v1MessageHandler: gsmsgv1.NewMessageHandler(),
-		v2MessageHandler: gsmsgv2.NewMessageHandler(),
-	}
 	graphSyncNetwork := libp2pGraphSyncNetwork{
-		host:                   host,
-		messageHandlerSelector: &messageHandlerSelector,
-		protocols:              []protocol.ID{ProtocolGraphsync_2_0_0, ProtocolGraphsync_1_0_0},
+		host:      host,
+		protocols: []protocol.ID{ProtocolGraphsync_2_0_0, ProtocolGraphsync_1_0_0},
 	}
 
 	for _, option := range options {
 		option(&graphSyncNetwork)
+	}
+
+	graphSyncNetwork.panicHandler = panics.MakeHandler(graphSyncNetwork.panicCallback)
+
+	graphSyncNetwork.messageHandlerSelector = &messageHandlerSelector{
+		v1MessageHandler: gsmsgv1.NewMessageHandler(),
+		v2MessageHandler: gsmsgv2.NewMessageHandler(),
+		panicHandler:     graphSyncNetwork.panicHandler,
 	}
 
 	return &graphSyncNetwork
@@ -73,6 +87,8 @@ func (mhe messageHandlerErrorer) ToNet(peer.ID, gsmsg.GraphSyncMessage, io.Write
 type messageHandlerSelector struct {
 	v1MessageHandler gsmsg.MessageHandler
 	v2MessageHandler gsmsg.MessageHandler
+
+	panicHandler panics.PanicHandler
 }
 
 func (smh messageHandlerSelector) Select(protocol protocol.ID) gsmsg.MessageHandler {
@@ -94,6 +110,8 @@ type libp2pGraphSyncNetwork struct {
 	receiver               Receiver
 	protocols              []protocol.ID
 	messageHandlerSelector *messageHandlerSelector
+	panicCallback          panics.CallBackFn
+	panicHandler           panics.PanicHandler
 }
 
 type streamMessageSender struct {
@@ -114,7 +132,14 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg gsmsg.GraphSyncMe
 	return msgToStream(ctx, s.s, s.messageHandlerSelector, msg, s.opts.SendTimeout)
 }
 
-func msgToStream(ctx context.Context, s network.Stream, mh *messageHandlerSelector, msg gsmsg.GraphSyncMessage, timeout time.Duration) error {
+func msgToStream(ctx context.Context, s network.Stream, mh *messageHandlerSelector, msg gsmsg.GraphSyncMessage, timeout time.Duration) (err error) {
+	defer func() {
+		if rerr := mh.panicHandler(recover()); rerr != nil {
+			log.Warnf("recovered panic handling message: %s", err)
+			err = rerr
+		}
+	}()
+
 	log.Debugf("Outgoing message with %d requests, %d responses, and %d blocks",
 		len(msg.Requests()), len(msg.Responses()), len(msg.Blocks()))
 
@@ -134,7 +159,8 @@ func msgToStream(ctx context.Context, s network.Stream, mh *messageHandlerSelect
 	if err := s.SetWriteDeadline(time.Time{}); err != nil {
 		log.Warnf("error resetting deadline: %s", err)
 	}
-	return nil
+
+	return err
 }
 
 func (gsnet *libp2pGraphSyncNetwork) NewMessageSender(ctx context.Context, p peer.ID, opts MessageSenderOpts) (MessageSender, error) {
@@ -186,7 +212,16 @@ func (gsnet *libp2pGraphSyncNetwork) ConnectTo(ctx context.Context, p peer.ID) e
 
 // handleNewStream receives a new stream from the network.
 func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
+	var p peer.ID
+
 	defer s.Close()
+	defer func() {
+		if rerr := gsnet.panicHandler(recover()); rerr != nil {
+			log.Debugf("graphsync net handleNewStream recovered error from %s error: %s", s.Conn().RemotePeer(), rerr)
+			_ = s.Reset()
+			go gsnet.receiver.ReceiveError(p, rerr)
+		}
+	}()
 
 	if gsnet.receiver == nil {
 		_ = s.Reset()
@@ -195,8 +230,8 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 
 	reader := msgio.NewVarintReaderSize(s, network.MessageSizeMax)
 	for {
+		p = s.Conn().RemotePeer()
 		received, err := gsnet.messageHandlerSelector.Select(s.Protocol()).FromMsgReader(s.Conn().RemotePeer(), reader)
-		p := s.Conn().RemotePeer()
 
 		if err != nil {
 			if err != io.EOF {

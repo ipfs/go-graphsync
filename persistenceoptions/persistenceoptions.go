@@ -26,7 +26,7 @@ func (po *PersistenceOptions) Register(name string, linkSystem ipld.LinkSystem) 
 	defer po.persistenceOptionsLk.Unlock()
 	_, ok := po.persistenceOptions[name]
 	if ok {
-		return errors.New("persistence option alreayd registered")
+		return errors.New("persistence option already registered")
 	}
 	po.persistenceOptions[name] = linkSystem
 	return nil

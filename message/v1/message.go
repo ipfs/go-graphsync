@@ -275,10 +275,7 @@ func toEncodedExtensions(part message.MessagePartWithExtensions, linkMetadata gr
 		linkMetadata.Iterate(func(c cid.Cid, la graphsync.LinkAction) {
 			md = append(md, metadata.Item{Link: c, BlockPresent: la == graphsync.LinkActionPresent})
 		})
-		mdNode, err := metadata.EncodeMetadata(md)
-		if err != nil {
-			return nil, err
-		}
+		mdNode := metadata.EncodeMetadata(md)
 		mdByts, err := ipldutil.EncodeNode(mdNode)
 		if err != nil {
 			return nil, err

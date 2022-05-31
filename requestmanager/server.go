@@ -156,9 +156,10 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 				}
 				return nil
 			},
-			Chooser:    ipr.nodeStyleChooser,
-			LinkSystem: rm.linkSystem,
-			Budget:     budget,
+			Chooser:       ipr.nodeStyleChooser,
+			LinkSystem:    rm.linkSystem,
+			Budget:        budget,
+			PanicCallback: rm.panicCallback,
 		}.Start(ctx)
 
 		ipr.reconciledLoader = reconciledloader.NewReconciledLoader(ipr.request.ID(), ipr.lsys)
@@ -370,11 +371,11 @@ func (rm *RequestManager) processTerminations(responses []gsmsg.GraphSyncRespons
 }
 
 func (rm *RequestManager) validateRequest(requestID graphsync.RequestID, p peer.ID, root ipld.Link, selectorSpec ipld.Node, extensions []graphsync.ExtensionData) (gsmsg.GraphSyncRequest, hooks.RequestResult, *linking.LinkSystem, error) {
-	_, err := ipldutil.EncodeNode(selectorSpec)
+	_, err := selector.ParseSelector(selectorSpec)
 	if err != nil {
 		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, err
 	}
-	_, err = selector.ParseSelector(selectorSpec)
+	_, err = ipldutil.EncodeNode(selectorSpec)
 	if err != nil {
 		return gsmsg.GraphSyncRequest{}, hooks.RequestResult{}, nil, err
 	}

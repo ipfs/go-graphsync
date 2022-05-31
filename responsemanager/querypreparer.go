@@ -19,6 +19,7 @@ import (
 	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
 	"github.com/ipfs/go-graphsync/ipldutil"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 )
@@ -36,6 +37,7 @@ type queryPreparer struct {
 	linkSystem   ipld.LinkSystem
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit=
 	maxLinksPerRequest uint64
+	panicCallback      panics.CallBackFn
 }
 
 func (qe *queryPreparer) prepareQuery(
@@ -87,11 +89,12 @@ func (qe *queryPreparer) prepareQuery(
 		}
 	}
 	traverser := ipldutil.TraversalBuilder{
-		Root:       rootLink,
-		Selector:   request.Selector(),
-		LinkSystem: linkSystem,
-		Chooser:    result.CustomChooser,
-		Budget:     budget,
+		Root:          rootLink,
+		Selector:      request.Selector(),
+		LinkSystem:    linkSystem,
+		Chooser:       result.CustomChooser,
+		Budget:        budget,
+		PanicCallback: qe.panicCallback,
 		Visitor: func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error {
 			if lbn, ok := n.(datamodel.LargeBytesNode); ok {
 				s, err := lbn.AsLargeBytes()
