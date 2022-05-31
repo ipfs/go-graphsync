@@ -104,6 +104,7 @@ func (trm *releaseRequestTaskMessage) handle(rm *RequestManager) {
 }
 
 type newRequestMessage struct {
+	requestID             graphsync.RequestID
 	span                  trace.Span
 	p                     peer.ID
 	root                  ipld.Link
@@ -115,7 +116,7 @@ type newRequestMessage struct {
 func (nrm *newRequestMessage) handle(rm *RequestManager) {
 	var ipr inProgressRequest
 
-	ipr.request, ipr.incoming, ipr.incomingError = rm.newRequest(nrm.span, nrm.p, nrm.root, nrm.selector, nrm.extensions)
+	ipr.request, ipr.incoming, ipr.incomingError = rm.newRequest(nrm.requestID, nrm.span, nrm.p, nrm.root, nrm.selector, nrm.extensions)
 	ipr.requestID = ipr.request.ID()
 
 	select {

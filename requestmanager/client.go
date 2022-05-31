@@ -178,9 +178,15 @@ func (rm *RequestManager) NewRequest(ctx context.Context,
 		return rm.singleErrorResponse(err)
 	}
 
+	requestID := graphsync.NewRequestID()
+	idFromContext := ctx.Value(graphsync.RequestIDContextKey{})
+	if existingRequestID, ok := idFromContext.(graphsync.RequestID); ok {
+		requestID = existingRequestID
+	}
+
 	inProgressRequestChan := make(chan inProgressRequest)
 
-	rm.send(&newRequestMessage{span, p, root, selectorNode, extensions, inProgressRequestChan}, ctx.Done())
+	rm.send(&newRequestMessage{requestID, span, p, root, selectorNode, extensions, inProgressRequestChan}, ctx.Done())
 	var receivedInProgressRequest inProgressRequest
 	select {
 	case <-rm.ctx.Done():
