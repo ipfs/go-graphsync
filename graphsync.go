@@ -438,6 +438,10 @@ type RequestState uint64
 // RequestStates describe a set of request IDs and their current state
 type RequestStates map[RequestID]RequestState
 
+// RequestIDContextKey is used to the desired request id in context when
+// initializing a request
+type RequestIDContextKey struct{}
+
 const (
 	// Queued means a request has been received and is queued for processing
 	Queued RequestState = iota
