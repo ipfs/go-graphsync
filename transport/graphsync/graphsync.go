@@ -172,12 +172,12 @@ func (t *Transport) consumeResponses(req *gsReq) error {
 	var lastError error
 	for range req.responseChan {
 	}
-	log.Infof("channel %s: finished consuming graphsync response channel", req.channelID)
+	log.Debugf("channel %s: finished consuming graphsync response channel", req.channelID)
 
 	for err := range req.errChan {
 		lastError = err
 	}
-	log.Infof("channel %s: finished consuming graphsync error channel", req.channelID)
+	log.Debugf("channel %s: finished consuming graphsync error channel", req.channelID)
 
 	return lastError
 }
@@ -974,7 +974,7 @@ func (c *dtChannel) open(
 	onComplete := func() {
 		// Ensure the channel is only closed once
 		onCompleteOnce.Do(func() {
-			log.Infow("closing the completion ch for data-transfer channel", "chid", chid)
+			log.Debugw("closing the completion ch for data-transfer channel", "chid", chid)
 			close(completed)
 		})
 	}
