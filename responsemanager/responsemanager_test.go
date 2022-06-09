@@ -1150,7 +1150,7 @@ type testData struct {
 	updateRequests             []gsmsg.GraphSyncRequest
 	p                          peer.ID
 	peristenceOptions          *persistenceoptions.PersistenceOptions
-	requestProcessingListeners *listeners.IncomingRequestProcessingListeners
+	requestProcessingListeners *listeners.RequestProcessingListeners
 	requestHooks               *hooks.IncomingRequestHooks
 	blockHooks                 *hooks.OutgoingBlockHooks
 	updateHooks                *hooks.RequestUpdatedHooks
@@ -1237,7 +1237,7 @@ func newTestData(t *testing.T) testData {
 	}
 	td.p = testutil.GeneratePeers(1)[0]
 	td.peristenceOptions = persistenceoptions.New()
-	td.requestProcessingListeners = listeners.NewIncomingRequestProcessingListeners()
+	td.requestProcessingListeners = listeners.NewRequestProcessingListeners()
 	td.requestHooks = hooks.NewRequestHooks(td.peristenceOptions)
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()

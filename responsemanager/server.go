@@ -310,7 +310,7 @@ func (rm *ResponseManager) taskDataForKey(requestID graphsync.RequestID) queryex
 	if response.traverser == nil {
 		// this is the first time this request has started processing, so call request processing listerns
 		inProgressCount := len(rm.inProgressResponses)
-		rm.requestProcessingListeners.NotifyIncomingRequestProcessingListeners(response.peer, response.request, inProgressCount)
+		rm.requestProcessingListeners.NotifyRequestProcessingListeners(response.peer, response.request, inProgressCount)
 
 		// setup traversal
 		rootLink := cidlink.Link{Cid: response.request.Root()}

@@ -72,9 +72,9 @@ type BlockSentListeners interface {
 	NotifyBlockSentListeners(p peer.ID, request graphsync.RequestData, block graphsync.BlockData)
 }
 
-// RequestProcessingListeners
+// RequestProcessingListeners is an interface for notifying listeners a request has begun processing
 type RequestProcessingListeners interface {
-	NotifyIncomingRequestProcessingListeners(p peer.ID, request graphsync.RequestData, inProgressRequestCount int)
+	NotifyRequestProcessingListeners(p peer.ID, request graphsync.RequestData, inProgressRequestCount int)
 }
 
 // NetworkErrorListeners is an interface for notifying listeners that an error occurred sending a data on the wire

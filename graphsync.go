@@ -372,13 +372,9 @@ type OnReceiverNetworkErrorListener func(p peer.ID, err error)
 // OnResponseCompletedListener provides a way to listen for when responder has finished serving a response
 type OnResponseCompletedListener func(p peer.ID, request RequestData, status ResponseStatusCode)
 
-// OnOutgoingRequestProcessingListener is called when an outgoing request actually begins processing (reaches
-// the top of the outgoing request queue)
-type OnOutgoingRequestProcessingListener func(p peer.ID, request RequestData, inProgressRequestCount int)
-
-// OnIncomingRequestProcessingListener is called when an incoming request actually begins processing (reaches
-// the top of the outgoing request queue)
-type OnIncomingRequestProcessingListener func(p peer.ID, request RequestData, inProgressRequestCount int)
+// OnRequestProcessingListener is called when a request actually begins processing (reaches
+// the top of the request queue)
+type OnRequestProcessingListener func(p peer.ID, request RequestData, inProgressRequestCount int)
 
 // OnRequestorCancelledListener provides a way to listen for responses the requestor canncels
 type OnRequestorCancelledListener func(p peer.ID, request RequestData)
@@ -495,11 +491,11 @@ type GraphExchange interface {
 
 	// RegisterOutgoingRequestProcessingListener adds a listener that gets called when an outgoing request actually begins processing (reaches
 	// the top of the outgoing request queue)
-	RegisterOutgoingRequestProcessingListener(listener OnOutgoingRequestProcessingListener) UnregisterHookFunc
+	RegisterOutgoingRequestProcessingListener(listener OnRequestProcessingListener) UnregisterHookFunc
 
 	// RegisterOutgoingRequestProcessingListener adds a listener that gets called when an incoming request actually begins processing (reaches
 	// the top of the outgoing request queue)
-	RegisterIncomingRequestProcessingListener(listener OnIncomingRequestProcessingListener) UnregisterHookFunc
+	RegisterIncomingRequestProcessingListener(listener OnRequestProcessingListener) UnregisterHookFunc
 
 	// RegisterCompletedResponseListener adds a listener on the responder for completed responses
 	RegisterCompletedResponseListener(listener OnResponseCompletedListener) UnregisterHookFunc
