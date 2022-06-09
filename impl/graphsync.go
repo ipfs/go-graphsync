@@ -56,10 +56,10 @@ type GraphSync struct {
 	requestExecutor                    *executor.Executor
 	responseAssembler                  *responseassembler.ResponseAssembler
 	peerManager                        *peermanager.PeerMessageManager
-	incomingRequestQueuedHooks         *responderhooks.IncomingRequestQueuedHooks
 	incomingRequestHooks               *responderhooks.IncomingRequestHooks
 	outgoingBlockHooks                 *responderhooks.OutgoingBlockHooks
 	requestUpdatedHooks                *responderhooks.RequestUpdatedHooks
+	incomingRequestProcessingListeners *listeners.IncomingRequestProcessingListeners
 	outgoingRequestProcessingListeners *listeners.OutgoingRequestProcessingListeners
 	completedResponseListeners         *listeners.CompletedResponseListeners
 	requestorCancelledListeners        *listeners.RequestorCancelledListeners
@@ -225,8 +225,8 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	networkErrorListeners := listeners.NewNetworkErrorListeners()
 	receiverErrorListeners := listeners.NewReceiverNetworkErrorListeners()
 	outgoingRequestProcessingListeners := listeners.NewOutgoingRequestProcessingListeners()
+	incomingRequestProcessingListeners := listeners.NewIncomingRequestProcessingListeners()
 	persistenceOptions := persistenceoptions.New()
-	requestQueuedHooks := responderhooks.NewRequestQueuedHooks()
 	incomingRequestHooks := responderhooks.NewRequestHooks(persistenceOptions)
 	outgoingBlockHooks := responderhooks.NewBlockHooks()
 	requestUpdatedHooks := responderhooks.NewUpdateHooks()
@@ -255,7 +255,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		ctx,
 		linkSystem,
 		responseAssembler,
-		requestQueuedHooks,
+		incomingRequestProcessingListeners,
 		incomingRequestHooks,
 		requestUpdatedHooks,
 		completedResponseListeners,
@@ -273,32 +273,32 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		requestUpdatedHooks,
 	)
 	graphSync := &GraphSync{
-		network:                     network,
-		linkSystem:                  linkSystem,
-		requestManager:              requestManager,
-		responseManager:             responseManager,
-		queryExecutor:               queryExecutor,
-		responseQueue:               responseQueue,
-		requestQueue:                requestQueue,
-		requestExecutor:             requestExecutor,
-		responseAssembler:           responseAssembler,
-		peerManager:                 peerManager,
-		incomingRequestQueuedHooks:  requestQueuedHooks,
-		incomingRequestHooks:        incomingRequestHooks,
-		outgoingBlockHooks:          outgoingBlockHooks,
-		requestUpdatedHooks:         requestUpdatedHooks,
-		completedResponseListeners:  completedResponseListeners,
-		requestorCancelledListeners: requestorCancelledListeners,
-		blockSentListeners:          blockSentListeners,
-		networkErrorListeners:       networkErrorListeners,
-		receiverErrorListeners:      receiverErrorListeners,
-		incomingResponseHooks:       incomingResponseHooks,
-		outgoingRequestHooks:        outgoingRequestHooks,
-		incomingBlockHooks:          incomingBlockHooks,
-		persistenceOptions:          persistenceOptions,
-		ctx:                         ctx,
-		cancel:                      cancel,
-		responseAllocator:           responseAllocator,
+		network:                            network,
+		linkSystem:                         linkSystem,
+		requestManager:                     requestManager,
+		responseManager:                    responseManager,
+		queryExecutor:                      queryExecutor,
+		responseQueue:                      responseQueue,
+		requestQueue:                       requestQueue,
+		requestExecutor:                    requestExecutor,
+		responseAssembler:                  responseAssembler,
+		peerManager:                        peerManager,
+		incomingRequestProcessingListeners: incomingRequestProcessingListeners,
+		incomingRequestHooks:               incomingRequestHooks,
+		outgoingBlockHooks:                 outgoingBlockHooks,
+		requestUpdatedHooks:                requestUpdatedHooks,
+		completedResponseListeners:         completedResponseListeners,
+		requestorCancelledListeners:        requestorCancelledListeners,
+		blockSentListeners:                 blockSentListeners,
+		networkErrorListeners:              networkErrorListeners,
+		receiverErrorListeners:             receiverErrorListeners,
+		incomingResponseHooks:              incomingResponseHooks,
+		outgoingRequestHooks:               outgoingRequestHooks,
+		incomingBlockHooks:                 incomingBlockHooks,
+		persistenceOptions:                 persistenceOptions,
+		ctx:                                ctx,
+		cancel:                             cancel,
+		responseAllocator:                  responseAllocator,
 	}
 
 	requestManager.SetDelegate(peerManager)
@@ -335,8 +335,8 @@ func (gs *GraphSync) RegisterIncomingRequestHook(hook graphsync.OnIncomingReques
 
 // RegisterIncomingRequestQueuedHook adds a hook that runs when a new incoming request is added
 // to the responder's task queue.
-func (gs *GraphSync) RegisterIncomingRequestQueuedHook(hook graphsync.OnIncomingRequestQueuedHook) graphsync.UnregisterHookFunc {
-	return gs.incomingRequestQueuedHooks.Register(hook)
+func (gs *GraphSync) RegisterIncomingRequestProcessingListener(listener graphsync.OnIncomingRequestProcessingListener) graphsync.UnregisterHookFunc {
+	return gs.incomingRequestProcessingListeners.Register(listener)
 }
 
 // RegisterIncomingResponseHook adds a hook that runs when a response is received

@@ -3,11 +3,16 @@ package responsemanager
 import (
 	"context"
 	"errors"
+	"io"
+	"io/ioutil"
 	"math"
 	"time"
 
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-peertaskqueue/peertracker"
+	"github.com/ipld/go-ipld-prime/datamodel"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -198,12 +203,20 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			continue
 		default:
 		}
+		// processing new request
+
+		// protect the connection
 		rm.connManager.Protect(p, request.ID().Tag())
-		// don't use `ctx` which has the "message" trace, but rm.ctx for a fresh trace which allows
+
+		// Run request hooks
+		// Don't use `ctx` which has the "message" trace, but rm.ctx for a fresh trace which allows
 		// for a request hook to join this particular response up to an existing external trace
-		rctx := rm.requestQueuedHooks.ProcessRequestQueuedHooks(p, request, rm.ctx)
+		result := rm.requestHooks.ProcessRequestHooks(p, request, rm.ctx)
+
+		// setup request data
+
 		rctx, responseSpan := otel.Tracer("graphsync").Start(
-			rctx,
+			result.Ctx,
 			"response",
 			trace.WithLinks(trace.LinkFromContext(ctx)),
 			trace.WithAttributes(
@@ -219,8 +232,10 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 					return st
 				}()),
 			))
+
 		rctx, cancelFn := context.WithCancel(rctx)
-		sub := &subscriber{
+
+		subscriber := &subscriber{
 			p:                     p,
 			request:               request,
 			requestCloser:         rm,
@@ -229,31 +244,59 @@ func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSync
 			networkErrorListeners: rm.networkErrorListeners,
 			connManager:           rm.connManager,
 		}
+
+		linkSystem := result.CustomLinkSystem
+		if linkSystem.StorageReadOpener == nil {
+			linkSystem = rm.linkSystem
+		}
+
+		signals := queryexecutor.ResponseSignals{
+			PauseSignal:  make(chan struct{}, 1),
+			UpdateSignal: make(chan struct{}, 1),
+			ErrSignal:    make(chan error, 1),
+		}
+
+		responseStream := rm.responseAssembler.NewStream(rctx, p, request.ID(), subscriber)
+
+		response := &inProgressResponseStatus{
+			ctx:            rctx,
+			span:           responseSpan,
+			cancelFn:       cancelFn,
+			peer:           p,
+			request:        request,
+			linkSystem:     linkSystem,
+			customChooser:  result.CustomChooser,
+			signals:        signals,
+			startTime:      time.Now(),
+			responseStream: responseStream,
+		}
+
+		// setup query for processing
+		err := prepareQuery(rctx, p, request, result, responseStream)
+
+		if err != nil {
+			// error occurred in request hooks or setting up the query --
+			// now we're just waiting for the error response to finish sending
+			response.state = graphsync.CompletingSend
+			response.span.RecordError(err)
+			response.span.SetStatus(codes.Error, err.Error())
+		} else if result.IsPaused {
+			response.state = graphsync.Paused
+		} else {
+			response.state = graphsync.Queued
+			// TODO: Use a better work estimation metric.
+			rm.responseQueue.PushTask(p, peertask.Task{Topic: request.ID(), Priority: int(request.Priority()), Work: 1})
+		}
+
+		// save request state
 		log.Infow("graphsync request initiated", "request id", request.ID().String(), "peer", p, "root", request.Root())
 		ipr, ok := rm.inProgressResponses[request.ID()]
 		if ok && ipr.state == graphsync.Running {
 			log.Warnf("there is an identical request already in progress", "request id", request.ID().String(), "peer", p)
 		}
 
-		rm.inProgressResponses[request.ID()] =
-			&inProgressResponseStatus{
-				ctx:      rctx,
-				span:     responseSpan,
-				cancelFn: cancelFn,
-				peer:     p,
-				request:  request,
-				signals: queryexecutor.ResponseSignals{
-					PauseSignal:  make(chan struct{}, 1),
-					UpdateSignal: make(chan struct{}, 1),
-					ErrSignal:    make(chan error, 1),
-				},
-				state:          graphsync.Queued,
-				startTime:      time.Now(),
-				responseStream: rm.responseAssembler.NewStream(ctx, p, request.ID(), sub),
-			}
-		// TODO: Use a better work estimation metric.
+		rm.inProgressResponses[request.ID()] = response
 
-		rm.responseQueue.PushTask(p, peertask.Task{Topic: request.ID(), Priority: int(request.Priority()), Work: 1})
 	}
 }
 
@@ -264,20 +307,44 @@ func (rm *ResponseManager) taskDataForKey(requestID graphsync.RequestID) queryex
 	}
 	log.Infow("graphsync response processing begins", "request id", requestID.String(), "peer", response.peer, "total time", time.Since(response.startTime))
 
-	if response.loader == nil || response.traverser == nil {
-		loader, traverser, isPaused, err := (&queryPreparer{rm.requestHooks, rm.linkSystem, rm.maxLinksPerRequest, rm.panicCallback}).prepareQuery(response.ctx, response.peer, response.request, response.responseStream, response.signals)
-		if err != nil {
-			response.state = graphsync.CompletingSend
-			response.span.RecordError(err)
-			response.span.SetStatus(codes.Error, err.Error())
-			return queryexecutor.ResponseTask{Empty: true}
+	if response.traverser == nil {
+		// this is the first time this request has started processing, so call request processing listerns
+		inProgressCount := len(rm.inProgressResponses)
+		rm.requestProcessingListeners.NotifyIncomingRequestProcessingListeners(response.peer, response.request, inProgressCount)
+
+		// setup traversal
+		rootLink := cidlink.Link{Cid: response.request.Root()}
+
+		var budget *traversal.Budget
+		if rm.maxLinksPerRequest > 0 {
+			budget = &traversal.Budget{
+				NodeBudget: math.MaxInt64,
+				LinkBudget: int64(rm.maxLinksPerRequest),
+			}
 		}
-		response.loader = loader
+		traverser := ipldutil.TraversalBuilder{
+			Root:          rootLink,
+			Selector:      response.request.Selector(),
+			LinkSystem:    response.linkSystem,
+			Chooser:       response.customChooser,
+			Budget:        budget,
+			PanicCallback: rm.panicCallback,
+			Visitor: func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error {
+				if lbn, ok := n.(datamodel.LargeBytesNode); ok {
+					s, err := lbn.AsLargeBytes()
+					if err != nil {
+						log.Warnf("error %s in AsLargeBytes at path %s", err.Error(), p.Path)
+					}
+					_, err = io.Copy(ioutil.Discard, s)
+					if err != nil {
+						log.Warnf("error %s reading bytes from reader at path %s", err.Error(), p.Path)
+					}
+				}
+				return nil
+			},
+		}.Start(response.ctx)
+
 		response.traverser = traverser
-		if isPaused {
-			response.state = graphsync.Paused
-			return queryexecutor.ResponseTask{Empty: true}
-		}
 	}
 	response.state = graphsync.Running
 	return queryexecutor.ResponseTask{
@@ -285,7 +352,7 @@ func (rm *ResponseManager) taskDataForKey(requestID graphsync.RequestID) queryex
 		Span:           response.span,
 		Empty:          false,
 		Request:        response.request,
-		Loader:         response.loader,
+		Loader:         response.linkSystem.StorageReadOpener,
 		Traverser:      response.traverser,
 		Signals:        response.signals,
 		ResponseStream: response.responseStream,
