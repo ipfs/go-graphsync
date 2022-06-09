@@ -57,6 +57,11 @@ func TestIncomingQuery(t *testing.T) {
 		p       peer.ID
 		request graphsync.RequestData
 	}
+	type processingListenerCall struct {
+		p                      peer.ID
+		request                graphsync.RequestData
+		inProgressRequestCount int
+	}
 	rhc := make(chan *requestHookCall, 1)
 	td.requestHooks.Register(func(p peer.ID, request graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		td.connManager.AssertProtectedWithTags(t, p, request.ID().Tag())
@@ -69,6 +74,14 @@ func TestIncomingQuery(t *testing.T) {
 		}
 	})
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
+	plc := make(chan *processingListenerCall, 1)
+	td.requestProcessingListeners.Register(func(p peer.ID, request graphsync.RequestData, inProcessRequestCount int) {
+		plc <- &processingListenerCall{
+			p:                      p,
+			request:                request,
+			inProgressRequestCount: inProcessRequestCount,
+		}
+	})
 	responseManager.Startup()
 
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
@@ -81,10 +94,16 @@ func TestIncomingQuery(t *testing.T) {
 	td.taskqueue.WaitForNoActiveTasks()
 	testutil.AssertDoesReceive(td.ctx, t, completedResponse, "request never completed")
 
-	// ensure request queued hook fires.
+	// ensure request hook fires.
 	out := <-rhc
 	require.Equal(t, td.p, out.p)
 	require.Equal(t, out.request.ID(), td.requestID)
+
+	// ensure processing listener fires.
+	outListener := <-plc
+	require.Equal(t, td.p, outListener.p)
+	require.Equal(t, outListener.request.ID(), td.requestID)
+	require.Equal(t, 1, outListener.inProgressRequestCount)
 	td.connManager.RefuteProtected(t, td.p)
 
 	tracing := td.collectTracing(t)
