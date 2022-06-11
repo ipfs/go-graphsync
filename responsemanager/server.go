@@ -31,12 +31,14 @@ import (
 // The code in this file implements the internal thread for the response manager.
 // These functions can modify the internal state of the ResponseManager
 
+// cleanupInProcessResponses cleans all responses when the response manager shuts down
 func (rm *ResponseManager) cleanupInProcessResponses() {
 	for _, response := range rm.inProgressResponses {
 		response.cancelFn()
 	}
 }
 
+// run runs the internal loop for the response manager
 func (rm *ResponseManager) run() {
 	defer rm.cleanupInProcessResponses()
 
@@ -50,17 +52,30 @@ func (rm *ResponseManager) run() {
 	}
 }
 
-func (rm *ResponseManager) terminateRequest(requestID graphsync.RequestID) {
-	ipr, ok := rm.inProgressResponses[requestID]
-	if !ok {
-		return
+// processRequests is called to process new incoming requests from the network
+func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSyncRequest) {
+	ctx, messageSpan := otel.Tracer("graphsync").Start(
+		rm.ctx,
+		"processRequests",
+		trace.WithAttributes(attribute.String("peerID", p.Pretty())),
+	)
+	defer messageSpan.End()
+
+	for _, request := range requests {
+		switch request.Type() {
+		case graphsync.RequestTypeCancel:
+			_ = rm.abortRequest(ctx, request.ID(), ipldutil.ContextCancelError{})
+		case graphsync.RequestTypeUpdate:
+			rm.processUpdate(ctx, request.ID(), request)
+		case graphsync.RequestTypeNew:
+			rm.newRequest(ctx, p, request)
+		default:
+			log.Errorf("unrecognized request type: %s", request.Type())
+		}
 	}
-	rm.connManager.Unprotect(ipr.peer, requestID.Tag())
-	delete(rm.inProgressResponses, requestID)
-	ipr.cancelFn()
-	ipr.span.End()
 }
 
+// processUpdate handles a graphsync update message
 func (rm *ResponseManager) processUpdate(ctx context.Context, requestID graphsync.RequestID, update gsmsg.GraphSyncRequest) {
 	response, ok := rm.inProgressResponses[requestID]
 	if !ok || response.state == graphsync.CompletingSend {
@@ -120,27 +135,7 @@ func (rm *ResponseManager) processUpdate(ctx context.Context, requestID graphsyn
 	}
 }
 
-func (rm *ResponseManager) unpauseRequest(requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
-	inProgressResponse, ok := rm.inProgressResponses[requestID]
-	if !ok {
-		return graphsync.RequestNotFoundErr{}
-	}
-	if inProgressResponse.state != graphsync.Paused {
-		return errors.New("request is not paused")
-	}
-	inProgressResponse.state = graphsync.Queued
-	if len(extensions) > 0 {
-		_ = inProgressResponse.responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
-			for _, extension := range extensions {
-				rb.SendExtensionData(extension)
-			}
-			return nil
-		})
-	}
-	rm.responseQueue.PushTask(inProgressResponse.peer, peertask.Task{Topic: requestID, Priority: math.MaxInt32, Work: 1})
-	return nil
-}
-
+// abor request cancels an in progress request
 func (rm *ResponseManager) abortRequest(ctx context.Context, requestID graphsync.RequestID, err error) error {
 	response, ok := rm.inProgressResponses[requestID]
 	if ok {
@@ -185,119 +180,107 @@ func (rm *ResponseManager) abortRequest(ctx context.Context, requestID graphsync
 	return nil
 }
 
-func (rm *ResponseManager) processRequests(p peer.ID, requests []gsmsg.GraphSyncRequest) {
-	ctx, messageSpan := otel.Tracer("graphsync").Start(
-		rm.ctx,
-		"processRequests",
-		trace.WithAttributes(attribute.String("peerID", p.Pretty())),
-	)
-	defer messageSpan.End()
+// new request sets up a new request
+func (rm *ResponseManager) newRequest(ctx context.Context, p peer.ID, request gsmsg.GraphSyncRequest) {
 
-	for _, request := range requests {
-		switch request.Type() {
-		case graphsync.RequestTypeCancel:
-			_ = rm.abortRequest(ctx, request.ID(), ipldutil.ContextCancelError{})
-			continue
-		case graphsync.RequestTypeUpdate:
-			rm.processUpdate(ctx, request.ID(), request)
-			continue
-		default:
-		}
-		// processing new request
+	// protect the connection
+	rm.connManager.Protect(p, request.ID().Tag())
 
-		// protect the connection
-		rm.connManager.Protect(p, request.ID().Tag())
+	// Run request hooks
+	// Don't use `ctx` which has the "message" trace, but rm.ctx for a fresh trace which allows
+	// for a request hook to join this particular response up to an existing external trace
+	result := rm.requestHooks.ProcessRequestHooks(p, request, rm.ctx)
 
-		// Run request hooks
-		// Don't use `ctx` which has the "message" trace, but rm.ctx for a fresh trace which allows
-		// for a request hook to join this particular response up to an existing external trace
-		result := rm.requestHooks.ProcessRequestHooks(p, request, rm.ctx)
+	// setup request data
 
-		// setup request data
+	rctx, responseSpan := otel.Tracer("graphsync").Start(
+		result.Ctx,
+		"response",
+		trace.WithLinks(trace.LinkFromContext(ctx)),
+		trace.WithAttributes(
+			attribute.String("id", request.ID().String()),
+			attribute.Int("priority", int(request.Priority())),
+			attribute.String("root", request.Root().String()),
+			attribute.StringSlice("extensions", func() []string {
+				names := request.ExtensionNames()
+				st := make([]string, 0, len(names))
+				for _, n := range names {
+					st = append(st, string(n))
+				}
+				return st
+			}()),
+		))
 
-		rctx, responseSpan := otel.Tracer("graphsync").Start(
-			result.Ctx,
-			"response",
-			trace.WithLinks(trace.LinkFromContext(ctx)),
-			trace.WithAttributes(
-				attribute.String("id", request.ID().String()),
-				attribute.Int("priority", int(request.Priority())),
-				attribute.String("root", request.Root().String()),
-				attribute.StringSlice("extensions", func() []string {
-					names := request.ExtensionNames()
-					st := make([]string, 0, len(names))
-					for _, n := range names {
-						st = append(st, string(n))
-					}
-					return st
-				}()),
-			))
+	rctx, cancelFn := context.WithCancel(rctx)
 
-		rctx, cancelFn := context.WithCancel(rctx)
-
-		subscriber := &subscriber{
-			p:                     p,
-			request:               request,
-			requestCloser:         rm,
-			blockSentListeners:    rm.blockSentListeners,
-			completedListeners:    rm.completedListeners,
-			networkErrorListeners: rm.networkErrorListeners,
-			connManager:           rm.connManager,
-		}
-
-		linkSystem := result.CustomLinkSystem
-		if linkSystem.StorageReadOpener == nil {
-			linkSystem = rm.linkSystem
-		}
-
-		signals := queryexecutor.ResponseSignals{
-			PauseSignal:  make(chan struct{}, 1),
-			UpdateSignal: make(chan struct{}, 1),
-			ErrSignal:    make(chan error, 1),
-		}
-
-		responseStream := rm.responseAssembler.NewStream(rctx, p, request.ID(), subscriber)
-
-		response := &inProgressResponseStatus{
-			ctx:            rctx,
-			span:           responseSpan,
-			cancelFn:       cancelFn,
-			peer:           p,
-			request:        request,
-			linkSystem:     linkSystem,
-			customChooser:  result.CustomChooser,
-			signals:        signals,
-			startTime:      time.Now(),
-			responseStream: responseStream,
-		}
-
-		// setup query for processing
-		err := prepareQuery(rctx, p, request, result, responseStream)
-
-		if err != nil {
-			// error occurred in request hooks or setting up the query --
-			// now we're just waiting for the error response to finish sending
-			response.state = graphsync.CompletingSend
-			response.span.RecordError(err)
-			response.span.SetStatus(codes.Error, err.Error())
-		} else if result.IsPaused {
-			response.state = graphsync.Paused
-		} else {
-			response.state = graphsync.Queued
-			// TODO: Use a better work estimation metric.
-			rm.responseQueue.PushTask(p, peertask.Task{Topic: request.ID(), Priority: int(request.Priority()), Work: 1})
-		}
-
-		// save request state
-		log.Infow("graphsync request initiated", "request id", request.ID().String(), "peer", p, "root", request.Root())
-		ipr, ok := rm.inProgressResponses[request.ID()]
-		if ok && ipr.state == graphsync.Running {
-			log.Warnf("there is an identical request already in progress", "request id", request.ID().String(), "peer", p)
-		}
-
-		rm.inProgressResponses[request.ID()] = response
-
+	subscriber := &subscriber{
+		p:                     p,
+		request:               request,
+		requestCloser:         rm,
+		blockSentListeners:    rm.blockSentListeners,
+		completedListeners:    rm.completedListeners,
+		networkErrorListeners: rm.networkErrorListeners,
+		connManager:           rm.connManager,
 	}
+
+	linkSystem := result.CustomLinkSystem
+	if linkSystem.StorageReadOpener == nil {
+		linkSystem = rm.linkSystem
+	}
+
+	signals := queryexecutor.ResponseSignals{
+		PauseSignal:  make(chan struct{}, 1),
+		UpdateSignal: make(chan struct{}, 1),
+		ErrSignal:    make(chan error, 1),
+	}
+
+	responseStream := rm.responseAssembler.NewStream(rctx, p, request.ID(), subscriber)
+
+	response := &inProgressResponseStatus{
+		ctx:            rctx,
+		span:           responseSpan,
+		cancelFn:       cancelFn,
+		peer:           p,
+		request:        request,
+		linkSystem:     linkSystem,
+		customChooser:  result.CustomChooser,
+		signals:        signals,
+		startTime:      time.Now(),
+		responseStream: responseStream,
+	}
+
+	// setup query for processing
+	err := prepareQuery(rctx, p, request, result, responseStream)
+
+	// based on the results of previous hooks and preparing the query, we can now
+	// decide what to do. the request will either be a rejection, paused, or ready to be queued
+	// for processing
+	if err != nil {
+		// error occurred in request hooks or setting up the query --
+		// now we're just waiting for the error response to finish sending
+		// termination will happen when the message subscriber sees the termination
+		// response has been sent (or had a network failure)
+		response.state = graphsync.CompletingSend
+		response.span.RecordError(err)
+		response.span.SetStatus(codes.Error, err.Error())
+	} else if result.IsPaused {
+		// if  the request is paused, don't queue it. just leave in place
+		response.state = graphsync.Paused
+	} else {
+		// no error and the request is not paused, queue for procesisng
+		response.state = graphsync.Queued
+		// TODO: Use a better work estimation metric.
+		rm.responseQueue.PushTask(p, peertask.Task{Topic: request.ID(), Priority: int(request.Priority()), Work: 1})
+	}
+
+	// save request state
+	log.Infow("graphsync request initiated", "request id", request.ID().String(), "peer", p, "root", request.Root())
+	ipr, ok := rm.inProgressResponses[request.ID()]
+	if ok && ipr.state == graphsync.Running {
+		log.Warnf("there is an identical request already in progress", "request id", request.ID().String(), "peer", p)
+	}
+
+	rm.inProgressResponses[request.ID()] = response
 }
 
 func (rm *ResponseManager) taskDataForKey(requestID graphsync.RequestID) queryexecutor.ResponseTask {
@@ -308,7 +291,7 @@ func (rm *ResponseManager) taskDataForKey(requestID graphsync.RequestID) queryex
 	log.Infow("graphsync response processing begins", "request id", requestID.String(), "peer", response.peer, "total time", time.Since(response.startTime))
 
 	if response.traverser == nil {
-		// this is the first time this request has started processing, so call request processing listerns
+		// this is the first time this request has started processing, so call request processing listerners
 		inProgressCount := len(rm.inProgressResponses)
 		rm.requestProcessingListeners.NotifyRequestProcessingListeners(response.peer, response.request, inProgressCount)
 
@@ -359,6 +342,8 @@ func (rm *ResponseManager) taskDataForKey(requestID graphsync.RequestID) queryex
 	}
 }
 
+// start task is called when the request reaches the top of the execution queue and is
+// ready to be processed.
 func (rm *ResponseManager) startTask(task *peertask.Task, p peer.ID) queryexecutor.ResponseTask {
 	requestID := task.Topic.(graphsync.RequestID)
 	taskData := rm.taskDataForKey(requestID)
@@ -367,6 +352,17 @@ func (rm *ResponseManager) startTask(task *peertask.Task, p peer.ID) queryexecut
 	}
 
 	return taskData
+}
+
+func (rm *ResponseManager) terminateRequest(requestID graphsync.RequestID) {
+	ipr, ok := rm.inProgressResponses[requestID]
+	if !ok {
+		return
+	}
+	rm.connManager.Unprotect(ipr.peer, requestID.Tag())
+	delete(rm.inProgressResponses, requestID)
+	ipr.cancelFn()
+	ipr.span.End()
 }
 
 func (rm *ResponseManager) finishTask(task *peertask.Task, p peer.ID, err error) {
@@ -424,6 +420,27 @@ func (rm *ResponseManager) pauseRequest(requestID graphsync.RequestID) error {
 	case inProgressResponse.signals.PauseSignal <- struct{}{}:
 	default:
 	}
+	return nil
+}
+
+func (rm *ResponseManager) unpauseRequest(requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
+	inProgressResponse, ok := rm.inProgressResponses[requestID]
+	if !ok {
+		return graphsync.RequestNotFoundErr{}
+	}
+	if inProgressResponse.state != graphsync.Paused {
+		return errors.New("request is not paused")
+	}
+	inProgressResponse.state = graphsync.Queued
+	if len(extensions) > 0 {
+		_ = inProgressResponse.responseStream.Transaction(func(rb responseassembler.ResponseBuilder) error {
+			for _, extension := range extensions {
+				rb.SendExtensionData(extension)
+			}
+			return nil
+		})
+	}
+	rm.responseQueue.PushTask(inProgressResponse.peer, peertask.Task{Topic: requestID, Priority: math.MaxInt32, Work: 1})
 	return nil
 }
 

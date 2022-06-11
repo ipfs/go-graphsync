@@ -325,6 +325,65 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 	}
 }
 
+func TestGraphsyncRoundTripHooksOrder(t *testing.T) {
+
+	// create network
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+
+	// setup receiving peer to just record message coming in
+	blockChainLength := 100
+	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
+
+	// initialize graphsync on second node to response to requests
+	responder := td.GraphSyncHost2()
+	hooksCalled := make(chan string, 5)
+
+	requestor.RegisterOutgoingRequestHook(func(peer.ID, graphsync.RequestData, graphsync.OutgoingRequestHookActions) {
+		hooksCalled <- "outgoing request started"
+	})
+	requestor.RegisterOutgoingRequestProcessingListener(func(peer.ID, graphsync.RequestData, int) {
+		hooksCalled <- "outgoing request processing"
+	})
+	responder.RegisterCompletedResponseListener(func(peer.ID, graphsync.RequestData, graphsync.ResponseStatusCode) {
+		hooksCalled <- "incoming request complete"
+	})
+	responder.RegisterIncomingRequestHook(func(_ peer.ID, _ graphsync.RequestData, actions graphsync.IncomingRequestHookActions) {
+		hooksCalled <- "incoming request received"
+		actions.ValidateRequest()
+	})
+	responder.RegisterIncomingRequestProcessingListener(func(peer.ID, graphsync.RequestData, int) {
+		hooksCalled <- "incoming request processing"
+	})
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+	blockChain.VerifyWholeChain(ctx, progressChan)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
+
+	var calledHooks []string
+	for i := 0; i < 5; i++ {
+		select {
+		case <-ctx.Done():
+			t.Fatal("did not receive all events")
+		case calledHook := <-hooksCalled:
+			calledHooks = append(calledHooks, calledHook)
+		}
+	}
+	require.Equal(t, []string{
+		"outgoing request started",
+		"outgoing request processing",
+		"incoming request received",
+		"incoming request processing",
+		"incoming request complete",
+	}, calledHooks)
+}
+
 func TestGraphsyncRoundTripPartial(t *testing.T) {
 
 	// create network
