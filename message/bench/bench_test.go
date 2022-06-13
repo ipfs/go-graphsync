@@ -16,7 +16,6 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
-	v1 "github.com/ipfs/go-graphsync/message/v1"
 	v2 "github.com/ipfs/go-graphsync/message/v2"
 	"github.com/ipfs/go-graphsync/testutil"
 )
@@ -49,32 +48,6 @@ func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
 	p := peer.ID("test peer")
 	gsm, err := builder.Build()
 	require.NoError(b, err)
-
-	b.Run("Protobuf", func(b *testing.B) {
-		b.ReportAllocs()
-		b.RunParallel(func(pb *testing.PB) {
-			buf := new(bytes.Buffer)
-			mh := v1.NewMessageHandler()
-			for pb.Next() {
-				buf.Reset()
-
-				err := mh.ToNet(p, gsm, buf)
-				require.NoError(b, err)
-
-				gsm2, err := mh.FromNet(p, buf)
-				require.NoError(b, err)
-
-				// Note that require.Equal doesn't seem to handle maps well.
-				// It says they are non-equal simply because their order isn't deterministic.
-				if diff := cmp.Diff(gsm, gsm2,
-					cmp.Exporter(func(reflect.Type) bool { return true }),
-					cmp.Comparer(ipld.DeepEqual),
-				); diff != "" {
-					b.Fatal(diff)
-				}
-			}
-		})
-	})
 
 	b.Run("DagCbor", func(b *testing.B) {
 		b.ReportAllocs()

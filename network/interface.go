@@ -12,7 +12,6 @@ import (
 
 var (
 	// ProtocolGraphsync is the protocol identifier for graphsync messages
-	ProtocolGraphsync_1_0_0 protocol.ID = "/ipfs/graphsync/1.0.0"
 	ProtocolGraphsync_2_0_0 protocol.ID = "/ipfs/graphsync/2.0.0"
 )
 
