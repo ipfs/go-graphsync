@@ -30,7 +30,7 @@ func (tm *TransferMessage1_1) TransferID() datatransfer.TransferID {
 }
 
 func (tm *TransferMessage1_1) toIPLD() schema.TypedNode {
-	return bindnode.Wrap(&tm, Prototype.TransferMessage.Type())
+	return bindnode.Wrap(tm, Prototype.TransferMessage.Type())
 }
 
 // ToNet serializes a transfer message type.
