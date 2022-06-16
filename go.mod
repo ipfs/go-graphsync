@@ -7,7 +7,6 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20200817222906-ea96cece81f1
 	github.com/hannahhoward/go-pubsub v0.0.0-20200423002714-8d62886cc36e
-	github.com/huin/goupnp v1.0.2 // indirect
 	github.com/ipfs/go-block-format v0.0.3
 	github.com/ipfs/go-blockservice v0.2.1
 	github.com/ipfs/go-cid v0.2.0
@@ -31,10 +30,9 @@ require (
 	github.com/ipld/go-codec-dagpb v1.3.1
 	github.com/ipld/go-ipld-prime v0.16.1-0.20220616080238-da7f58c97b04
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
-	github.com/koron/go-ssdp v0.0.2 // indirect
 	github.com/libp2p/go-buffer-pool v0.0.2
-	github.com/libp2p/go-libp2p v0.20.1
-	github.com/libp2p/go-libp2p-core v0.16.1
+	github.com/libp2p/go-libp2p v0.19.4
+	github.com/libp2p/go-libp2p-core v0.15.1
 	github.com/libp2p/go-libp2p-netutil v0.1.0
 	github.com/libp2p/go-libp2p-peerstore v0.7.0 // indirect
 	github.com/libp2p/go-libp2p-testing v0.9.2
@@ -45,8 +43,6 @@ require (
 	go.opentelemetry.io/otel v1.2.0
 	go.opentelemetry.io/otel/sdk v1.2.0
 	go.opentelemetry.io/otel/trace v1.2.0
-	go.uber.org/atomic v1.9.0 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	google.golang.org/grpc v1.40.0 // indirect
-	google.golang.org/protobuf v1.27.1
+	google.golang.org/protobuf v1.28.0
 )
