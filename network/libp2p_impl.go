@@ -195,6 +195,8 @@ func (gsnet *libp2pGraphSyncNetwork) SendMessage(
 		return err
 	}
 
+	time.Sleep(100 * time.Millisecond)
+
 	return s.Close()
 }
 
