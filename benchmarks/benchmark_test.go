@@ -77,7 +77,7 @@ func BenchmarkRoundtripSuccess(b *testing.B) {
 
 func benchmarkRepeatedDisconnects(ctx context.Context, b *testing.B, numnodes int, df distFunc, tdm *tempDirMaker) {
 	ctx, cancel := context.WithCancel(ctx)
-	mn := mocknet.New(ctx)
+	mn := mocknet.New()
 	net := tn.StreamNet(ctx, mn)
 	ig := testinstance.NewTestInstanceGenerator(ctx, net, nil, tdm, false)
 	instances, err := ig.Instances(numnodes + 1)
@@ -145,7 +145,7 @@ func benchmarkRepeatedDisconnects(ctx context.Context, b *testing.B, numnodes in
 func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc, tdm *tempDirMaker, options []graphsync.Option, diskBasedDatastore bool) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	mn := mocknet.New(ctx)
+	mn := mocknet.New()
 	mn.SetLinkDefaults(mocknet.LinkOptions{Latency: 100 * time.Millisecond, Bandwidth: 3000000})
 	net := tn.StreamNet(ctx, mn)
 	ig := testinstance.NewTestInstanceGenerator(ctx, net, options, tdm, diskBasedDatastore)

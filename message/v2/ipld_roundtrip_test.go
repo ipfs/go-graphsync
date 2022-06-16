@@ -5,11 +5,9 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
-	"github.com/ipld/go-ipld-prime/node/bindnode"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 
@@ -65,15 +63,12 @@ func TestIPLDRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	// ipld TypedNode format
-	node := bindnode.Wrap(igsm, ipldbind.Prototype.Message.Type())
-	byts, err := ipld.Encode(node, dagcbor.Encode)
-	// dag-cbor binary format
+	byts, err := ipldbind.BindnodeRegistry.TypeToBytes(igsm, dagcbor.Encode)
 	require.NoError(t, err)
 
 	// back to bindnode internal format
-	rtnode, err := ipld.DecodeUsingPrototype(byts, dagcbor.Decode, ipldbind.Prototype.Message.Representation())
+	rtigsm, err := ipldbind.BindnodeRegistry.TypeFromBytes(byts, (*ipldbind.GraphSyncMessageRoot)(nil), dagcbor.Decode)
 	require.NoError(t, err)
-	rtigsm := bindnode.Unwrap(rtnode)
 
 	// back to message format
 	rtgsm, err := NewMessageHandler().fromIPLD(rtigsm.(*ipldbind.GraphSyncMessageRoot))

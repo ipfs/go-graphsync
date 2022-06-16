@@ -1,12 +1,20 @@
 package ipldbind
 
 import (
+	_ "embed"
+
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	bindnoderegistry "github.com/ipld/go-ipld-prime/node/bindnode/registry"
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
 )
+
+//go:embed schema.ipldsch
+var embedSchema []byte
+
+var BindnodeRegistry = bindnoderegistry.NewRegistry()
 
 // GraphSyncExtensions is a container for representing extension data for
 // bindnode, it's converted to a graphsync.ExtensionData list by
@@ -94,4 +102,8 @@ type GraphSyncMessageRoot struct {
 type NamedExtension struct {
 	Name graphsync.ExtensionName
 	Data datamodel.Node
+}
+
+func init() {
+	BindnodeRegistry.RegisterType((*GraphSyncMessageRoot)(nil), string(embedSchema), "GraphSyncMessageRoot")
 }
