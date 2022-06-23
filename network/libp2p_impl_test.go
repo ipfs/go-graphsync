@@ -52,7 +52,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	mn := mocknet.New(ctx)
+	mn := mocknet.New()
 
 	host1, err := mn.GenPeer()
 	require.NoError(t, err)
