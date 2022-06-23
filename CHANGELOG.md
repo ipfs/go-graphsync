@@ -1,5 +1,30 @@
 # go-graphsync changelog
 
+# go-graphsync v0.13.2
+
+Minor stability and depedency upgrade prior to future breaking library changes
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - chore(deps): upgrade libp2p & ipld-prime (#389) ([ipfs/go-graphsync#389](https://github.com/ipfs/go-graphsync/pull/389))
+  - Add .github/workflows/stale.yml
+  - chore(ipld): switch to using top-level ipld-prime codec helpers (#383) ([ipfs/go-graphsync#383](https://github.com/ipfs/go-graphsync/pull/383))
+  - feat(requestmanager): read request from context (#381) ([ipfs/go-graphsync#381](https://github.com/ipfs/go-graphsync/pull/381))
+  - fix: minor typo in error msg
+  - fix(panics): lift panic recovery up to top of network handling
+  - feat: expand use of panic handler to cover network and codec interaction
+  - feat(panics): capture panics from selector execution
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Rod Vagg | 4 | +463/-445 | 50 |
+| Hannah Howard | 2 | +246/-108 | 10 |
+| hannahhoward | 1 | +116/-38 | 10 |
+| ipfs-mgmt-read-write[bot] | 1 | +26/-0 | 1 |
+
 # go-graphsync v0.13.1
 
 A few small stability updates for v0.13.0
