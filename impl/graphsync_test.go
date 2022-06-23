@@ -1928,7 +1928,7 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 func newOptionalGsTestData(ctx context.Context, t *testing.T, network1Protocols []protocol.ID, network2Protocols []protocol.ID) *gsTestData {
 	t.Helper()
 	td := &gsTestData{ctx: ctx}
-	td.mn = mocknet.New(ctx)
+	td.mn = mocknet.New()
 	var err error
 	// setup network
 	td.host1, err = td.mn.GenPeer()
