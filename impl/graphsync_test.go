@@ -65,9 +65,6 @@ var protocolsForTest = map[string]struct {
 	host2Protocols []protocol.ID
 }{
 	"(v2.0 -> v2.0)": {nil, nil},
-	"(v1.0 -> v2.0)": {[]protocol.ID{gsnet.ProtocolGraphsync_1_0_0}, nil},
-	"(v2.0 -> v1.0)": {nil, []protocol.ID{gsnet.ProtocolGraphsync_1_0_0}},
-	"(v1.0 -> v1.0)": {[]protocol.ID{gsnet.ProtocolGraphsync_1_0_0}, []protocol.ID{gsnet.ProtocolGraphsync_1_0_0}},
 }
 
 func TestRejectRequestsByDefault(t *testing.T) {
@@ -1993,7 +1990,7 @@ func newGsTestData(ctx context.Context, t *testing.T) *gsTestData {
 func newOptionalGsTestData(ctx context.Context, t *testing.T, network1Protocols []protocol.ID, network2Protocols []protocol.ID) *gsTestData {
 	t.Helper()
 	td := &gsTestData{ctx: ctx}
-	td.mn = mocknet.New(ctx)
+	td.mn = mocknet.New()
 	var err error
 	// setup network
 	td.host1, err = td.mn.GenPeer()

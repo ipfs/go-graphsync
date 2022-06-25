@@ -15,7 +15,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	gsmsgv1 "github.com/ipfs/go-graphsync/message/v1"
 	gsmsgv2 "github.com/ipfs/go-graphsync/message/v2"
 	"github.com/ipfs/go-graphsync/panics"
 )
@@ -49,7 +48,7 @@ func PanicCallback(callbackFn panics.CallBackFn) Option {
 func NewFromLibp2pHost(host host.Host, options ...Option) GraphSyncNetwork {
 	graphSyncNetwork := libp2pGraphSyncNetwork{
 		host:      host,
-		protocols: []protocol.ID{ProtocolGraphsync_2_0_0, ProtocolGraphsync_1_0_0},
+		protocols: []protocol.ID{ProtocolGraphsync_2_0_0},
 	}
 
 	for _, option := range options {
@@ -59,7 +58,6 @@ func NewFromLibp2pHost(host host.Host, options ...Option) GraphSyncNetwork {
 	graphSyncNetwork.panicHandler = panics.MakeHandler(graphSyncNetwork.panicCallback)
 
 	graphSyncNetwork.messageHandlerSelector = &messageHandlerSelector{
-		v1MessageHandler: gsmsgv1.NewMessageHandler(),
 		v2MessageHandler: gsmsgv2.NewMessageHandler(),
 		panicHandler:     graphSyncNetwork.panicHandler,
 	}
@@ -85,7 +83,6 @@ func (mhe messageHandlerErrorer) ToNet(peer.ID, gsmsg.GraphSyncMessage, io.Write
 }
 
 type messageHandlerSelector struct {
-	v1MessageHandler gsmsg.MessageHandler
 	v2MessageHandler gsmsg.MessageHandler
 
 	panicHandler panics.PanicHandler
@@ -93,8 +90,6 @@ type messageHandlerSelector struct {
 
 func (smh messageHandlerSelector) Select(protocol protocol.ID) gsmsg.MessageHandler {
 	switch protocol {
-	case ProtocolGraphsync_1_0_0:
-		return smh.v1MessageHandler
 	case ProtocolGraphsync_2_0_0:
 		return smh.v2MessageHandler
 	default:
@@ -257,7 +252,7 @@ func (gsnet *libp2pGraphSyncNetwork) setProtocols(protocols []protocol.ID) {
 	gsnet.protocols = make([]protocol.ID, 0)
 	for _, proto := range protocols {
 		switch proto {
-		case ProtocolGraphsync_1_0_0, ProtocolGraphsync_2_0_0:
+		case ProtocolGraphsync_2_0_0:
 			gsnet.protocols = append([]protocol.ID{}, proto)
 		}
 	}

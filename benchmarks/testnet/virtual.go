@@ -1,6 +1,7 @@
 package testnet
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sort"
@@ -13,10 +14,9 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
-	"google.golang.org/protobuf/proto"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	gsmsgv1 "github.com/ipfs/go-graphsync/message/v1"
+	gsmsgv2 "github.com/ipfs/go-graphsync/message/v2"
 	gsnet "github.com/ipfs/go-graphsync/network"
 )
 
@@ -138,11 +138,12 @@ func (n *network) SendMessage(
 			rateLimiters[to] = rateLimiter
 		}
 
-		pbMsg, err := gsmsgv1.NewMessageHandler().ToProto(peer.ID("foo"), mes)
+		buf := new(bytes.Buffer)
+		err := gsmsgv2.NewMessageHandler().ToNet(peer.ID("foo"), mes, buf)
 		if err != nil {
 			return err
 		}
-		size := proto.Size(pbMsg)
+		size := buf.Len()
 		bandwidthDelay = rateLimiter.Limit(size)
 	} else {
 		bandwidthDelay = 0
