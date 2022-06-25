@@ -30,7 +30,6 @@ require (
 	github.com/ipld/go-codec-dagpb v1.3.1
 	github.com/ipld/go-ipld-prime v0.17.0
 	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c
-	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-libp2p v0.19.4
 	github.com/libp2p/go-libp2p-core v0.15.1
 	github.com/libp2p/go-libp2p-netutil v0.1.0
@@ -43,5 +42,4 @@ require (
 	go.opentelemetry.io/otel/sdk v1.2.0
 	go.opentelemetry.io/otel/trace v1.2.0
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	google.golang.org/protobuf v1.28.0
 )
