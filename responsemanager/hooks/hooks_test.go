@@ -1,6 +1,7 @@
 package hooks_test
 
 import (
+	"context"
 	"errors"
 	"io"
 	"testing"
@@ -26,6 +27,8 @@ func (fpo *fakePersistenceOptions) GetLinkSystem(name string) (ipld.LinkSystem, 
 	loader, ok := fpo.po[name]
 	return loader, ok
 }
+
+type contextKey struct{}
 
 func TestRequestHookProcessing(t *testing.T) {
 	fakeChooser := func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
@@ -57,6 +60,7 @@ func TestRequestHookProcessing(t *testing.T) {
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	request := gsmsg.NewRequest(requestID, root, ssb.Matcher().Node(), graphsync.Priority(0), extension)
 	p := testutil.GeneratePeers(1)[0]
+	ctx := context.Background()
 	testCases := map[string]struct {
 		configure func(t *testing.T, requestHooks *hooks.IncomingRequestHooks)
 		assert    func(t *testing.T, result hooks.RequestResult)
@@ -202,6 +206,18 @@ func TestRequestHookProcessing(t *testing.T) {
 				require.NoError(t, result.Err)
 			},
 		},
+		"altering context": {
+			configure: func(t *testing.T, requestHooks *hooks.IncomingRequestHooks) {
+				requestHooks.Register(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+					hookActions.AugmentContext(func(ctx context.Context) context.Context {
+						return context.WithValue(ctx, contextKey{}, "apples")
+					})
+				})
+			},
+			assert: func(t *testing.T, result hooks.RequestResult) {
+				require.Equal(t, "apples", result.Ctx.Value(contextKey{}))
+			},
+		},
 	}
 	for testCase, data := range testCases {
 		t.Run(testCase, func(t *testing.T) {
@@ -209,7 +225,7 @@ func TestRequestHookProcessing(t *testing.T) {
 			if data.configure != nil {
 				data.configure(t, requestHooks)
 			}
-			result := requestHooks.ProcessRequestHooks(p, request)
+			result := requestHooks.ProcessRequestHooks(p, request, ctx)
 			if data.assert != nil {
 				data.assert(t, result)
 			}

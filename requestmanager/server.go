@@ -165,7 +165,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 
 		ipr.reconciledLoader = reconciledloader.NewReconciledLoader(ipr.request.ID(), ipr.lsys)
 		inProgressCount := len(rm.inProgressRequestStatuses)
-		rm.outgoingRequestProcessingListeners.NotifyOutgoingRequestProcessingListeners(ipr.p, ipr.request, inProgressCount)
+		rm.outgoingRequestProcessingListeners.NotifyRequestProcessingListeners(ipr.p, ipr.request, inProgressCount)
 	}
 
 	ipr.state = graphsync.Running

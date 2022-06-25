@@ -17,43 +17,6 @@ type PersistenceOptions interface {
 	GetLinkSystem(name string) (ipld.LinkSystem, bool)
 }
 
-// IncomingRequestQueuedHooks is a set of incoming request queued hooks that can be processed.
-type IncomingRequestQueuedHooks struct {
-	pubSub *pubsub.PubSub
-}
-
-type internalRequestQueuedHookEvent struct {
-	p       peer.ID
-	request graphsync.RequestData
-	rha     *requestQueuedHookActions
-}
-
-func requestQueuedHookDispatcher(event pubsub.Event, subscriberFn pubsub.SubscriberFn) error {
-	ie := event.(internalRequestQueuedHookEvent)
-	hook := subscriberFn.(graphsync.OnIncomingRequestQueuedHook)
-	hook(ie.p, ie.request, ie.rha)
-	return nil
-}
-
-// Register registers an extension to process new incoming requests.
-func (rqh *IncomingRequestQueuedHooks) Register(hook graphsync.OnIncomingRequestQueuedHook) graphsync.UnregisterHookFunc {
-	return graphsync.UnregisterHookFunc(rqh.pubSub.Subscribe(hook))
-}
-
-// NewRequestQueuedHooks returns a new list of incoming request queued hooks.
-func NewRequestQueuedHooks() *IncomingRequestQueuedHooks {
-	return &IncomingRequestQueuedHooks{
-		pubSub: pubsub.New(requestQueuedHookDispatcher),
-	}
-}
-
-// ProcessRequestQueuedHooks runs request hooks against an incoming queued request.
-func (rqh *IncomingRequestQueuedHooks) ProcessRequestQueuedHooks(p peer.ID, request graphsync.RequestData, reqCtx context.Context) context.Context {
-	qha := &requestQueuedHookActions{ctx: reqCtx}
-	_ = rqh.pubSub.Publish(internalRequestQueuedHookEvent{p, request, qha})
-	return qha.result()
-}
-
 // IncomingRequestHooks is a set of incoming request hooks that can be processed
 type IncomingRequestHooks struct {
 	persistenceOptions PersistenceOptions
@@ -94,27 +57,17 @@ type RequestResult struct {
 	CustomChooser    traversal.LinkTargetNodePrototypeChooser
 	Err              error
 	Extensions       []graphsync.ExtensionData
+	Ctx              context.Context
 }
 
 // ProcessRequestHooks runs request hooks against an incoming request
-func (irh *IncomingRequestHooks) ProcessRequestHooks(p peer.ID, request graphsync.RequestData) RequestResult {
+func (irh *IncomingRequestHooks) ProcessRequestHooks(p peer.ID, request graphsync.RequestData, reqCtx context.Context) RequestResult {
 	ha := &requestHookActions{
 		persistenceOptions: irh.persistenceOptions,
+		ctx:                reqCtx,
 	}
 	_ = irh.pubSub.Publish(internalRequestHookEvent{p, request, ha})
 	return ha.result()
-}
-
-type requestQueuedHookActions struct {
-	ctx context.Context
-}
-
-func (qha *requestQueuedHookActions) result() context.Context {
-	return qha.ctx
-}
-
-func (qha *requestQueuedHookActions) AugmentContext(augment func(reqCtx context.Context) context.Context) {
-	qha.ctx = augment(qha.ctx)
 }
 
 type requestHookActions struct {
@@ -125,6 +78,7 @@ type requestHookActions struct {
 	linkSystem         ipld.LinkSystem
 	chooser            traversal.LinkTargetNodePrototypeChooser
 	extensions         []graphsync.ExtensionData
+	ctx                context.Context
 }
 
 func (ha *requestHookActions) result() RequestResult {
@@ -135,6 +89,7 @@ func (ha *requestHookActions) result() RequestResult {
 		CustomChooser:    ha.chooser,
 		Err:              ha.err,
 		Extensions:       ha.extensions,
+		Ctx:              ha.ctx,
 	}
 }
 
@@ -165,4 +120,8 @@ func (ha *requestHookActions) UseLinkTargetNodePrototypeChooser(chooser traversa
 
 func (ha *requestHookActions) PauseResponse() {
 	ha.isPaused = true
+}
+
+func (ha *requestHookActions) AugmentContext(augment func(reqCtx context.Context) context.Context) {
+	ha.ctx = augment(ha.ctx)
 }

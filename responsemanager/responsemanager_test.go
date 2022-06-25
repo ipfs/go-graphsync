@@ -53,22 +53,35 @@ func TestIncomingQuery(t *testing.T) {
 
 	_, testSpan := otel.Tracer("graphsync").Start(td.ctx, "TestIncomingQuery")
 
-	type queuedHook struct {
+	type requestHookCall struct {
 		p       peer.ID
 		request graphsync.RequestData
 	}
-	qhc := make(chan *queuedHook, 1)
-	td.requestQueuedHooks.Register(func(p peer.ID, request graphsync.RequestData, hookActions graphsync.RequestQueuedHookActions) {
+	type processingListenerCall struct {
+		p                      peer.ID
+		request                graphsync.RequestData
+		inProgressRequestCount int
+	}
+	rhc := make(chan *requestHookCall, 1)
+	td.requestHooks.Register(func(p peer.ID, request graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
 		td.connManager.AssertProtectedWithTags(t, p, request.ID().Tag())
 		hookActions.AugmentContext(func(reqCtx context.Context) context.Context {
 			return trace.ContextWithSpan(reqCtx, testSpan)
 		})
-		qhc <- &queuedHook{
+		rhc <- &requestHookCall{
 			p:       p,
 			request: request,
 		}
 	})
 	td.requestHooks.Register(selectorvalidator.SelectorValidator(100))
+	plc := make(chan *processingListenerCall, 1)
+	td.requestProcessingListeners.Register(func(p peer.ID, request graphsync.RequestData, inProcessRequestCount int) {
+		plc <- &processingListenerCall{
+			p:                      p,
+			request:                request,
+			inProgressRequestCount: inProcessRequestCount,
+		}
+	})
 	responseManager.Startup()
 
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
@@ -81,10 +94,16 @@ func TestIncomingQuery(t *testing.T) {
 	td.taskqueue.WaitForNoActiveTasks()
 	testutil.AssertDoesReceive(td.ctx, t, completedResponse, "request never completed")
 
-	// ensure request queued hook fires.
-	out := <-qhc
+	// ensure request hook fires.
+	out := <-rhc
 	require.Equal(t, td.p, out.p)
 	require.Equal(t, out.request.ID(), td.requestID)
+
+	// ensure processing listener fires.
+	outListener := <-plc
+	require.Equal(t, td.p, outListener.p)
+	require.Equal(t, outListener.request.ID(), td.requestID)
+	require.Equal(t, 1, outListener.inProgressRequestCount)
 	td.connManager.RefuteProtected(t, td.p)
 
 	tracing := td.collectTracing(t)
@@ -1120,53 +1139,53 @@ func (frb *fakeResponseBuilder) Context() context.Context {
 }
 
 type testData struct {
-	ctx                       context.Context
-	t                         *testing.T
-	cancel                    context.CancelFunc
-	blockStore                map[ipld.Link][]byte
-	persistence               ipld.LinkSystem
-	blockChainLength          int
-	blockChain                *testutil.TestBlockChain
-	completedRequestChan      chan completedRequest
-	sentResponses             chan sentResponse
-	sentExtensions            chan sentExtension
-	pausedRequests            chan pausedRequest
-	clearedRequests           chan clearedRequest
-	completedNotifications    map[graphsync.RequestID]graphsync.ResponseStatusCode
-	blkNotifications          map[graphsync.RequestID][]graphsync.BlockData
-	ignoredLinks              chan []ipld.Link
-	skippedFirstBlocks        chan int64
-	dedupKeys                 chan string
-	responseAssembler         *fakeResponseAssembler
-	extensionData             datamodel.Node
-	extensionName             graphsync.ExtensionName
-	extension                 graphsync.ExtensionData
-	extensionResponseData     datamodel.Node
-	extensionResponse         graphsync.ExtensionData
-	extensionUpdateData       datamodel.Node
-	extensionUpdate           graphsync.ExtensionData
-	requestID                 graphsync.RequestID
-	requests                  []gsmsg.GraphSyncRequest
-	updateRequests            []gsmsg.GraphSyncRequest
-	p                         peer.ID
-	peristenceOptions         *persistenceoptions.PersistenceOptions
-	requestQueuedHooks        *hooks.IncomingRequestQueuedHooks
-	requestHooks              *hooks.IncomingRequestHooks
-	blockHooks                *hooks.OutgoingBlockHooks
-	updateHooks               *hooks.RequestUpdatedHooks
-	completedListeners        *listeners.CompletedResponseListeners
-	cancelledListeners        *listeners.RequestorCancelledListeners
-	blockSentListeners        *listeners.BlockSentListeners
-	networkErrorListeners     *listeners.NetworkErrorListeners
-	notifeePublisher          *testutil.MockPublisher
-	blockSends                chan graphsync.BlockData
-	completedResponseStatuses chan graphsync.ResponseStatusCode
-	networkErrorChan          chan error
-	allBlocks                 []blocks.Block
-	connManager               *testutil.TestConnManager
-	transactionLk             *sync.Mutex
-	taskqueue                 *taskqueue.WorkerTaskQueue
-	collectTracing            func(t *testing.T) *testutil.Collector
+	ctx                        context.Context
+	t                          *testing.T
+	cancel                     context.CancelFunc
+	blockStore                 map[ipld.Link][]byte
+	persistence                ipld.LinkSystem
+	blockChainLength           int
+	blockChain                 *testutil.TestBlockChain
+	completedRequestChan       chan completedRequest
+	sentResponses              chan sentResponse
+	sentExtensions             chan sentExtension
+	pausedRequests             chan pausedRequest
+	clearedRequests            chan clearedRequest
+	completedNotifications     map[graphsync.RequestID]graphsync.ResponseStatusCode
+	blkNotifications           map[graphsync.RequestID][]graphsync.BlockData
+	ignoredLinks               chan []ipld.Link
+	skippedFirstBlocks         chan int64
+	dedupKeys                  chan string
+	responseAssembler          *fakeResponseAssembler
+	extensionData              datamodel.Node
+	extensionName              graphsync.ExtensionName
+	extension                  graphsync.ExtensionData
+	extensionResponseData      datamodel.Node
+	extensionResponse          graphsync.ExtensionData
+	extensionUpdateData        datamodel.Node
+	extensionUpdate            graphsync.ExtensionData
+	requestID                  graphsync.RequestID
+	requests                   []gsmsg.GraphSyncRequest
+	updateRequests             []gsmsg.GraphSyncRequest
+	p                          peer.ID
+	peristenceOptions          *persistenceoptions.PersistenceOptions
+	requestProcessingListeners *listeners.RequestProcessingListeners
+	requestHooks               *hooks.IncomingRequestHooks
+	blockHooks                 *hooks.OutgoingBlockHooks
+	updateHooks                *hooks.RequestUpdatedHooks
+	completedListeners         *listeners.CompletedResponseListeners
+	cancelledListeners         *listeners.RequestorCancelledListeners
+	blockSentListeners         *listeners.BlockSentListeners
+	networkErrorListeners      *listeners.NetworkErrorListeners
+	notifeePublisher           *testutil.MockPublisher
+	blockSends                 chan graphsync.BlockData
+	completedResponseStatuses  chan graphsync.ResponseStatusCode
+	networkErrorChan           chan error
+	allBlocks                  []blocks.Block
+	connManager                *testutil.TestConnManager
+	transactionLk              *sync.Mutex
+	taskqueue                  *taskqueue.WorkerTaskQueue
+	collectTracing             func(t *testing.T) *testutil.Collector
 }
 
 func newTestData(t *testing.T) testData {
@@ -1237,7 +1256,7 @@ func newTestData(t *testing.T) testData {
 	}
 	td.p = testutil.GeneratePeers(1)[0]
 	td.peristenceOptions = persistenceoptions.New()
-	td.requestQueuedHooks = hooks.NewRequestQueuedHooks()
+	td.requestProcessingListeners = listeners.NewRequestProcessingListeners()
 	td.requestHooks = hooks.NewRequestHooks(td.peristenceOptions)
 	td.blockHooks = hooks.NewBlockHooks()
 	td.updateHooks = hooks.NewUpdateHooks()
@@ -1269,7 +1288,7 @@ func newTestData(t *testing.T) testData {
 }
 
 func (td *testData) newResponseManager() *ResponseManager {
-	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, td.connManager, 0, nil, td.taskqueue)
+	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestProcessingListeners, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, td.connManager, 0, nil, td.taskqueue)
 	queryExecutor := td.newQueryExecutor(rm)
 	td.taskqueue.Startup(6, queryExecutor)
 	return rm
@@ -1277,14 +1296,14 @@ func (td *testData) newResponseManager() *ResponseManager {
 
 func (td *testData) nullTaskQueueResponseManager() *ResponseManager {
 	ntq := nullTaskQueue{tasksQueued: make(map[peer.ID][]peertask.Topic)}
-	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, td.connManager, 0, nil, ntq)
+	rm := New(td.ctx, td.persistence, td.responseAssembler, td.requestProcessingListeners, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, td.connManager, 0, nil, ntq)
 	return rm
 }
 
 func (td *testData) alternateLoaderResponseManager() *ResponseManager {
 	obs := make(map[ipld.Link][]byte)
 	persistence := testutil.NewTestStore(obs)
-	rm := New(td.ctx, persistence, td.responseAssembler, td.requestQueuedHooks, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, td.connManager, 0, nil, td.taskqueue)
+	rm := New(td.ctx, persistence, td.responseAssembler, td.requestProcessingListeners, td.requestHooks, td.updateHooks, td.completedListeners, td.cancelledListeners, td.blockSentListeners, td.networkErrorListeners, td.connManager, 0, nil, td.taskqueue)
 	queryExecutor := td.newQueryExecutor(rm)
 	td.taskqueue.Startup(6, queryExecutor)
 	return rm

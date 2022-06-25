@@ -1078,7 +1078,7 @@ type testData struct {
 	extensionData2                     datamodel.Node
 	extension2                         graphsync.ExtensionData
 	networkErrorListeners              *listeners.NetworkErrorListeners
-	outgoingRequestProcessingListeners *listeners.OutgoingRequestProcessingListeners
+	outgoingRequestProcessingListeners *listeners.RequestProcessingListeners
 	taskqueue                          *taskqueue.WorkerTaskQueue
 	executor                           *executor.Executor
 	requestIds                         []graphsync.RequestID
@@ -1095,7 +1095,7 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.responseHooks = hooks.NewResponseHooks()
 	td.blockHooks = hooks.NewBlockHooks()
 	td.networkErrorListeners = listeners.NewNetworkErrorListeners()
-	td.outgoingRequestProcessingListeners = listeners.NewOutgoingRequestProcessingListeners()
+	td.outgoingRequestProcessingListeners = listeners.NewRequestProcessingListeners()
 	td.taskqueue = taskqueue.NewTaskQueue(ctx)
 	td.localBlockStore = make(map[ipld.Link][]byte)
 	td.localPersistence = testutil.NewTestStore(td.localBlockStore)

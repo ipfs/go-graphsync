@@ -277,6 +277,7 @@ type BlockData interface {
 // IncomingRequestHookActions are actions that a request hook can take to change
 // behavior for the response
 type IncomingRequestHookActions interface {
+	AugmentContext(func(reqCtx context.Context) context.Context)
 	SendExtensionData(ExtensionData)
 	UsePersistenceOption(name string)
 	UseLinkTargetNodePrototypeChooser(traversal.LinkTargetNodePrototypeChooser)
@@ -322,16 +323,6 @@ type RequestUpdatedHookActions interface {
 	SendExtensionData(ExtensionData)
 	UnpauseResponse()
 }
-
-// RequestQueuedHookActions are actions that can be taken in a request queued hook to
-// change execution of the response
-type RequestQueuedHookActions interface {
-	AugmentContext(func(reqCtx context.Context) context.Context)
-}
-
-// OnIncomingRequestQueuedHook is a hook that runs each time a new incoming request is added to the responder's task queue.
-// It receives the peer that sent the request and all data about the request.
-type OnIncomingRequestQueuedHook func(p peer.ID, request RequestData, hookActions RequestQueuedHookActions)
 
 // OnIncomingRequestHook is a hook that runs each time a new request is received.
 // It receives the peer that sent the request and all data about the request.
@@ -381,9 +372,9 @@ type OnReceiverNetworkErrorListener func(p peer.ID, err error)
 // OnResponseCompletedListener provides a way to listen for when responder has finished serving a response
 type OnResponseCompletedListener func(p peer.ID, request RequestData, status ResponseStatusCode)
 
-// OnOutgoingRequestProcessingListener is called when a request actually begins processing (reaches
-// the top of the outgoing request queue)
-type OnOutgoingRequestProcessingListener func(p peer.ID, request RequestData, inProgressRequestCount int)
+// OnRequestProcessingListener is called when a request actually begins processing (reaches
+// the top of the request queue)
+type OnRequestProcessingListener func(p peer.ID, request RequestData, inProgressRequestCount int)
 
 // OnRequestorCancelledListener provides a way to listen for responses the requestor canncels
 type OnRequestorCancelledListener func(p peer.ID, request RequestData)
@@ -480,9 +471,6 @@ type GraphExchange interface {
 	// UnregisterPersistenceOption unregisters an alternate loader/storer combo
 	UnregisterPersistenceOption(name string) error
 
-	// RegisterIncomingRequestQueuedHook adds a hook that runs when a new incoming request is added to the responder's task queue.
-	RegisterIncomingRequestQueuedHook(hook OnIncomingRequestQueuedHook) UnregisterHookFunc
-
 	// RegisterIncomingRequestHook adds a hook that runs when a request is received
 	RegisterIncomingRequestHook(hook OnIncomingRequestHook) UnregisterHookFunc
 
@@ -501,9 +489,13 @@ type GraphExchange interface {
 	// RegisterRequestUpdatedHook adds a hook that runs every time an update to a request is received
 	RegisterRequestUpdatedHook(hook OnRequestUpdatedHook) UnregisterHookFunc
 
-	// RegisterOutgoingRequestProcessingListener adds a listener that gets called when a request actually begins processing (reaches
+	// RegisterOutgoingRequestProcessingListener adds a listener that gets called when an outgoing request actually begins processing (reaches
 	// the top of the outgoing request queue)
-	RegisterOutgoingRequestProcessingListener(listener OnOutgoingRequestProcessingListener) UnregisterHookFunc
+	RegisterOutgoingRequestProcessingListener(listener OnRequestProcessingListener) UnregisterHookFunc
+
+	// RegisterOutgoingRequestProcessingListener adds a listener that gets called when an incoming request actually begins processing (reaches
+	// the top of the outgoing request queue)
+	RegisterIncomingRequestProcessingListener(listener OnRequestProcessingListener) UnregisterHookFunc
 
 	// RegisterCompletedResponseListener adds a listener on the responder for completed responses
 	RegisterCompletedResponseListener(listener OnResponseCompletedListener) UnregisterHookFunc
