@@ -97,7 +97,7 @@ type RequestManager struct {
 	requestHooks                       RequestHooks
 	responseHooks                      ResponseHooks
 	networkErrorListeners              *listeners.NetworkErrorListeners
-	outgoingRequestProcessingListeners *listeners.OutgoingRequestProcessingListeners
+	outgoingRequestProcessingListeners *listeners.RequestProcessingListeners
 	requestQueue                       taskqueue.TaskQueue
 }
 
@@ -122,7 +122,7 @@ func New(ctx context.Context,
 	requestHooks RequestHooks,
 	responseHooks ResponseHooks,
 	networkErrorListeners *listeners.NetworkErrorListeners,
-	outgoingRequestProcessingListeners *listeners.OutgoingRequestProcessingListeners,
+	outgoingRequestProcessingListeners *listeners.RequestProcessingListeners,
 	requestQueue taskqueue.TaskQueue,
 	connManager network.ConnManager,
 	maxLinksPerRequest uint64,

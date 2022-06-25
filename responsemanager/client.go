@@ -8,6 +8,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"go.opentelemetry.io/otel/trace"
 
@@ -36,7 +37,8 @@ type inProgressResponseStatus struct {
 	cancelFn       func()
 	peer           peer.ID
 	request        gsmsg.GraphSyncRequest
-	loader         ipld.BlockReadOpener
+	linkSystem     ipld.LinkSystem
+	customChooser  traversal.LinkTargetNodePrototypeChooser
 	traverser      ipldutil.Traverser
 	signals        queryexecutor.ResponseSignals
 	updates        []gsmsg.GraphSyncRequest
@@ -47,12 +49,7 @@ type inProgressResponseStatus struct {
 
 // RequestHooks is an interface for processing request hooks
 type RequestHooks interface {
-	ProcessRequestHooks(p peer.ID, request graphsync.RequestData) hooks.RequestResult
-}
-
-// RequestQueuedHooks is an interface for processing request queued hooks
-type RequestQueuedHooks interface {
-	ProcessRequestQueuedHooks(p peer.ID, request graphsync.RequestData, reqCtx context.Context) context.Context
+	ProcessRequestHooks(p peer.ID, request graphsync.RequestData, ctx context.Context) hooks.RequestResult
 }
 
 // UpdateHooks is an interface for processing update hooks
@@ -75,6 +72,11 @@ type BlockSentListeners interface {
 	NotifyBlockSentListeners(p peer.ID, request graphsync.RequestData, block graphsync.BlockData)
 }
 
+// RequestProcessingListeners is an interface for notifying listeners a request has begun processing
+type RequestProcessingListeners interface {
+	NotifyRequestProcessingListeners(p peer.ID, request graphsync.RequestData, inProgressRequestCount int)
+}
+
 // NetworkErrorListeners is an interface for notifying listeners that an error occurred sending a data on the wire
 type NetworkErrorListeners interface {
 	NotifyNetworkErrorListeners(p peer.ID, request graphsync.RequestData, err error)
@@ -92,20 +94,20 @@ type responseManagerMessage interface {
 // ResponseManager handles incoming requests from the network, initiates selector
 // traversals, and transmits responses
 type ResponseManager struct {
-	ctx                   context.Context
-	cancelFn              context.CancelFunc
-	responseAssembler     ResponseAssembler
-	requestHooks          RequestHooks
-	linkSystem            ipld.LinkSystem
-	requestQueuedHooks    RequestQueuedHooks
-	updateHooks           UpdateHooks
-	cancelledListeners    CancelledListeners
-	completedListeners    CompletedListeners
-	blockSentListeners    BlockSentListeners
-	networkErrorListeners NetworkErrorListeners
-	messages              chan responseManagerMessage
-	inProgressResponses   map[graphsync.RequestID]*inProgressResponseStatus
-	connManager           network.ConnManager
+	ctx                        context.Context
+	cancelFn                   context.CancelFunc
+	responseAssembler          ResponseAssembler
+	requestHooks               RequestHooks
+	linkSystem                 ipld.LinkSystem
+	requestProcessingListeners RequestProcessingListeners
+	updateHooks                UpdateHooks
+	cancelledListeners         CancelledListeners
+	completedListeners         CompletedListeners
+	blockSentListeners         BlockSentListeners
+	networkErrorListeners      NetworkErrorListeners
+	messages                   chan responseManagerMessage
+	inProgressResponses        map[graphsync.RequestID]*inProgressResponseStatus
+	connManager                network.ConnManager
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
 	maxLinksPerRequest uint64
 	panicCallback      panics.CallBackFn
@@ -116,7 +118,7 @@ type ResponseManager struct {
 func New(ctx context.Context,
 	linkSystem ipld.LinkSystem,
 	responseAssembler ResponseAssembler,
-	requestQueuedHooks RequestQueuedHooks,
+	requestProcessingListeners RequestProcessingListeners,
 	requestHooks RequestHooks,
 	updateHooks UpdateHooks,
 	completedListeners CompletedListeners,
@@ -131,23 +133,23 @@ func New(ctx context.Context,
 	ctx, cancelFn := context.WithCancel(ctx)
 	messages := make(chan responseManagerMessage, 16)
 	rm := &ResponseManager{
-		ctx:                   ctx,
-		cancelFn:              cancelFn,
-		requestHooks:          requestHooks,
-		linkSystem:            linkSystem,
-		responseAssembler:     responseAssembler,
-		requestQueuedHooks:    requestQueuedHooks,
-		updateHooks:           updateHooks,
-		cancelledListeners:    cancelledListeners,
-		completedListeners:    completedListeners,
-		blockSentListeners:    blockSentListeners,
-		networkErrorListeners: networkErrorListeners,
-		messages:              messages,
-		inProgressResponses:   make(map[graphsync.RequestID]*inProgressResponseStatus),
-		connManager:           connManager,
-		maxLinksPerRequest:    maxLinksPerRequest,
-		responseQueue:         responseQueue,
-		panicCallback:         panicCallback,
+		ctx:                        ctx,
+		cancelFn:                   cancelFn,
+		requestHooks:               requestHooks,
+		linkSystem:                 linkSystem,
+		responseAssembler:          responseAssembler,
+		requestProcessingListeners: requestProcessingListeners,
+		updateHooks:                updateHooks,
+		cancelledListeners:         cancelledListeners,
+		completedListeners:         completedListeners,
+		blockSentListeners:         blockSentListeners,
+		networkErrorListeners:      networkErrorListeners,
+		messages:                   messages,
+		inProgressResponses:        make(map[graphsync.RequestID]*inProgressResponseStatus),
+		connManager:                connManager,
+		maxLinksPerRequest:         maxLinksPerRequest,
+		responseQueue:              responseQueue,
+		panicCallback:              panicCallback,
 	}
 	return rm
 }
