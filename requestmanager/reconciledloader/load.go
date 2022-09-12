@@ -2,7 +2,7 @@ package reconciledloader
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -76,7 +76,7 @@ func (rl *ReconciledLoader) loadLocal(lctx linking.LinkContext, link datamodel.L
 	if br, ok := stream.(byteReader); ok {
 		return types.AsyncLoadResult{Data: br.Bytes(), Local: true}
 	}
-	localData, err := ioutil.ReadAll(stream)
+	localData, err := io.ReadAll(stream)
 	if err != nil {
 		return types.AsyncLoadResult{Err: graphsync.RemoteMissingBlockErr{Link: link, Path: lctx.LinkPath}, Local: true}
 	}
