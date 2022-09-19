@@ -11,12 +11,11 @@ var _ datamodel.Node = nil // suppress errors when this dependency is not refere
 // One of its major uses is to start the construction of a value.
 // You can use it like this:
 //
-// 		chaintypes.Type.YourTypeName.NewBuilder().BeginMap() //...
+//	chaintypes.Type.YourTypeName.NewBuilder().BeginMap() //...
 //
 // and:
 //
-// 		chaintypes.Type.OtherTypeName.NewBuilder().AssignString("x") // ...
-//
+//	chaintypes.Type.OtherTypeName.NewBuilder().AssignString("x") // ...
 var Type typeSlab
 
 type typeSlab struct {

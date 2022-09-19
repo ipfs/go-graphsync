@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -444,7 +443,7 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 					if err != nil {
 						panic(err)
 					}
-					bytesRead, err := io.Copy(ioutil.Discard, resp.Body)
+					bytesRead, err := io.Copy(io.Discard, resp.Body)
 					if err != nil {
 						panic(err)
 					}
@@ -526,7 +525,7 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 		for i := 0; i < concurrency; i++ {
 			// file with random data
 			data := io.LimitReader(rand.Reader, int64(size))
-			f, err := ioutil.TempFile(os.TempDir(), "unixfs-")
+			f, err := os.CreateTemp(os.TempDir(), "unixfs-")
 			if err != nil {
 				panic(err)
 			}
@@ -549,7 +548,7 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 			var bs ClosableBlockstore
 			var fileDS = bufferedDS
 			if useCarStores {
-				filestore, err := ioutil.TempFile(os.TempDir(), "fsindex-")
+				filestore, err := os.CreateTemp(os.TempDir(), "fsindex-")
 				if err != nil {
 					panic(err)
 				}
