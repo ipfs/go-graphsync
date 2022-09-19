@@ -224,7 +224,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			gs.RequestID
 		}{p, request.ID()}]
 		startTimesLk.RUnlock()
-		recorder.recordBlockQueued(fmt.Sprintf("for request %d at %s", request.ID(), time.Since(startTime)))
+		recorder.recordBlockQueued(fmt.Sprintf("for request %s at %s", request.ID(), time.Since(startTime)))
 	})
 	gsync.RegisterBlockSentListener(func(p peer.ID, request gs.RequestData, block gs.BlockData) {
 		startTimesLk.RLock()
@@ -233,7 +233,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			gs.RequestID
 		}{p, request.ID()}]
 		startTimesLk.RUnlock()
-		recorder.recordBlock(fmt.Sprintf("sent for request %d at %s", request.ID(), time.Since(startTime)))
+		recorder.recordBlock(fmt.Sprintf("sent for request %s at %s", request.ID(), time.Since(startTime)))
 	})
 	gsync.RegisterIncomingResponseHook(func(p peer.ID, response gs.ResponseData, actions gs.IncomingResponseHookActions) {
 		startTimesLk.RLock()
@@ -242,7 +242,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			gs.RequestID
 		}{p, response.RequestID()}]
 		startTimesLk.RUnlock()
-		recorder.recordResponse(fmt.Sprintf("for request %d at %s", response.RequestID(), time.Since(startTime)))
+		recorder.recordResponse(fmt.Sprintf("for request %s at %s", response.RequestID(), time.Since(startTime)))
 	})
 	gsync.RegisterIncomingBlockHook(func(p peer.ID, response gs.ResponseData, block gs.BlockData, ha gs.IncomingBlockHookActions) {
 		startTimesLk.RLock()
@@ -251,7 +251,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			gs.RequestID
 		}{p, response.RequestID()}]
 		startTimesLk.RUnlock()
-		recorder.recordBlock(fmt.Sprintf("processed for request %d, cid %s, at %s", response.RequestID(), block.Link().String(), time.Since(startTime)))
+		recorder.recordBlock(fmt.Sprintf("processed for request %s, cid %s, at %s", response.RequestID(), block.Link().String(), time.Since(startTime)))
 	})
 	defer initCtx.SyncClient.MustSignalAndWait(ctx, "done", runenv.TestInstanceCount)
 
