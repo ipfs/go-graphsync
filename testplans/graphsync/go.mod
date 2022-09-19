@@ -20,14 +20,14 @@ require (
 	github.com/ipfs/go-ipld-format v0.3.0
 	github.com/ipfs/go-merkledag v0.6.0
 	github.com/ipfs/go-unixfs v0.3.1
-	github.com/ipld/go-car/v2 v2.1.1
+	github.com/ipld/go-car/v2 v2.5.0
 	github.com/ipld/go-ipld-prime v0.18.0
 	github.com/ipld/go-ipld-prime/storage/bsadapter v0.0.0-20211210234204-ce2a1c70cd73
 	github.com/libp2p/go-libp2p v0.22.0
 	github.com/libp2p/go-libp2p-gostream v0.5.0
 	github.com/libp2p/go-libp2p-http v0.4.0
-	github.com/libp2p/go-libp2p-noise v0.2.0
-	github.com/libp2p/go-libp2p-tls v0.1.3
+	github.com/libp2p/go-libp2p-noise v0.5.0
+	github.com/libp2p/go-libp2p-tls v0.5.0
 	github.com/multiformats/go-multiaddr v0.7.0
 	github.com/multiformats/go-multihash v0.2.1
 	github.com/testground/sdk-go v0.2.7-0.20201112151952-8ee00c80c3ec
@@ -36,7 +36,6 @@ require (
 
 require (
 	github.com/DataDog/zstd v1.4.1 // indirect
-	github.com/Stebalien/go-bitfield v0.0.1 // indirect
 	github.com/avast/retry-go v2.6.0+incompatible // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -86,7 +85,6 @@ require (
 	github.com/ipfs/go-log/v2 v2.5.1 // indirect
 	github.com/ipfs/go-metrics-interface v0.0.1 // indirect
 	github.com/ipfs/go-peertaskqueue v0.7.2-0.20220919113234-caa10b705e4e // indirect
-	github.com/ipfs/go-unixfsnode v1.4.0 // indirect
 	github.com/ipfs/go-verifcid v0.0.1 // indirect
 	github.com/ipld/go-codec-dagpb v1.3.1 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
