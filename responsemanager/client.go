@@ -9,7 +9,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-graphsync"

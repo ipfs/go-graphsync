@@ -2,7 +2,7 @@ package hooks
 
 import (
 	"github.com/hannahhoward/go-pubsub"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	peer "github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/ipfs/go-graphsync"
 )
