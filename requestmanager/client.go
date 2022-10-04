@@ -191,6 +191,8 @@ func (rm *RequestManager) NewRequest(ctx context.Context,
 	select {
 	case <-rm.ctx.Done():
 		return rm.emptyResponse()
+	case <-ctx.Done():
+		return rm.emptyResponse()
 	case receivedInProgressRequest = <-inProgressRequestChan:
 	}
 
@@ -284,6 +286,8 @@ func (rm *RequestManager) CancelRequest(ctx context.Context, requestID graphsync
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
+	case <-ctx.Done():
+		return errors.New("context cancelled")
 	case err := <-terminated:
 		return err
 	}
@@ -306,6 +310,8 @@ func (rm *RequestManager) UnpauseRequest(ctx context.Context, requestID graphsyn
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
+	case <-ctx.Done():
+		return errors.New("context cancelled")
 	case err := <-response:
 		return err
 	}
@@ -318,6 +324,8 @@ func (rm *RequestManager) PauseRequest(ctx context.Context, requestID graphsync.
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
+	case <-ctx.Done():
+		return errors.New("context cancelled")
 	case err := <-response:
 		return err
 	}
@@ -329,6 +337,8 @@ func (rm *RequestManager) UpdateRequest(ctx context.Context, requestID graphsync
 	rm.send(&updateRequestMessage{requestID, extensions, response}, ctx.Done())
 	select {
 	case <-rm.ctx.Done():
+		return errors.New("context cancelled")
+	case <-ctx.Done():
 		return errors.New("context cancelled")
 	case err := <-response:
 		return err
