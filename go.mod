@@ -19,12 +19,12 @@ require (
 	github.com/ipfs/go-ipfs-exchange-offline v0.1.1
 	github.com/ipfs/go-ipfs-files v0.0.8
 	github.com/ipfs/go-ipfs-pq v0.0.2
-	github.com/ipfs/go-ipfs-routing v0.2.2-0.20220919114711-0abc51b3e031
+	github.com/ipfs/go-ipfs-routing v0.3.0
 	github.com/ipfs/go-ipfs-util v0.0.2
 	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/ipfs/go-merkledag v0.5.1
-	github.com/ipfs/go-peertaskqueue v0.7.2-0.20220919113234-caa10b705e4e
+	github.com/ipfs/go-peertaskqueue v0.8.0
 	github.com/ipfs/go-unixfs v0.3.1
 	github.com/ipfs/go-unixfsnode v1.4.0
 	github.com/ipld/go-codec-dagpb v1.3.1
