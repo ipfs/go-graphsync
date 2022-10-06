@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"time"
 
@@ -20,7 +19,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -142,7 +141,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 					if err != nil {
 						log.Warnf("error %s in AsLargeBytes at path %s", err.Error(), tp.Path)
 					}
-					_, err = io.Copy(ioutil.Discard, s)
+					_, err = io.Copy(io.Discard, s)
 					if err != nil {
 						log.Warnf("error %s reading bytes from reader at path %s", err.Error(), tp.Path)
 					}

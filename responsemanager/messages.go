@@ -2,7 +2,7 @@ package responsemanager
 
 import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"

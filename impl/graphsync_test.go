@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -37,9 +36,9 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
 
@@ -1380,7 +1379,7 @@ func TestUnixFSADLFetch(t *testing.T) {
 	require.NoError(t, err)
 	loremFile, err := os.Open(loremFilePath)
 	require.NoError(t, err)
-	origBytes, err := ioutil.ReadAll(loremFile)
+	origBytes, err := io.ReadAll(loremFile)
 	require.NoError(t, err)
 	err = loremFile.Close()
 	require.NoError(t, err)
@@ -1607,7 +1606,7 @@ func TestUnixFSFetch(t *testing.T) {
 	require.True(t, ok, "file should be a regular file, but wasn't")
 
 	// Read the bytes for the UnixFS File
-	finalBytes, err := ioutil.ReadAll(fn)
+	finalBytes, err := io.ReadAll(fn)
 	require.NoError(t, err, "should have been able to read all of unix FS file but wasn't")
 
 	// verify original bytes match final bytes!
