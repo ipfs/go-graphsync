@@ -66,8 +66,6 @@ statlog() {
             elif [[ "$event" =~ ^deletion ]]; then
                 deletions=$count
             else
-                echo "unknown event $event" >&2
-                exit 1
             fi
         done<<<"${changes//,/$NL}"
 

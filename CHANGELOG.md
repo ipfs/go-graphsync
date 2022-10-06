@@ -1,5 +1,28 @@
 # go-graphsync changelog
 
+# go-graphsync v0.14.0
+
+Change to request acceptance ordering, deprecation of protobuf protocol, and
+libp2p upgrade
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - updates for libp2p v0.22 (#392) ([ipfs/go-graphsync#392](https://github.com/ipfs/go-graphsync/pull/392))
+  - Update .github/workflows/stale.yml
+  - feat(ipld): use bindnode/registry (#386) ([ipfs/go-graphsync#386](https://github.com/ipfs/go-graphsync/pull/386))
+  - Accept/Reject requests up front (#384) ([ipfs/go-graphsync#384](https://github.com/ipfs/go-graphsync/pull/384))
+  - Remove protobuf protocol (#385) ([ipfs/go-graphsync#385](https://github.com/ipfs/go-graphsync/pull/385))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Will | 1 | +1177/-907 | 67 |
+| GitHub | 1 | +0/-0 | 0 |
+|  | 3 | +0/-0 | 0 |
+
+
 # go-graphsync v0.13.2
 
 Minor stability and depedency upgrade prior to future breaking library changes
