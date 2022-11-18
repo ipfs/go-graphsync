@@ -229,13 +229,14 @@ func (mh *MessageHandler) fromIPLD(ibm *ipldbind.GraphSyncMessageRoot) (message.
 			if err != nil {
 				return message.GraphSyncMessage{}, err
 			}
-
-			c, err := pref.Sum(b.Data)
+			data := make([]byte, len(b.Data))
+			copy(data, b.Data)
+			c, err := pref.Sum(data)
 			if err != nil {
 				return message.GraphSyncMessage{}, err
 			}
 
-			blk, err := blocks.NewBlockWithCid(b.Data, c)
+			blk, err := blocks.NewBlockWithCid(data, c)
 			if err != nil {
 				return message.GraphSyncMessage{}, err
 			}
