@@ -101,7 +101,10 @@ func (c channelState) Voucher() datatransfer.Voucher {
 	if len(c.vouchers) == 0 {
 		return nil
 	}
-	decoder, _ := c.voucherDecoder(c.vouchers[0].Type)
+	decoder, has := c.voucherDecoder(c.vouchers[0].Type)
+	if !has {
+		return nil
+	}
 	encodable, _ := decoder.DecodeFromCbor(c.vouchers[0].Voucher.Raw)
 	return encodable.(datatransfer.Voucher)
 }
@@ -152,7 +155,10 @@ func (c channelState) Message() string {
 func (c channelState) Vouchers() []datatransfer.Voucher {
 	vouchers := make([]datatransfer.Voucher, 0, len(c.vouchers))
 	for _, encoded := range c.vouchers {
-		decoder, _ := c.voucherDecoder(encoded.Type)
+		decoder, has := c.voucherDecoder(encoded.Type)
+		if !has {
+			continue
+		}
 		encodable, _ := decoder.DecodeFromCbor(encoded.Voucher.Raw)
 		vouchers = append(vouchers, encodable.(datatransfer.Voucher))
 	}
@@ -160,13 +166,19 @@ func (c channelState) Vouchers() []datatransfer.Voucher {
 }
 
 func (c channelState) LastVoucher() datatransfer.Voucher {
-	decoder, _ := c.voucherDecoder(c.vouchers[len(c.vouchers)-1].Type)
+	decoder, has := c.voucherDecoder(c.vouchers[len(c.vouchers)-1].Type)
+	if !has {
+		return nil
+	}
 	encodable, _ := decoder.DecodeFromCbor(c.vouchers[len(c.vouchers)-1].Voucher.Raw)
 	return encodable.(datatransfer.Voucher)
 }
 
 func (c channelState) LastVoucherResult() datatransfer.VoucherResult {
-	decoder, _ := c.voucherResultDecoder(c.voucherResults[len(c.voucherResults)-1].Type)
+	decoder, has := c.voucherResultDecoder(c.voucherResults[len(c.voucherResults)-1].Type)
+	if !has {
+		return nil
+	}
 	encodable, _ := decoder.DecodeFromCbor(c.voucherResults[len(c.voucherResults)-1].VoucherResult.Raw)
 	return encodable.(datatransfer.VoucherResult)
 }
@@ -174,7 +186,10 @@ func (c channelState) LastVoucherResult() datatransfer.VoucherResult {
 func (c channelState) VoucherResults() []datatransfer.VoucherResult {
 	voucherResults := make([]datatransfer.VoucherResult, 0, len(c.voucherResults))
 	for _, encoded := range c.voucherResults {
-		decoder, _ := c.voucherResultDecoder(encoded.Type)
+		decoder, has := c.voucherResultDecoder(encoded.Type)
+		if !has {
+			continue
+		}
 		encodable, _ := decoder.DecodeFromCbor(encoded.VoucherResult.Raw)
 		voucherResults = append(voucherResults, encodable.(datatransfer.VoucherResult))
 	}
