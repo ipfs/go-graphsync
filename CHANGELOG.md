@@ -1,5 +1,42 @@
 # go-data-transfer changelog
 
+# go-data-transfer v1.15.3
+
+Fix a rare panic
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - fix(channels): avoid panic in Voucher (#354) ([filecoin-project/go-data-transfer#354](https://github.com/filecoin-project/go-data-transfer/pull/354))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +20/-5 | 1 |
+
+# go-data-transfer v1.15.2
+
+Minor big fixes and improvements
+
+### Changelog
+
+- github.com/filecoin-project/go-data-transfer:
+  - chore(deps): update libp2p v0.19.4 (#341) ([filecoin-project/go-data-transfer#341](https://github.com/filecoin-project/go-data-transfer/pull/341))
+  - Fix transfer message bindnode wrap passing pointer to pointer
+  - Log less important messages at debug level (#334) ([filecoin-project/go-data-transfer#334](https://github.com/filecoin-project/go-data-transfer/pull/334))
+  - fix(message): do not EncodeToNode selectors (#326) ([filecoin-project/go-data-transfer#326](https://github.com/filecoin-project/go-data-transfer/pull/326))
+  - ci(circle): update to non-legacy image (#328) ([filecoin-project/go-data-transfer#328](https://github.com/filecoin-project/go-data-transfer/pull/328))
+  - Merge branch 'release/v1.15.1'
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 3 | +318/-105 | 8 |
+| Andrew Gillis | 1 | +3/-3 | 1 |
+| Masih H. Derkani | 1 | +1/-1 | 1 |
+
 # go-data-transfer v1.15.1
 
 Minor fixes and stability updates for v1.15.0
