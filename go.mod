@@ -25,7 +25,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/ipfs/go-merkledag v0.8.1
 	github.com/ipfs/go-peertaskqueue v0.8.0
-	github.com/ipfs/go-unixfs v0.3.1
+	github.com/ipfs/go-unixfs v0.4.1-0.20230111141328-e98debe2cb55
 	github.com/ipfs/go-unixfsnode v1.4.0
 	github.com/ipld/go-codec-dagpb v1.5.0
 	github.com/ipld/go-ipld-prime v0.18.0
@@ -64,7 +64,6 @@ require (
 	github.com/ipfs/go-bitfield v1.0.0 // indirect
 	github.com/ipfs/go-ipfs-ds-help v1.1.0 // indirect
 	github.com/ipfs/go-ipfs-exchange-interface v0.1.0 // indirect
-	github.com/ipfs/go-ipfs-files v0.0.8 // indirect
 	github.com/ipfs/go-ipfs-posinfo v0.0.1 // indirect
 	github.com/ipfs/go-ipld-cbor v0.0.5 // indirect
 	github.com/ipfs/go-ipld-legacy v0.1.0 // indirect

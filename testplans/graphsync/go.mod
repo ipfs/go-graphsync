@@ -19,7 +19,7 @@ require (
 	github.com/ipfs/go-ipld-format v0.3.0
 	github.com/ipfs/go-libipfs v0.0.0-20230111124659-ad29d57a4248
 	github.com/ipfs/go-merkledag v0.8.1
-	github.com/ipfs/go-unixfs v0.3.1
+	github.com/ipfs/go-unixfs v0.4.1-0.20230111141328-e98debe2cb55
 	github.com/ipld/go-car/v2 v2.5.0
 	github.com/ipld/go-ipld-prime v0.18.0
 	github.com/ipld/go-ipld-prime/storage/bsadapter v0.0.0-20211210234204-ce2a1c70cd73
@@ -73,7 +73,6 @@ require (
 	github.com/ipfs/bbloom v0.0.4 // indirect
 	github.com/ipfs/go-ipfs-ds-help v1.1.0 // indirect
 	github.com/ipfs/go-ipfs-exchange-interface v0.1.0 // indirect
-	github.com/ipfs/go-ipfs-files v0.0.8 // indirect
 	github.com/ipfs/go-ipfs-posinfo v0.0.1 // indirect
 	github.com/ipfs/go-ipfs-pq v0.0.2 // indirect
 	github.com/ipfs/go-ipfs-util v0.0.2 // indirect
