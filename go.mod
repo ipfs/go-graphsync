@@ -21,7 +21,7 @@ require (
 	github.com/ipfs/go-ipfs-routing v0.3.0
 	github.com/ipfs/go-ipfs-util v0.0.2
 	github.com/ipfs/go-ipld-format v0.3.0
-	github.com/ipfs/go-libipfs v0.0.0-20230111124659-ad29d57a4248
+	github.com/ipfs/go-libipfs v0.1.0
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/ipfs/go-merkledag v0.8.1
 	github.com/ipfs/go-peertaskqueue v0.8.0
