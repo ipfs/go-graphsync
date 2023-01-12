@@ -17,7 +17,7 @@ require (
 	github.com/ipfs/go-ipfs-chunker v0.0.5
 	github.com/ipfs/go-ipfs-exchange-offline v0.2.0
 	github.com/ipfs/go-ipld-format v0.3.0
-	github.com/ipfs/go-libipfs v0.0.0-20230111124659-ad29d57a4248
+	github.com/ipfs/go-libipfs v0.1.0
 	github.com/ipfs/go-merkledag v0.8.1
 	github.com/ipfs/go-unixfs v0.4.1-0.20230111141328-e98debe2cb55
 	github.com/ipld/go-car/v2 v2.5.0
