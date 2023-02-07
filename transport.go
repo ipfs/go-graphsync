@@ -3,8 +3,8 @@ package datatransfer
 import (
 	"context"
 
-	ipld "github.com/ipld/go-ipld-prime"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/ipld/go-ipld-prime"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 // EventsHandler are semantic data transfer events that happen as a result of graphsync hooks
@@ -88,7 +88,8 @@ data protocol.
 
 Transport is the minimum interface that must be satisfied to serve as a datatransfer
 transport layer. Transports must be able to open (open is always called by the receiving peer)
-and close channels, and set at an event handler */
+and close channels, and set at an event handler
+*/
 type Transport interface {
 	// OpenChannel initiates an outgoing request for the other peer to send data
 	// to us on this channel

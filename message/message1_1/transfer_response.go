@@ -7,9 +7,9 @@ import (
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	cbg "github.com/whyrusleeping/cbor-gen"
-	xerrors "golang.org/x/xerrors"
+	"golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/encoding"
@@ -68,7 +68,7 @@ func (trsp *TransferResponse1_1) IsVoucherResult() bool {
 		trsp.Type == uint64(types.RestartMessage)
 }
 
-// 	Accepted returns true if the request is accepted in the response
+// Accepted returns true if the request is accepted in the response
 func (trsp *TransferResponse1_1) Accepted() bool {
 	return trsp.Acpt
 }
