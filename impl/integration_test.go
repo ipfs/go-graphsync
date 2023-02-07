@@ -27,9 +27,9 @@ import (
 	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -619,7 +619,7 @@ func (r *restartRevalidator) pushDataSum(chid datatransfer.ChannelID) uint64 {
 // TestAutoRestart tests that if the connection for a push or pull request
 // goes down, it will automatically restart (given the right config options)
 func TestAutoRestart(t *testing.T) {
-	//SetDTLogLevelDebug()
+	// SetDTLogLevelDebug()
 
 	testCases := []struct {
 		name                        string
@@ -668,7 +668,7 @@ func TestAutoRestart(t *testing.T) {
 		registerResponder: func(responder datatransfer.Manager, dc *disconnectCoordinator) {
 			rcvdCount := 0
 			subscriber := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-				//t.Logf("resp: %s / %s\n", datatransfer.Events[event.Code], datatransfer.Statuses[channelState.Status()])
+				// t.Logf("resp: %s / %s\n", datatransfer.Events[event.Code], datatransfer.Statuses[channelState.Status()])
 				if event.Code == datatransfer.DataReceived {
 					rcvdCount++
 					if rcvdCount == 1 {
@@ -779,9 +779,9 @@ func TestAutoRestart(t *testing.T) {
 				testutil.StartAndWaitForReady(ctx, t, responder)
 				defer responder.Stop(ctx)
 
-				//initiator.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+				// initiator.SubscribeToEvents(func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 				//	t.Logf("clnt: evt %s / status %s", datatransfer.Events[event.Code], datatransfer.Statuses[channelState.Status()])
-				//})
+				// })
 
 				// Watch for successful completion
 				finished := make(chan struct{}, 2)
@@ -973,7 +973,7 @@ func TestAutoRestartAfterBouncingInitiator(t *testing.T) {
 			dataReceived := make(chan struct{}, 1)
 			rcvdCount := 0
 			dataRcvdSubscriber := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-				//t.Logf("resp: %s / %s\n", datatransfer.Events[event.Code], datatransfer.Statuses[channelState.Status()])
+				// t.Logf("resp: %s / %s\n", datatransfer.Events[event.Code], datatransfer.Statuses[channelState.Status()])
 				if event.Code == datatransfer.DataReceived {
 					rcvdCount++
 					if rcvdCount == 1 {
@@ -1900,8 +1900,8 @@ func TestResponseHookWhenExtensionNotFound(t *testing.T) {
 	require.NoError(t, err)
 	testutil.StartAndWaitForReady(ctx, t, dt1)
 	t.Run("when it's not our extension, does not error and does not validate", func(t *testing.T) {
-		//register a hook that validates the request so we don't fail in gs because the request
-		//never gets processed
+		// register a hook that validates the request so we don't fail in gs because the request
+		// never gets processed
 		validateHook := func(p peer.ID, req graphsync.RequestData, ha graphsync.IncomingRequestHookActions) {
 			ha.ValidateRequest()
 		}
@@ -1929,7 +1929,7 @@ func TestResponseHookWhenExtensionNotFound(t *testing.T) {
 }
 
 func TestRespondingToPullGraphsyncRequests(t *testing.T) {
-	//create network
+	// create network
 	ctx := context.Background()
 	testCases := map[string]struct {
 		test func(*testing.T, *testutil.GraphsyncTestingData, datatransfer.Transport, ipld.Link, datatransfer.TransferID, *fakeGraphSyncReceiver)

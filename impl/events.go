@@ -7,7 +7,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -462,9 +462,9 @@ func (m *manager) acceptRequest(chid datatransfer.ChannelID, incoming datatransf
 // validateVoucher converts a voucher in an incoming message to its appropriate
 // voucher struct, then runs the validator and returns the results.
 // returns error if:
-//   * reading voucher fails
-//   * deserialization of selector fails
-//   * validation fails
+//   - reading voucher fails
+//   - deserialization of selector fails
+//   - validation fails
 func (m *manager) validateVoucher(
 	isRestart bool,
 	chid datatransfer.ChannelID,
@@ -494,9 +494,9 @@ func (m *manager) validateVoucher(
 // revalidateVoucher converts a voucher in an incoming message to its appropriate
 // voucher struct, then runs the revalidator and returns the results.
 // returns error if:
-//   * reading voucher fails
-//   * deserialization of selector fails
-//   * validation fails
+//   - reading voucher fails
+//   - deserialization of selector fails
+//   - validation fails
 func (m *manager) revalidateVoucher(chid datatransfer.ChannelID,
 	incoming datatransfer.Request) (datatransfer.Voucher, datatransfer.VoucherResult, error) {
 	vouch, err := m.decodeVoucher(incoming, m.revalidators)

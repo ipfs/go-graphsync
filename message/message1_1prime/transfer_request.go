@@ -7,8 +7,8 @@ import (
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/schema"
-	"github.com/libp2p/go-libp2p-core/protocol"
-	xerrors "golang.org/x/xerrors"
+	"github.com/libp2p/go-libp2p/core/protocol"
+	"golang.org/x/xerrors"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-data-transfer/encoding"

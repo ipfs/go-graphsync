@@ -6,7 +6,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	cbg "github.com/whyrusleeping/cbor-gen"
 
 	"github.com/filecoin-project/go-data-transfer/encoding"
@@ -228,7 +228,8 @@ func (cs *ChannelStages) AddLog(stage, msg string) {
 //
 // TODO: the input should be a strongly-typed enum instead of a free-form string.
 // TODO: drop Get from GetStage to make this code more idiomatic. Return a
-//  second ok boolean to make it even more idiomatic.
+//
+//	second ok boolean to make it even more idiomatic.
 //
 // EXPERIMENTAL; subject to change.
 func (cs *ChannelStages) GetStage(stage string) *ChannelStage {
