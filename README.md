@@ -1,13 +1,3 @@
-***go-graphsync's default branch is now `main`***
-
-To update your local repository run:
-```
-git branch -m master main
-git fetch origin
-git branch -u origin/main main
-git remote set-head origin -a
-```
-
 # go-graphsync
 
 [![](https://img.shields.io/badge/made%20by-Protocol%20Labs-blue.svg?style=flat-square)](http://ipn.io)
