@@ -21,7 +21,7 @@ require (
 	github.com/ipfs/go-merkledag v0.8.1
 	github.com/ipfs/go-unixfs v0.4.1-0.20230111141328-e98debe2cb55
 	github.com/ipld/go-car/v2 v2.5.0
-	github.com/ipld/go-ipld-prime v0.18.0
+	github.com/ipld/go-ipld-prime v0.19.0
 	github.com/ipld/go-ipld-prime/storage/bsadapter v0.0.0-20211210234204-ce2a1c70cd73
 	github.com/libp2p/go-libp2p v0.23.4
 	github.com/libp2p/go-libp2p-gostream v0.5.0
