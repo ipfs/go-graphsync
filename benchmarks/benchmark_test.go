@@ -3,6 +3,7 @@ package graphsync_test
 import (
 	"bytes"
 	"context"
+	crand "crypto/rand"
 	"fmt"
 	"math/rand"
 	"os"
@@ -264,7 +265,7 @@ const defaultUnixfsLinksPerLevel = 1024
 func loadRandomUnixFxFile(ctx context.Context, b *testing.B, bs blockstore.Blockstore, size uint64, unixfsChunkSize uint64, unixfsLinksPerLevel int, useRawNodes bool) cid.Cid {
 
 	data := make([]byte, size)
-	_, err := rand.Read(data)
+	_, err := crand.Read(data)
 	require.NoError(b, err)
 	buf := bytes.NewReader(data)
 	file := files.NewReaderFile(buf)

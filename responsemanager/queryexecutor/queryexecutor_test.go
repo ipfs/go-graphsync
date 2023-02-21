@@ -3,6 +3,7 @@ package queryexecutor
 import (
 	"bytes"
 	"context"
+	crand "crypto/rand"
 	"fmt"
 	"io"
 	"math/rand"
@@ -220,7 +221,7 @@ func TestSmallGraphTask(t *testing.T) {
 
 func newRandomBlock(index int64) *blockData {
 	digest := make([]byte, 32)
-	_, err := rand.Read(digest)
+	_, err := crand.Read(digest)
 	if err != nil {
 		panic(err)
 	}
@@ -228,7 +229,7 @@ func newRandomBlock(index int64) *blockData {
 	c := cid.NewCidV1(cid.DagCBOR, mh)
 	link := &cidlink.Link{Cid: c}
 	data := make([]byte, rand.Intn(64)+1)
-	_, err = rand.Read(data)
+	_, err = crand.Read(data)
 	if err != nil {
 		panic(err)
 	}
