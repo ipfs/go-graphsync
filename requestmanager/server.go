@@ -157,7 +157,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 				return nil
 			},
 			Chooser:       ipr.nodeStyleChooser,
-			LinkSystem:    rm.linkSystem,
+			LinkSystem:    *ipr.lsys,
 			Budget:        budget,
 			PanicCallback: rm.panicCallback,
 		}.Start(ctx)
