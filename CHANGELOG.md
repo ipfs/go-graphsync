@@ -1,5 +1,71 @@
 # go-graphsync changelog
 
+# go-graphsync v0.14.3
+
+Deps updates and a minor linksystem fix
+
+### Changelog
+- github.com/ipfs/go-graphsync:
+  - fix: wire up proper linksystem to traverser (#411) ([ipfs/go-graphsync#411](https://github.com/ipfs/go-graphsync/pull/411))
+  - sync: update CI config files (#378) ([ipfs/go-graphsync#378](https://github.com/ipfs/go-graphsync/pull/378))
+  - chore(deps): bump github.com/ipfs/go-unixfsnode from 1.4.0 to 1.5.2
+  - chore(deps): bump github.com/ipfs/go-bitfield from 1.0.0 to 1.1.0
+  - chore(deps): bump github.com/ipld/go-ipld-prime from 0.19.0 to 0.20.0
+  - chore(deps): bump github.com/ipld/go-ipld-prime in /testplans/graphsync
+  - chore(deps): bump github.com/ipld/go-ipld-prime from 0.19.0 to 0.20.0
+  - chore(deps): bump github.com/ipld/go-ipld-prime from 0.18.0 to 0.19.0
+  - chore: remove social links (#398) ([ipfs/go-graphsync#398](https://github.com/ipfs/go-graphsync/pull/398))
+  - Removes `main` branch callout.
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| dependabot[bot] | 4 | +310/-139 | 8 |
+| Rod Vagg | 4 | +156/-117 | 6 |
+| web3-bot | 1 | +34/-28 | 7 |
+| Johnny | 1 | +0/-10 | 1 |
+
+# go-graphsync v0.14.2
+
+remove go-libp2p-core
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - release v0.14.2
+  - chore: remove go-libp2p-core from go.mod (#401) ([ipfs/go-graphsync#401](https://github.com/ipfs/go-graphsync/pull/401))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Marten Seemann | 2 | +5/-9 | 5 |
+
+# go-graphsync v0.14.1
+
+deps updates
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - chore: version 0.14.1 (#400) ([ipfs/go-graphsync#400](https://github.com/ipfs/go-graphsync/pull/400))
+  - chore: migrate files (#399) ([ipfs/go-graphsync#399](https://github.com/ipfs/go-graphsync/pull/399))
+  - chore(deps): bump github.com/btcsuite/btcd in /testplans/graphsync
+  - fix: mod tidy
+  - chore(deps): bump github.com/ipld/go-codec-dagpb from 1.3.1 to 1.5.0
+  - chore(deps): bump github.com/ipfs/go-merkledag from 0.5.1 to 0.8.1
+  - chore(deps): bump github.com/ipfs/go-merkledag in /testplans/graphsync
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Henrique Dias | 2 | +94/-114 | 8 |
+| dependabot[bot] | 4 | +32/-24 | 8 |
+| Rod Vagg | 1 | +3/-14 | 2 |
+
+
 # go-graphsync v0.14.0
 
 Change to request acceptance ordering, deprecation of protobuf protocol, and
