@@ -377,4 +377,12 @@ func (mq *MessageQueue) publishError(metadata internalMetadata, err error) {
 	mq.scrubResponseStreams(metadata.responseStreams)
 	mq.eventPublisher.Publish(metadata.topic, Event{Name: Error, Err: err, Metadata: metadata.public})
 	_ = mq.allocator.ReleaseBlockMemory(mq.p, metadata.msgSize)
+
+	select {
+	case <-mq.done:
+		return
+	default:
+		mq.Shutdown()
+		return
+	}
 }
