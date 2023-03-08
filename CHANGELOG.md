@@ -1,5 +1,22 @@
 # go-graphsync changelog
 
+# go-graphsync v0.13.3
+
+Minor performance fixes
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - fix(graphsync): fix potential lock on context cancel (#391) ([ipfs/go-graphsync#391](https://github.com/ipfs/go-graphsync/pull/391))
+  - fix: shutdown queue on publish error if not done (#412) ([ipfs/go-graphsync#412](https://github.com/ipfs/go-graphsync/pull/412))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +33/-0 | 3 |
+| Jacob Heun | 1 | +7/-1 | 1 |
+
 # go-graphsync v0.13.2
 
 Minor stability and depedency upgrade prior to future breaking library changes
@@ -49,7 +66,7 @@ Graphsync v0.13.0 is a major new feature release
 Key features:
 
 #### Graphsync 2.0 protocol
-  
+
 Graphsync is now a CBOR protocol with an IPLD schema. The new protocol is quite
 similar to the protobuf protocol, but slightly smaller, and includes a few major
 changes:
