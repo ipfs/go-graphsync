@@ -1,5 +1,20 @@
 # go-graphsync changelog
 
+# go-graphsync v0.13.4
+
+Fix message queue shutdown
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - fix: calling message queue Shutdown twice causes panic ([ipfs/go-graphsync#415](https://github.com/ipfs/go-graphsync/pull/415))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Dirk McCormick | 1 | +4/-1 | 1 |
+
 # go-graphsync v0.13.3
 
 Minor performance fixes
