@@ -68,6 +68,7 @@ type MessageQueue struct {
 
 	outgoingWork chan struct{}
 	done         chan struct{}
+	doneOnce     sync.Once
 
 	// internal do not touch outside go routines
 	sender             gsnet.MessageSender
@@ -144,7 +145,9 @@ func (mq *MessageQueue) Startup() {
 
 // Shutdown stops the processing of messages for a message queue.
 func (mq *MessageQueue) Shutdown() {
-	close(mq.done)
+	mq.doneOnce.Do(func() {
+		close(mq.done)
+	})
 }
 
 func (mq *MessageQueue) runQueue() {
