@@ -3,7 +3,6 @@ package responsemanager
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"math"
 
 	"github.com/ipfs/go-cid"
@@ -101,7 +100,7 @@ func (qe *queryPreparer) prepareQuery(
 				if err != nil {
 					log.Warnf("error %s in AsLargeBytes at path %s", err.Error(), p.Path)
 				}
-				_, err = io.Copy(ioutil.Discard, s)
+				_, err = io.Copy(io.Discard, s)
 				if err != nil {
 					log.Warnf("error %s reading bytes from reader at path %s", err.Error(), p.Path)
 				}
