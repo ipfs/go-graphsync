@@ -10,8 +10,8 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestBufferingResponseProgress(t *testing.T) {

@@ -12,15 +12,15 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/cidset"
-	"github.com/ipfs/go-graphsync/dedupkey"
-	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/panics"
-	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
-	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/cidset"
+	"github.com/filecoin-project/boost-graphsync/dedupkey"
+	"github.com/filecoin-project/boost-graphsync/donotsendfirstblocks"
+	"github.com/filecoin-project/boost-graphsync/ipldutil"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/panics"
+	"github.com/filecoin-project/boost-graphsync/responsemanager/queryexecutor"
+	"github.com/filecoin-project/boost-graphsync/responsemanager/responseassembler"
 )
 
 type errorString string

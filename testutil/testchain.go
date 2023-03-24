@@ -17,8 +17,8 @@ import (
 	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testutil/chaintypes"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/testutil/chaintypes"
 )
 
 const blockChainTraversedNodesPerBlock = 2

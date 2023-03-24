@@ -3,7 +3,7 @@ package requestmanager
 import (
 	"context"
 
-	"github.com/ipfs/go-graphsync"
+	graphsync "github.com/filecoin-project/boost-graphsync"
 )
 
 type responseCollector struct {

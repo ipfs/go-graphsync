@@ -14,10 +14,10 @@ import (
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader/traversalrecord"
-	"github.com/ipfs/go-graphsync/testutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/ipldutil"
+	"github.com/filecoin-project/boost-graphsync/requestmanager/reconciledloader/traversalrecord"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestTraversalRecord(t *testing.T) {

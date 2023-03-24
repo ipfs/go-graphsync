@@ -1,4 +1,4 @@
-module github.com/ipfs/go-graphsync
+module github.com/filecoin-project/boost-graphsync
 
 go 1.18
 

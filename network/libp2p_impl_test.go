@@ -12,9 +12,9 @@ import (
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/testutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 // Receiver is an interface for receiving messages from the GraphSyncNetwork.

@@ -5,7 +5,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/ipfs/go-graphsync/messagequeue"
+	"github.com/filecoin-project/boost-graphsync/messagequeue"
 )
 
 // PeerQueue is a process that sends messages to a peer

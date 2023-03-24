@@ -4,7 +4,7 @@ import (
 	"github.com/hannahhoward/go-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/ipfs/go-graphsync"
+	graphsync "github.com/filecoin-project/boost-graphsync"
 )
 
 // IncomingBlockHooks is a set of incoming block hooks that can be processed

@@ -15,9 +15,9 @@ import (
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"google.golang.org/protobuf/proto"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	gsmsgv1 "github.com/ipfs/go-graphsync/message/v1"
-	gsnet "github.com/ipfs/go-graphsync/network"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	gsmsgv1 "github.com/filecoin-project/boost-graphsync/message/v1"
+	gsnet "github.com/filecoin-project/boost-graphsync/network"
 )
 
 // VirtualNetwork generates a new testnet instance - a fake network that

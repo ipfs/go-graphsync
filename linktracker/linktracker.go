@@ -3,7 +3,7 @@ package linktracker
 import (
 	"github.com/ipld/go-ipld-prime"
 
-	"github.com/ipfs/go-graphsync"
+	graphsync "github.com/filecoin-project/boost-graphsync"
 )
 
 // LinkTracker records links being traversed to determine useful information

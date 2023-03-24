@@ -6,7 +6,7 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
-	"github.com/ipfs/go-graphsync"
+	graphsync "github.com/filecoin-project/boost-graphsync"
 )
 
 // Builder captures components of a message across multiple

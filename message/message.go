@@ -13,7 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-msgio"
 
-	"github.com/ipfs/go-graphsync"
+	graphsync "github.com/filecoin-project/boost-graphsync"
 )
 
 // MessageHandler provides a consistent interface for maintaining per-peer state

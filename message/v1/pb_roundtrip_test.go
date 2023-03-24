@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/message"
-	pb "github.com/ipfs/go-graphsync/message/pb"
-	"github.com/ipfs/go-graphsync/testutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/message"
+	pb "github.com/filecoin-project/boost-graphsync/message/pb"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestIPLDRoundTrip(t *testing.T) {

@@ -51,8 +51,8 @@ If your existing library (i.e. `go-ipfs` or `go-filecoin`) uses these other olde
 
 ```golang
 import (
-  graphsync "github.com/ipfs/go-graphsync/impl"
-  gsnet "github.com/ipfs/go-graphsync/network"
+  graphsync "github.com/filecoin-project/boost-graphsync/impl"
+  gsnet "github.com/filecoin-project/boost-graphsync/network"
   ipld "github.com/ipld/go-ipld-prime"
 )
 
@@ -78,9 +78,9 @@ integrating with BlockStore's from IPFS.
 
 ```golang
 import (
-  graphsync "github.com/ipfs/go-graphsync/impl"
-  gsnet "github.com/ipfs/go-graphsync/network"
-  storeutil "github.com/ipfs/go-graphsync/storeutil"
+  graphsync "github.com/filecoin-project/boost-graphsync/impl"
+  gsnet "github.com/filecoin-project/boost-graphsync/network"
+  storeutil "github.com/filecoin-project/boost-graphsync/storeutil"
   ipld "github.com/ipld/go-ipld-prime"
   blockstore "github.com/ipfs/go-ipfs-blockstore"
 )

@@ -32,9 +32,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/ipfs/go-graphsync/benchmarks/testinstance"
-	tn "github.com/ipfs/go-graphsync/benchmarks/testnet"
-	graphsync "github.com/ipfs/go-graphsync/impl"
+	"github.com/filecoin-project/boost-graphsync/benchmarks/testinstance"
+	tn "github.com/filecoin-project/boost-graphsync/benchmarks/testnet"
+	graphsync "github.com/filecoin-project/boost-graphsync/impl"
 )
 
 type runStats struct {

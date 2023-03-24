@@ -14,11 +14,11 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/notifications"
-	"github.com/ipfs/go-graphsync/testutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/messagequeue"
+	"github.com/filecoin-project/boost-graphsync/notifications"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestResponseAssemblerSendsResponses(t *testing.T) {

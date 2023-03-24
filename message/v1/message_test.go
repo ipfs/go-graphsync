@@ -16,9 +16,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/testutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestAppendingRequests(t *testing.T) {

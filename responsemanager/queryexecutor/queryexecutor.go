@@ -15,11 +15,11 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/responsemanager/hooks"
-	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/ipldutil"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/responsemanager/hooks"
+	"github.com/filecoin-project/boost-graphsync/responsemanager/responseassembler"
 )
 
 var log = logging.Logger("gs-queryexecutor")

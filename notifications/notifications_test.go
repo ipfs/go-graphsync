@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-graphsync/notifications"
-	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/filecoin-project/boost-graphsync/notifications"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestSubscribeWithData(t *testing.T) {

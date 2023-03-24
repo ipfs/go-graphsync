@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync/allocator"
-	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/filecoin-project/boost-graphsync/allocator"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestAllocator(t *testing.T) {

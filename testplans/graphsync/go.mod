@@ -1,10 +1,11 @@
-module github.com/ipfs/go-graphsync/testplans/graphsync
+module github.com/filecoin-project/boost-graphsync/testplans/graphsync
 
 go 1.18
 
 require (
 	github.com/dgraph-io/badger/v2 v2.2007.3
 	github.com/dustin/go-humanize v1.0.0
+	github.com/filecoin-project/boost-graphsync v0.0.0-00010101000000-000000000000
 	github.com/hannahhoward/all-selector v0.2.0
 	github.com/ipfs/go-block-format v0.0.3
 	github.com/ipfs/go-blockservice v0.3.0
@@ -12,7 +13,6 @@ require (
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-ds-badger2 v0.1.3
 	github.com/ipfs/go-filestore v1.2.0
-	github.com/ipfs/go-graphsync v0.6.8
 	github.com/ipfs/go-ipfs-blockstore v1.2.0
 	github.com/ipfs/go-ipfs-chunker v0.0.5
 	github.com/ipfs/go-ipfs-exchange-offline v0.2.0
@@ -159,4 +159,4 @@ require (
 	nhooyr.io/websocket v1.8.7 // indirect
 )
 
-replace github.com/ipfs/go-graphsync => ../../
+replace github.com/filecoin-project/boost-graphsync => ../../

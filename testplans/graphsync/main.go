@@ -18,6 +18,9 @@ import (
 
 	dgbadger "github.com/dgraph-io/badger/v2"
 	"github.com/dustin/go-humanize"
+	gs "github.com/filecoin-project/boost-graphsync"
+	gsi "github.com/filecoin-project/boost-graphsync/impl"
+	gsnet "github.com/filecoin-project/boost-graphsync/network"
 	allselector "github.com/hannahhoward/all-selector"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
@@ -48,10 +51,6 @@ import (
 	"github.com/testground/sdk-go/runtime"
 	"github.com/testground/sdk-go/sync"
 	"golang.org/x/sync/errgroup"
-
-	gs "github.com/ipfs/go-graphsync"
-	gsi "github.com/ipfs/go-graphsync/impl"
-	gsnet "github.com/ipfs/go-graphsync/network"
 )
 
 type AddrInfo struct {

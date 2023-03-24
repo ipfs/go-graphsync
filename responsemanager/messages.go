@@ -4,10 +4,10 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/peerstate"
-	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/peerstate"
+	"github.com/filecoin-project/boost-graphsync/responsemanager/queryexecutor"
 )
 
 type processRequestsMessage struct {

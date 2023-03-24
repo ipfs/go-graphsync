@@ -9,7 +9,7 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/ipfs/go-graphsync"
+	graphsync "github.com/filecoin-project/boost-graphsync"
 )
 
 // PersistenceOptions is an interface for getting loaders by name

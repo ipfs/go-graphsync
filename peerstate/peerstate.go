@@ -3,7 +3,7 @@ package peerstate
 import (
 	"fmt"
 
-	"github.com/ipfs/go-graphsync"
+	graphsync "github.com/filecoin-project/boost-graphsync"
 )
 
 // TaskQueueState describes the the set of requests for a given peer in a task queue

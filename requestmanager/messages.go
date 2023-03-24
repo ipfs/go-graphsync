@@ -7,10 +7,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/peerstate"
-	"github.com/ipfs/go-graphsync/requestmanager/executor"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/peerstate"
+	"github.com/filecoin-project/boost-graphsync/requestmanager/executor"
 )
 
 type updateRequestMessage struct {

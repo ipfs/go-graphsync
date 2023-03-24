@@ -11,8 +11,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/requestmanager/types"
 )
 
 // BlockReadOpener synchronously loads the next block result

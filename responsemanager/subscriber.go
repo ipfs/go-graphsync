@@ -3,11 +3,11 @@ package responsemanager
 import (
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/ipfs/go-graphsync"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/network"
-	"github.com/ipfs/go-graphsync/notifications"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/messagequeue"
+	"github.com/filecoin-project/boost-graphsync/network"
+	"github.com/filecoin-project/boost-graphsync/notifications"
 )
 
 // RequestCloser can cancel request on a network error

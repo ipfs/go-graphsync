@@ -16,10 +16,10 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/notifications"
-	"github.com/ipfs/go-graphsync/peermanager"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/messagequeue"
+	"github.com/filecoin-project/boost-graphsync/notifications"
+	"github.com/filecoin-project/boost-graphsync/peermanager"
 )
 
 // Transaction is a series of operations that should be send together in a single response

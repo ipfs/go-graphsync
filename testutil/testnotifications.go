@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/filecoin-project/boost-graphsync/notifications"
 )
 
 type TestSubscriber struct {

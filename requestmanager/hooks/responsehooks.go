@@ -4,7 +4,7 @@ import (
 	"github.com/hannahhoward/go-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/ipfs/go-graphsync"
+	graphsync "github.com/filecoin-project/boost-graphsync"
 )
 
 // ErrPaused indicates a request should stop processing, but only cause it's paused

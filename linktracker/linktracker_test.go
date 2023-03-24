@@ -6,8 +6,8 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 type request struct {

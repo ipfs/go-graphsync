@@ -14,10 +14,10 @@ import (
 	"github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	gsmsgv1 "github.com/ipfs/go-graphsync/message/v1"
-	gsmsgv2 "github.com/ipfs/go-graphsync/message/v2"
-	"github.com/ipfs/go-graphsync/panics"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	gsmsgv1 "github.com/filecoin-project/boost-graphsync/message/v1"
+	gsmsgv2 "github.com/filecoin-project/boost-graphsync/message/v2"
+	"github.com/filecoin-project/boost-graphsync/panics"
 )
 
 var log = logging.Logger("graphsync_network")
