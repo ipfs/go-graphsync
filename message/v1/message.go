@@ -14,8 +14,8 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	pool "github.com/libp2p/go-buffer-pool"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-msgio"
 	"google.golang.org/protobuf/proto"
 

@@ -8,7 +8,7 @@ import (
 
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-peertaskqueue/peertracker"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
