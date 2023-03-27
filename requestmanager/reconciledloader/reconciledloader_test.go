@@ -15,12 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
-	"github.com/ipfs/go-graphsync/testutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/ipldutil"
+	"github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/requestmanager/reconciledloader"
+	"github.com/filecoin-project/boost-graphsync/requestmanager/types"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestReconciledLoader(t *testing.T) {

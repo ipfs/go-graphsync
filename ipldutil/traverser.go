@@ -13,7 +13,7 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 
-	"github.com/ipfs/go-graphsync/panics"
+	"github.com/filecoin-project/boost-graphsync/panics"
 )
 
 /* TODO: This traverser creates an extra go-routine and is quite complicated, in order to give calling code control of

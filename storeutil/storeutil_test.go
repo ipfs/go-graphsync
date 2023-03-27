@@ -1,7 +1,7 @@
 package storeutil
 
 import (
-	"io/ioutil"
+	"io"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -12,7 +12,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestLinkSystem(t *testing.T) {
@@ -27,7 +27,7 @@ func TestLinkSystem(t *testing.T) {
 	require.NoError(t, err, "Unable to put block to store")
 	data, err := persistence.StorageReadOpener(ipld.LinkContext{}, cidlink.Link{Cid: blk.Cid()})
 	require.NoError(t, err, "Unable to load block with loader")
-	bytes, err := ioutil.ReadAll(data)
+	bytes, err := io.ReadAll(data)
 	require.NoError(t, err, "Unable to read bytes from reader returned by loader")
 	_, err = blocks.NewBlockWithCid(bytes, blk.Cid())
 	require.NoError(t, err, "Did not return correct block with loader")

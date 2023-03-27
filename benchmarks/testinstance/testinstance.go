@@ -11,15 +11,15 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/ipld/go-ipld-prime"
-	peer "github.com/libp2p/go-libp2p-core/peer"
-	p2ptestutil "github.com/libp2p/go-libp2p-netutil"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
+	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
+	peer "github.com/libp2p/go-libp2p/core/peer"
 
-	graphsync "github.com/ipfs/go-graphsync"
-	tn "github.com/ipfs/go-graphsync/benchmarks/testnet"
-	gsimpl "github.com/ipfs/go-graphsync/impl"
-	gsnet "github.com/ipfs/go-graphsync/network"
-	"github.com/ipfs/go-graphsync/storeutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	tn "github.com/filecoin-project/boost-graphsync/benchmarks/testnet"
+	gsimpl "github.com/filecoin-project/boost-graphsync/impl"
+	gsnet "github.com/filecoin-project/boost-graphsync/network"
+	"github.com/filecoin-project/boost-graphsync/storeutil"
 )
 
 // TempDirGenerator is any interface that can generate temporary directories

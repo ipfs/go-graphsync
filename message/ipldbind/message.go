@@ -4,8 +4,8 @@ import (
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/message"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/message"
 )
 
 // GraphSyncExtensions is a container for representing extension data for

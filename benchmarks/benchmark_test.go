@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"runtime"
@@ -33,9 +32,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/ipfs/go-graphsync/benchmarks/testinstance"
-	tn "github.com/ipfs/go-graphsync/benchmarks/testnet"
-	graphsync "github.com/ipfs/go-graphsync/impl"
+	"github.com/filecoin-project/boost-graphsync/benchmarks/testinstance"
+	tn "github.com/filecoin-project/boost-graphsync/benchmarks/testnet"
+	graphsync "github.com/filecoin-project/boost-graphsync/impl"
 )
 
 type runStats struct {
@@ -337,7 +336,7 @@ var tempDirReplacer struct {
 // and modified as needed due to https://github.com/golang/go/issues/41062
 func newTempDirMaker(b *testing.B) (*tempDirMaker, error) {
 	c := &tempDirMaker{}
-	// ioutil.TempDir doesn't like path separators in its pattern,
+	// os.MkdirTemp doesn't like path separators in its pattern,
 	// so mangle the name to accommodate subtests.
 	tempDirReplacer.Do(func() {
 		tempDirReplacer.r = strings.NewReplacer("/", "_", "\\", "_", ":", "_")
@@ -345,7 +344,7 @@ func newTempDirMaker(b *testing.B) (*tempDirMaker, error) {
 	pattern := tempDirReplacer.r.Replace(b.Name())
 
 	var err error
-	c.tdm, err = ioutil.TempDir("", pattern)
+	c.tdm, err = os.MkdirTemp("", pattern)
 	if err != nil {
 		return nil, err
 	}

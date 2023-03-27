@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync/benchmarks/testnet"
+	"github.com/filecoin-project/boost-graphsync/benchmarks/testnet"
 )
 
 const testSeed = 99

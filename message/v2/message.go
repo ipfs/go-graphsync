@@ -12,13 +12,13 @@ import (
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/bindnode"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-msgio"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/message/ipldbind"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/message/ipldbind"
 )
 
 // MessageHandler is used to hold per-peer state for each connection. There is

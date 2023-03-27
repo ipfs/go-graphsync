@@ -11,14 +11,14 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/message"
-	v1 "github.com/ipfs/go-graphsync/message/v1"
-	v2 "github.com/ipfs/go-graphsync/message/v2"
-	"github.com/ipfs/go-graphsync/testutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/message"
+	v1 "github.com/filecoin-project/boost-graphsync/message/v1"
+	v2 "github.com/filecoin-project/boost-graphsync/message/v2"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func BenchmarkMessageEncodingRoundtrip(b *testing.B) {

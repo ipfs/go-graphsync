@@ -31,9 +31,9 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader/traversalrecord"
-	"github.com/ipfs/go-graphsync/requestmanager/types"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/requestmanager/reconciledloader/traversalrecord"
+	"github.com/filecoin-project/boost-graphsync/requestmanager/types"
 )
 
 var log = logging.Logger("gs-reconciledlaoder")

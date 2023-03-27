@@ -9,8 +9,8 @@ import (
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/messagequeue"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/messagequeue"
 )
 
 var log = logging.Logger("graphsync")

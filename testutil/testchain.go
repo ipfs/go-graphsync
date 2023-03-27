@@ -2,7 +2,7 @@ package testutil
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -17,8 +17,8 @@ import (
 	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/testutil/chaintypes"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/testutil/chaintypes"
 )
 
 const blockChainTraversedNodesPerBlock = 2
@@ -248,7 +248,7 @@ func (tbc *TestBlockChain) Blocks(from int, to int) []blocks.Block {
 		link := tbc.LinkTipIndex(i)
 		reader, err := tbc.loader(ipld.LinkContext{}, link)
 		require.NoError(tbc.t, err)
-		data, err := ioutil.ReadAll(reader)
+		data, err := io.ReadAll(reader)
 		require.NoError(tbc.t, err)
 		blk, err := blocks.NewBlockWithCid(data, link.(cidlink.Link).Cid)
 		require.NoError(tbc.t, err)

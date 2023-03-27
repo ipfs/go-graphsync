@@ -14,15 +14,15 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	pool "github.com/libp2p/go-buffer-pool"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-msgio"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/message"
-	pb "github.com/ipfs/go-graphsync/message/pb"
-	"github.com/ipfs/go-graphsync/message/v1/metadata"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/message"
+	pb "github.com/filecoin-project/boost-graphsync/message/pb"
+	"github.com/filecoin-project/boost-graphsync/message/v1/metadata"
 )
 
 const extensionMetadata = string("graphsync/response-metadata")

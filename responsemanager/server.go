@@ -8,19 +8,19 @@ import (
 
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	"github.com/ipfs/go-peertaskqueue/peertracker"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/peerstate"
-	"github.com/ipfs/go-graphsync/responsemanager/hooks"
-	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
-	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/ipldutil"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/peerstate"
+	"github.com/filecoin-project/boost-graphsync/responsemanager/hooks"
+	"github.com/filecoin-project/boost-graphsync/responsemanager/queryexecutor"
+	"github.com/filecoin-project/boost-graphsync/responsemanager/responseassembler"
 )
 
 // The code in this file implements the internal thread for the response manager.

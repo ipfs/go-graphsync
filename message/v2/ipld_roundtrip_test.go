@@ -13,10 +13,10 @@ import (
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/message/ipldbind"
-	"github.com/ipfs/go-graphsync/testutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/message/ipldbind"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestIPLDRoundTrip(t *testing.T) {

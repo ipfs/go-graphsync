@@ -5,8 +5,8 @@ import (
 
 	"github.com/ipld/go-ipld-prime"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/linktracker"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/linktracker"
 )
 
 type peerLinkTracker struct {

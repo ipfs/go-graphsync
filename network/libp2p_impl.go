@@ -7,17 +7,17 @@ import (
 	"time"
 
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	gsmsgv1 "github.com/ipfs/go-graphsync/message/v1"
-	gsmsgv2 "github.com/ipfs/go-graphsync/message/v2"
-	"github.com/ipfs/go-graphsync/panics"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	gsmsgv1 "github.com/filecoin-project/boost-graphsync/message/v1"
+	gsmsgv2 "github.com/filecoin-project/boost-graphsync/message/v2"
+	"github.com/filecoin-project/boost-graphsync/panics"
 )
 
 var log = logging.Logger("graphsync_network")

@@ -7,13 +7,13 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	delay "github.com/ipfs/go-ipfs-delay"
-	"github.com/libp2p/go-libp2p-core/peer"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync/benchmarks/testnet"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	gsnet "github.com/ipfs/go-graphsync/network"
+	"github.com/filecoin-project/boost-graphsync/benchmarks/testnet"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	gsnet "github.com/filecoin-project/boost-graphsync/network"
 )
 
 func TestSendMessageAsyncButWaitForResponse(t *testing.T) {

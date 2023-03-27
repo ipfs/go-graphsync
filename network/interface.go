@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 
-	gsmsg "github.com/ipfs/go-graphsync/message"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
 )
 
 var (

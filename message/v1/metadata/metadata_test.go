@@ -9,7 +9,7 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestDecodeEncodeMetadata(t *testing.T) {

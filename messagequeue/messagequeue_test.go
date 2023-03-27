@@ -12,15 +12,15 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync"
-	allocator2 "github.com/ipfs/go-graphsync/allocator"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	gsnet "github.com/ipfs/go-graphsync/network"
-	"github.com/ipfs/go-graphsync/notifications"
-	"github.com/ipfs/go-graphsync/testutil"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	allocator2 "github.com/filecoin-project/boost-graphsync/allocator"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	gsnet "github.com/filecoin-project/boost-graphsync/network"
+	"github.com/filecoin-project/boost-graphsync/notifications"
+	"github.com/filecoin-project/boost-graphsync/testutil"
 )
 
 func TestStartupAndShutdown(t *testing.T) {

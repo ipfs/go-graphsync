@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"time"
 
@@ -20,21 +19,21 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/dedupkey"
-	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/peerstate"
-	"github.com/ipfs/go-graphsync/requestmanager/executor"
-	"github.com/ipfs/go-graphsync/requestmanager/hooks"
-	"github.com/ipfs/go-graphsync/requestmanager/reconciledloader"
+	graphsync "github.com/filecoin-project/boost-graphsync"
+	"github.com/filecoin-project/boost-graphsync/dedupkey"
+	"github.com/filecoin-project/boost-graphsync/donotsendfirstblocks"
+	"github.com/filecoin-project/boost-graphsync/ipldutil"
+	gsmsg "github.com/filecoin-project/boost-graphsync/message"
+	"github.com/filecoin-project/boost-graphsync/peerstate"
+	"github.com/filecoin-project/boost-graphsync/requestmanager/executor"
+	"github.com/filecoin-project/boost-graphsync/requestmanager/hooks"
+	"github.com/filecoin-project/boost-graphsync/requestmanager/reconciledloader"
 )
 
 // The code in this file implements the internal thread for the request manager.
@@ -142,7 +141,7 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 					if err != nil {
 						log.Warnf("error %s in AsLargeBytes at path %s", err.Error(), tp.Path)
 					}
-					_, err = io.Copy(ioutil.Discard, s)
+					_, err = io.Copy(io.Discard, s)
 					if err != nil {
 						log.Warnf("error %s reading bytes from reader at path %s", err.Error(), tp.Path)
 					}

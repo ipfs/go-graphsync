@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -19,6 +18,9 @@ import (
 
 	dgbadger "github.com/dgraph-io/badger/v2"
 	"github.com/dustin/go-humanize"
+	gs "github.com/filecoin-project/boost-graphsync"
+	gsi "github.com/filecoin-project/boost-graphsync/impl"
+	gsnet "github.com/filecoin-project/boost-graphsync/network"
 	allselector "github.com/hannahhoward/all-selector"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
@@ -34,26 +36,21 @@ import (
 	"github.com/ipfs/go-unixfs/importer/balanced"
 	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/storage/bsadapter"
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/metrics"
-	"github.com/libp2p/go-libp2p-core/peer"
 	gostream "github.com/libp2p/go-libp2p-gostream"
 	p2phttp "github.com/libp2p/go-libp2p-http"
-	noise "github.com/libp2p/go-libp2p-noise"
-	secio "github.com/libp2p/go-libp2p-secio"
-	tls "github.com/libp2p/go-libp2p-tls"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/metrics"
+	"github.com/libp2p/go-libp2p/core/peer"
+	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
+	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/testground/sdk-go/network"
 	"github.com/testground/sdk-go/run"
 	"github.com/testground/sdk-go/runtime"
 	"github.com/testground/sdk-go/sync"
 	"golang.org/x/sync/errgroup"
-
-	gs "github.com/ipfs/go-graphsync"
-	gsi "github.com/ipfs/go-graphsync/impl"
-	gsnet "github.com/ipfs/go-graphsync/network"
-	"github.com/ipfs/go-graphsync/storeutil"
 )
 
 type AddrInfo struct {
@@ -160,16 +157,24 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 		// make datastore, blockstore, dag service, graphsync
 		bs     = blockstore.NewBlockstore(dss.MutexWrap(datastore))
 		dagsrv = merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
-		gsync  = gsi.New(ctx,
-			gsnet.NewFromLibp2pHost(host),
-			storeutil.LoaderForBlockstore(bs),
-			storeutil.StorerForBlockstore(bs),
-			gsi.MaxMemoryPerPeerResponder(maxMemoryPerPeer),
-			gsi.MaxMemoryResponder(maxMemoryTotal),
-			gsi.MaxInProgressRequests(uint64(maxInProgressRequests)),
-		)
-		recorder = &runRecorder{memorySnapshots: memorySnapshots, blockDiagnostics: blockDiagnostics, runenv: runenv}
+
+		lsys = cidlink.DefaultLinkSystem()
 	)
+
+	lsys.TrustedStorage = true
+	ba := bsadapter.Adapter{Wrapped: bs}
+	lsys.SetReadStorage(&ba)
+	lsys.SetWriteStorage(&ba)
+
+	gsync := gsi.New(ctx,
+		gsnet.NewFromLibp2pHost(host),
+		lsys,
+		gsi.MaxMemoryPerPeerResponder(maxMemoryPerPeer),
+		gsi.MaxMemoryResponder(maxMemoryTotal),
+		gsi.MaxInProgressIncomingRequests(uint64(maxInProgressRequests)),
+		gsi.MaxInProgressOutgoingRequests(uint64(maxInProgressRequests)),
+	)
+	var recorder = &runRecorder{memorySnapshots: memorySnapshots, blockDiagnostics: blockDiagnostics, runenv: runenv}
 
 	startTimes := make(map[struct {
 		peer.ID
@@ -218,7 +223,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			gs.RequestID
 		}{p, request.ID()}]
 		startTimesLk.RUnlock()
-		recorder.recordBlockQueued(fmt.Sprintf("for request %d at %s", request.ID(), time.Since(startTime)))
+		recorder.recordBlockQueued(fmt.Sprintf("for request %s at %s", request.ID(), time.Since(startTime)))
 	})
 	gsync.RegisterBlockSentListener(func(p peer.ID, request gs.RequestData, block gs.BlockData) {
 		startTimesLk.RLock()
@@ -227,7 +232,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			gs.RequestID
 		}{p, request.ID()}]
 		startTimesLk.RUnlock()
-		recorder.recordBlock(fmt.Sprintf("sent for request %d at %s", request.ID(), time.Since(startTime)))
+		recorder.recordBlock(fmt.Sprintf("sent for request %s at %s", request.ID(), time.Since(startTime)))
 	})
 	gsync.RegisterIncomingResponseHook(func(p peer.ID, response gs.ResponseData, actions gs.IncomingResponseHookActions) {
 		startTimesLk.RLock()
@@ -236,7 +241,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			gs.RequestID
 		}{p, response.RequestID()}]
 		startTimesLk.RUnlock()
-		recorder.recordResponse(fmt.Sprintf("for request %d at %s", response.RequestID(), time.Since(startTime)))
+		recorder.recordResponse(fmt.Sprintf("for request %s at %s", response.RequestID(), time.Since(startTime)))
 	})
 	gsync.RegisterIncomingBlockHook(func(p peer.ID, response gs.ResponseData, block gs.BlockData, ha gs.IncomingBlockHookActions) {
 		startTimesLk.RLock()
@@ -245,7 +250,7 @@ func runStress(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 			gs.RequestID
 		}{p, response.RequestID()}]
 		startTimesLk.RUnlock()
-		recorder.recordBlock(fmt.Sprintf("processed for request %d, cid %s, at %s", response.RequestID(), block.Link().String(), time.Since(startTime)))
+		recorder.recordBlock(fmt.Sprintf("processed for request %s, cid %s, at %s", response.RequestID(), block.Link().String(), time.Since(startTime)))
 	})
 	defer initCtx.SyncClient.MustSignalAndWait(ctx, "done", runenv.TestInstanceCount)
 
@@ -393,9 +398,14 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 				if err != nil {
 					return err
 				}
-				loader := storeutil.LoaderForBlockstore(bs)
-				storer := storeutil.StorerForBlockstore(bs)
-				gsync.RegisterPersistenceOption(c.String(), loader, storer)
+				lsys := cidlink.DefaultLinkSystem()
+
+				lsys.TrustedStorage = true
+				ba := bsadapter.Adapter{Wrapped: bs}
+				lsys.SetReadStorage(&ba)
+				lsys.SetWriteStorage(&ba)
+
+				gsync.RegisterPersistenceOption(c.String(), lsys)
 			}
 		}
 		// run GC to get accurate-ish stats.
@@ -444,7 +454,7 @@ func runRequestor(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.Init
 					if err != nil {
 						panic(err)
 					}
-					bytesRead, err := io.Copy(ioutil.Discard, resp.Body)
+					bytesRead, err := io.Copy(io.Discard, resp.Body)
 					if err != nil {
 						panic(err)
 					}
@@ -526,7 +536,7 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 		for i := 0; i < concurrency; i++ {
 			// file with random data
 			data := io.LimitReader(rand.Reader, int64(size))
-			f, err := ioutil.TempFile(os.TempDir(), "unixfs-")
+			f, err := os.CreateTemp(os.TempDir(), "unixfs-")
 			if err != nil {
 				panic(err)
 			}
@@ -549,7 +559,7 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 			var bs ClosableBlockstore
 			var fileDS = bufferedDS
 			if useCarStores {
-				filestore, err := ioutil.TempFile(os.TempDir(), "fsindex-")
+				filestore, err := os.CreateTemp(os.TempDir(), "fsindex-")
 				if err != nil {
 					panic(err)
 				}
@@ -604,9 +614,14 @@ func runProvider(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitC
 				})
 			}
 			if useCarStores {
-				loader := storeutil.LoaderForBlockstore(bs)
-				storer := storeutil.StorerForBlockstore(bs)
-				gsync.RegisterPersistenceOption(node.Cid().String(), loader, storer)
+				lsys := cidlink.DefaultLinkSystem()
+
+				lsys.TrustedStorage = true
+				ba := bsadapter.Adapter{Wrapped: bs}
+				lsys.SetReadStorage(&ba)
+				lsys.SetWriteStorage(&ba)
+
+				gsync.RegisterPersistenceOption(node.Cid().String(), lsys)
 				if err := fileDS.Commit(); err != nil {
 					return fmt.Errorf("unable to commit unix fs node: %w", err)
 				}
@@ -664,8 +679,6 @@ func makeHost(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitCont
 	switch secureChannel {
 	case "noise":
 		security = libp2p.Security(noise.ID, noise.New)
-	case "secio":
-		security = libp2p.Security(secio.ID, secio.New)
 	case "tls":
 		security = libp2p.Security(tls.ID, tls.New)
 	}
@@ -674,7 +687,7 @@ func makeHost(ctx context.Context, runenv *runtime.RunEnv, initCtx *run.InitCont
 	ip := initCtx.NetClient.MustGetDataNetworkIP()
 	listenAddr := fmt.Sprintf("/ip4/%s/tcp/0", ip)
 	bwcounter := metrics.NewBandwidthCounter()
-	host, err := libp2p.New(ctx,
+	host, err := libp2p.New(
 		security,
 		libp2p.ListenAddrStrings(listenAddr),
 		libp2p.BandwidthReporter(bwcounter),

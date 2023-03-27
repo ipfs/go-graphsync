@@ -6,7 +6,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/ipfs/go-graphsync"
+	graphsync "github.com/filecoin-project/boost-graphsync"
 )
 
 var linkedRemoteItemPool = sync.Pool{
