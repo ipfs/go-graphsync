@@ -248,6 +248,11 @@ func (mq *MessageQueue) sendMessage() {
 		log.Infof("cant open message sender to peer %s: %s", mq.p, err)
 		// TODO: cant connect, what now?
 		mq.publishError(metadata, fmt.Errorf("cant open message sender to peer %s: %w", mq.p, err))
+		select {
+		case <-mq.done:
+		default:
+			mq.Shutdown()
+		}
 		return
 	}
 
