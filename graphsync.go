@@ -299,6 +299,7 @@ type OutgoingBlockHookActions interface {
 type OutgoingRequestHookActions interface {
 	UsePersistenceOption(name string)
 	UseLinkTargetNodePrototypeChooser(traversal.LinkTargetNodePrototypeChooser)
+	MaxLinks(uint64)
 }
 
 // IncomingResponseHookActions are actions that incoming response hook can take

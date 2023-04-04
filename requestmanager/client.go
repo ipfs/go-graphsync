@@ -57,6 +57,7 @@ type inProgressRequestStatus struct {
 	onTerminated         []chan<- error
 	request              gsmsg.GraphSyncRequest
 	doNotSendFirstBlocks int64
+	maxLinks             uint64
 	nodeStyleChooser     traversal.LinkTargetNodePrototypeChooser
 	inProgressChan       chan graphsync.ResponseProgress
 	inProgressErr        chan error
