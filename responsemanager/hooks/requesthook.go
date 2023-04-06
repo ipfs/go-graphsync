@@ -58,6 +58,7 @@ type RequestResult struct {
 	Err              error
 	Extensions       []graphsync.ExtensionData
 	Ctx              context.Context
+	MaxLinks         uint64
 }
 
 // ProcessRequestHooks runs request hooks against an incoming request
@@ -79,6 +80,7 @@ type requestHookActions struct {
 	chooser            traversal.LinkTargetNodePrototypeChooser
 	extensions         []graphsync.ExtensionData
 	ctx                context.Context
+	maxLinks           uint64
 }
 
 func (ha *requestHookActions) result() RequestResult {
@@ -90,6 +92,7 @@ func (ha *requestHookActions) result() RequestResult {
 		Err:              ha.err,
 		Extensions:       ha.extensions,
 		Ctx:              ha.ctx,
+		MaxLinks:         ha.maxLinks,
 	}
 }
 
@@ -112,6 +115,10 @@ func (ha *requestHookActions) UsePersistenceOption(name string) {
 		return
 	}
 	ha.linkSystem = linkSystem
+}
+
+func (ha *requestHookActions) MaxLinks(maxLinks uint64) {
+	ha.maxLinks = maxLinks
 }
 
 func (ha *requestHookActions) UseLinkTargetNodePrototypeChooser(chooser traversal.LinkTargetNodePrototypeChooser) {

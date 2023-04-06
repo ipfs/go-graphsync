@@ -284,6 +284,7 @@ type IncomingRequestHookActions interface {
 	TerminateWithError(error)
 	ValidateRequest()
 	PauseResponse()
+	MaxLinks(uint64)
 }
 
 // OutgoingBlockHookActions are actions that an outgoing block hook can take to

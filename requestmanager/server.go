@@ -123,8 +123,8 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 	if ipr.traverser == nil {
 		var budget *traversal.Budget
 		maxLinks := rm.maxLinksPerRequest
-		if ipr.maxLinks > 0 && ipr.maxLinks < maxLinks {
-			// request maxLinks overrides global maxLinks when it's lower, it can't go over
+		if maxLinks == 0 || (ipr.maxLinks != 0 && ipr.maxLinks < maxLinks) {
+			// take the lowest nonzero budget (global or per-request)
 			maxLinks = ipr.maxLinks
 		}
 		if maxLinks > 0 {

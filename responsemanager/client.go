@@ -39,6 +39,7 @@ type inProgressResponseStatus struct {
 	request        gsmsg.GraphSyncRequest
 	linkSystem     ipld.LinkSystem
 	customChooser  traversal.LinkTargetNodePrototypeChooser
+	maxLinks       uint64
 	traverser      ipldutil.Traverser
 	signals        queryexecutor.ResponseSignals
 	updates        []gsmsg.GraphSyncRequest

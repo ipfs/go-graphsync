@@ -109,103 +109,137 @@ func TestRejectRequestsByDefault(t *testing.T) {
 	tracing.SingleExceptionEvent(t, "response(0)", "github.com/ipfs/go-graphsync/responsemanager.errorString", "request not valid", true)
 }
 
-func TestGraphsyncRoundTripRequestBudgetRequestor(t *testing.T) {
-
-	// create network
-	ctx := context.Background()
-	ctx, collectTracing := testutil.SetupTracing(ctx)
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	td := newGsTestData(ctx, t)
-
-	var linksToTraverse uint64 = 5
-	// initialize graphsync on first node to make requests
-	requestor := td.GraphSyncHost1(MaxLinksPerOutgoingRequests(linksToTraverse))
-
-	// setup receiving peer to just record message coming in
-	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
-
-	// initialize graphsync on second node to response to requests
-	responder := td.GraphSyncHost2()
-	assertCancelOrComplete := assertCancelOrCompleteFunction(responder, 1)
-	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
-
-	// response budgets don't include the root block, so total links traverse with be one more than expected
-	blockChain.VerifyResponseRange(ctx, progressChan, 0, int(linksToTraverse))
-	testutil.VerifySingleTerminalError(ctx, t, errChan)
-	require.Len(t, td.blockStore1, int(linksToTraverse), "did not store all blocks")
-
-	drain(requestor)
-	drain(responder)
-	wasCancelled := assertCancelOrComplete(ctx, t)
-
-	tracing := collectTracing(t)
-
-	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
-	if wasCancelled {
-		require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
+func TestGraphsyncRoundTripRequestBudgets(t *testing.T) {
+	testCases := []struct {
+		name                 string
+		globalOutgoingBudget uint64
+		globalIncomingBudget uint64
+		perOutgoingBudget    uint64
+		perIncomingBudget    uint64
+		expectedLinks        uint64
+	}{
+		// outgoing
+		{
+			name:                 "global outgoing budget",
+			globalOutgoingBudget: 5,
+			expectedLinks:        5,
+		},
+		{
+			name:              "per outgoing budget",
+			perOutgoingBudget: 5,
+			expectedLinks:     5,
+		},
+		{
+			name:                 "global outgoing budget less than per outgoing budget",
+			globalOutgoingBudget: 3,
+			perOutgoingBudget:    5,
+			expectedLinks:        3,
+		},
+		{
+			name:                 "global outgoing budget greater than per outgoing budget",
+			globalOutgoingBudget: 5,
+			perOutgoingBudget:    3,
+			expectedLinks:        3,
+		},
+		// incoming
+		{
+			name:                 "global incoming budget",
+			globalIncomingBudget: 5,
+			expectedLinks:        5,
+		},
+		{
+			name:              "per incoming budget",
+			perIncomingBudget: 5,
+			expectedLinks:     5,
+		},
+		{
+			name:                 "global incoming budget less than per incoming budget",
+			globalIncomingBudget: 3,
+			perIncomingBudget:    5,
+			expectedLinks:        3,
+		},
+		{
+			name:                 "global incoming budget greater than per incoming budget",
+			globalIncomingBudget: 5,
+			perIncomingBudget:    3,
+			expectedLinks:        3,
+		},
 	}
-	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
-	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
-	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
 
-	// has ErrBudgetExceeded exception recorded in the right place
-	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrBudgetExceeded", "traversal budget exceeded", true)
-	if wasCancelled {
-		tracing.SingleExceptionEvent(t, "response(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), true)
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			// create network
+			ctx := context.Background()
+			ctx, collectTracing := testutil.SetupTracing(ctx)
+			ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			td := newGsTestData(ctx, t)
+
+			// initialize graphsync on first node to make requests
+			opts := []Option{}
+			if tc.globalOutgoingBudget > 0 {
+				opts = append(opts, MaxLinksPerOutgoingRequests(tc.globalOutgoingBudget))
+			}
+			requestor := td.GraphSyncHost1(opts...)
+
+			if tc.perOutgoingBudget > 0 {
+				requestor.RegisterOutgoingRequestHook(func(_ peer.ID, _ graphsync.RequestData, ha graphsync.OutgoingRequestHookActions) {
+					ha.MaxLinks(tc.perOutgoingBudget)
+				})
+			}
+
+			// setup receiving peer to just record message coming in
+			blockChainLength := 100
+			blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
+
+			// initialize graphsync on second node to response to requests
+			opts = []Option{}
+			if tc.globalIncomingBudget > 0 {
+				opts = append(opts, MaxLinksPerIncomingRequests(tc.globalIncomingBudget))
+			}
+			responder := td.GraphSyncHost2(opts...)
+			if tc.perIncomingBudget > 0 {
+				responder.RegisterIncomingRequestHook(func(_ peer.ID, _ graphsync.RequestData, ha graphsync.IncomingRequestHookActions) {
+					ha.MaxLinks(tc.perIncomingBudget)
+				})
+			}
+
+			assertCancelOrComplete := assertCancelOrCompleteFunction(responder, 1)
+			progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+
+			// response budgets don't include the root block, so total links traverse with be one more than expected
+			blockChain.VerifyResponseRange(ctx, progressChan, 0, int(tc.expectedLinks))
+			testutil.VerifySingleTerminalError(ctx, t, errChan)
+			require.Len(t, td.blockStore1, int(tc.expectedLinks), "did not store all blocks")
+
+			drain(requestor)
+			drain(responder)
+			wasCancelled := assertCancelOrComplete(ctx, t)
+
+			tracing := collectTracing(t)
+
+			traceStrings := tracing.TracesToStrings()
+			require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
+			require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
+			if wasCancelled {
+				require.Contains(t, traceStrings, "response(0)->abortRequest(0)")
+			}
+			require.Contains(t, traceStrings, "request(0)->newRequest(0)")
+			require.Contains(t, traceStrings, "request(0)->executeTask(0)")
+			require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
+			require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
+			require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
+
+			if tc.globalOutgoingBudget > 0 || tc.perOutgoingBudget > 0 {
+				// has ErrBudgetExceeded exception recorded in the right place because we caused it locally
+				tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ErrBudgetExceeded", "traversal budget exceeded", true)
+			}
+			if wasCancelled {
+				tracing.SingleExceptionEvent(t, "response(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), true)
+			}
+		})
 	}
-}
-
-func TestGraphsyncRoundTripRequestBudgetResponder(t *testing.T) {
-	// create network
-	ctx := context.Background()
-	ctx, collectTracing := testutil.SetupTracing(ctx)
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	td := newGsTestData(ctx, t)
-
-	var linksToTraverse uint64 = 5
-	// initialize graphsync on first node to make requests
-	requestor := td.GraphSyncHost1()
-
-	// setup receiving peer to just record message coming in
-	blockChainLength := 100
-	blockChain := testutil.SetupBlockChain(ctx, t, td.persistence2, 100, blockChainLength)
-
-	// initialize graphsync on second node to response to requests
-	responder := td.GraphSyncHost2(MaxLinksPerIncomingRequests(linksToTraverse))
-	assertComplete := assertCompletionFunction(responder, 1)
-
-	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
-
-	// response budgets don't include the root block, so total links traverse with be one more than expected
-	blockChain.VerifyResponseRange(ctx, progressChan, 0, int(linksToTraverse))
-	testutil.VerifySingleTerminalError(ctx, t, errChan)
-	require.Len(t, td.blockStore1, int(linksToTraverse), "did not store all blocks")
-
-	drain(requestor)
-	drain(responder)
-	assertComplete(ctx, t)
-
-	tracing := collectTracing(t)
-
-	traceStrings := tracing.TracesToStrings()
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->loadBlock(0)")
-	require.Contains(t, traceStrings, "response(0)->executeTask(0)->processBlock(0)->sendBlock(0)->processBlockHooks(0)")
-	require.Contains(t, traceStrings, "request(0)->newRequest(0)")
-	require.Contains(t, traceStrings, "request(0)->executeTask(0)")
-	require.Contains(t, traceStrings, "request(0)->terminateRequest(0)")
-	require.Contains(t, traceStrings, "processResponses(0)")        // should have one of these per response
-	require.Contains(t, traceStrings, "request(0)->verifyBlock(0)") // should have one of these per block
-
-	// has ContextCancelError exception recorded in the right place
-	// the requester gets a cancel, the responder gets a ErrBudgetExceeded
-	tracing.SingleExceptionEvent(t, "request(0)->executeTask(0)", "ContextCancelError", ipldutil.ContextCancelError{}.Error(), false)
 }
 
 func TestGraphsyncRoundTrip(t *testing.T) {
