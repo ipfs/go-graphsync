@@ -181,21 +181,6 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 	require.True(t, ok)
 }
 
-func TestCommandsWithCancelledContext(t *testing.T) {
-	ctx := context.Background()
-	managerCtx, managerCancel := context.WithCancel(ctx)
-	defer managerCancel()
-	td := newTestData(managerCtx, t)
-	peers := testutil.GeneratePeers(1)
-
-	cancelledCtx, cancel := context.WithCancel(ctx)
-	cancel()
-
-	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(cancelledCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
-	testutil.VerifyEmptyErrors(managerCtx, t, returnedErrorChan)
-	testutil.VerifyEmptyResponse(managerCtx, t, returnedResponseChan)
-}
-
 func TestCancelManagerExitsGracefully(t *testing.T) {
 	ctx := context.Background()
 	managerCtx, managerCancel := context.WithCancel(ctx)

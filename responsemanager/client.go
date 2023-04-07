@@ -166,8 +166,6 @@ func (rm *ResponseManager) UnpauseResponse(ctx context.Context, requestID graphs
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
-	case <-ctx.Done():
-		return ctx.Err()
 	case err := <-response:
 		return err
 	}
@@ -180,8 +178,6 @@ func (rm *ResponseManager) PauseResponse(ctx context.Context, requestID graphsyn
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
-	case <-ctx.Done():
-		return ctx.Err()
 	case err := <-response:
 		return err
 	}
@@ -194,8 +190,6 @@ func (rm *ResponseManager) CancelResponse(ctx context.Context, requestID graphsy
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
-	case <-ctx.Done():
-		return ctx.Err()
 	case err := <-response:
 		return err
 	}
@@ -208,8 +202,6 @@ func (rm *ResponseManager) UpdateResponse(ctx context.Context, requestID graphsy
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
-	case <-ctx.Done():
-		return ctx.Err()
 	case err := <-response:
 		return err
 	}
