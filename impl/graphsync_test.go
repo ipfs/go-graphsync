@@ -1039,6 +1039,20 @@ func TestNetworkDisconnect(t *testing.T) {
 	drain(requestor)
 	drain(responder)
 
+	// verify we can execute a request after disconnection
+	_, err = td.mn.LinkPeers(td.host1.ID(), td.host2.ID())
+	require.NoError(t, err)
+	_, err = td.mn.ConnectPeers(td.host1.ID(), td.host2.ID())
+	require.NoError(t, err)
+	requestCtx, requestCancel = context.WithTimeout(ctx, 1*time.Second)
+	defer requestCancel()
+	progressChan, errChan = requestor.Request(requestCtx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+	blockChain.VerifyWholeChain(ctx, progressChan)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+
+	drain(requestor)
+	drain(responder)
+
 	tracing := collectTracing(t)
 
 	traceStrings := tracing.TracesToStrings()
