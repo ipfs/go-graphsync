@@ -11,6 +11,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	"github.com/ipfs/go-protocolnetwork"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -23,7 +24,6 @@ import (
 	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/peerstate"
@@ -88,7 +88,7 @@ type RequestManager struct {
 	persistenceOptions PersistenceOptions
 	disconnectNotif    *pubsub.PubSub
 	linkSystem         ipld.LinkSystem
-	connManager        network.ConnManager
+	connManager        protocolnetwork.ConnManager
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
 	maxLinksPerRequest uint64
 	panicCallback      panics.CallBackFn
@@ -125,7 +125,7 @@ func New(ctx context.Context,
 	networkErrorListeners *listeners.NetworkErrorListeners,
 	outgoingRequestProcessingListeners *listeners.RequestProcessingListeners,
 	requestQueue taskqueue.TaskQueue,
-	connManager network.ConnManager,
+	connManager protocolnetwork.ConnManager,
 	maxLinksPerRequest uint64,
 	panicCallback panics.CallBackFn,
 ) *RequestManager {

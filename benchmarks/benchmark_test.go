@@ -29,13 +29,17 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	protocol "github.com/libp2p/go-libp2p/core/protocol"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ipfs/go-graphsync/benchmarks/testinstance"
-	tn "github.com/ipfs/go-graphsync/benchmarks/testnet"
 	graphsync "github.com/ipfs/go-graphsync/impl"
+	gsmsg "github.com/ipfs/go-graphsync/message"
+	gsmsgv2 "github.com/ipfs/go-graphsync/message/v2"
+	gsnet "github.com/ipfs/go-graphsync/network"
+	tn "github.com/ipfs/go-protocolnetwork/testnet"
 )
 
 type runStats struct {
@@ -78,7 +82,8 @@ func BenchmarkRoundtripSuccess(b *testing.B) {
 func benchmarkRepeatedDisconnects(ctx context.Context, b *testing.B, numnodes int, df distFunc, tdm *tempDirMaker) {
 	ctx, cancel := context.WithCancel(ctx)
 	mn := mocknet.New()
-	net := tn.StreamNet(ctx, mn)
+	net, err := tn.StreamNet[gsmsg.GraphSyncMessage](ctx, "graphsync", []protocol.ID{gsnet.ProtocolGraphsync_2_0_0}, gsnet.NewMessageHandlerSelector(), mn)
+	require.NoError(b, err)
 	ig := testinstance.NewTestInstanceGenerator(ctx, net, nil, tdm, false)
 	instances, err := ig.Instances(numnodes + 1)
 	require.NoError(b, err)
@@ -147,7 +152,8 @@ func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc,
 	defer cancel()
 	mn := mocknet.New()
 	mn.SetLinkDefaults(mocknet.LinkOptions{Latency: 100 * time.Millisecond, Bandwidth: 3000000})
-	net := tn.StreamNet(ctx, mn)
+	net, err := tn.StreamNet[gsmsg.GraphSyncMessage](ctx, "graphsync", []protocol.ID{gsnet.ProtocolGraphsync_2_0_0}, gsnet.NewMessageHandlerSelector(), mn)
+	require.NoError(b, err)
 	ig := testinstance.NewTestInstanceGenerator(ctx, net, options, tdm, diskBasedDatastore)
 	instances, err := ig.Instances(1 + b.N)
 	require.NoError(b, err)
@@ -198,7 +204,7 @@ func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc,
 func subtestDistributeAndFetch(ctx context.Context, b *testing.B, numnodes int, d delay.D, bstoreLatency time.Duration, df distFunc, tdm *tempDirMaker) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	net := tn.VirtualNetwork(d)
+	net := tn.VirtualNetwork[gsmsg.GraphSyncMessage](d, []protocol.ID{gsnet.ProtocolGraphsync_2_0_0}, gsmsgv2.NewMessageHandler())
 	ig := testinstance.NewTestInstanceGenerator(ctx, net, nil, tdm, false)
 	instances, err := ig.Instances(numnodes + b.N)
 	require.NoError(b, err)

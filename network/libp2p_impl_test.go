@@ -40,11 +40,11 @@ func (r *receiver) ReceiveMessage(
 func (r *receiver) ReceiveError(_ peer.ID, _ error) {
 }
 
-func (r *receiver) Connected(p peer.ID) {
+func (r *receiver) PeerConnected(p peer.ID) {
 	r.connectedPeers <- p
 }
 
-func (r *receiver) Disconnected(p peer.ID) {
+func (r *receiver) PeerDisconnected(p peer.ID) {
 }
 
 func TestMessageSendAndReceive(t *testing.T) {
@@ -66,8 +66,8 @@ func TestMessageSendAndReceive(t *testing.T) {
 		messageReceived: make(chan struct{}),
 		connectedPeers:  make(chan peer.ID, 2),
 	}
-	gsnet1.SetDelegate(r)
-	gsnet2.SetDelegate(r)
+	gsnet1.Start(r)
+	gsnet2.Start(r)
 
 	root := testutil.GenerateCids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)

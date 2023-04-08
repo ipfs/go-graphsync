@@ -42,6 +42,7 @@ const defaultMaxMemoryPerPeer = uint64(16 << 20)
 const defaultMaxInProgressRequests = uint64(6)
 const defaultMessageSendRetries = 10
 const defaultSendMessageTimeout = 10 * time.Minute
+const defaultSendErrorBackoff = 100 * time.Millisecond
 
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
@@ -86,6 +87,7 @@ type graphsyncConfigOptions struct {
 	maxLinksPerIncomingRequest           uint64
 	messageSendRetries                   int
 	sendMessageTimeout                   time.Duration
+	sendErrorBackoff                     time.Duration
 	panicCallback                        panics.CallBackFn
 }
 
@@ -214,6 +216,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		registerDefaultValidator:      true,
 		messageSendRetries:            defaultMessageSendRetries,
 		sendMessageTimeout:            defaultSendMessageTimeout,
+		sendErrorBackoff:              defaultSendErrorBackoff,
 		panicCallback:                 nil,
 	}
 	for _, option := range options {
@@ -238,7 +241,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	}
 	responseAllocator := allocator.NewAllocator(gsConfig.totalMaxMemoryResponder, gsConfig.maxMemoryPerPeerResponder)
 	createMessageQueue := func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) peermanager.PeerQueue {
-		return messagequeue.New(ctx, p, network, responseAllocator, gsConfig.messageSendRetries, gsConfig.sendMessageTimeout, onShutdown)
+		return messagequeue.New(ctx, p, network, responseAllocator, gsConfig.messageSendRetries, gsConfig.sendMessageTimeout, gsConfig.sendErrorBackoff, onShutdown)
 	}
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
 
@@ -307,7 +310,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	requestQueue.Startup(gsConfig.maxInProgressOutgoingRequests, requestExecutor)
 	responseManager.Startup()
 	responseQueue.Startup(gsConfig.maxInProgressIncomingRequests, queryExecutor)
-	network.SetDelegate((*graphSyncReceiver)(graphSync))
+	network.Start((*graphSyncReceiver)(graphSync))
 
 	return graphSync
 }
@@ -506,12 +509,12 @@ func (gsr *graphSyncReceiver) ReceiveError(p peer.ID, err error) {
 
 // Connected is part of the networks 's Receiver interface and handles peers connecting
 // on the network
-func (gsr *graphSyncReceiver) Connected(p peer.ID) {
+func (gsr *graphSyncReceiver) PeerConnected(p peer.ID) {
 	gsr.graphSync().peerManager.Connected(p)
 }
 
 // Connected is part of the networks 's Receiver interface and handles peers connecting
 // on the network
-func (gsr *graphSyncReceiver) Disconnected(p peer.ID) {
+func (gsr *graphSyncReceiver) PeerDisconnected(p peer.ID) {
 	gsr.graphSync().peerManager.Disconnected(p)
 }

@@ -50,7 +50,7 @@ type Event struct {
 // MessageNetwork is any network that can connect peers and generate a message
 // sender.
 type MessageNetwork interface {
-	NewMessageSender(context.Context, peer.ID, gsnet.MessageSenderOpts) (gsnet.MessageSender, error)
+	NewMessageSender(context.Context, peer.ID, *gsnet.MessageSenderOpts) (gsnet.MessageSender, error)
 	ConnectTo(context.Context, peer.ID) error
 }
 
@@ -79,11 +79,12 @@ type MessageQueue struct {
 	allocator          Allocator
 	maxRetries         int
 	sendMessageTimeout time.Duration
+	sendErrorBackoff   time.Duration
 	onShutdown         func(peer.ID)
 }
 
 // New creats a new MessageQueue.
-func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Allocator, maxRetries int, sendMessageTimeout time.Duration, onShutdown func(peer.ID)) *MessageQueue {
+func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Allocator, maxRetries int, sendMessageTimeout time.Duration, sendErrorBackoff time.Duration, onShutdown func(peer.ID)) *MessageQueue {
 	return &MessageQueue{
 		ctx:                ctx,
 		network:            network,
@@ -94,6 +95,7 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Alloc
 		allocator:          allocator,
 		maxRetries:         maxRetries,
 		sendMessageTimeout: sendMessageTimeout,
+		sendErrorBackoff:   sendErrorBackoff,
 		onShutdown:         onShutdown,
 	}
 }
@@ -183,7 +185,7 @@ func (mq *MessageQueue) runQueue() {
 			default:
 			}
 			if mq.sender != nil {
-				mq.sender.Close()
+				mq.sender.Reset()
 			}
 			return
 		case <-mq.ctx.Done():
@@ -251,20 +253,20 @@ func (mq *MessageQueue) sendMessage() {
 		log.Infof("cant open message sender to peer %s: %s", mq.p, err)
 		// TODO: cant connect, what now?
 		mq.publishError(metadata, fmt.Errorf("cant open message sender to peer %s: %w", mq.p, err))
-		select {
-		case <-mq.done:
-		default:
-			mq.Shutdown()
-		}
+		mq.Shutdown()
 		return
 	}
 
-	for i := 0; i < mq.maxRetries; i++ { // try to send this message until we fail.
-		if mq.attemptSendAndRecovery(message, metadata) {
-			return
-		}
+	if err = mq.sender.SendMsg(mq.ctx, message); err != nil {
+		// If the message couldn't be sent, the networking layer will
+		// emit a Disconnect event and the MessageQueue will get cleaned up
+		log.Infof("Could not send message to peer %s: %s", mq.p, err)
+		mq.publishError(metadata, fmt.Errorf("expended retries on SendMsg(%s)", mq.p))
+		mq.Shutdown()
+		return
 	}
-	mq.publishError(metadata, fmt.Errorf("expended retries on SendMsg(%s)", mq.p))
+
+	mq.publishSent(metadata)
 }
 
 func (mq *MessageQueue) scrubResponseStreams(responseStreams map[graphsync.RequestID]io.Closer) {
@@ -303,68 +305,18 @@ func (mq *MessageQueue) initializeSender() error {
 	if mq.sender != nil {
 		return nil
 	}
-	nsender, err := openSender(mq.ctx, mq.network, mq.p, mq.sendMessageTimeout)
+	opts := gsnet.MessageSenderOpts{
+		MaxRetries:       mq.maxRetries,
+		SendTimeout:      mq.sendMessageTimeout,
+		SendErrorBackoff: mq.sendErrorBackoff,
+	}
+
+	nsender, err := mq.network.NewMessageSender(mq.ctx, mq.p, &opts)
 	if err != nil {
 		return err
 	}
 	mq.sender = nsender
 	return nil
-}
-
-func (mq *MessageQueue) attemptSendAndRecovery(message gsmsg.GraphSyncMessage, metadata internalMetadata) bool {
-	err := mq.sender.SendMsg(mq.ctx, message)
-	if err == nil {
-		mq.publishSent(metadata)
-		return true
-	}
-
-	log.Infof("graphsync send error: %s", err)
-	_ = mq.sender.Reset()
-	mq.sender = nil
-
-	select {
-	case <-mq.done:
-		mq.publishError(metadata, errors.New("queue shutdown"))
-		return true
-	case <-mq.ctx.Done():
-		mq.publishError(metadata, errors.New("context cancelled"))
-		return true
-	case <-time.After(time.Millisecond * 100):
-		// wait 100ms in case disconnect notifications are still propogating
-		log.Warn("SendMsg errored but neither 'done' nor context.Done() were set")
-	}
-
-	err = mq.initializeSender()
-	if err != nil {
-		log.Infof("couldnt open sender again after SendMsg(%s) failed: %s", mq.p, err)
-		// TODO(why): what do we do now?
-		// I think the *right* answer is to probably put the message we're
-		// trying to send back, and then return to waiting for new work or
-		// a disconnect.
-		mq.publishError(metadata, fmt.Errorf("couldnt open sender again after SendMsg(%s) failed: %w", mq.p, err))
-		return true
-	}
-
-	return false
-}
-
-func openSender(ctx context.Context, network MessageNetwork, p peer.ID, sendTimeout time.Duration) (gsnet.MessageSender, error) {
-	// allow ten minutes for connections this includes looking them up in the
-	// dht dialing them, and handshaking
-	conctx, cancel := context.WithTimeout(ctx, time.Minute*10)
-	defer cancel()
-
-	err := network.ConnectTo(conctx, p)
-	if err != nil {
-		return nil, err
-	}
-
-	nsender, err := network.NewMessageSender(ctx, p, gsnet.MessageSenderOpts{SendTimeout: sendTimeout})
-	if err != nil {
-		return nil, err
-	}
-
-	return nsender, nil
 }
 
 type internalMetadata struct {

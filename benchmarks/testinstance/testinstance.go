@@ -10,14 +10,15 @@ import (
 	badgerds "github.com/ipfs/go-ds-badger"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
+	tn "github.com/ipfs/go-protocolnetwork/testnet"
 	"github.com/ipld/go-ipld-prime"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 
 	graphsync "github.com/ipfs/go-graphsync"
-	tn "github.com/ipfs/go-graphsync/benchmarks/testnet"
 	gsimpl "github.com/ipfs/go-graphsync/impl"
+	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/storeutil"
 )
@@ -29,7 +30,7 @@ type TempDirGenerator interface {
 
 // NewTestInstanceGenerator generates a new InstanceGenerator for the given
 // testnet
-func NewTestInstanceGenerator(ctx context.Context, net tn.Network, gsOptions []gsimpl.Option, tempDirGenerator TempDirGenerator, diskBasedDatastore bool) InstanceGenerator {
+func NewTestInstanceGenerator(ctx context.Context, net tn.Network[gsmsg.GraphSyncMessage], gsOptions []gsimpl.Option, tempDirGenerator TempDirGenerator, diskBasedDatastore bool) InstanceGenerator {
 	ctx, cancel := context.WithCancel(ctx)
 	return InstanceGenerator{
 		net:                net,
@@ -45,7 +46,7 @@ func NewTestInstanceGenerator(ctx context.Context, net tn.Network, gsOptions []g
 // InstanceGenerator generates new test instances of bitswap+dependencies
 type InstanceGenerator struct {
 	seq                int
-	net                tn.Network
+	net                tn.Network[gsmsg.GraphSyncMessage]
 	ctx                context.Context
 	cancel             context.CancelFunc
 	gsOptions          []gsimpl.Option
@@ -139,7 +140,7 @@ func (i *Instance) SetBlockstoreLatency(t time.Duration) time.Duration {
 // NB: It's easy make mistakes by providing the same peer ID to two different
 // instances. To safeguard, use the InstanceGenerator to generate instances. It's
 // just a much better idea.
-func NewInstance(ctx context.Context, net tn.Network, p tnet.Identity, gsOptions []gsimpl.Option, tempDir string, diskBasedDatastore bool) (Instance, error) {
+func NewInstance(ctx context.Context, net tn.Network[gsmsg.GraphSyncMessage], p tnet.Identity, gsOptions []gsimpl.Option, tempDir string, diskBasedDatastore bool) (Instance, error) {
 	bsdelay := delay.Fixed(0)
 
 	adapter := net.Adapter(p)

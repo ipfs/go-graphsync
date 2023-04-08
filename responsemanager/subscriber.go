@@ -6,8 +6,8 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-protocolnetwork"
 )
 
 // RequestCloser can cancel request on a network error
@@ -23,7 +23,7 @@ type subscriber struct {
 	blockSentListeners    BlockSentListeners
 	networkErrorListeners NetworkErrorListeners
 	completedListeners    CompletedListeners
-	connManager           network.ConnManager
+	connManager           protocolnetwork.ConnManager
 }
 
 func (s *subscriber) OnNext(_ notifications.Topic, event notifications.Event) {

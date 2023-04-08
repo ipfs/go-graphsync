@@ -18,14 +18,9 @@ type PeerHandler interface{}
 // PeerProcessFactory provides a function that will create a PeerQueue.
 type PeerProcessFactory func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) PeerHandler
 
-type peerProcessInstance struct {
-	refcnt  int
-	process PeerHandler
-}
-
 // PeerManager manages a pool of peers and sends messages to peers in the pool.
 type PeerManager struct {
-	peerProcesses   map[peer.ID]*peerProcessInstance
+	peerProcesses   map[peer.ID]PeerHandler
 	peerProcessesLk sync.RWMutex
 
 	createPeerProcess PeerProcessFactory
@@ -35,7 +30,7 @@ type PeerManager struct {
 // New creates a new PeerManager, given a context and a peerQueueFactory.
 func New(ctx context.Context, createPeerQueue PeerProcessFactory) *PeerManager {
 	return &PeerManager{
-		peerProcesses:     make(map[peer.ID]*peerProcessInstance),
+		peerProcesses:     make(map[peer.ID]PeerHandler),
 		createPeerProcess: createPeerQueue,
 		ctx:               ctx,
 	}
@@ -55,9 +50,8 @@ func (pm *PeerManager) ConnectedPeers() []peer.ID {
 // Connected is called to add a new peer to the pool
 func (pm *PeerManager) Connected(p peer.ID) {
 	pm.peerProcessesLk.Lock()
-	pq := pm.getOrCreate(p)
-	pq.refcnt++
-	pm.peerProcessesLk.Unlock()
+	defer pm.peerProcessesLk.Unlock()
+	pm.getOrCreate(p)
 }
 
 // Disconnected is called to remove a peer from the pool.
@@ -69,16 +63,10 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 		return
 	}
 
-	pq.refcnt--
-	if pq.refcnt > 0 {
-		pm.peerProcessesLk.Unlock()
-		return
-	}
-
 	delete(pm.peerProcesses, p)
 	pm.peerProcessesLk.Unlock()
 
-	if pprocess, ok := pq.process.(PeerProcess); ok {
+	if pprocess, ok := pq.(PeerProcess); ok {
 		pprocess.Shutdown()
 	}
 }
@@ -91,7 +79,7 @@ func (pm *PeerManager) GetProcess(
 	pqi, ok := pm.peerProcesses[p]
 	if ok {
 		pm.peerProcessesLk.RUnlock()
-		return pqi.process
+		return pqi
 	}
 	pm.peerProcessesLk.RUnlock()
 	// but sometimes it involves a create (we still need to do get or create cause it's possible
@@ -99,17 +87,16 @@ func (pm *PeerManager) GetProcess(
 	pm.peerProcessesLk.Lock()
 	pqi = pm.getOrCreate(p)
 	pm.peerProcessesLk.Unlock()
-	return pqi.process
+	return pqi
 }
 
-func (pm *PeerManager) getOrCreate(p peer.ID) *peerProcessInstance {
+func (pm *PeerManager) getOrCreate(p peer.ID) PeerHandler {
 	pqi, ok := pm.peerProcesses[p]
 	if !ok {
-		pq := pm.createPeerProcess(pm.ctx, p, pm.onQueueShutdown)
-		if pprocess, ok := pq.(PeerProcess); ok {
+		pqi = pm.createPeerProcess(pm.ctx, p, pm.onQueueShutdown)
+		if pprocess, ok := pqi.(PeerProcess); ok {
 			pprocess.Startup()
 		}
-		pqi = &peerProcessInstance{0, pq}
 		pm.peerProcesses[p] = pqi
 	}
 	return pqi

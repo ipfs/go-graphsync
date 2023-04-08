@@ -44,10 +44,4 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 
 	testutil.RefuteContainsPeer(t, connectedPeers, peer1)
 
-	// connecting a peer twice, then disconnecting once, should stay in queue
-	peerManager.Connected(peer2)
-	peerManager.Disconnected(peer2)
-	connectedPeers = peerManager.ConnectedPeers()
-
-	testutil.AssertContainsPeer(t, connectedPeers, peer2)
 }
