@@ -27,6 +27,7 @@ var _ PeerQueue = (*fakePeer)(nil)
 type fakePeer struct {
 	p            peer.ID
 	messagesSent chan messageSent
+	onShutdown   func(peer.ID)
 }
 
 func (fp *fakePeer) AllocateAndBuildMessage(blkSize uint64, buildMessage func(b *messagequeue.Builder)) {
@@ -50,10 +51,11 @@ func (fp *fakePeer) Shutdown() {}
 //}
 
 func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {
-	return func(ctx context.Context, p peer.ID) PeerQueue {
+	return func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) PeerQueue {
 		return &fakePeer{
 			p:            p,
 			messagesSent: messagesSent,
+			onShutdown:   onShutdown,
 		}
 	}
 }

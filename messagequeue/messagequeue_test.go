@@ -28,7 +28,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	peer := testutil.GeneratePeers(1)[0]
+	targetPeer := testutil.GeneratePeers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -37,7 +37,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
+	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, func(peer.ID) {})
 	messageQueue.Startup()
 	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
@@ -62,7 +62,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	peer := testutil.GeneratePeers(1)[0]
+	targetPeer := testutil.GeneratePeers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -75,7 +75,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
+	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, func(peer.ID) {})
 	messageQueue.Startup()
 	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
@@ -114,7 +114,7 @@ func TestProcessingNotification(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	peer := testutil.GeneratePeers(1)[0]
+	targetPeer := testutil.GeneratePeers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -123,7 +123,7 @@ func TestProcessingNotification(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
+	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, func(peer.ID) {})
 	messageQueue.Startup()
 	waitGroup.Add(1)
 	blks := testutil.GenerateBlocksOfSize(3, 128)
@@ -187,7 +187,7 @@ func TestDedupingMessages(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	peer := testutil.GeneratePeers(1)[0]
+	targetPeer := testutil.GeneratePeers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -196,7 +196,7 @@ func TestDedupingMessages(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
+	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, func(peer.ID) {})
 	messageQueue.Startup()
 	waitGroup.Add(1)
 	id := graphsync.NewRequestID()
@@ -265,7 +265,7 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	peer := testutil.GeneratePeers(1)[0]
+	targetPeer := testutil.GeneratePeers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -274,7 +274,7 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, peer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
+	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, func(peer.ID) {})
 	messageQueue.Startup()
 	waitGroup.Add(1)
 
@@ -334,7 +334,7 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 	// use allocator with very small limit
 	allocator := allocator2.NewAllocator(1000, 1000)
 
-	messageQueue := New(ctx, p, messageNetwork, allocator, messageSendRetries, sendMessageTimeout)
+	messageQueue := New(ctx, p, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, func(peer.ID) {})
 	messageQueue.Startup()
 	waitGroup.Add(1)
 
@@ -381,7 +381,7 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	peer := testutil.GeneratePeers(1)[0]
+	targetPeer := testutil.GeneratePeers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -393,7 +393,7 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
 	// we use only a retry count of 1 to avoid multiple send attempts for each message
-	messageQueue := New(ctx, peer, messageNetwork, allocator, 1, sendMessageTimeout)
+	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, 1, sendMessageTimeout, func(peer.ID) {})
 	messageQueue.Startup()
 	waitGroup.Add(1)
 
