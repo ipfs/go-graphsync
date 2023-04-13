@@ -118,10 +118,5 @@ func (pm *PeerManager) getOrCreate(p peer.ID) *peerProcessInstance {
 func (pm *PeerManager) onQueueShutdown(p peer.ID) {
 	pm.peerProcessesLk.Lock()
 	defer pm.peerProcessesLk.Unlock()
-	_, ok := pm.peerProcesses[p]
-	if !ok {
-
-		return
-	}
 	delete(pm.peerProcesses, p)
 }

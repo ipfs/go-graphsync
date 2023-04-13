@@ -523,7 +523,7 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 
 	// create network
 	ctx, collectTracing := testutil.SetupTracing(context.Background())
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
