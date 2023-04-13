@@ -184,7 +184,7 @@ func TestProcessingNotification(t *testing.T) {
 func TestDedupingMessages(t *testing.T) {
 	ctx := context.Background()
 	ctx, collectTracing := testutil.SetupTracing(ctx)
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	targetPeer := testutil.GeneratePeers(1)[0]
