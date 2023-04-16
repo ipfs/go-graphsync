@@ -237,8 +237,8 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	}
 	responseAllocator := allocator.NewAllocator(gsConfig.totalMaxMemoryResponder, gsConfig.maxMemoryPerPeerResponder)
-	createMessageQueue := func(ctx context.Context, p peer.ID) peermanager.PeerQueue {
-		return messagequeue.New(ctx, p, network, responseAllocator, gsConfig.messageSendRetries, gsConfig.sendMessageTimeout)
+	createMessageQueue := func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) peermanager.PeerQueue {
+		return messagequeue.New(ctx, p, network, responseAllocator, gsConfig.messageSendRetries, gsConfig.sendMessageTimeout, onShutdown)
 	}
 	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
 

@@ -15,7 +15,7 @@ type PeerQueue interface {
 }
 
 // PeerQueueFactory provides a function that will create a PeerQueue.
-type PeerQueueFactory func(ctx context.Context, p peer.ID) PeerQueue
+type PeerQueueFactory func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) PeerQueue
 
 // PeerMessageManager manages message queues for peers
 type PeerMessageManager struct {
@@ -25,8 +25,8 @@ type PeerMessageManager struct {
 // NewMessageManager generates a new manger for sending messages
 func NewMessageManager(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerMessageManager {
 	return &PeerMessageManager{
-		PeerManager: New(ctx, func(ctx context.Context, p peer.ID) PeerHandler {
-			return createPeerQueue(ctx, p)
+		PeerManager: New(ctx, func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) PeerHandler {
+			return createPeerQueue(ctx, p, onShutdown)
 		}),
 	}
 }

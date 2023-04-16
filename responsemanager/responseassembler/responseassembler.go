@@ -69,7 +69,7 @@ type ResponseAssembler struct {
 // New generates a new ResponseAssembler for sending responses
 func New(ctx context.Context, peerHandler PeerMessageHandler) *ResponseAssembler {
 	return &ResponseAssembler{
-		PeerManager: peermanager.New(ctx, func(ctx context.Context, p peer.ID) peermanager.PeerHandler {
+		PeerManager: peermanager.New(ctx, func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) peermanager.PeerHandler {
 			return newTracker()
 		}),
 		peerHandler: peerHandler,

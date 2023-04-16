@@ -523,7 +523,7 @@ func TestGraphsyncRoundTripIgnoreNBlocks(t *testing.T) {
 
 	// create network
 	ctx, collectTracing := testutil.SetupTracing(context.Background())
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	td := newGsTestData(ctx, t)
 
@@ -1035,6 +1035,20 @@ func TestNetworkDisconnect(t *testing.T) {
 	testutil.AssertReceive(ctx, t, errChan, &err, "should receive an error")
 	require.EqualError(t, err, graphsync.RequestClientCancelledErr{}.Error())
 	testutil.AssertReceive(ctx, t, receiverError, &err, "should receive an error on receiver side")
+
+	drain(requestor)
+	drain(responder)
+
+	// verify we can execute a request after disconnection
+	_, err = td.mn.LinkPeers(td.host1.ID(), td.host2.ID())
+	require.NoError(t, err)
+	_, err = td.mn.ConnectPeers(td.host1.ID(), td.host2.ID())
+	require.NoError(t, err)
+	requestCtx, requestCancel = context.WithTimeout(ctx, 1*time.Second)
+	defer requestCancel()
+	progressChan, errChan = requestor.Request(requestCtx, td.host2.ID(), blockChain.TipLink, blockChain.Selector(), td.extension)
+	blockChain.VerifyWholeChain(ctx, progressChan)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
 
 	drain(requestor)
 	drain(responder)

@@ -79,10 +79,11 @@ type MessageQueue struct {
 	allocator          Allocator
 	maxRetries         int
 	sendMessageTimeout time.Duration
+	onShutdown         func(peer.ID)
 }
 
 // New creats a new MessageQueue.
-func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Allocator, maxRetries int, sendMessageTimeout time.Duration) *MessageQueue {
+func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Allocator, maxRetries int, sendMessageTimeout time.Duration, onShutdown func(peer.ID)) *MessageQueue {
 	return &MessageQueue{
 		ctx:                ctx,
 		network:            network,
@@ -93,6 +94,7 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork, allocator Alloc
 		allocator:          allocator,
 		maxRetries:         maxRetries,
 		sendMessageTimeout: sendMessageTimeout,
+		onShutdown:         onShutdown,
 	}
 }
 
@@ -154,6 +156,7 @@ func (mq *MessageQueue) runQueue() {
 	defer func() {
 		_ = mq.allocator.ReleasePeerMemory(mq.p)
 		mq.eventPublisher.Shutdown()
+		mq.onShutdown(mq.p)
 	}()
 	mq.eventPublisher.Startup()
 	for {
