@@ -42,6 +42,7 @@ func (orh *OutgoingRequestHooks) Register(hook graphsync.OnOutgoingRequestHook) 
 type RequestResult struct {
 	PersistenceOption string
 	CustomChooser     traversal.LinkTargetNodePrototypeChooser
+	MaxLinks          uint64
 }
 
 // ProcessRequestHooks runs request hooks against an outgoing request
@@ -54,12 +55,14 @@ func (orh *OutgoingRequestHooks) ProcessRequestHooks(p peer.ID, request graphsyn
 type requestHookActions struct {
 	persistenceOption  string
 	nodeBuilderChooser traversal.LinkTargetNodePrototypeChooser
+	maxLinks           uint64
 }
 
 func (rha *requestHookActions) result() RequestResult {
 	return RequestResult{
 		PersistenceOption: rha.persistenceOption,
 		CustomChooser:     rha.nodeBuilderChooser,
+		MaxLinks:          rha.maxLinks,
 	}
 }
 
@@ -69,4 +72,8 @@ func (rha *requestHookActions) UsePersistenceOption(name string) {
 
 func (rha *requestHookActions) UseLinkTargetNodePrototypeChooser(nodeBuilderChooser traversal.LinkTargetNodePrototypeChooser) {
 	rha.nodeBuilderChooser = nodeBuilderChooser
+}
+
+func (rha *requestHookActions) MaxLinks(maxLinks uint64) {
+	rha.maxLinks = maxLinks
 }

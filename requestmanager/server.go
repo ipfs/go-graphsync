@@ -100,6 +100,7 @@ func (rm *RequestManager) newRequest(requestID graphsync.RequestID, parentSpan t
 		request:              request,
 		state:                graphsync.Queued,
 		nodeStyleChooser:     hooksResult.CustomChooser,
+		maxLinks:             hooksResult.MaxLinks,
 		inProgressChan:       make(chan graphsync.ResponseProgress),
 		inProgressErr:        make(chan error),
 		lsys:                 lsys,
@@ -121,10 +122,15 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 
 	if ipr.traverser == nil {
 		var budget *traversal.Budget
-		if rm.maxLinksPerRequest > 0 {
+		maxLinks := rm.maxLinksPerRequest
+		if maxLinks == 0 || (ipr.maxLinks != 0 && ipr.maxLinks < maxLinks) {
+			// take the lowest nonzero budget (global or per-request)
+			maxLinks = ipr.maxLinks
+		}
+		if maxLinks > 0 {
 			budget = &traversal.Budget{
 				NodeBudget: math.MaxInt64,
-				LinkBudget: int64(rm.maxLinksPerRequest),
+				LinkBudget: int64(maxLinks),
 			}
 		}
 		// the traverser has its own context because we want to fail on block boundaries, in the executor,

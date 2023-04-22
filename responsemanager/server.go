@@ -243,6 +243,7 @@ func (rm *ResponseManager) newRequest(ctx context.Context, p peer.ID, request gs
 		request:        request,
 		linkSystem:     linkSystem,
 		customChooser:  result.CustomChooser,
+		maxLinks:       result.MaxLinks,
 		signals:        signals,
 		startTime:      time.Now(),
 		responseStream: responseStream,
@@ -298,10 +299,15 @@ func (rm *ResponseManager) taskDataForKey(requestID graphsync.RequestID) queryex
 		rootLink := cidlink.Link{Cid: response.request.Root()}
 
 		var budget *traversal.Budget
-		if rm.maxLinksPerRequest > 0 {
+		maxLinks := rm.maxLinksPerRequest
+		if maxLinks == 0 || (response.maxLinks != 0 && response.maxLinks < maxLinks) {
+			// take the lowest nonzero budget (global or per-request)
+			maxLinks = response.maxLinks
+		}
+		if maxLinks > 0 {
 			budget = &traversal.Budget{
 				NodeBudget: math.MaxInt64,
-				LinkBudget: int64(rm.maxLinksPerRequest),
+				LinkBudget: int64(maxLinks),
 			}
 		}
 		traverser := ipldutil.TraversalBuilder{
