@@ -1,5 +1,58 @@
 # go-graphsync changelog
 
+# go-graphsync v0.14.6
+
+MaxLinks feature
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - feat: MaxLinks for requests (#420) ([ipfs/go-graphsync#420](https://github.com/ipfs/go-graphsync/pull/420))
+  - fix(responsemanager): network disconnect reliability (#425) ([ipfs/go-graphsync#425](https://github.com/ipfs/go-graphsync/pull/425))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Rod Vagg | 1 | +153/-89 | 8 |
+| Hannah Howard | 1 | +1/-1 | 1 |
+
+# go-graphsync v0.14.5
+
+Fix issue in merge from Boost branch
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Update version to reflect latest fixes (#424) ([ipfs/go-graphsync#424](https://github.com/ipfs/go-graphsync/pull/424))
+  - Fix shutdown bug in #412 (#422) ([ipfs/go-graphsync#422](https://github.com/ipfs/go-graphsync/pull/422))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +50/-25 | 9 |
+| Andrew Gillis | 1 | +2/-2 | 2 |
+
+# go-graphsync v0.14.4
+
+Import fixes from Boost branch
+
+### Changelog
+- github.com/ipfs/go-graphsync:
+  - Update version to cover latest fixes (#419) ([ipfs/go-graphsync#419](https://github.com/ipfs/go-graphsync/pull/419))
+  - Bring changes from #412
+  - Bring changes from #391
+  - fix: calling message queue Shutdown twice causes panic (because close is called twice on done channel) (#414) ([ipfs/go-graphsync#414](https://github.com/ipfs/go-graphsync/pull/414))
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| gammazero | 2 | +38/-0 | 4 |
+| dirkmc | 1 | +4/-1 | 1 |
+| Andrew Gillis | 1 | +1/-1 | 1 |
+
 # go-graphsync v0.14.3
 
 Deps updates and a minor linksystem fix
