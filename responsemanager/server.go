@@ -140,7 +140,7 @@ func (rm *ResponseManager) abortRequest(ctx context.Context, requestID graphsync
 	if ok {
 		rm.responseQueue.Remove(requestID, response.peer)
 	}
-	if !ok || response.state == graphsync.CompletingSend {
+	if !ok || (response.state == graphsync.CompletingSend && !errors.Is(err, queryexecutor.ErrNetworkError)) {
 		return graphsync.RequestNotFoundErr{}
 	}
 
