@@ -24,13 +24,11 @@
 
 ### Go-IPLD-Prime
 
-`go-graphsync` relies on `go-ipld-prime` to traverse IPLD Selectors in an IPLD graph. `go-ipld-prime` implements the [IPLD specification](https://github.com/ipld/specs) in go and is an alternative to older implementations such as `go-ipld-format` and `go-ipld-cbor`. In order to use `go-graphsync`, some understanding and use of `go-ipld-prime` concepts is necessary. 
-
-If your existing library (i.e. `go-ipfs` or `go-filecoin`) uses these other older libraries, you can largely use go-graphsync without switching to `go-ipld-prime` across your codebase, but it will require some translations
+`go-graphsync` relies on `go-ipld-prime` to traverse IPLD Selectors in an IPLD graph. `go-ipld-prime` implements the [IPLD specification](https://ipld.io/specs/) in go and is an alternative to older implementations such as `go-ipld-format` and `go-ipld-cbor`. In order to use `go-graphsync`, some understanding and use of `go-ipld-prime` concepts is necessary. 
 
 ## Install
 
-`go-graphsync` requires Go >= 1.13 and can be installed using Go modules
+`go-graphsync` requires Go >= 1.19 and can be installed using Go modules
 
 ## Usage
 
@@ -119,6 +117,35 @@ type ResponseProgress struct {
 ```
 
 The above provides both immediate and relevant metadata for matching nodes in a traversal, and is very similar to the information provided by a local IPLD selector traversal in `go-ipld-prime`
+
+## Production Configuration
+
+go-graphsync supports a number of configuration options. Each configuration option is documented in [the code](./impl/graphsync.go). The default configuration is not well setup for production clients or servers serving high traffic volumes. The following is a sample configuration more appropriate to production environments with heavy load:
+
+```golang
+import (
+  gsimpl "github.com/ipfs/go-graphsync/impl"
+  gsnet "github.com/ipfs/go-graphsync/network"
+  ipld "github.com/ipld/go-ipld-prime"
+)
+
+var ctx context.Context
+var host libp2p.Host
+var lsys ipld.LinkSystem
+
+network := gsnet.NewFromLibp2pHost(host)
+exchange := gsimpl.New(ctx, network, lsys,
+			gsimpl.MaxInProgressIncomingRequests(200),
+			gsimpl.MaxInProgressOutgoingRequests(200),
+			gsimpl.MaxMemoryResponder(8 << 30),
+			gsimpl.MaxMemoryPerPeerResponder(32 << 20),
+			gsimpl.MaxInProgressIncomingRequestsPerPeer(20),
+			gsimpl.MessageSendRetries(2),
+			gsimpl.SendMessageTimeout(2 * time.Minute),
+			gsimpl.MaxLinksPerIncomingRequests(32 * (1 << 20)),
+			gsimpl.MaxLinksPerOutgoingRequests(32 * (1 << 20)),
+)
+```
 
 ## Contribute
 
