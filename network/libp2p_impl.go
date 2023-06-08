@@ -5,7 +5,7 @@ import (
 	"io"
 
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/ipfs/go-protocolnetwork"
+	"github.com/ipfs/go-protocolnetwork/pkg/network"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
@@ -18,27 +18,27 @@ import (
 var log = logging.Logger("graphsync_network")
 
 // Option is an option for configuring the libp2p storage market network
-type Option func() protocolnetwork.NetOpt
+type Option func() network.NetOpt
 
 // GraphsyncProtocols OVERWRITES the default libp2p protocols we use for
 // graphsync with the specified protocols
 func GraphsyncProtocols(protocols []protocol.ID) Option {
-	return func() protocolnetwork.NetOpt {
-		return protocolnetwork.SupportedProtocols(supportedProtocols(protocols))
+	return func() network.NetOpt {
+		return network.SupportedProtocols(supportedProtocols(protocols))
 	}
 }
 
 // NewFromLibp2pHost returns a GraphSyncNetwork supported by underlying Libp2p host.
 func NewFromLibp2pHost(host host.Host, options ...Option) GraphSyncNetwork {
 
-	netOpts := []protocolnetwork.NetOpt{protocolnetwork.SupportedProtocols([]protocol.ID{ProtocolGraphsync_2_0_0})}
+	netOpts := []network.NetOpt{network.SupportedProtocols([]protocol.ID{ProtocolGraphsync_2_0_0})}
 	for _, option := range options {
 		netOpts = append(netOpts, option())
 	}
 
 	messageHandlerSelector := NewMessageHandlerSelector()
 
-	return protocolnetwork.NewFromLibp2pHost[gsmsg.GraphSyncMessage]("graphsync", host, messageHandlerSelector, netOpts...)
+	return network.NewFromLibp2pHost[gsmsg.GraphSyncMessage]("graphsync", host, messageHandlerSelector, netOpts...)
 }
 
 func NewMessageHandlerSelector() *MessageHandlerSelector {
@@ -68,7 +68,7 @@ type MessageHandlerSelector struct {
 	v2MessageHandler gsmsg.MessageHandler
 }
 
-func (smh MessageHandlerSelector) Select(protocol protocol.ID) protocolnetwork.MessageHandler[gsmsg.GraphSyncMessage] {
+func (smh MessageHandlerSelector) Select(protocol protocol.ID) network.MessageHandler[gsmsg.GraphSyncMessage] {
 	switch protocol {
 	case ProtocolGraphsync_2_0_0:
 		return smh.v2MessageHandler

@@ -11,7 +11,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
-	"github.com/ipfs/go-protocolnetwork"
+	"github.com/ipfs/go-protocolnetwork/pkg/network"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -88,7 +88,7 @@ type RequestManager struct {
 	persistenceOptions PersistenceOptions
 	disconnectNotif    *pubsub.PubSub
 	linkSystem         ipld.LinkSystem
-	connManager        protocolnetwork.ConnManager
+	connManager        network.ConnManager
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
 	maxLinksPerRequest uint64
 	panicCallback      panics.CallBackFn
@@ -125,7 +125,7 @@ func New(ctx context.Context,
 	networkErrorListeners *listeners.NetworkErrorListeners,
 	outgoingRequestProcessingListeners *listeners.RequestProcessingListeners,
 	requestQueue taskqueue.TaskQueue,
-	connManager protocolnetwork.ConnManager,
+	connManager network.ConnManager,
 	maxLinksPerRequest uint64,
 	panicCallback panics.CallBackFn,
 ) *RequestManager {

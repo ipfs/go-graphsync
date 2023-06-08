@@ -75,23 +75,3 @@ func (b *Builder) Subscribers() map[graphsync.RequestID]notifications.Subscriber
 func (b *Builder) BlockData() map[graphsync.RequestID][]graphsync.BlockData {
 	return b.blockData
 }
-
-func (b *Builder) build(publisher notifications.Publisher) (gsmsg.GraphSyncMessage, internalMetadata, error) {
-	message, err := b.Build()
-	if err != nil {
-		return gsmsg.GraphSyncMessage{}, internalMetadata{}, err
-	}
-	for _, subscriber := range b.subscribers {
-		publisher.Subscribe(b.topic, subscriber)
-	}
-	return message, internalMetadata{
-		public: Metadata{
-			BlockData:     b.blockData,
-			ResponseCodes: message.ResponseCodes(),
-		},
-		ctx:             b.ctx,
-		topic:           b.topic,
-		msgSize:         b.BlockSize(),
-		responseStreams: b.responseStreams,
-	}, nil
-}

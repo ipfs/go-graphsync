@@ -4,7 +4,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-protocolnetwork"
+	"github.com/ipfs/go-protocolnetwork/pkg/network"
 )
 
 var (
@@ -13,9 +13,9 @@ var (
 )
 
 // GraphSyncNetwork provides network connectivity for GraphSync.
-type GraphSyncNetwork protocolnetwork.ProtocolNetwork[gsmsg.GraphSyncMessage]
+type GraphSyncNetwork network.ProtocolNetwork[gsmsg.GraphSyncMessage]
 
-type MessageSender = protocolnetwork.MessageSender[gsmsg.GraphSyncMessage]
-type MessageSenderOpts = protocolnetwork.MessageSenderOpts
+type MessageSender = network.MessageSender[gsmsg.GraphSyncMessage]
+type MessageSenderOpts = network.MessageSenderOpts
 
-type Receiver = protocolnetwork.Receiver[gsmsg.GraphSyncMessage]
+type Receiver = network.Receiver[gsmsg.GraphSyncMessage]

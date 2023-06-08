@@ -11,7 +11,7 @@ import (
 // PeerQueue is a process that sends messages to a peer
 type PeerQueue interface {
 	PeerProcess
-	AllocateAndBuildMessage(blkSize uint64, buildMessageFn func(*messagequeue.Builder))
+	BuildMessage(messagequeue.MessageParams)
 }
 
 // PeerQueueFactory provides a function that will create a PeerQueue.
@@ -35,5 +35,5 @@ func NewMessageManager(ctx context.Context, createPeerQueue PeerQueueFactory) *P
 // If blkSize > 0, message building may block until enough memory has been freed from the queues to allocate the message.
 func (pmm *PeerMessageManager) AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*messagequeue.Builder)) {
 	pq := pmm.GetProcess(p).(PeerQueue)
-	pq.AllocateAndBuildMessage(blkSize, buildMessageFn)
+	pq.BuildMessage(messagequeue.MessageParams{blkSize, buildMessageFn})
 }

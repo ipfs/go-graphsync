@@ -39,7 +39,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	gsmsgv2 "github.com/ipfs/go-graphsync/message/v2"
 	gsnet "github.com/ipfs/go-graphsync/network"
-	tn "github.com/ipfs/go-protocolnetwork/testnet"
+	tn "github.com/ipfs/go-protocolnetwork/pkg/testnet"
 )
 
 type runStats struct {

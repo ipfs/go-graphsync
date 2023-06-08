@@ -47,9 +47,11 @@ func TestStartupAndShutdown(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
 
 	waitGroup.Add(1)
-	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
-		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	})
+	messageQueue.BuildMessage(MessageParams{
+		Size: 0,
+		BuildMessageFn: func(b *Builder) {
+			b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+		}})
 
 	testutil.AssertDoesReceive(ctx, t, messagesSent, "message was not sent")
 
@@ -86,9 +88,11 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 
 	// setup a message and advance as far as beginning to send it
 	waitGroup.Add(1)
-	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
-		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	})
+	messageQueue.BuildMessage(MessageParams{
+		Size: 0,
+		BuildMessageFn: func(b *Builder) {
+			b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+		}})
 	waitGroup.Wait()
 
 	// now shut down
@@ -138,12 +142,14 @@ func TestProcessingNotification(t *testing.T) {
 	status := graphsync.RequestCompletedFull
 	blkData := testutil.NewFakeBlockData()
 	subscriber := testutil.NewTestSubscriber(5)
-	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
-		b.AddResponseCode(responseID, status)
-		b.AddExtensionData(responseID, extension)
-		b.AddBlockData(responseID, blkData)
-		b.SetSubscriber(responseID, subscriber)
-	})
+	messageQueue.BuildMessage(MessageParams{
+		Size: 0,
+		BuildMessageFn: func(b *Builder) {
+			b.AddResponseCode(responseID, status)
+			b.AddExtensionData(responseID, extension)
+			b.AddBlockData(responseID, blkData)
+			b.SetSubscriber(responseID, subscriber)
+		}})
 
 	// wait for send attempt
 	waitGroup.Wait()
@@ -206,9 +212,11 @@ func TestDedupingMessages(t *testing.T) {
 	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
-	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
-		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
-	})
+	messageQueue.BuildMessage(MessageParams{
+		Size: 0,
+		BuildMessageFn: func(b *Builder) {
+			b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
+		}})
 	// wait for send attempt
 	waitGroup.Wait()
 	id2 := graphsync.NewRequestID()
@@ -220,10 +228,12 @@ func TestDedupingMessages(t *testing.T) {
 	selector3 := ssb.ExploreIndex(0, ssb.Matcher()).Node()
 	root3 := testutil.GenerateCids(1)[0]
 
-	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
-		b.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))
-		b.AddRequest(gsmsg.NewRequest(id3, root3, selector3, priority3))
-	})
+	messageQueue.BuildMessage(MessageParams{
+		Size: 0,
+		BuildMessageFn: func(b *Builder) {
+			b.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))
+			b.AddRequest(gsmsg.NewRequest(id3, root3, selector3, priority3))
+		}})
 
 	var message gsmsg.GraphSyncMessage
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
@@ -281,9 +291,11 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 
 	// generate large blocks before proceeding
 	blks := testutil.GenerateBlocksOfSize(5, 1000000)
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
-		b.AddBlock(blks[0])
-	})
+	messageQueue.BuildMessage(MessageParams{
+		Size: uint64(len(blks[0].RawData())),
+		BuildMessageFn: func(b *Builder) {
+			b.AddBlock(blks[0])
+		}})
 	waitGroup.Wait()
 	var message gsmsg.GraphSyncMessage
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
@@ -293,15 +305,21 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.True(t, blks[0].Cid().Equals(msgBlks[0].Cid()))
 
 	// Send 3 very large blocks
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *Builder) {
-		b.AddBlock(blks[1])
-	})
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *Builder) {
-		b.AddBlock(blks[2])
-	})
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *Builder) {
-		b.AddBlock(blks[3])
-	})
+	messageQueue.BuildMessage(MessageParams{
+		Size: uint64(len(blks[1].RawData())),
+		BuildMessageFn: func(b *Builder) {
+			b.AddBlock(blks[1])
+		}})
+	messageQueue.BuildMessage(MessageParams{
+		Size: uint64(len(blks[2].RawData())),
+		BuildMessageFn: func(b *Builder) {
+			b.AddBlock(blks[2])
+		}})
+	messageQueue.BuildMessage(MessageParams{
+		Size: uint64(len(blks[3].RawData())),
+		BuildMessageFn: func(b *Builder) {
+			b.AddBlock(blks[3])
+		}})
 
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
 	msgBlks = message.Blocks()
@@ -341,16 +359,20 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 
 	// start sending block that exceeds memory limit
 	blks := testutil.GenerateBlocksOfSize(2, 999)
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
-		b.AddBlock(blks[0])
-	})
+	messageQueue.BuildMessage(MessageParams{
+		Size: uint64(len(blks[0].RawData())),
+		BuildMessageFn: func(b *Builder) {
+			b.AddBlock(blks[0])
+		}})
 
 	finishes := make(chan string, 2)
 	go func() {
 		// attempt to send second block. Should block until memory is released
-		messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *Builder) {
-			b.AddBlock(blks[1])
-		})
+		messageQueue.BuildMessage(MessageParams{
+			Size: uint64(len(blks[1].RawData())),
+			BuildMessageFn: func(b *Builder) {
+				b.AddBlock(blks[1])
+			}})
 		finishes <- "sent message"
 	}()
 
@@ -402,11 +424,13 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	blks := testutil.GenerateBlocksOfSize(5, 1000000)
 	subscriber := testutil.NewTestSubscriber(5)
 
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
-		b.AddBlock(blks[0])
-		b.AddLink(requestID1, cidlink.Link{Cid: blks[0].Cid()}, graphsync.LinkActionPresent)
-		b.SetSubscriber(requestID1, subscriber)
-	})
+	messageQueue.BuildMessage(MessageParams{
+		Size: uint64(len(blks[0].RawData())),
+		BuildMessageFn: func(b *Builder) {
+			b.AddBlock(blks[0])
+			b.AddLink(requestID1, cidlink.Link{Cid: blks[0].Cid()}, graphsync.LinkActionPresent)
+			b.SetSubscriber(requestID1, subscriber)
+		}})
 	waitGroup.Wait()
 	var message gsmsg.GraphSyncMessage
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
@@ -429,21 +453,27 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	fc1 := &fakeCloser{fms: messageSender}
 	fc2 := &fakeCloser{fms: messageSender}
 	// Send 3 very large blocks
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[1].RawData())), func(b *Builder) {
-		b.AddBlock(blks[1])
-		b.SetResponseStream(requestID1, fc1)
-		b.AddLink(requestID1, cidlink.Link{Cid: blks[1].Cid()}, graphsync.LinkActionPresent)
-	})
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[2].RawData())), func(b *Builder) {
-		b.AddBlock(blks[2])
-		b.SetResponseStream(requestID1, fc1)
-		b.AddLink(requestID1, cidlink.Link{Cid: blks[2].Cid()}, graphsync.LinkActionPresent)
-	})
-	messageQueue.AllocateAndBuildMessage(uint64(len(blks[3].RawData())), func(b *Builder) {
-		b.SetResponseStream(requestID2, fc2)
-		b.AddLink(requestID2, cidlink.Link{Cid: blks[3].Cid()}, graphsync.LinkActionPresent)
-		b.AddBlock(blks[3])
-	})
+	messageQueue.BuildMessage(MessageParams{
+		Size: uint64(len(blks[1].RawData())),
+		BuildMessageFn: func(b *Builder) {
+			b.AddBlock(blks[1])
+			b.SetResponseStream(requestID1, fc1)
+			b.AddLink(requestID1, cidlink.Link{Cid: blks[1].Cid()}, graphsync.LinkActionPresent)
+		}})
+	messageQueue.BuildMessage(MessageParams{
+		Size: uint64(len(blks[2].RawData())),
+		BuildMessageFn: func(b *Builder) {
+			b.AddBlock(blks[2])
+			b.SetResponseStream(requestID1, fc1)
+			b.AddLink(requestID1, cidlink.Link{Cid: blks[2].Cid()}, graphsync.LinkActionPresent)
+		}})
+	messageQueue.BuildMessage(MessageParams{
+		Size: uint64(len(blks[3].RawData())),
+		BuildMessageFn: func(b *Builder) {
+			b.SetResponseStream(requestID2, fc2)
+			b.AddLink(requestID2, cidlink.Link{Cid: blks[3].Cid()}, graphsync.LinkActionPresent)
+			b.AddBlock(blks[3])
+		}})
 
 	messageSender.sendError = errors.New("something went wrong")
 

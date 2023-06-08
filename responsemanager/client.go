@@ -7,7 +7,7 @@ import (
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
-	"github.com/ipfs/go-protocolnetwork"
+	"github.com/ipfs/go-protocolnetwork/pkg/network"
 	ipld "github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -108,7 +108,7 @@ type ResponseManager struct {
 	networkErrorListeners      NetworkErrorListeners
 	messages                   chan responseManagerMessage
 	inProgressResponses        map[graphsync.RequestID]*inProgressResponseStatus
-	connManager                protocolnetwork.ConnManager
+	connManager                network.ConnManager
 	// maximum number of links to traverse per request. A value of zero = infinity, or no limit
 	maxLinksPerRequest uint64
 	panicCallback      panics.CallBackFn
@@ -126,7 +126,7 @@ func New(ctx context.Context,
 	cancelledListeners CancelledListeners,
 	blockSentListeners BlockSentListeners,
 	networkErrorListeners NetworkErrorListeners,
-	connManager protocolnetwork.ConnManager,
+	connManager network.ConnManager,
 	maxLinksPerRequest uint64,
 	panicCallback panics.CallBackFn,
 	responseQueue taskqueue.TaskQueue,

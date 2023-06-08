@@ -30,9 +30,9 @@ type fakePeer struct {
 	onShutdown   func(peer.ID)
 }
 
-func (fp *fakePeer) AllocateAndBuildMessage(blkSize uint64, buildMessage func(b *messagequeue.Builder)) {
+func (fp *fakePeer) BuildMessage(params messagequeue.MessageParams) {
 	builder := messagequeue.NewBuilder(context.TODO(), messagequeue.Topic(0))
-	buildMessage(builder)
+	params.BuildMessageFn(builder)
 	message, err := builder.Build()
 	if err != nil {
 		panic(err)

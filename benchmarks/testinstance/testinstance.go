@@ -10,7 +10,7 @@ import (
 	badgerds "github.com/ipfs/go-ds-badger"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
-	tn "github.com/ipfs/go-protocolnetwork/testnet"
+	tn "github.com/ipfs/go-protocolnetwork/pkg/testnet"
 	"github.com/ipld/go-ipld-prime"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
