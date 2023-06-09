@@ -1029,10 +1029,9 @@ type fakePeerHandler struct {
 	requestRecordChan chan requestRecord
 }
 
-func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64,
-	requestBuilder func(b *messagequeue.Builder)) {
+func (fph *fakePeerHandler) BuildMessage(p peer.ID, params messagequeue.MessageParams) {
 	builder := messagequeue.NewBuilder(context.TODO(), messagequeue.Topic(0))
-	requestBuilder(builder)
+	params.BuildMessageFn(builder)
 	message, err := builder.Build()
 	if err != nil {
 		panic(err)

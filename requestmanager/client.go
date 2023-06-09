@@ -68,7 +68,7 @@ type inProgressRequestStatus struct {
 
 // PeerHandler is an interface that can send requests to peers
 type PeerHandler interface {
-	AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*messagequeue.Builder))
+	BuildMessage(p peer.ID, params messagequeue.MessageParams)
 }
 
 // PersistenceOptions is an interface for getting loaders by name
@@ -375,10 +375,12 @@ func (rm *RequestManager) PeerState(p peer.ID) peerstate.PeerState {
 // SendRequest sends a request to the message queue
 func (rm *RequestManager) SendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
 	sub := &reqSubscriber{p, request, rm.networkErrorListeners}
-	rm.peerHandler.AllocateAndBuildMessage(p, 0, func(builder *messagequeue.Builder) {
-		builder.AddRequest(request)
-		builder.SetSubscriber(request.ID(), sub)
-	})
+	rm.peerHandler.BuildMessage(p, messagequeue.MessageParams{
+		Size: 0,
+		BuildMessageFn: func(builder *messagequeue.Builder) {
+			builder.AddRequest(request)
+			builder.SetSubscriber(request.ID(), sub)
+		}})
 }
 
 // Startup starts processing for the WantManager.

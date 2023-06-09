@@ -629,9 +629,9 @@ func (fph *fakePeerHandler) RefuteResponses() {
 	require.Empty(fph.t, fph.lastResponses)
 }
 
-func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*messagequeue.Builder)) {
+func (fph *fakePeerHandler) BuildMessage(p peer.ID, params messagequeue.MessageParams) {
 	builder := messagequeue.NewBuilder(context.TODO(), messagequeue.Topic(0))
-	buildMessageFn(builder)
+	params.BuildMessageFn(builder)
 
 	msg, err := builder.Build()
 	require.NoError(fph.t, err)

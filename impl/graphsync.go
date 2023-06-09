@@ -20,7 +20,6 @@ import (
 	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/panics"
-	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/persistenceoptions"
 	"github.com/ipfs/go-graphsync/requestmanager"
@@ -32,6 +31,7 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	"github.com/ipfs/go-graphsync/taskqueue"
+	"github.com/ipfs/go-protocolnetwork/pkg/messagequeuemanager"
 )
 
 var log = logging.Logger("graphsync")
@@ -56,7 +56,7 @@ type GraphSync struct {
 	requestQueue                       taskqueue.TaskQueue
 	requestExecutor                    *executor.Executor
 	responseAssembler                  *responseassembler.ResponseAssembler
-	peerManager                        *peermanager.PeerMessageManager
+	peerManager                        *messagequeuemanager.MessageQueueManager[messagequeue.MessageParams]
 	incomingRequestHooks               *responderhooks.IncomingRequestHooks
 	outgoingBlockHooks                 *responderhooks.OutgoingBlockHooks
 	requestUpdatedHooks                *responderhooks.RequestUpdatedHooks
@@ -240,10 +240,10 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	}
 	responseAllocator := allocator.NewAllocator(gsConfig.totalMaxMemoryResponder, gsConfig.maxMemoryPerPeerResponder)
-	createMessageQueue := func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) peermanager.PeerQueue {
+	createMessageQueue := func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) messagequeuemanager.MessageQueue[messagequeue.MessageParams] {
 		return messagequeue.New(ctx, p, network, responseAllocator, gsConfig.messageSendRetries, gsConfig.sendMessageTimeout, gsConfig.sendErrorBackoff, onShutdown)
 	}
-	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
+	peerManager := messagequeuemanager.NewMessageQueueManager(ctx, createMessageQueue)
 
 	requestQueue := taskqueue.NewTaskQueue(ctx)
 	requestManager := requestmanager.New(ctx, persistenceOptions, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest, gsConfig.panicCallback)
