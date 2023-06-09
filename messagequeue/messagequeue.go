@@ -18,7 +18,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-protocolnetwork/pkg/notifications"
 )
 
 var log = logging.Logger("graphsync")
@@ -53,17 +53,18 @@ type Allocator interface {
 	ReleaseBlockMemory(p peer.ID, amount uint64) error
 }
 
+// MessageParams are parameters sent to build messages
 type MessageParams struct {
 	Size           uint64
 	BuildMessageFn func(*Builder)
 }
 
-// MessageQueue implements queue of want messages to send to peers.
-type MessageBuilder struct {
+// messageBuilder implements queue of want messages to send to peers.
+type messageBuilder struct {
 	ctx context.Context
 	p   peer.ID
 	// internal do not touch outside go routines
-	eventPublisher   notifications.Publisher
+	eventPublisher   notifications.Publisher[Topic, Event]
 	buildersLk       sync.RWMutex
 	builders         []*Builder
 	nextBuilderTopic Topic
@@ -72,8 +73,8 @@ type MessageBuilder struct {
 
 // New creats a new MessageQueue.
 func New(ctx context.Context, p peer.ID, messageNetwork messagequeue.MessageNetwork[gsmsg.GraphSyncMessage], allocator Allocator, maxRetries int, sendMessageTimeout time.Duration, sendErrorBackoff time.Duration, onShutdown func(peer.ID)) *messagequeue.MessageQueue[gsmsg.GraphSyncMessage, MessageParams] {
-	eventPublisher := notifications.NewPublisher()
-	messageBuilder := &MessageBuilder{
+	eventPublisher := notifications.NewPublisher[Topic, Event]()
+	messageBuilder := &messageBuilder{
 		ctx:            ctx,
 		p:              p,
 		eventPublisher: eventPublisher,
@@ -93,7 +94,7 @@ func New(ctx context.Context, p peer.ID, messageNetwork messagequeue.MessageNetw
 
 // AllocateAndBuildMessage allows you to work modify the next message that is sent in the queue.
 // If blkSize > 0, message building may block until enough memory has been freed from the queues to allocate the message.
-func (mb *MessageBuilder) BuildMessage(params MessageParams) bool {
+func (mb *messageBuilder) BuildMessage(params MessageParams) bool {
 	if params.Size > 0 {
 		select {
 		case <-mb.allocator.AllocateBlockMemory(mb.p, params.Size):
@@ -104,7 +105,7 @@ func (mb *MessageBuilder) BuildMessage(params MessageParams) bool {
 	return mb.buildMessage(params.Size, params.BuildMessageFn)
 }
 
-func (mb *MessageBuilder) buildMessage(size uint64, buildMessageFn func(*Builder)) bool {
+func (mb *messageBuilder) buildMessage(size uint64, buildMessageFn func(*Builder)) bool {
 	mb.buildersLk.Lock()
 	defer mb.buildersLk.Unlock()
 	if shouldBeginNewResponse(mb.builders, size) {
@@ -132,7 +133,7 @@ func shouldBeginNewResponse(builders []*Builder, blkSize uint64) bool {
 
 var errEmptyMessage = errors.New("empty Message")
 
-func (mb *MessageBuilder) NextMessage() (messagequeue.MessageSpec[gsmsg.GraphSyncMessage], bool, error) {
+func (mb *messageBuilder) NextMessage() (messagequeue.MessageSpec[gsmsg.GraphSyncMessage], bool, error) {
 	// grab outgoing message
 	mb.buildersLk.Lock()
 	defer mb.buildersLk.Unlock()
@@ -167,7 +168,7 @@ func (mb *MessageBuilder) NextMessage() (messagequeue.MessageSpec[gsmsg.GraphSyn
 	}, len(mb.builders) > 0, nil
 }
 
-func (mb *MessageBuilder) scrubResponseStreams(responseStreams map[graphsync.RequestID]io.Closer) {
+func (mb *messageBuilder) scrubResponseStreams(responseStreams map[graphsync.RequestID]io.Closer) {
 	requestIDs := make([]graphsync.RequestID, 0, len(responseStreams))
 	for requestID, responseStream := range responseStreams {
 		_ = responseStream.Close()
@@ -184,7 +185,7 @@ func (mb *MessageBuilder) scrubResponseStreams(responseStreams map[graphsync.Req
 
 // ScrubResponses removes the given response and associated blocks
 // from all pending messages in the queue
-func (mb *MessageBuilder) scrubResponses(requestIDs []graphsync.RequestID) uint64 {
+func (mb *messageBuilder) scrubResponses(requestIDs []graphsync.RequestID) uint64 {
 	mb.buildersLk.Lock()
 	newBuilders := make([]*Builder, 0, len(mb.builders))
 	totalFreed := uint64(0)
@@ -200,7 +201,7 @@ func (mb *MessageBuilder) scrubResponses(requestIDs []graphsync.RequestID) uint6
 }
 
 type internalMetadata struct {
-	builder         *MessageBuilder
+	builder         *messageBuilder
 	span            trace.Span
 	sendSpan        trace.Span
 	ctx             context.Context

@@ -6,7 +6,6 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-protocolnetwork/pkg/network"
 )
 
@@ -26,11 +25,7 @@ type subscriber struct {
 	connManager           network.ConnManager
 }
 
-func (s *subscriber) OnNext(_ notifications.Topic, event notifications.Event) {
-	responseEvent, ok := event.(messagequeue.Event)
-	if !ok {
-		return
-	}
+func (s *subscriber) OnNext(_ messagequeue.Topic, responseEvent messagequeue.Event) {
 	switch responseEvent.Name {
 	case messagequeue.Error:
 		s.requestCloser.CloseWithNetworkError(s.request.ID())
@@ -52,6 +47,5 @@ func (s *subscriber) OnNext(_ notifications.Topic, event notifications.Event) {
 	}
 }
 
-func (s *subscriber) OnClose(_ notifications.Topic) {
-
+func (s *subscriber) OnClose(_ messagequeue.Topic) {
 }

@@ -24,7 +24,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/ipfs/go-merkledag v0.8.1
 	github.com/ipfs/go-peertaskqueue v0.8.0
-	github.com/ipfs/go-protocolnetwork v0.0.2-0.20230608211709-fb8ce6028def
+	github.com/ipfs/go-protocolnetwork v0.0.2
 	github.com/ipfs/go-unixfs v0.4.3
 	github.com/ipfs/go-unixfsnode v1.5.2
 	github.com/ipld/go-codec-dagpb v1.5.0

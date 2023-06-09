@@ -24,7 +24,6 @@ import (
 	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
@@ -406,13 +405,9 @@ type reqSubscriber struct {
 	networkErrorListeners *listeners.NetworkErrorListeners
 }
 
-func (r *reqSubscriber) OnNext(_ notifications.Topic, event notifications.Event) {
-	mqEvt, isMQEvt := event.(messagequeue.Event)
-	if !isMQEvt || mqEvt.Name != messagequeue.Error {
-		return
-	}
-	r.networkErrorListeners.NotifyNetworkErrorListeners(r.p, r.request, mqEvt.Err)
+func (r *reqSubscriber) OnNext(_ messagequeue.Topic, event messagequeue.Event) {
+	r.networkErrorListeners.NotifyNetworkErrorListeners(r.p, r.request, event.Err)
 }
 
-func (r reqSubscriber) OnClose(_ notifications.Topic) {
+func (r reqSubscriber) OnClose(_ messagequeue.Topic) {
 }

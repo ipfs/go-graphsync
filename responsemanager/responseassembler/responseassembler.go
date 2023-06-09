@@ -18,8 +18,8 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/peermanager"
+	"github.com/ipfs/go-protocolnetwork/pkg/notifications"
 )
 
 // Transaction is a series of operations that should be send together in a single response
@@ -76,7 +76,7 @@ func New(ctx context.Context, peerHandler PeerMessageHandler) *ResponseAssembler
 	}
 }
 
-func (ra *ResponseAssembler) NewStream(ctx context.Context, p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) ResponseStream {
+func (ra *ResponseAssembler) NewStream(ctx context.Context, p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber[messagequeue.Topic, messagequeue.Event]) ResponseStream {
 	return &responseStream{
 		ctx:            ctx,
 		requestID:      requestID,
@@ -95,7 +95,7 @@ type responseStream struct {
 	closedLk       sync.RWMutex
 	messageSenders PeerMessageHandler
 	linkTrackers   *peermanager.PeerManager
-	subscriber     notifications.Subscriber
+	subscriber     notifications.Subscriber[messagequeue.Topic, messagequeue.Event]
 }
 
 func (r *responseStream) Close() error {

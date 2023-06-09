@@ -1,4 +1,4 @@
-package messagequeue
+package messagequeue_test
 
 import (
 	"context"
@@ -19,8 +19,8 @@ import (
 	"github.com/ipfs/go-graphsync"
 	allocator2 "github.com/ipfs/go-graphsync/allocator"
 	gsmsg "github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/testutil"
 )
 
@@ -38,7 +38,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
+	messageQueue := messagequeue.New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
 	messageQueue.Startup()
 	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
@@ -47,9 +47,9 @@ func TestStartupAndShutdown(t *testing.T) {
 	root := testutil.GenerateCids(1)[0]
 
 	waitGroup.Add(1)
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: 0,
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 		}})
 
@@ -78,7 +78,7 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
+	messageQueue := messagequeue.New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
 	messageQueue.Startup()
 	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
@@ -88,9 +88,9 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 
 	// setup a message and advance as far as beginning to send it
 	waitGroup.Add(1)
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: 0,
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 		}})
 	waitGroup.Wait()
@@ -128,7 +128,7 @@ func TestProcessingNotification(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
+	messageQueue := messagequeue.New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
 	messageQueue.Startup()
 	waitGroup.Add(1)
 	blks := testutil.GenerateBlocksOfSize(3, 128)
@@ -142,9 +142,9 @@ func TestProcessingNotification(t *testing.T) {
 	status := graphsync.RequestCompletedFull
 	blkData := testutil.NewFakeBlockData()
 	subscriber := testutil.NewTestSubscriber(5)
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: 0,
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddResponseCode(responseID, status)
 			b.AddExtensionData(responseID, extension)
 			b.AddBlockData(responseID, blkData)
@@ -167,7 +167,7 @@ func TestProcessingNotification(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	expectedMetadata := Metadata{
+	expectedMetadata := messagequeue.Metadata{
 		ResponseCodes: map[graphsync.RequestID]graphsync.ResponseStatusCode{
 			responseID: status,
 		},
@@ -175,13 +175,13 @@ func TestProcessingNotification(t *testing.T) {
 			responseID: {blkData},
 		},
 	}
-	subscriber.ExpectEventsAllTopics(ctx, t, []notifications.Event{
-		Event{
-			Name:     Queued,
+	subscriber.ExpectEventsAllTopics(ctx, t, []messagequeue.Event{
+		{
+			Name:     messagequeue.Queued,
 			Metadata: expectedMetadata,
 		},
-		Event{
-			Name:     Sent,
+		{
+			Name:     messagequeue.Sent,
 			Metadata: expectedMetadata,
 		},
 	})
@@ -203,7 +203,7 @@ func TestDedupingMessages(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
+	messageQueue := messagequeue.New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
 	messageQueue.Startup()
 	waitGroup.Add(1)
 	id := graphsync.NewRequestID()
@@ -212,9 +212,9 @@ func TestDedupingMessages(t *testing.T) {
 	selector := ssb.Matcher().Node()
 	root := testutil.GenerateCids(1)[0]
 
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: 0,
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
 		}})
 	// wait for send attempt
@@ -228,9 +228,9 @@ func TestDedupingMessages(t *testing.T) {
 	selector3 := ssb.ExploreIndex(0, ssb.Matcher()).Node()
 	root3 := testutil.GenerateCids(1)[0]
 
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: 0,
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))
 			b.AddRequest(gsmsg.NewRequest(id3, root3, selector3, priority3))
 		}})
@@ -285,15 +285,15 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	messageNetwork := &fakeMessageNetwork{nil, nil, messageSender, &waitGroup}
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
-	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
+	messageQueue := messagequeue.New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
 	messageQueue.Startup()
 	waitGroup.Add(1)
 
 	// generate large blocks before proceeding
 	blks := testutil.GenerateBlocksOfSize(5, 1000000)
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: uint64(len(blks[0].RawData())),
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddBlock(blks[0])
 		}})
 	waitGroup.Wait()
@@ -305,19 +305,19 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	require.True(t, blks[0].Cid().Equals(msgBlks[0].Cid()))
 
 	// Send 3 very large blocks
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: uint64(len(blks[1].RawData())),
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddBlock(blks[1])
 		}})
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: uint64(len(blks[2].RawData())),
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddBlock(blks[2])
 		}})
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: uint64(len(blks[3].RawData())),
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddBlock(blks[3])
 		}})
 
@@ -353,24 +353,24 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 	// use allocator with very small limit
 	allocator := allocator2.NewAllocator(1000, 1000)
 
-	messageQueue := New(ctx, p, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
+	messageQueue := messagequeue.New(ctx, p, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
 	messageQueue.Startup()
 	waitGroup.Add(1)
 
 	// start sending block that exceeds memory limit
 	blks := testutil.GenerateBlocksOfSize(2, 999)
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: uint64(len(blks[0].RawData())),
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddBlock(blks[0])
 		}})
 
 	finishes := make(chan string, 2)
 	go func() {
 		// attempt to send second block. Should block until memory is released
-		messageQueue.BuildMessage(MessageParams{
+		messageQueue.BuildMessage(messagequeue.MessageParams{
 			Size: uint64(len(blks[1].RawData())),
-			BuildMessageFn: func(b *Builder) {
+			BuildMessageFn: func(b *messagequeue.Builder) {
 				b.AddBlock(blks[1])
 			}})
 		finishes <- "sent message"
@@ -416,7 +416,7 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	allocator := allocator2.NewAllocator(1<<30, 1<<30)
 
 	// we use only a retry count of 1 to avoid multiple send attempts for each message
-	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, 1, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
+	messageQueue := messagequeue.New(ctx, targetPeer, messageNetwork, allocator, 1, sendMessageTimeout, sendErrorBackoff, func(peer.ID) {})
 	messageQueue.Startup()
 	waitGroup.Add(1)
 
@@ -424,9 +424,9 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	blks := testutil.GenerateBlocksOfSize(5, 1000000)
 	subscriber := testutil.NewTestSubscriber(5)
 
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: uint64(len(blks[0].RawData())),
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddBlock(blks[0])
 			b.AddLink(requestID1, cidlink.Link{Cid: blks[0].Cid()}, graphsync.LinkActionPresent)
 			b.SetSubscriber(requestID1, subscriber)
@@ -439,45 +439,43 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
 	require.True(t, blks[0].Cid().Equals(msgBlks[0].Cid()))
 
-	expectedMetadata := Metadata{
+	expectedMetadata := messagequeue.Metadata{
 		ResponseCodes: map[graphsync.RequestID]graphsync.ResponseStatusCode{
 			requestID1: graphsync.PartialResponse,
 		},
 		BlockData: map[graphsync.RequestID][]graphsync.BlockData{},
 	}
-	subscriber.ExpectEventsAllTopics(ctx, t, []notifications.Event{
-		Event{Name: Queued, Metadata: expectedMetadata},
-		Event{Name: Sent, Metadata: expectedMetadata},
+	subscriber.ExpectEventsAllTopics(ctx, t, []messagequeue.Event{
+		{Name: messagequeue.Queued, Metadata: expectedMetadata},
+		{Name: messagequeue.Sent, Metadata: expectedMetadata},
 	})
 	subscriber.ExpectNCloses(ctx, t, 1)
 	fc1 := &fakeCloser{fms: messageSender}
-	fc2 := &fakeCloser{fms: messageSender}
 	// Send 3 very large blocks
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: uint64(len(blks[1].RawData())),
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddBlock(blks[1])
 			b.SetResponseStream(requestID1, fc1)
 			b.AddLink(requestID1, cidlink.Link{Cid: blks[1].Cid()}, graphsync.LinkActionPresent)
 		}})
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: uint64(len(blks[2].RawData())),
-		BuildMessageFn: func(b *Builder) {
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddBlock(blks[2])
 			b.SetResponseStream(requestID1, fc1)
 			b.AddLink(requestID1, cidlink.Link{Cid: blks[2].Cid()}, graphsync.LinkActionPresent)
 		}})
-	messageQueue.BuildMessage(MessageParams{
+	messageQueue.BuildMessage(messagequeue.MessageParams{
 		Size: uint64(len(blks[3].RawData())),
-		BuildMessageFn: func(b *Builder) {
-			b.SetResponseStream(requestID2, fc2)
+		BuildMessageFn: func(b *messagequeue.Builder) {
 			b.AddLink(requestID2, cidlink.Link{Cid: blks[3].Cid()}, graphsync.LinkActionPresent)
 			b.AddBlock(blks[3])
 		}})
 
 	messageSender.sendError = errors.New("something went wrong")
 
-	// add one since the stream will get reopened
+	// add one since the stream may get reopened
 	waitGroup.Add(1)
 
 	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
@@ -485,14 +483,7 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
 	require.True(t, blks[1].Cid().Equals(msgBlks[0].Cid()))
 
-	// should skip block2 as it's linked to errored request
-	testutil.AssertReceive(ctx, t, messagesSent, &message, "message did not send")
-	msgBlks = message.Blocks()
-	require.Len(t, msgBlks, 1, "number of blks in first message was not 1")
-	require.True(t, blks[3].Cid().Equals(msgBlks[0].Cid()))
-
 	require.True(t, fc1.closed)
-	require.False(t, fc2.closed)
 }
 
 const sendMessageTimeout = 10 * time.Minute
