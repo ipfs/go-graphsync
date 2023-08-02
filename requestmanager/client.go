@@ -186,7 +186,10 @@ func (rm *RequestManager) NewRequest(ctx context.Context,
 
 	inProgressRequestChan := make(chan inProgressRequest)
 
-	rm.send(&newRequestMessage{requestID, span, p, root, selectorNode, extensions, inProgressRequestChan}, ctx.Done())
+	err := rm.send(&newRequestMessage{requestID, span, p, root, selectorNode, extensions, inProgressRequestChan}, ctx.Done())
+	if err != nil {
+		return rm.emptyResponse()
+	}
 	var receivedInProgressRequest inProgressRequest
 	select {
 	case <-rm.ctx.Done():
@@ -280,7 +283,10 @@ func (rm *RequestManager) cancelRequestAndClose(requestID graphsync.RequestID,
 // CancelRequest cancels the given request ID and waits for the request to terminate
 func (rm *RequestManager) CancelRequest(ctx context.Context, requestID graphsync.RequestID) error {
 	terminated := make(chan error, 1)
-	rm.send(&cancelRequestMessage{requestID, terminated, graphsync.RequestClientCancelledErr{}}, ctx.Done())
+	err := rm.send(&cancelRequestMessage{requestID, terminated, graphsync.RequestClientCancelledErr{}}, ctx.Done())
+	if err != nil {
+		return err
+	}
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -295,14 +301,17 @@ func (rm *RequestManager) ProcessResponses(p peer.ID,
 	responses []gsmsg.GraphSyncResponse,
 	blks []blocks.Block) {
 
-	rm.send(&processResponsesMessage{p, responses, blks}, nil)
+	_ = rm.send(&processResponsesMessage{p, responses, blks}, nil)
 }
 
 // UnpauseRequest unpauses a request that was paused in a block hook based request ID
 // Can also send extensions with unpause
 func (rm *RequestManager) UnpauseRequest(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	response := make(chan error, 1)
-	rm.send(&unpauseRequestMessage{requestID, extensions, response}, ctx.Done())
+	err := rm.send(&unpauseRequestMessage{requestID, extensions, response}, ctx.Done())
+	if err != nil {
+		return err
+	}
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -314,7 +323,10 @@ func (rm *RequestManager) UnpauseRequest(ctx context.Context, requestID graphsyn
 // PauseRequest pauses an in progress request (may take 1 or more blocks to process)
 func (rm *RequestManager) PauseRequest(ctx context.Context, requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
-	rm.send(&pauseRequestMessage{requestID, response}, ctx.Done())
+	err := rm.send(&pauseRequestMessage{requestID, response}, ctx.Done())
+	if err != nil {
+		return err
+	}
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -326,7 +338,10 @@ func (rm *RequestManager) PauseRequest(ctx context.Context, requestID graphsync.
 // UpdateRequest updates an in progress request
 func (rm *RequestManager) UpdateRequest(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	response := make(chan error, 1)
-	rm.send(&updateRequestMessage{requestID, extensions, response}, ctx.Done())
+	err := rm.send(&updateRequestMessage{requestID, extensions, response}, ctx.Done())
+	if err != nil {
+		return err
+	}
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -337,13 +352,13 @@ func (rm *RequestManager) UpdateRequest(ctx context.Context, requestID graphsync
 
 // GetRequestTask gets data for the given task in the request queue
 func (rm *RequestManager) GetRequestTask(p peer.ID, task *peertask.Task, requestExecutionChan chan executor.RequestTask) {
-	rm.send(&getRequestTaskMessage{p, task, requestExecutionChan}, nil)
+	_ = rm.send(&getRequestTaskMessage{p, task, requestExecutionChan}, nil)
 }
 
 // ReleaseRequestTask releases a task request the requestQueue
 func (rm *RequestManager) ReleaseRequestTask(p peer.ID, task *peertask.Task, err error) {
 	done := make(chan struct{}, 1)
-	rm.send(&releaseRequestTaskMessage{p, task, err, done}, nil)
+	_ = rm.send(&releaseRequestTaskMessage{p, task, err, done}, nil)
 	select {
 	case <-rm.ctx.Done():
 	case <-done:
@@ -353,7 +368,7 @@ func (rm *RequestManager) ReleaseRequestTask(p peer.ID, task *peertask.Task, err
 // PeerState gets stats on all outgoing requests for a given peer
 func (rm *RequestManager) PeerState(p peer.ID) peerstate.PeerState {
 	response := make(chan peerstate.PeerState)
-	rm.send(&peerStateMessage{p, response}, nil)
+	_ = rm.send(&peerStateMessage{p, response}, nil)
 	select {
 	case <-rm.ctx.Done():
 		return peerstate.PeerState{}
@@ -381,11 +396,20 @@ func (rm *RequestManager) Shutdown() {
 	rm.cancel()
 }
 
-func (rm *RequestManager) send(message requestManagerMessage, done <-chan struct{}) {
+func (rm *RequestManager) send(message requestManagerMessage, done <-chan struct{}) error {
+	// prioritize cancelled context
+	select {
+	case <-done:
+		return errors.New("unable to send message before cancellation")
+	default:
+	}
 	select {
 	case <-rm.ctx.Done():
+		return rm.ctx.Err()
 	case <-done:
+		return errors.New("unable to send message before cancellation")
 	case rm.messages <- message:
+		return nil
 	}
 }
 

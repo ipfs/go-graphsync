@@ -156,13 +156,16 @@ func New(ctx context.Context,
 
 // ProcessRequests processes incoming requests for the given peer
 func (rm *ResponseManager) ProcessRequests(ctx context.Context, p peer.ID, requests []gsmsg.GraphSyncRequest) {
-	rm.send(&processRequestsMessage{p, requests}, ctx.Done())
+	_ = rm.send(&processRequestsMessage{p, requests}, ctx.Done())
 }
 
 // UnpauseResponse unpauses a response that was previously paused
 func (rm *ResponseManager) UnpauseResponse(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	response := make(chan error, 1)
-	rm.send(&unpauseRequestMessage{requestID, response, extensions}, ctx.Done())
+	err := rm.send(&unpauseRequestMessage{requestID, response, extensions}, ctx.Done())
+	if err != nil {
+		return err
+	}
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -174,7 +177,10 @@ func (rm *ResponseManager) UnpauseResponse(ctx context.Context, requestID graphs
 // PauseResponse pauses an in progress response (may take 1 or more blocks to process)
 func (rm *ResponseManager) PauseResponse(ctx context.Context, requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
-	rm.send(&pauseRequestMessage{requestID, response}, ctx.Done())
+	err := rm.send(&pauseRequestMessage{requestID, response}, ctx.Done())
+	if err != nil {
+		return err
+	}
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -186,7 +192,10 @@ func (rm *ResponseManager) PauseResponse(ctx context.Context, requestID graphsyn
 // CancelResponse cancels an in progress response
 func (rm *ResponseManager) CancelResponse(ctx context.Context, requestID graphsync.RequestID) error {
 	response := make(chan error, 1)
-	rm.send(&errorRequestMessage{requestID, queryexecutor.ErrCancelledByCommand, response}, ctx.Done())
+	err := rm.send(&errorRequestMessage{requestID, queryexecutor.ErrCancelledByCommand, response}, ctx.Done())
+	if err != nil {
+		return err
+	}
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -198,7 +207,10 @@ func (rm *ResponseManager) CancelResponse(ctx context.Context, requestID graphsy
 // UpdateRequest updates an in progress response
 func (rm *ResponseManager) UpdateResponse(ctx context.Context, requestID graphsync.RequestID, extensions ...graphsync.ExtensionData) error {
 	response := make(chan error, 1)
-	rm.send(&updateRequestMessage{requestID, extensions, response}, ctx.Done())
+	err := rm.send(&updateRequestMessage{requestID, extensions, response}, ctx.Done())
+	if err != nil {
+		return err
+	}
 	select {
 	case <-rm.ctx.Done():
 		return errors.New("context cancelled")
@@ -210,7 +222,7 @@ func (rm *ResponseManager) UpdateResponse(ctx context.Context, requestID graphsy
 // Synchronize is a utility method that blocks until all current messages are processed
 func (rm *ResponseManager) synchronize() {
 	sync := make(chan error)
-	rm.send(&synchronizeMessage{sync}, nil)
+	_ = rm.send(&synchronizeMessage{sync}, nil)
 	select {
 	case <-rm.ctx.Done():
 	case <-sync:
@@ -219,18 +231,18 @@ func (rm *ResponseManager) synchronize() {
 
 // StartTask starts the given task from the peer task queue
 func (rm *ResponseManager) StartTask(task *peertask.Task, p peer.ID, responseTaskChan chan<- queryexecutor.ResponseTask) {
-	rm.send(&startTaskRequest{task, p, responseTaskChan}, nil)
+	_ = rm.send(&startTaskRequest{task, p, responseTaskChan}, nil)
 }
 
 // GetUpdates is called to read pending updates for a task and clear them
 func (rm *ResponseManager) GetUpdates(requestID graphsync.RequestID, updatesChan chan<- []gsmsg.GraphSyncRequest) {
-	rm.send(&responseUpdateRequest{requestID, updatesChan}, nil)
+	_ = rm.send(&responseUpdateRequest{requestID, updatesChan}, nil)
 }
 
 // FinishTask marks a task from the task queue as done
 func (rm *ResponseManager) FinishTask(task *peertask.Task, p peer.ID, err error) {
 	done := make(chan struct{}, 1)
-	rm.send(&finishTaskRequest{task, p, err, done}, nil)
+	_ = rm.send(&finishTaskRequest{task, p, err, done}, nil)
 	select {
 	case <-rm.ctx.Done():
 	case <-done:
@@ -240,7 +252,7 @@ func (rm *ResponseManager) FinishTask(task *peertask.Task, p peer.ID, err error)
 // CloseWithNetworkError closes a request due to a network error
 func (rm *ResponseManager) CloseWithNetworkError(requestID graphsync.RequestID) {
 	done := make(chan error, 1)
-	rm.send(&errorRequestMessage{requestID, queryexecutor.ErrNetworkError, done}, nil)
+	_ = rm.send(&errorRequestMessage{requestID, queryexecutor.ErrNetworkError, done}, nil)
 	select {
 	case <-rm.ctx.Done():
 	case <-done:
@@ -250,7 +262,7 @@ func (rm *ResponseManager) CloseWithNetworkError(requestID graphsync.RequestID) 
 // TerminateRequest indicates a request has finished sending data and should no longer be tracked
 func (rm *ResponseManager) TerminateRequest(requestID graphsync.RequestID) {
 	done := make(chan struct{}, 1)
-	rm.send(&terminateRequestMessage{requestID, done}, nil)
+	_ = rm.send(&terminateRequestMessage{requestID, done}, nil)
 	select {
 	case <-rm.ctx.Done():
 	case <-done:
@@ -260,7 +272,7 @@ func (rm *ResponseManager) TerminateRequest(requestID graphsync.RequestID) {
 // PeerState gets current state of the outgoing responses for a given peer
 func (rm *ResponseManager) PeerState(p peer.ID) peerstate.PeerState {
 	response := make(chan peerstate.PeerState)
-	rm.send(&peerStateMessage{p, response}, nil)
+	_ = rm.send(&peerStateMessage{p, response}, nil)
 	select {
 	case <-rm.ctx.Done():
 		return peerstate.PeerState{}
@@ -269,11 +281,20 @@ func (rm *ResponseManager) PeerState(p peer.ID) peerstate.PeerState {
 	}
 }
 
-func (rm *ResponseManager) send(message responseManagerMessage, done <-chan struct{}) {
+func (rm *ResponseManager) send(message responseManagerMessage, done <-chan struct{}) error {
+	// prioritize cancelled context
+	select {
+	case <-done:
+		return errors.New("unable to send message before cancellation")
+	default:
+	}
 	select {
 	case <-rm.ctx.Done():
+		return rm.ctx.Err()
 	case <-done:
+		return errors.New("unable to send message before cancellation")
 	case rm.messages <- message:
+		return nil
 	}
 }
 
