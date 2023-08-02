@@ -47,6 +47,7 @@ func (rm *RequestManager) run() {
 	for {
 		select {
 		case message := <-rm.messages:
+
 			message.handle(rm)
 		case <-rm.ctx.Done():
 			return
@@ -304,13 +305,13 @@ func (rm *RequestManager) processResponses(p peer.ID,
 	for _, blk := range blks {
 		blkMap[blk.Cid()] = blk.RawData()
 	}
+	rm.updateLastResponses(filteredResponses)
 	for _, response := range filteredResponses {
 		reconciledLoader := rm.inProgressRequestStatuses[response.RequestID()].reconciledLoader
 		if reconciledLoader != nil {
 			reconciledLoader.IngestResponse(response.Metadata(), trace.LinkFromContext(ctx), blkMap)
 		}
 	}
-	rm.updateLastResponses(filteredResponses)
 	rm.processTerminations(filteredResponses)
 	log.Debugf("end processing responses for peer %s", p)
 }
