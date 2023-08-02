@@ -1,5 +1,23 @@
 # go-graphsync changelog
 
+# go-graphsync v0.14.7
+
+Critical fix for request/response message loop
+
+### Changelog
+
+- github.com/ipfs/go-graphsync:
+  - Handle context cancellation properly (#428) ([ipfs/go-graphsync#428](https://github.com/ipfs/go-graphsync/pull/428))
+  - chore: Update .github/workflows/stale.yml [skip ci]
+  - chore: Update .github/workflows/stale.yml [skip ci]
+
+### Contributors
+
+| Contributor | Commits | Lines ± | Files Changed |
+|-------------|---------|---------|---------------|
+| Hannah Howard | 1 | +70/-42 | 3 |
+| GitHub | 2 | +6/-19 | 2 |
+
 # go-graphsync v0.14.6
 
 MaxLinks feature
