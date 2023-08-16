@@ -20,7 +20,6 @@ import (
 	"github.com/ipfs/go-graphsync/messagequeue"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipfs/go-graphsync/panics"
-	"github.com/ipfs/go-graphsync/peermanager"
 	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/persistenceoptions"
 	"github.com/ipfs/go-graphsync/requestmanager"
@@ -32,6 +31,7 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	"github.com/ipfs/go-graphsync/taskqueue"
+	"github.com/ipfs/go-protocolnetwork/pkg/messagequeuemanager"
 )
 
 var log = logging.Logger("graphsync")
@@ -42,6 +42,7 @@ const defaultMaxMemoryPerPeer = uint64(16 << 20)
 const defaultMaxInProgressRequests = uint64(6)
 const defaultMessageSendRetries = 10
 const defaultSendMessageTimeout = 10 * time.Minute
+const defaultSendErrorBackoff = 100 * time.Millisecond
 
 // GraphSync is an instance of a GraphSync exchange that implements
 // the graphsync protocol.
@@ -55,7 +56,7 @@ type GraphSync struct {
 	requestQueue                       taskqueue.TaskQueue
 	requestExecutor                    *executor.Executor
 	responseAssembler                  *responseassembler.ResponseAssembler
-	peerManager                        *peermanager.PeerMessageManager
+	peerManager                        *messagequeuemanager.MessageQueueManager[messagequeue.MessageParams]
 	incomingRequestHooks               *responderhooks.IncomingRequestHooks
 	outgoingBlockHooks                 *responderhooks.OutgoingBlockHooks
 	requestUpdatedHooks                *responderhooks.RequestUpdatedHooks
@@ -86,6 +87,7 @@ type graphsyncConfigOptions struct {
 	maxLinksPerIncomingRequest           uint64
 	messageSendRetries                   int
 	sendMessageTimeout                   time.Duration
+	sendErrorBackoff                     time.Duration
 	panicCallback                        panics.CallBackFn
 }
 
@@ -214,6 +216,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		registerDefaultValidator:      true,
 		messageSendRetries:            defaultMessageSendRetries,
 		sendMessageTimeout:            defaultSendMessageTimeout,
+		sendErrorBackoff:              defaultSendErrorBackoff,
 		panicCallback:                 nil,
 	}
 	for _, option := range options {
@@ -237,10 +240,10 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 		incomingRequestHooks.Register(selectorvalidator.SelectorValidator(maxRecursionDepth))
 	}
 	responseAllocator := allocator.NewAllocator(gsConfig.totalMaxMemoryResponder, gsConfig.maxMemoryPerPeerResponder)
-	createMessageQueue := func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) peermanager.PeerQueue {
-		return messagequeue.New(ctx, p, network, responseAllocator, gsConfig.messageSendRetries, gsConfig.sendMessageTimeout, onShutdown)
+	createMessageQueue := func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) messagequeuemanager.MessageQueue[messagequeue.MessageParams] {
+		return messagequeue.New(ctx, p, network, responseAllocator, gsConfig.messageSendRetries, gsConfig.sendMessageTimeout, gsConfig.sendErrorBackoff, onShutdown)
 	}
-	peerManager := peermanager.NewMessageManager(ctx, createMessageQueue)
+	peerManager := messagequeuemanager.NewMessageQueueManager(ctx, createMessageQueue)
 
 	requestQueue := taskqueue.NewTaskQueue(ctx)
 	requestManager := requestmanager.New(ctx, persistenceOptions, linkSystem, outgoingRequestHooks, incomingResponseHooks, networkErrorListeners, outgoingRequestProcessingListeners, requestQueue, network.ConnectionManager(), gsConfig.maxLinksPerOutgoingRequest, gsConfig.panicCallback)
@@ -307,7 +310,7 @@ func New(parent context.Context, network gsnet.GraphSyncNetwork,
 	requestQueue.Startup(gsConfig.maxInProgressOutgoingRequests, requestExecutor)
 	responseManager.Startup()
 	responseQueue.Startup(gsConfig.maxInProgressIncomingRequests, queryExecutor)
-	network.SetDelegate((*graphSyncReceiver)(graphSync))
+	network.Start((*graphSyncReceiver)(graphSync))
 
 	return graphSync
 }
@@ -506,12 +509,12 @@ func (gsr *graphSyncReceiver) ReceiveError(p peer.ID, err error) {
 
 // Connected is part of the networks 's Receiver interface and handles peers connecting
 // on the network
-func (gsr *graphSyncReceiver) Connected(p peer.ID) {
+func (gsr *graphSyncReceiver) PeerConnected(p peer.ID) {
 	gsr.graphSync().peerManager.Connected(p)
 }
 
 // Connected is part of the networks 's Receiver interface and handles peers connecting
 // on the network
-func (gsr *graphSyncReceiver) Disconnected(p peer.ID) {
+func (gsr *graphSyncReceiver) PeerDisconnected(p peer.ID) {
 	gsr.graphSync().peerManager.Disconnected(p)
 }

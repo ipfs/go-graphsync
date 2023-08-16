@@ -18,8 +18,8 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/notifications"
-	"github.com/ipfs/go-graphsync/peermanager"
+	"github.com/ipfs/go-protocolnetwork/pkg/notifications"
+	"github.com/ipfs/go-protocolnetwork/pkg/peermanager"
 )
 
 // Transaction is a series of operations that should be send together in a single response
@@ -56,27 +56,27 @@ type ResponseBuilder interface {
 // PeerMessageHandler is an interface that can queue a response for a given peer to go out over the network
 // If blkSize > 0, message building may block until enough memory has been freed from the queues to allocate the message.
 type PeerMessageHandler interface {
-	AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildResponseFn func(*messagequeue.Builder))
+	BuildMessage(p peer.ID, params messagequeue.MessageParams)
 }
 
 // ResponseAssembler manages assembling responses to go out over the network
 // in libp2p messages
 type ResponseAssembler struct {
-	*peermanager.PeerManager
+	*peermanager.PeerManager[*peerLinkTracker]
 	peerHandler PeerMessageHandler
 }
 
 // New generates a new ResponseAssembler for sending responses
 func New(ctx context.Context, peerHandler PeerMessageHandler) *ResponseAssembler {
 	return &ResponseAssembler{
-		PeerManager: peermanager.New(ctx, func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) peermanager.PeerHandler {
+		PeerManager: peermanager.New(ctx, func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) *peerLinkTracker {
 			return newTracker()
 		}),
 		peerHandler: peerHandler,
 	}
 }
 
-func (ra *ResponseAssembler) NewStream(ctx context.Context, p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) ResponseStream {
+func (ra *ResponseAssembler) NewStream(ctx context.Context, p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber[messagequeue.Topic, messagequeue.Event]) ResponseStream {
 	return &responseStream{
 		ctx:            ctx,
 		requestID:      requestID,
@@ -94,8 +94,8 @@ type responseStream struct {
 	closed         bool
 	closedLk       sync.RWMutex
 	messageSenders PeerMessageHandler
-	linkTrackers   *peermanager.PeerManager
-	subscriber     notifications.Subscriber
+	linkTrackers   *peermanager.PeerManager[*peerLinkTracker]
+	subscriber     notifications.Subscriber[messagequeue.Topic, messagequeue.Event]
 }
 
 func (r *responseStream) Close() error {
@@ -123,22 +123,22 @@ type ResponseStream interface {
 // DedupKey indicates that outgoing blocks should be deduplicated in a seperate bucket (only with requests that share
 // supplied key string)
 func (rs *responseStream) DedupKey(key string) {
-	rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker).DedupKey(rs.requestID, key)
+	rs.linkTrackers.GetHandler(rs.p).DedupKey(rs.requestID, key)
 }
 
 // IgnoreBlocks indicates that a list of keys should be ignored when sending blocks
 func (rs *responseStream) IgnoreBlocks(links []ipld.Link) {
-	rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker).IgnoreBlocks(rs.requestID, links)
+	rs.linkTrackers.GetHandler(rs.p).IgnoreBlocks(rs.requestID, links)
 }
 
 // SkipFirstBlocks tells the assembler for the given request to not send the first N blocks
 func (rs *responseStream) SkipFirstBlocks(skipFirstBlocks int64) {
-	rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker).SkipFirstBlocks(rs.requestID, skipFirstBlocks)
+	rs.linkTrackers.GetHandler(rs.p).SkipFirstBlocks(rs.requestID, skipFirstBlocks)
 }
 
 // ClearRequest removes all tracking for this request.
 func (rs *responseStream) ClearRequest() {
-	_ = rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker).FinishTracking(rs.requestID)
+	_ = rs.linkTrackers.GetHandler(rs.p).FinishTracking(rs.requestID)
 }
 
 func (rs *responseStream) Transaction(transaction Transaction) error {
@@ -147,7 +147,7 @@ func (rs *responseStream) Transaction(transaction Transaction) error {
 	rb := &responseBuilder{
 		ctx:         ctx,
 		requestID:   rs.requestID,
-		linkTracker: rs.linkTrackers.GetProcess(rs.p).(*peerLinkTracker),
+		linkTracker: rs.linkTrackers.GetHandler(rs.p),
 	}
 	err := transaction(rb)
 	rs.execute(ctx, rb.operations)
@@ -165,17 +165,19 @@ func (rs *responseStream) execute(ctx context.Context, operations []responseOper
 	for _, op := range operations {
 		size += op.size()
 	}
-	rs.messageSenders.AllocateAndBuildMessage(rs.p, size, func(builder *messagequeue.Builder) {
-		_, span = otel.Tracer("graphsync").Start(ctx, "buildMessage", trace.WithLinks(trace.LinkFromContext(builder.Context())))
-		defer span.End()
+	rs.messageSenders.BuildMessage(rs.p, messagequeue.MessageParams{
+		Size: size,
+		BuildMessageFn: func(builder *messagequeue.Builder) {
+			_, span = otel.Tracer("graphsync").Start(ctx, "buildMessage", trace.WithLinks(trace.LinkFromContext(builder.Context())))
+			defer span.End()
 
-		if rs.isClosed() {
-			return
-		}
-		for _, op := range operations {
-			op.build(builder)
-		}
-		builder.SetResponseStream(rs.requestID, rs)
-		builder.SetSubscriber(rs.requestID, rs.subscriber)
-	})
+			if rs.isClosed() {
+				return
+			}
+			for _, op := range operations {
+				op.build(builder)
+			}
+			builder.SetResponseStream(rs.requestID, rs)
+			builder.SetSubscriber(rs.requestID, rs.subscriber)
+		}})
 }

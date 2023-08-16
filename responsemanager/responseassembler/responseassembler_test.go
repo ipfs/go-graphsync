@@ -17,8 +17,8 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-protocolnetwork/pkg/notifications"
 )
 
 func TestResponseAssemblerSendsResponses(t *testing.T) {
@@ -546,7 +546,7 @@ type fakePeerHandler struct {
 	lastResponseStreams map[graphsync.RequestID]io.Closer
 	lastBlocks          []blocks.Block
 	lastResponses       []gsmsg.GraphSyncResponse
-	lastSubscribers     map[graphsync.RequestID]notifications.Subscriber
+	lastSubscribers     map[graphsync.RequestID]notifications.Subscriber[messagequeue.Topic, messagequeue.Event]
 	lastBlockData       map[graphsync.RequestID][]graphsync.BlockData
 	sent                chan struct{}
 }
@@ -555,7 +555,7 @@ func newFakePeerHandler(ctx context.Context, t *testing.T) *fakePeerHandler {
 	t.Helper()
 	return &fakePeerHandler{
 		lastResponseStreams: map[graphsync.RequestID]io.Closer{},
-		lastSubscribers:     map[graphsync.RequestID]notifications.Subscriber{},
+		lastSubscribers:     map[graphsync.RequestID]notifications.Subscriber[messagequeue.Topic, messagequeue.Event]{},
 		lastBlockData:       map[graphsync.RequestID][]graphsync.BlockData{},
 		ctx:                 ctx,
 		t:                   t,
@@ -613,7 +613,7 @@ func (fph *fakePeerHandler) AssertExtensions(extensionSets [][]graphsync.Extensi
 	}
 }
 
-func (fph *fakePeerHandler) AssertSubscriber(requestID graphsync.RequestID, expected notifications.Subscriber) {
+func (fph *fakePeerHandler) AssertSubscriber(requestID graphsync.RequestID, expected notifications.Subscriber[messagequeue.Topic, messagequeue.Event]) {
 	actual, ok := fph.lastSubscribers[requestID]
 	require.True(fph.t, ok)
 	require.Equal(fph.t, expected, actual)
@@ -629,9 +629,9 @@ func (fph *fakePeerHandler) RefuteResponses() {
 	require.Empty(fph.t, fph.lastResponses)
 }
 
-func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*messagequeue.Builder)) {
+func (fph *fakePeerHandler) BuildMessage(p peer.ID, params messagequeue.MessageParams) {
 	builder := messagequeue.NewBuilder(context.TODO(), messagequeue.Topic(0))
-	buildMessageFn(builder)
+	params.BuildMessageFn(builder)
 
 	msg, err := builder.Build()
 	require.NoError(fph.t, err)
@@ -643,7 +643,7 @@ func (fph *fakePeerHandler) sendResponse(p peer.ID,
 	responses []gsmsg.GraphSyncResponse,
 	blks []blocks.Block,
 	responseStreams map[graphsync.RequestID]io.Closer,
-	subscribers map[graphsync.RequestID]notifications.Subscriber,
+	subscribers map[graphsync.RequestID]notifications.Subscriber[messagequeue.Topic, messagequeue.Event],
 	blockData map[graphsync.RequestID][]graphsync.BlockData) {
 	fph.lastResponses = responses
 	fph.lastBlocks = blks
@@ -654,7 +654,7 @@ func (fph *fakePeerHandler) sendResponse(p peer.ID,
 
 func (fph *fakePeerHandler) Clear() {
 	fph.lastResponses = nil
-	fph.lastSubscribers = map[graphsync.RequestID]notifications.Subscriber{}
+	fph.lastSubscribers = map[graphsync.RequestID]notifications.Subscriber[messagequeue.Topic, messagequeue.Event]{}
 	fph.lastBlockData = map[graphsync.RequestID][]graphsync.BlockData{}
 	fph.lastResponseStreams = map[graphsync.RequestID]io.Closer{}
 	fph.lastBlocks = nil

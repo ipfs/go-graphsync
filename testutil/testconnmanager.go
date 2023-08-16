@@ -82,3 +82,9 @@ func (tcm *TestConnManager) RefuteProtectedWithTags(t testing.TB, p peer.ID, tag
 		require.NotContains(t, tcm.protectedConns[p], tag)
 	}
 }
+
+func (tcm *TestConnManager) TagPeer(p peer.ID, tag string, priority int) {
+}
+
+func (tcm *TestConnManager) UntagPeer(p peer.ID, tag string) {
+}

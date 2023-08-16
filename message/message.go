@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -400,4 +402,15 @@ func (gsr GraphSyncRequest) MergeExtensions(extensions []graphsync.ExtensionData
 		combinedExtensions[name] = oldData
 	}
 	return newRequest(gsr.id, gsr.root, gsr.selector, gsr.priority, gsr.requestType, combinedExtensions), nil
+}
+
+func (gsm GraphSyncMessage) SendTimeout() time.Duration {
+	return time.Minute * 10
+}
+
+func (gsm GraphSyncMessage) Log(log *logging.ZapEventLogger, eventName string) {
+	if eventName == "outgoing" {
+		log.Debugf("Outgoing message with %d requests, %d responses, and %d blocks",
+			len(gsm.Requests()), len(gsm.Responses()), len(gsm.Blocks()))
+	}
 }

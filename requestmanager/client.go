@@ -11,6 +11,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	"github.com/ipfs/go-protocolnetwork/pkg/network"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -23,8 +24,6 @@ import (
 	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/network"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/panics"
 	"github.com/ipfs/go-graphsync/peerstate"
 	"github.com/ipfs/go-graphsync/requestmanager/executor"
@@ -69,7 +68,7 @@ type inProgressRequestStatus struct {
 
 // PeerHandler is an interface that can send requests to peers
 type PeerHandler interface {
-	AllocateAndBuildMessage(p peer.ID, blkSize uint64, buildMessageFn func(*messagequeue.Builder))
+	BuildMessage(p peer.ID, params messagequeue.MessageParams)
 }
 
 // PersistenceOptions is an interface for getting loaders by name
@@ -381,10 +380,12 @@ func (rm *RequestManager) PeerState(p peer.ID) peerstate.PeerState {
 // SendRequest sends a request to the message queue
 func (rm *RequestManager) SendRequest(p peer.ID, request gsmsg.GraphSyncRequest) {
 	sub := &reqSubscriber{p, request, rm.networkErrorListeners}
-	rm.peerHandler.AllocateAndBuildMessage(p, 0, func(builder *messagequeue.Builder) {
-		builder.AddRequest(request)
-		builder.SetSubscriber(request.ID(), sub)
-	})
+	rm.peerHandler.BuildMessage(p, messagequeue.MessageParams{
+		Size: 0,
+		BuildMessageFn: func(builder *messagequeue.Builder) {
+			builder.AddRequest(request)
+			builder.SetSubscriber(request.ID(), sub)
+		}})
 }
 
 // Startup starts processing for the WantManager.
@@ -420,13 +421,9 @@ type reqSubscriber struct {
 	networkErrorListeners *listeners.NetworkErrorListeners
 }
 
-func (r *reqSubscriber) OnNext(_ notifications.Topic, event notifications.Event) {
-	mqEvt, isMQEvt := event.(messagequeue.Event)
-	if !isMQEvt || mqEvt.Name != messagequeue.Error {
-		return
-	}
-	r.networkErrorListeners.NotifyNetworkErrorListeners(r.p, r.request, mqEvt.Err)
+func (r *reqSubscriber) OnNext(_ messagequeue.Topic, event messagequeue.Event) {
+	r.networkErrorListeners.NotifyNetworkErrorListeners(r.p, r.request, event.Err)
 }
 
-func (r reqSubscriber) OnClose(_ notifications.Topic) {
+func (r reqSubscriber) OnClose(_ messagequeue.Topic) {
 }

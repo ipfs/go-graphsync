@@ -6,7 +6,7 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/notifications"
+	"github.com/ipfs/go-protocolnetwork/pkg/notifications"
 )
 
 // Builder wraps a message builder with additional functions related to metadata
@@ -16,7 +16,7 @@ type Builder struct {
 	*gsmsg.Builder
 	topic           Topic
 	responseStreams map[graphsync.RequestID]io.Closer
-	subscribers     map[graphsync.RequestID]notifications.Subscriber
+	subscribers     map[graphsync.RequestID]notifications.Subscriber[Topic, Event]
 	blockData       map[graphsync.RequestID][]graphsync.BlockData
 }
 
@@ -27,7 +27,7 @@ func NewBuilder(ctx context.Context, topic Topic) *Builder {
 		Builder:         gsmsg.NewBuilder(),
 		topic:           topic,
 		responseStreams: make(map[graphsync.RequestID]io.Closer),
-		subscribers:     make(map[graphsync.RequestID]notifications.Subscriber),
+		subscribers:     make(map[graphsync.RequestID]notifications.Subscriber[Topic, Event]),
 		blockData:       make(map[graphsync.RequestID][]graphsync.BlockData),
 	}
 }
@@ -42,7 +42,7 @@ func (b *Builder) SetResponseStream(requestID graphsync.RequestID, stream io.Clo
 }
 
 // SetSubscriber sets the given subscriber to get notified as events occur for this message
-func (b *Builder) SetSubscriber(requestID graphsync.RequestID, subscriber notifications.Subscriber) {
+func (b *Builder) SetSubscriber(requestID graphsync.RequestID, subscriber notifications.Subscriber[Topic, Event]) {
 	b.subscribers[requestID] = subscriber
 }
 
@@ -67,31 +67,11 @@ func (b *Builder) ResponseStreams() map[graphsync.RequestID]io.Closer {
 }
 
 // Subscribers inspect current subscribers
-func (b *Builder) Subscribers() map[graphsync.RequestID]notifications.Subscriber {
+func (b *Builder) Subscribers() map[graphsync.RequestID]notifications.Subscriber[Topic, Event] {
 	return b.subscribers
 }
 
 // BlockData inspects current block data
 func (b *Builder) BlockData() map[graphsync.RequestID][]graphsync.BlockData {
 	return b.blockData
-}
-
-func (b *Builder) build(publisher notifications.Publisher) (gsmsg.GraphSyncMessage, internalMetadata, error) {
-	message, err := b.Build()
-	if err != nil {
-		return gsmsg.GraphSyncMessage{}, internalMetadata{}, err
-	}
-	for _, subscriber := range b.subscribers {
-		publisher.Subscribe(b.topic, subscriber)
-	}
-	return message, internalMetadata{
-		public: Metadata{
-			BlockData:     b.blockData,
-			ResponseCodes: message.ResponseCodes(),
-		},
-		ctx:             b.ctx,
-		topic:           b.topic,
-		msgSize:         b.BlockSize(),
-		responseStreams: b.responseStreams,
-	}, nil
 }

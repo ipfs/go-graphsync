@@ -28,7 +28,6 @@ import (
 	"github.com/ipfs/go-graphsync/listeners"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
-	"github.com/ipfs/go-graphsync/notifications"
 	"github.com/ipfs/go-graphsync/persistenceoptions"
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/queryexecutor"
@@ -36,6 +35,7 @@ import (
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	"github.com/ipfs/go-graphsync/taskqueue"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-protocolnetwork/pkg/notifications"
 )
 
 func TestIncomingQuery(t *testing.T) {
@@ -978,7 +978,7 @@ type fakeResponseAssembler struct {
 	missingBlock           bool
 }
 
-func (fra *fakeResponseAssembler) NewStream(ctx context.Context, p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber) responseassembler.ResponseStream {
+func (fra *fakeResponseAssembler) NewStream(ctx context.Context, p peer.ID, requestID graphsync.RequestID, subscriber notifications.Subscriber[messagequeue.Topic, messagequeue.Event]) responseassembler.ResponseStream {
 	fra.notifeePublisher.AddSubscriber(subscriber)
 	return &fakeResponseStream{fra, requestID}
 }
@@ -1416,8 +1416,8 @@ func (td *testData) assertSkippedFirstBlocks(expectedSkipCount int64) {
 
 func (td *testData) notifyStatusMessagesSent() {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int31), []notifications.Event{
-		messagequeue.Event{Name: messagequeue.Sent, Metadata: messagequeue.Metadata{ResponseCodes: td.completedNotifications}},
+	td.notifeePublisher.PublishEvents(messagequeue.Topic(rand.Int63()), []messagequeue.Event{
+		{Name: messagequeue.Sent, Metadata: messagequeue.Metadata{ResponseCodes: td.completedNotifications}},
 	})
 	td.completedNotifications = make(map[graphsync.RequestID]graphsync.ResponseStatusCode)
 	td.responseAssembler.completedNotifications = td.completedNotifications
@@ -1426,8 +1426,8 @@ func (td *testData) notifyStatusMessagesSent() {
 
 func (td *testData) notifyBlockSendsSent() {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishEvents(notifications.Topic(graphsync.NewRequestID), []notifications.Event{
-		messagequeue.Event{Name: messagequeue.Sent, Metadata: messagequeue.Metadata{BlockData: td.blkNotifications}},
+	td.notifeePublisher.PublishEvents(messagequeue.Topic(rand.Int63()), []messagequeue.Event{
+		{Name: messagequeue.Sent, Metadata: messagequeue.Metadata{BlockData: td.blkNotifications}},
 	})
 	td.blkNotifications = make(map[graphsync.RequestID][]graphsync.BlockData)
 	td.responseAssembler.blkNotifications = td.blkNotifications
@@ -1436,8 +1436,8 @@ func (td *testData) notifyBlockSendsSent() {
 
 func (td *testData) notifyStatusMessagesNetworkError(err error) {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int31), []notifications.Event{
-		messagequeue.Event{Name: messagequeue.Error, Err: err, Metadata: messagequeue.Metadata{ResponseCodes: td.completedNotifications}},
+	td.notifeePublisher.PublishEvents(messagequeue.Topic(rand.Int63()), []messagequeue.Event{
+		{Name: messagequeue.Error, Err: err, Metadata: messagequeue.Metadata{ResponseCodes: td.completedNotifications}},
 	})
 	td.completedNotifications = make(map[graphsync.RequestID]graphsync.ResponseStatusCode)
 	td.responseAssembler.completedNotifications = td.completedNotifications
@@ -1446,8 +1446,8 @@ func (td *testData) notifyStatusMessagesNetworkError(err error) {
 
 func (td *testData) notifyBlockSendsNetworkError(err error) {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int31), []notifications.Event{
-		messagequeue.Event{Name: messagequeue.Error, Err: err, Metadata: messagequeue.Metadata{BlockData: td.blkNotifications}},
+	td.notifeePublisher.PublishEvents(messagequeue.Topic(rand.Int63()), []messagequeue.Event{
+		{Name: messagequeue.Error, Err: err, Metadata: messagequeue.Metadata{BlockData: td.blkNotifications}},
 	})
 	td.blkNotifications = make(map[graphsync.RequestID][]graphsync.BlockData)
 	td.responseAssembler.blkNotifications = td.blkNotifications
