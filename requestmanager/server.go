@@ -136,14 +136,16 @@ func (rm *RequestManager) requestTask(requestID graphsync.RequestID) executor.Re
 			Root:     cidlink.Link{Cid: ipr.request.Root()},
 			Selector: ipr.request.Selector(),
 			Visitor: func(tp traversal.Progress, node ipld.Node, tr traversal.VisitReason) error {
-				if lbn, ok := node.(datamodel.LargeBytesNode); ok {
-					s, err := lbn.AsLargeBytes()
-					if err != nil {
-						log.Warnf("error %s in AsLargeBytes at path %s", err.Error(), tp.Path)
-					}
-					_, err = io.Copy(io.Discard, s)
-					if err != nil {
-						log.Warnf("error %s reading bytes from reader at path %s", err.Error(), tp.Path)
+				if tr == traversal.VisitReason_SelectionMatch {
+					if lbn, ok := node.(datamodel.LargeBytesNode); ok {
+						s, err := lbn.AsLargeBytes()
+						if err != nil {
+							log.Warnf("error %s in AsLargeBytes at path %s", err.Error(), tp.Path)
+						}
+						_, err = io.Copy(io.Discard, s)
+						if err != nil {
+							log.Warnf("error %s reading bytes from reader at path %s", err.Error(), tp.Path)
+						}
 					}
 				}
 				select {

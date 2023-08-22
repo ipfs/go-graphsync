@@ -95,6 +95,9 @@ func (qe *queryPreparer) prepareQuery(
 		Budget:        budget,
 		PanicCallback: qe.panicCallback,
 		Visitor: func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error {
+			if vr != traversal.VisitReason_SelectionMatch {
+				return nil
+			}
 			if lbn, ok := n.(datamodel.LargeBytesNode); ok {
 				s, err := lbn.AsLargeBytes()
 				if err != nil {
