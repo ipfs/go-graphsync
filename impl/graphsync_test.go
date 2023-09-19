@@ -36,6 +36,7 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
@@ -322,6 +323,47 @@ func TestGraphsyncRoundTrip(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGraphsyncIdentityCIDRoundTrip(t *testing.T) {
+	// create network
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	td := newGsTestData(ctx, t)
+
+	// initialize graphsync on first node to make requests
+	requestor := td.GraphSyncHost1()
+	identityDag := testutil.SetupIdentityDAG(ctx, t, td.persistence2)
+
+	// initialize graphsync on second node to respond to requests
+	responder := td.GraphSyncHost2()
+	assertComplete := assertCompletionFunction(responder, 1)
+
+	responder.RegisterIncomingRequestHook(func(p peer.ID, requestData graphsync.RequestData, hookActions graphsync.IncomingRequestHookActions) {
+		hookActions.ValidateRequest()
+	})
+
+	finalResponseStatusChan := make(chan graphsync.ResponseStatusCode, 1)
+	responder.RegisterCompletedResponseListener(func(p peer.ID, request graphsync.RequestData, status graphsync.ResponseStatusCode) {
+		select {
+		case finalResponseStatusChan <- status:
+		default:
+		}
+	})
+	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), identityDag.RootLink, selectorparse.CommonSelector_ExploreAllRecursively)
+
+	identityDag.VerifyWholeDAG(ctx, progressChan)
+	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	require.Len(t, td.blockStore1, len(identityDag.AllLinks), "did not store all blocks")
+
+	// verify listener
+	var finalResponseStatus graphsync.ResponseStatusCode
+	testutil.AssertReceive(ctx, t, finalResponseStatusChan, &finalResponseStatus, "should receive status")
+	require.Equal(t, graphsync.RequestCompletedFull, finalResponseStatus)
+
+	drain(requestor)
+	drain(responder)
+	assertComplete(ctx, t)
 }
 
 func TestGraphsyncRoundTripPartial(t *testing.T) {

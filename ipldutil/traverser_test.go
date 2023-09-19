@@ -11,11 +11,14 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 
 	graphsync "github.com/filecoin-project/boost-graphsync"
@@ -165,16 +168,50 @@ func TestTraverser(t *testing.T) {
 			_, _ = traverser.CurrentRequest()
 		}
 	})
+
+	t.Run("traverses correctly, DAG with identity CID in the middle", func(t *testing.T) {
+		store := make(map[ipld.Link][]byte)
+		persistence := testutil.NewTestStore(store)
+		identityDag := testutil.SetupIdentityDAG(ctx, t, persistence)
+		inProgressChan := make(chan graphsync.ResponseProgress)
+		done := make(chan struct{})
+		traverser := TraversalBuilder{
+			Root:     identityDag.RootLink,
+			Selector: selectorparse.CommonSelector_ExploreAllRecursively,
+			Chooser: func(l datamodel.Link, lc linking.LinkContext) (datamodel.NodePrototype, error) {
+				return basicnode.Prototype.Any, nil
+			},
+			LinkSystem: persistence,
+			Visitor: func(tp traversal.Progress, node ipld.Node, r traversal.VisitReason) error {
+				select {
+				case <-ctx.Done():
+				case inProgressChan <- graphsync.ResponseProgress{
+					Node:      node,
+					Path:      tp.Path,
+					LastBlock: tp.LastBlock,
+				}:
+				}
+				return nil
+			},
+		}.Start(ctx)
+		go func() {
+			identityDag.VerifyWholeDAG(ctx, inProgressChan)
+			close(done)
+		}()
+		checkTraverseSequence(ctx, t, traverser, identityDag.AllBlocks(), nil)
+		close(inProgressChan)
+		testutil.AssertDoesReceive(ctx, t, done, "should have completed verification but did not")
+	})
 }
 
 func checkTraverseSequence(ctx context.Context, t *testing.T, traverser Traverser, expectedBlks []blocks.Block, finalErr error) {
 	t.Helper()
-	for _, blk := range expectedBlks {
+	for ii, blk := range expectedBlks {
 		isComplete, err := traverser.IsComplete()
 		require.False(t, isComplete)
 		require.NoError(t, err)
 		lnk, _ := traverser.CurrentRequest()
-		require.Equal(t, lnk.(cidlink.Link).Cid, blk.Cid())
+		require.Equal(t, lnk.(cidlink.Link).Cid.String(), blk.Cid().String(), fmt.Sprintf("unexpected CID @ block %d", ii))
 		err = traverser.Advance(bytes.NewBuffer(blk.RawData()))
 		require.NoError(t, err)
 	}
