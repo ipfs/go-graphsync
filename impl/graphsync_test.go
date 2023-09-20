@@ -383,8 +383,8 @@ func TestGraphsyncIdentityCIDRoundTrip(t *testing.T) {
 	})
 	progressChan, errChan := requestor.Request(ctx, td.host2.ID(), identityDag.RootLink, selectorparse.CommonSelector_ExploreAllRecursively)
 
-	identityDag.VerifyWholeDAG(ctx, progressChan)
 	testutil.VerifyEmptyErrors(ctx, t, errChan)
+	identityDag.VerifyWholeDAG(ctx, progressChan)
 	require.Len(t, td.blockStore1, len(identityDag.AllLinks), "did not store all blocks")
 
 	// verify listener

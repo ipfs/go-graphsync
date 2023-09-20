@@ -1,7 +1,6 @@
 package ipldutil
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -13,9 +12,7 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
-	"github.com/multiformats/go-multihash"
 
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync/panics"
 )
 
@@ -168,23 +165,7 @@ func (t *traverser) NBlocksTraversed() int {
 	return t.blocksCount
 }
 
-func asIdentity(c cid.Cid) (digest []byte, ok bool, err error) {
-	dmh, err := multihash.Decode(c.Hash())
-	if err != nil {
-		return nil, false, err
-	}
-	ok = dmh.Code == multihash.IDENTITY
-	digest = dmh.Digest
-	return digest, ok, nil
-}
-
 func (t *traverser) loader(lnkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
-	if digest, ok, err := asIdentity(lnk.(cidlink.Link).Cid); ok {
-		return io.NopCloser(bytes.NewReader(digest)), nil
-	} else if err != nil {
-		return nil, err
-	}
-
 	// A StorageReadOpener call came in; update the state and release the lock.
 	// We can't simply unlock the mutex inside the <-t.responses case,
 	// as then we'd deadlock with the other side trying to send.
