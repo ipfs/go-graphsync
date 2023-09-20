@@ -28,15 +28,17 @@ type TestIdentityDAG struct {
 	t      testing.TB
 	loader ipld.BlockReadOpener
 
-	RootLink ipld.Link
-	AllLinks []ipld.Link
+	RootLink        ipld.Link
+	AllLinks        []ipld.Link
+	AllLinksNoIdent []ipld.Link
 }
 
 /* ugly, but it makes a DAG with paths that look like this but doesn't involved dag-pb or unixfs */
-var identityDagPaths = []string{
+var identityDagLinkPaths = []string{
 	"",
 	"a/!foo",
 	"a/b/!bar",
+	"a/b/c/!baz", // identity
 	"a/b/c/!baz/identity jump",
 	"a/b/c/!baz/identity jump/these are my children/blip",
 	"a/b/c/!baz/identity jump/these are my children/bloop",
@@ -49,13 +51,15 @@ var identityDagPaths = []string{
 func SetupIdentityDAG(
 	ctx context.Context,
 	t testing.TB,
-	lsys ipld.LinkSystem) *TestIdentityDAG {
-
+	lsys ipld.LinkSystem,
+) *TestIdentityDAG {
 	allLinks := make([]ipld.Link, 0)
+	allLinksNoIdent := make([]ipld.Link, 0)
 	store := func(lp datamodel.LinkPrototype, n datamodel.Node) datamodel.Link {
 		l, err := lsys.Store(linking.LinkContext{}, lp, n)
 		require.NoError(t, err)
 		allLinks = append(allLinks, l)
+		allLinksNoIdent = append(allLinksNoIdent, l)
 		return l
 	}
 
@@ -98,6 +102,11 @@ func SetupIdentityDAG(
 		identBytes := must(ipld.Encode(ident, dagjson.Encode))(t)
 		mh := must(multihash.Sum(identBytes, multihash.IDENTITY, len(identBytes)))(t)
 		bazIdent = cidlink.Link{Cid: cid.NewCidV1(cid.DagJSON, mh)}
+		w, wc, err := lsys.StorageWriteOpener(linking.LinkContext{})
+		require.NoError(t, err)
+		w.Write(identBytes)
+		require.NoError(t, wc(bazIdent))
+		allLinks = append(allLinks, bazIdent)
 	}
 	bar := store(djlp, basicnode.NewInt(2020202020202020))
 	foo := store(djlp, basicnode.NewInt(1010101010101010))
@@ -117,10 +126,11 @@ func SetupIdentityDAG(
 	}))(t))
 
 	return &TestIdentityDAG{
-		t:        t,
-		loader:   lsys.StorageReadOpener,
-		RootLink: root,
-		AllLinks: reverse(allLinks), // TODO: slices.Reverse post 1.21
+		t:               t,
+		loader:          lsys.StorageReadOpener,
+		RootLink:        root,
+		AllLinks:        reverse(allLinks), // TODO: slices.Reverse post 1.21
+		AllLinksNoIdent: reverse(allLinksNoIdent),
 	}
 }
 
@@ -150,7 +160,7 @@ func (tid *TestIdentityDAG) checkResponses(responses []graphsync.ResponseProgres
 	for ii, response := range responses {
 		// only check the paths that have links, assume the rest are just describing
 		// the non-link nodes of the DAG
-		if response.Path.String() == identityDagPaths[pathIndex] {
+		if response.Path.String() == identityDagLinkPaths[pathIndex] {
 			if response.LastBlock.Link != nil {
 				expectedLink := tid.AllLinks[pathIndex]
 				require.Equal(tid.t, expectedLink.String(), response.LastBlock.Link.String(), fmt.Sprintf("response %d has correct link (%d)", ii, pathIndex))
@@ -158,7 +168,7 @@ func (tid *TestIdentityDAG) checkResponses(responses []graphsync.ResponseProgres
 			pathIndex++
 		}
 	}
-	require.Equal(tid.t, len(identityDagPaths), pathIndex, "traverses all nodes")
+	require.Equal(tid.t, len(identityDagLinkPaths), pathIndex, "traverses all nodes")
 }
 
 func must[T any](v T, err error) func(t testing.TB) T {
