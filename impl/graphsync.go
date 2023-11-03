@@ -319,7 +319,7 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 		extNames = append(extNames, string(ext.Name))
 	}
 	ctx, _ = otel.Tracer("graphsync").Start(ctx, "request", trace.WithAttributes(
-		attribute.String("peerID", p.Pretty()),
+		attribute.String("peerID", p.String()),
 		attribute.String("root", root.String()),
 		attribute.StringSlice("extensions", extNames),
 	))
