@@ -289,7 +289,7 @@ func (rm *RequestManager) processResponses(p peer.ID,
 		requestIds = append(requestIds, r.RequestID().String())
 	}
 	ctx, span := otel.Tracer("graphsync").Start(rm.ctx, "processResponses", trace.WithAttributes(
-		attribute.String("peerID", p.Pretty()),
+		attribute.String("peerID", p.String()),
 		attribute.StringSlice("requestIDs", requestIds),
 		attribute.Int("blockCount", len(blks)),
 	))

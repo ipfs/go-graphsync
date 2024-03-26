@@ -7,7 +7,7 @@ import (
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-peertaskqueue"
-	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -318,7 +318,7 @@ func (gs *GraphSync) Request(ctx context.Context, p peer.ID, root ipld.Link, sel
 		extNames = append(extNames, string(ext.Name))
 	}
 	ctx, _ = otel.Tracer("graphsync").Start(ctx, "request", trace.WithAttributes(
-		attribute.String("peerID", p.Pretty()),
+		attribute.String("peerID", p.String()),
 		attribute.String("root", root.String()),
 		attribute.StringSlice("extensions", extNames),
 	))
