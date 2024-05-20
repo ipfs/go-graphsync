@@ -231,6 +231,7 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 	reader := msgio.NewVarintReaderSize(s, network.MessageSizeMax)
 	for {
 		p = s.Conn().RemotePeer()
+		_ = s.SetReadDeadline(time.Now().Add(time.Second * 10))
 		received, err := gsnet.messageHandlerSelector.Select(s.Protocol()).FromMsgReader(s.Conn().RemotePeer(), reader)
 
 		if err != nil {
@@ -239,8 +240,10 @@ func (gsnet *libp2pGraphSyncNetwork) handleNewStream(s network.Stream) {
 				go gsnet.receiver.ReceiveError(p, err)
 				log.Debugf("graphsync net handleNewStream from %s error: %s", s.Conn().RemotePeer(), err)
 			}
+			_ = s.SetReadDeadline(time.Time{})
 			return
 		}
+		_ = s.SetReadDeadline(time.Time{})
 
 		ctx := context.Background()
 		log.Debugf("graphsync net handleNewStream from %s", s.Conn().RemotePeer())
