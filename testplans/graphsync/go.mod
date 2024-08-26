@@ -1,6 +1,6 @@
 module github.com/ipfs/go-graphsync/testplans/graphsync
 
-go 1.21
+go 1.22
 
 require (
 	github.com/dgraph-io/badger/v2 v2.2007.3
