@@ -1,3 +1,4 @@
+version: "2"
 run:
   skip-files:
     - testutil/chaintypes/testchain_gen.go
