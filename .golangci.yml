@@ -1,3 +1,9 @@
-run:
-  skip-files:
-    - testutil/chaintypes/testchain_gen.go
+version: "2"
+
+linters:
+  disable:
+    - errcheck
+
+  exclusions:
+    paths:
+      - testutil/chaintypes/testchain_gen.go
