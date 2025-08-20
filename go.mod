@@ -1,6 +1,6 @@
 module github.com/ipfs/go-graphsync
 
-go 1.23
+go 1.24
 
 require (
 	github.com/google/go-cmp v0.5.9
