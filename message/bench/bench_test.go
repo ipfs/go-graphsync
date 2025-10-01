@@ -17,15 +17,15 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
 	v2 "github.com/ipfs/go-graphsync/message/v2"
-	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
-	root := testutil.GenerateCids(1)[0]
+	root := random.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	bb := basicnode.Prototype.Bytes.NewBuilder()
-	bb.AssignBytes(testutil.RandomBytes(100))
+	bb.AssignBytes(random.Bytes(100))
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,

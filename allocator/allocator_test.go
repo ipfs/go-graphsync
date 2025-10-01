@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync/allocator"
-	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestAllocator(t *testing.T) {
-	peers := testutil.GeneratePeers(3)
+	peers := random.Peers(3)
 	testCases := map[string]struct {
 		total      uint64
 		maxPerPeer uint64

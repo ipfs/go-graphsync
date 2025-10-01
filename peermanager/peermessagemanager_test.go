@@ -15,6 +15,7 @@ import (
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/messagequeue"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 type messageSent struct {
@@ -67,11 +68,11 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	messagesSent := make(chan messageSent, 5)
 	peerQueueFactory := makePeerQueueFactory(messagesSent)
 
-	tp := testutil.GeneratePeers(5)
+	tp := random.Peers(5)
 
 	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
-	root := testutil.GenerateCids(1)[0]
+	root := random.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 

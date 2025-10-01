@@ -13,19 +13,29 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-blockservice"
+	"github.com/ipfs/boxo/blockservice"
+	bstore "github.com/ipfs/boxo/blockstore"
+	chunker "github.com/ipfs/boxo/chunker"
+	offline "github.com/ipfs/boxo/exchange/offline"
+	"github.com/ipfs/boxo/files"
+	"github.com/ipfs/boxo/ipld/merkledag"
+	unixfile "github.com/ipfs/boxo/ipld/unixfs/file"
+	"github.com/ipfs/boxo/ipld/unixfs/importer/balanced"
+	ihelper "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
-	chunker "github.com/ipfs/go-ipfs-chunker"
-	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/cidset"
+	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
+	"github.com/ipfs/go-graphsync/ipldutil"
+	gsnet "github.com/ipfs/go-graphsync/network"
+	"github.com/ipfs/go-graphsync/requestmanager/hooks"
+	"github.com/ipfs/go-graphsync/storeutil"
+	"github.com/ipfs/go-graphsync/taskqueue"
+	"github.com/ipfs/go-graphsync/testutil"
 	ipldformat "github.com/ipfs/go-ipld-format"
-	"github.com/ipfs/go-libipfs/files"
-	"github.com/ipfs/go-merkledag"
-	unixfile "github.com/ipfs/go-unixfs/file"
-	"github.com/ipfs/go-unixfs/importer/balanced"
-	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
+	"github.com/ipfs/go-test/random"
 	"github.com/ipfs/go-unixfsnode"
 	unixfsbuilder "github.com/ipfs/go-unixfsnode/data/builder"
 	dagpb "github.com/ipld/go-codec-dagpb"
@@ -42,16 +52,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
-
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/cidset"
-	"github.com/ipfs/go-graphsync/donotsendfirstblocks"
-	"github.com/ipfs/go-graphsync/ipldutil"
-	gsnet "github.com/ipfs/go-graphsync/network"
-	"github.com/ipfs/go-graphsync/requestmanager/hooks"
-	"github.com/ipfs/go-graphsync/storeutil"
-	"github.com/ipfs/go-graphsync/taskqueue"
-	"github.com/ipfs/go-graphsync/testutil"
 )
 
 // nil means use the default protocols
@@ -1900,8 +1900,8 @@ func TestSendUpdates(t *testing.T) {
 	unreg()
 
 	// set up extensions and listen for updates on the requestor
-	requestorExt1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("PING"), Data: basicnode.NewBytes(testutil.RandomBytes(100))}
-	requestorExt2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("PONG"), Data: basicnode.NewBytes(testutil.RandomBytes(100))}
+	requestorExt1 := graphsync.ExtensionData{Name: graphsync.ExtensionName("PING"), Data: basicnode.NewBytes(random.Bytes(100))}
+	requestorExt2 := graphsync.ExtensionData{Name: graphsync.ExtensionName("PONG"), Data: basicnode.NewBytes(random.Bytes(100))}
 
 	updateResponses := make(chan struct{}, 1)
 
@@ -2104,18 +2104,18 @@ func newOptionalGsTestData(ctx context.Context, t *testing.T, network1Protocols 
 	td.blockStore2 = make(map[ipld.Link][]byte)
 	td.persistence2 = testutil.NewTestStore(td.blockStore2)
 	// setup extension handlers
-	td.extensionData = basicnode.NewBytes(testutil.RandomBytes(100))
+	td.extensionData = basicnode.NewBytes(random.Bytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.extension = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionData,
 	}
-	td.extensionResponseData = basicnode.NewBytes(testutil.RandomBytes(100))
+	td.extensionResponseData = basicnode.NewBytes(random.Bytes(100))
 	td.extensionResponse = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionResponseData,
 	}
-	td.extensionUpdateData = basicnode.NewBytes(testutil.RandomBytes(100))
+	td.extensionUpdateData = basicnode.NewBytes(random.Bytes(100))
 	td.extensionUpdate = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionUpdateData,

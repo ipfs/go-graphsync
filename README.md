@@ -69,7 +69,7 @@ import (
   gsnet "github.com/ipfs/go-graphsync/network"
   storeutil "github.com/ipfs/go-graphsync/storeutil"
   ipld "github.com/ipld/go-ipld-prime"
-  blockstore "github.com/ipfs/go-ipfs-blockstore"
+  blockstore "github.com/ipfs/boxo/blockstore"
 )
 
 var ctx context.Context

@@ -4,20 +4,19 @@ import (
 	"io"
 	"testing"
 
+	bstore "github.com/ipfs/boxo/blockstore"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
+	"github.com/ipfs/go-test/random"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
-
-	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestLinkSystem(t *testing.T) {
 	store := bstore.NewBlockstore(dss.MutexWrap(datastore.NewMapDatastore()))
-	blk := testutil.GenerateBlocksOfSize(1, 1000)[0]
+	blk := random.BlocksOfSize(1, 1000)[0]
 	persistence := LinkSystemForBlockstore(store)
 	buffer, commit, err := persistence.StorageWriteOpener(ipld.LinkContext{})
 	require.NoError(t, err, "Unable to setup buffer")

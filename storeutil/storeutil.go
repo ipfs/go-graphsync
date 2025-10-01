@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
+	bstore "github.com/ipfs/boxo/blockstore"
 	blocks "github.com/ipfs/go-block-format"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipfs/go-unixfsnode"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"

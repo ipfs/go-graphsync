@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
+	mockrouting "github.com/ipfs/boxo/routing/mock"
 	delay "github.com/ipfs/go-ipfs-delay"
-	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/peer"

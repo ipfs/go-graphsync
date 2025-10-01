@@ -28,6 +28,7 @@ import (
 	"github.com/ipfs/go-graphsync/responsemanager/hooks"
 	"github.com/ipfs/go-graphsync/responsemanager/responseassembler"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestEmptyTask(t *testing.T) {
@@ -184,7 +185,7 @@ func TestSmallGraphTask(t *testing.T) {
 		}, 6)
 		transactionExpect(t, td, []int{6, 7}, expectedErr.Error())
 
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.False(t, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 1, td.clearRequestCalls)
 	})
 
@@ -203,7 +204,7 @@ func TestSmallGraphTask(t *testing.T) {
 		}, 6)
 		transactionExpect(t, td, []int{6, 7}, expectedErr.Error())
 
-		require.Equal(t, false, qe.ExecuteTask(td.ctx, td.peer, td.task))
+		require.False(t, qe.ExecuteTask(td.ctx, td.peer, td.task))
 		require.Equal(t, 1, td.clearRequestCalls)
 	})
 
@@ -269,7 +270,7 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td := &testData{}
 	td.t = t
 	td.ctx, td.cancel = context.WithTimeout(ctx, 10*time.Second)
-	td.peer = testutil.GeneratePeers(1)[0]
+	td.peer = random.Peers(1)[0]
 	td.blockStore = make(map[ipld.Link][]byte)
 	td.persistence = testutil.NewTestStore(td.blockStore)
 	td.task = &peertask.Task{}
@@ -279,7 +280,7 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td.requestID = graphsync.NewRequestID()
 	td.requestCid, _ = cid.Decode("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	td.requestSelector = basicnode.NewInt(rand.Int63())
-	td.extensionData = basicnode.NewBytes(testutil.RandomBytes(100))
+	td.extensionData = basicnode.NewBytes(random.Bytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.responseCode = graphsync.ResponseStatusCode(101)
 
@@ -337,7 +338,7 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 		links: links,
 		advanceCb: func(curLink int, actualData []byte) error {
 			require.Less(t, loads-2, len(td.expectedBlocks), "should not have loaded more than the blocks we have")
-			require.NotSame(t, td.expectedBlocks[curLink].data, actualData) // a copy has to happen
+			require.NotSame(t, &td.expectedBlocks[curLink].data, &actualData) // a copy has to happen
 			require.Equal(t, td.expectedBlocks[curLink].data, actualData)
 			return nil
 		},

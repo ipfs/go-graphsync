@@ -11,23 +11,24 @@ import (
 
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestMessageBuilding(t *testing.T) {
-	blocks := testutil.GenerateBlocksOfSize(3, 100)
+	blocks := random.BlocksOfSize(3, 100)
 	links := make([]ipld.Link, 0, len(blocks))
 	for _, block := range blocks {
 		links = append(links, cidlink.Link{Cid: block.Cid()})
 	}
 	bb := basicnode.Prototype.Bytes.NewBuilder()
-	bb.AssignBytes(testutil.RandomBytes(100))
+	bb.AssignBytes(random.Bytes(100))
 	extensionName1 := graphsync.ExtensionName("AppleSauce/McGee")
 	extension1 := graphsync.ExtensionData{
 		Name: extensionName1,
 		Data: bb.Build(),
 	}
 	bb = basicnode.Prototype.Bytes.NewBuilder()
-	bb.AssignBytes(testutil.RandomBytes(100))
+	bb.AssignBytes(random.Bytes(100))
 	extensionName2 := graphsync.ExtensionName("HappyLand/Happenstance")
 	extension2 := graphsync.ExtensionData{
 		Name: extensionName2,
