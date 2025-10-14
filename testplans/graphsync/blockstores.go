@@ -7,12 +7,12 @@ import (
 	"io"
 	"sync"
 
+	bstore "github.com/ipfs/boxo/blockstore"
+	"github.com/ipfs/boxo/filestore"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
-	"github.com/ipfs/go-filestore"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/blockstore"
 	mh "github.com/multiformats/go-multihash"
@@ -122,7 +122,7 @@ func FilestoreOf(bs bstore.Blockstore) (bstore.Blockstore, error) {
 	// PosInfo leaves to the datastore (which in our case is the coerced
 	// blockstore), and the intermediate nodes to the blockstore proper (since
 	// they cannot be mapped to the file.
-	fstore := filestore.NewFilestore(bs, fm)
+	fstore := filestore.NewFilestore(bs, fm, nil)
 	bs = bstore.NewIdStore(fstore)
 
 	return bs, nil

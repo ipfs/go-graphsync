@@ -1,72 +1,20 @@
 package testutil
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"math/rand"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
-	util "github.com/ipfs/go-ipfs-util"
+	"github.com/ipfs/go-test/random"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	random "github.com/jbenet/go-random"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-graphsync"
 )
-
-var blockGenerator = blocksutil.NewBlockGenerator()
-var seedSeq int64
-
-// RandomBytes returns a byte array of the given size with random values.
-func RandomBytes(n int64) []byte {
-	data := new(bytes.Buffer)
-	_ = random.WritePseudoRandomBytes(n, data, seedSeq)
-	seedSeq++
-	return data.Bytes()
-}
-
-// GenerateBlocksOfSize generates a series of blocks of the given byte size
-func GenerateBlocksOfSize(n int, size int64) []blocks.Block {
-	generatedBlocks := make([]blocks.Block, 0, n)
-	for i := 0; i < n; i++ {
-		data := RandomBytes(size)
-		mhash := util.Hash(data)
-		c := cid.NewCidV1(cid.Raw, mhash)
-		b, _ := blocks.NewBlockWithCid(data, c)
-		generatedBlocks = append(generatedBlocks, b)
-
-	}
-	return generatedBlocks
-}
-
-// GenerateCids produces n content identifiers.
-func GenerateCids(n int) []cid.Cid {
-	cids := make([]cid.Cid, 0, n)
-	for i := 0; i < n; i++ {
-		c := blockGenerator.Next().Cid()
-		cids = append(cids, c)
-	}
-	return cids
-}
-
-var peerSeq int
-
-// GeneratePeers creates n peer ids.
-func GeneratePeers(n int) []peer.ID {
-	peerIds := make([]peer.ID, 0, n)
-	for i := 0; i < n; i++ {
-		peerSeq++
-		p := peer.ID(fmt.Sprint(peerSeq))
-		peerIds = append(peerIds, p)
-	}
-	return peerIds
-}
 
 // ContainsPeer returns true if a peer is found n a list of peers.
 func ContainsPeer(peers []peer.ID, p peer.ID) bool {
@@ -239,7 +187,7 @@ func VerifyEmptyResponse(ctx context.Context, t testing.TB, responseChan <-chan 
 
 // NewTestLink returns a randomly generated IPLD Link
 func NewTestLink() ipld.Link {
-	return cidlink.Link{Cid: GenerateCids(1)[0]}
+	return cidlink.Link{Cid: random.Cids(1)[0]}
 }
 
 type fakeBlkData struct {
@@ -267,7 +215,7 @@ func (fbd fakeBlkData) Index() int64 {
 // NewFakeBlockData returns a fake block that matches the block data interface
 func NewFakeBlockData() graphsync.BlockData {
 	return &fakeBlkData{
-		link:  cidlink.Link{Cid: GenerateCids(1)[0]},
+		link:  cidlink.Link{Cid: random.Cids(1)[0]},
 		size:  rand.Uint64(),
 		index: rand.Int63(),
 	}

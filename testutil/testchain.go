@@ -7,6 +7,7 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/random"
 	"github.com/ipld/go-ipld-prime"
 	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -71,7 +72,7 @@ func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = mnblnb.AssembleValue().AssignBytes(RandomBytes(int64(size)))
+	err = mnblnb.AssembleValue().AssignBytes(random.Bytes(int(size)))
 	if err != nil {
 		return nil, err
 	}

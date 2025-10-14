@@ -6,11 +6,11 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestDecodeEncodeCidSet(t *testing.T) {
-	cids := testutil.GenerateCids(10)
+	cids := random.Cids(10)
 	set := cid.NewSet()
 	for _, c := range cids {
 		set.Add(c)

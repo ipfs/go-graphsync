@@ -14,7 +14,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/message/ipldbind"
-	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestIPLDRoundTrip(t *testing.T) {
@@ -28,7 +28,7 @@ func TestIPLDRoundTrip(t *testing.T) {
 		Name: extension1Name,
 		Data: extension1Data,
 	}
-	extension2Data := basicnode.NewBytes(testutil.RandomBytes(100))
+	extension2Data := basicnode.NewBytes(random.Bytes(100))
 	extension2Name := graphsync.ExtensionName("Hippity+Hoppity")
 	extension2 := graphsync.ExtensionData{
 		Name: extension2Name,
@@ -49,7 +49,7 @@ func TestIPLDRoundTrip(t *testing.T) {
 		id2: message.NewResponse(id2, graphsync.PartialResponse, metadata2, extension2),
 	}
 
-	blks := testutil.GenerateBlocksOfSize(2, 100)
+	blks := random.BlocksOfSize(2, 100)
 
 	blocks := map[cid.Cid]blocks.Block{
 		blks[0].Cid(): blks[0],

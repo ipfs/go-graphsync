@@ -26,6 +26,7 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/taskqueue"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestNormalSimultaneousFetch(t *testing.T) {
@@ -34,7 +35,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	blockChain2 := testutil.SetupBlockChain(ctx, t, td.persistence, 100, 5)
 
@@ -95,7 +96,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 	requestCtx1, cancel1 := context.WithCancel(requestCtx)
 	requestCtx2, cancel2 := context.WithCancel(requestCtx)
 	defer cancel2()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	returnedResponseChan1, returnedErrorChan1 := td.requestManager.NewRequest(requestCtx1, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 	returnedResponseChan2, returnedErrorChan2 := td.requestManager.NewRequest(requestCtx2, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
@@ -145,7 +146,7 @@ func TestCancelRequestImperativeNoMoreBlocks(t *testing.T) {
 	td := newTestData(ctx, t)
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	_, returnedErrorChan1 := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
@@ -186,7 +187,7 @@ func TestCommandsWithCancelledContext(t *testing.T) {
 	managerCtx, managerCancel := context.WithCancel(ctx)
 	defer managerCancel()
 	td := newTestData(managerCtx, t)
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	cancelledCtx, cancel := context.WithCancel(ctx)
 	cancel()
@@ -202,7 +203,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	td := newTestData(managerCtx, t)
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
@@ -232,7 +233,7 @@ func TestFailedRequest(t *testing.T) {
 	td := newTestData(ctx, t)
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
@@ -263,7 +264,7 @@ func TestLocallyFulfilledFirstRequestFailsLater(t *testing.T) {
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
@@ -290,7 +291,7 @@ func TestLocallyFulfilledFirstRequestSucceedsLater(t *testing.T) {
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	called := make(chan struct{})
 	td.responseHooks.Register(func(p peer.ID, response graphsync.ResponseData, hookActions graphsync.IncomingResponseHookActions) {
@@ -323,7 +324,7 @@ func TestRequestReturnsMissingBlocks(t *testing.T) {
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	returnedResponseChan, returnedErrorChan := td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
@@ -344,7 +345,7 @@ func TestDisconnectNotification(t *testing.T) {
 	td := newTestData(ctx, t)
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 
 	// Listen for network errors
 	networkErrors := make(chan peer.ID, 1)
@@ -381,7 +382,7 @@ func TestEncodingExtensions(t *testing.T) {
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	expectedError := make(chan error, 2)
 	receivedExtensionData := make(chan datamodel.Node, 2)
@@ -414,8 +415,8 @@ func TestEncodingExtensions(t *testing.T) {
 	require.Equal(t, td.extensionData2, returnedData2, "did not encode second extension correctly")
 
 	t.Run("responding to extensions", func(t *testing.T) {
-		expectedData := basicnode.NewBytes(testutil.RandomBytes(100))
-		expectedUpdate := basicnode.NewBytes(testutil.RandomBytes(100))
+		expectedData := basicnode.NewBytes(random.Bytes(100))
+		expectedUpdate := basicnode.NewBytes(random.Bytes(100))
 		firstResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
 				graphsync.PartialResponse,
@@ -443,9 +444,9 @@ func TestEncodingExtensions(t *testing.T) {
 		require.True(t, has)
 		require.Equal(t, expectedUpdate, receivedUpdateData, "should have updated with correct extension")
 
-		nextExpectedData := basicnode.NewBytes(testutil.RandomBytes(100))
-		nextExpectedUpdate1 := basicnode.NewBytes(testutil.RandomBytes(100))
-		nextExpectedUpdate2 := basicnode.NewBytes(testutil.RandomBytes(100))
+		nextExpectedData := basicnode.NewBytes(random.Bytes(100))
+		nextExpectedUpdate1 := basicnode.NewBytes(random.Bytes(100))
+		nextExpectedUpdate2 := basicnode.NewBytes(random.Bytes(100))
 
 		secondResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
@@ -491,7 +492,7 @@ func TestBlockHooks(t *testing.T) {
 
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	receivedBlocks := make(chan graphsync.BlockData, 4)
 	receivedResponses := make(chan graphsync.ResponseData, 4)
@@ -524,8 +525,8 @@ func TestBlockHooks(t *testing.T) {
 	require.Equal(t, td.extensionData2, returnedData2, "did not encode second extension correctly")
 
 	t.Run("responding to extensions", func(t *testing.T) {
-		expectedData := basicnode.NewBytes(testutil.RandomBytes(100))
-		expectedUpdate := basicnode.NewBytes(testutil.RandomBytes(100))
+		expectedData := basicnode.NewBytes(random.Bytes(100))
+		expectedUpdate := basicnode.NewBytes(random.Bytes(100))
 
 		firstBlocks := td.blockChain.Blocks(0, 3)
 		firstMetadata := metadataForBlocks(firstBlocks, graphsync.LinkActionPresent)
@@ -579,9 +580,9 @@ func TestBlockHooks(t *testing.T) {
 			require.Equal(t, uint64(len(blk.RawData())), receivedBlock.BlockSize())
 		}
 
-		nextExpectedData := basicnode.NewBytes(testutil.RandomBytes(100))
-		nextExpectedUpdate1 := basicnode.NewBytes(testutil.RandomBytes(100))
-		nextExpectedUpdate2 := basicnode.NewBytes(testutil.RandomBytes(100))
+		nextExpectedData := basicnode.NewBytes(random.Bytes(100))
+		nextExpectedUpdate1 := basicnode.NewBytes(random.Bytes(100))
+		nextExpectedUpdate2 := basicnode.NewBytes(random.Bytes(100))
 		nextBlocks := td.blockChain.RemainderBlocks(3)
 		nextMetadata := metadataForBlocks(nextBlocks, graphsync.LinkActionPresent)
 		secondResponses := []gsmsg.GraphSyncResponse{
@@ -651,7 +652,7 @@ func TestOutgoingRequestHooks(t *testing.T) {
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	alternateStore := testutil.NewTestStore(make(map[datamodel.Link][]byte))
 	td.persistenceOptions.Register("chainstore", alternateStore)
@@ -700,7 +701,7 @@ func TestOutgoingRequestListeners(t *testing.T) {
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	// Listen for outgoing request starts
 	outgoingRequests := make(chan outgoingRequestProcessingEvent, 1)
@@ -739,7 +740,7 @@ func TestPauseResume(t *testing.T) {
 
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	blocksReceived := 0
 	holdForResumeAttempt := make(chan struct{})
@@ -825,7 +826,7 @@ func TestPauseResumeExternal(t *testing.T) {
 
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	blocksReceived := 0
 	holdForPause := make(chan struct{})
@@ -903,7 +904,7 @@ func TestUpdateRequest(t *testing.T) {
 	defer cancel()
 	requestCtx1, cancel1 := context.WithCancel(requestCtx)
 
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	blocksReceived := 0
 	holdForPause := make(chan struct{})
@@ -983,7 +984,7 @@ func TestStats(t *testing.T) {
 
 	requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 
 	blockChain2 := testutil.SetupBlockChain(ctx, t, td.persistence, 100, 5)
 
@@ -1012,7 +1013,7 @@ func TestCaptureRequestIDFromContext(t *testing.T) {
 	expectedID := graphsync.NewRequestID()
 	requestCtx = context.WithValue(requestCtx, graphsync.RequestIDContextKey{}, expectedID)
 
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 
 	_, _ = td.requestManager.NewRequest(requestCtx, peers[0], td.blockChain.TipLink, td.blockChain.Selector())
 
@@ -1122,13 +1123,13 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.blockStore = make(map[ipld.Link][]byte)
 	td.persistence = testutil.NewTestStore(td.blockStore)
 	td.blockChain = testutil.SetupBlockChain(ctx, t, td.persistence, 100, 5)
-	td.extensionData1 = basicnode.NewBytes(testutil.RandomBytes(100))
+	td.extensionData1 = basicnode.NewBytes(random.Bytes(100))
 	td.extensionName1 = graphsync.ExtensionName("AppleSauce/McGee")
 	td.extension1 = graphsync.ExtensionData{
 		Name: td.extensionName1,
 		Data: td.extensionData1,
 	}
-	td.extensionData2 = basicnode.NewBytes(testutil.RandomBytes(100))
+	td.extensionData2 = basicnode.NewBytes(random.Bytes(100))
 	td.extensionName2 = graphsync.ExtensionName("HappyLand/Happenstance")
 	td.extension2 = graphsync.ExtensionData{
 		Name: td.extensionName2,

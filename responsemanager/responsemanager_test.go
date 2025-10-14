@@ -36,6 +36,7 @@ import (
 	"github.com/ipfs/go-graphsync/selectorvalidator"
 	"github.com/ipfs/go-graphsync/taskqueue"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestIncomingQuery(t *testing.T) {
@@ -242,7 +243,7 @@ func TestStats(t *testing.T) {
 	reqid1 := td.requestID
 	req1 := td.requests
 
-	p2 := testutil.GeneratePeers(1)[0]
+	p2 := random.Peers(1)[0]
 	reqid2 := graphsync.NewRequestID()
 	req2 := []gsmsg.GraphSyncRequest{
 		gsmsg.NewRequest(reqid2, td.blockChain.TipLink.(cidlink.Link).Cid, td.blockChain.Selector(), graphsync.Priority(0), td.extension),
@@ -1231,18 +1232,18 @@ func newTestData(t *testing.T) testData {
 		completedNotifications: td.completedNotifications,
 	}
 
-	td.extensionData = basicnode.NewBytes(testutil.RandomBytes(100))
+	td.extensionData = basicnode.NewBytes(random.Bytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.extension = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionData,
 	}
-	td.extensionResponseData = basicnode.NewBytes(testutil.RandomBytes(100))
+	td.extensionResponseData = basicnode.NewBytes(random.Bytes(100))
 	td.extensionResponse = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionResponseData,
 	}
-	td.extensionUpdateData = basicnode.NewBytes(testutil.RandomBytes(100))
+	td.extensionUpdateData = basicnode.NewBytes(random.Bytes(100))
 	td.extensionUpdate = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionUpdateData,
@@ -1254,7 +1255,7 @@ func newTestData(t *testing.T) testData {
 	td.updateRequests = []gsmsg.GraphSyncRequest{
 		gsmsg.NewUpdateRequest(td.requestID, td.extensionUpdate),
 	}
-	td.p = testutil.GeneratePeers(1)[0]
+	td.p = random.Peers(1)[0]
 	td.peristenceOptions = persistenceoptions.New()
 	td.requestProcessingListeners = listeners.NewRequestProcessingListeners()
 	td.requestHooks = hooks.NewRequestHooks(td.peristenceOptions)

@@ -15,6 +15,7 @@ import (
 	"github.com/ipfs/go-graphsync"
 	gsmsg "github.com/ipfs/go-graphsync/message"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 // Receiver is an interface for receiving messages from the GraphSyncNetwork.
@@ -69,13 +70,13 @@ func TestMessageSendAndReceive(t *testing.T) {
 	gsnet1.SetDelegate(r)
 	gsnet2.SetDelegate(r)
 
-	root := testutil.GenerateCids(1)[0]
+	root := random.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
+		Data: basicnode.NewBytes(random.Bytes(100)),
 	}
 	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())

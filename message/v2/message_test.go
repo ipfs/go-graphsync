@@ -8,24 +8,23 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync"
+	"github.com/ipfs/go-graphsync/message"
+	"github.com/ipfs/go-test/random"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
-
-	"github.com/ipfs/go-graphsync"
-	"github.com/ipfs/go-graphsync/message"
-	"github.com/ipfs/go-graphsync/testutil"
 )
 
 func TestAppendingRequests(t *testing.T) {
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
+		Data: basicnode.NewBytes(random.Bytes(100)),
 	}
-	root := testutil.GenerateCids(1)[0]
+	root := random.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	id := graphsync.NewRequestID()
@@ -160,7 +159,7 @@ func TestRequestCancel(t *testing.T) {
 	selector := ssb.Matcher().Node()
 	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
-	root := testutil.GenerateCids(1)[0]
+	root := random.Cids(1)[0]
 
 	builder := message.NewBuilder()
 	builder.AddRequest(message.NewRequest(id, root, selector, priority))
@@ -194,7 +193,7 @@ func TestRequestUpdate(t *testing.T) {
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
+		Data: basicnode.NewBytes(random.Bytes(100)),
 	}
 
 	builder := message.NewBuilder()
@@ -233,13 +232,13 @@ func TestRequestUpdate(t *testing.T) {
 }
 
 func TestToNetFromNetEquivalency(t *testing.T) {
-	root := testutil.GenerateCids(1)[0]
+	root := random.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: basicnode.NewBytes(testutil.RandomBytes(100)),
+		Data: basicnode.NewBytes(random.Bytes(100)),
 	}
 	id := graphsync.NewRequestID()
 	priority := graphsync.Priority(rand.Int31())
@@ -337,7 +336,7 @@ func TestMergeExtensions(t *testing.T) {
 		}
 		return basicnode.NewString(os + " " + ns), nil
 	}
-	root := testutil.GenerateCids(1)[0]
+	root := random.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	id := graphsync.NewRequestID()

@@ -29,6 +29,7 @@ import (
 	"github.com/ipfs/go-graphsync/requestmanager/hooks"
 	"github.com/ipfs/go-graphsync/requestmanager/types"
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestRequestExecutionBlockChain(t *testing.T) {
@@ -204,7 +205,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				responses: make(map[datamodel.Link]chan types.AsyncLoadResult),
 			}
 			requestID := graphsync.NewRequestID()
-			p := testutil.GeneratePeers(1)[0]
+			p := random.Peers(1)[0]
 			requestCtx, requestCancel := context.WithCancel(ctx)
 			defer requestCancel()
 			var responsesReceived []graphsync.ResponseProgress

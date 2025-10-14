@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/libp2p/go-libp2p/core/peer"
-
 	"github.com/ipfs/go-graphsync/testutil"
+	"github.com/ipfs/go-test/random"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type fakePeerProcess struct {
@@ -21,7 +21,7 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 		return &fakePeerProcess{}
 	}
 
-	tp := testutil.GeneratePeers(5)
+	tp := random.Peers(5)
 	peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4]
 	peerManager := New(ctx, peerProcessFatory)
 
