@@ -86,7 +86,7 @@ func TestIncomingQuery(t *testing.T) {
 	responseManager.Startup()
 
 	responseManager.ProcessRequests(td.ctx, td.p, td.requests)
-	for i := 0; i < len(blks); i++ {
+	for range blks {
 		td.assertSendBlock()
 	}
 	td.assertCompleteRequestWith(graphsync.RequestCompletedFull)
@@ -1379,7 +1379,7 @@ func (td *testData) assertReceiveExtensionResponse() {
 }
 
 func (td *testData) verifyNResponsesOnlyProcessing(blockCount int) {
-	for i := 0; i < blockCount; i++ {
+	for range blockCount {
 		testutil.AssertDoesReceive(td.ctx, td.t, td.sentResponses, "should sent block")
 	}
 	testutil.AssertChannelEmpty(td.t, td.sentResponses, "should not send more blocks")
@@ -1388,7 +1388,7 @@ func (td *testData) verifyNResponsesOnlyProcessing(blockCount int) {
 func (td *testData) verifyNResponses(blockCount int) {
 	td.verifyNResponsesOnlyProcessing(blockCount)
 	td.notifyBlockSendsSent()
-	for i := 0; i < blockCount; i++ {
+	for range blockCount {
 		testutil.AssertDoesReceive(td.ctx, td.t, td.blockSends, "should sent block")
 	}
 	testutil.AssertChannelEmpty(td.t, td.blockSends, "should not send more blocks")
@@ -1460,7 +1460,7 @@ func (td *testData) assertNoCompletedResponseStatuses() {
 }
 
 func (td *testData) assertNetworkErrors(err error, count int) {
-	for i := 0; i < count; i++ {
+	for range count {
 		td.assertHasNetworkErrors(err)
 	}
 	testutil.AssertChannelEmpty(td.t, td.networkErrorChan, "should not send more blocks")

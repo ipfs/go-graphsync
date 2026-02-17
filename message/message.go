@@ -3,6 +3,7 @@ package message
 import (
 	"fmt"
 	"io"
+	"maps"
 	"strings"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -256,17 +257,11 @@ func (gsm GraphSyncMessage) Blocks() []blocks.Block {
 // Clone returns a shallow copy of this GraphSyncMessage
 func (gsm GraphSyncMessage) Clone() GraphSyncMessage {
 	requests := make(map[graphsync.RequestID]GraphSyncRequest, len(gsm.requests))
-	for id, request := range gsm.requests {
-		requests[id] = request
-	}
+	maps.Copy(requests, gsm.requests)
 	responses := make(map[graphsync.RequestID]GraphSyncResponse, len(gsm.responses))
-	for id, response := range gsm.responses {
-		responses[id] = response
-	}
+	maps.Copy(responses, gsm.responses)
 	blocks := make(map[cid.Cid]blocks.Block, len(gsm.blocks))
-	for cid, block := range gsm.blocks {
-		blocks[cid] = block
-	}
+	maps.Copy(blocks, gsm.blocks)
 	return GraphSyncMessage{requests, responses, blocks}
 }
 

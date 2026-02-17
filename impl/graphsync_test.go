@@ -168,7 +168,6 @@ func TestGraphsyncRoundTripRequestBudgets(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			// create network
 			ctx := context.Background()
@@ -439,7 +438,7 @@ func TestGraphsyncRoundTripHooksOrder(t *testing.T) {
 	require.Len(t, td.blockStore1, blockChainLength, "did not store all blocks")
 
 	var calledHooks []string
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		select {
 		case <-ctx.Done():
 			t.Fatal("did not receive all events")
@@ -1970,8 +1969,8 @@ func TestPanicHandlingInTraversal(t *testing.T) {
 	}
 
 	// initialize graphsync on first node to make requests and set a panic callback
-	var panicObj interface{}
-	requestor := td.GraphSyncHost1(PanicCallback(func(recoverObj interface{}, debugStackTrace string) {
+	var panicObj any
+	requestor := td.GraphSyncHost1(PanicCallback(func(recoverObj any, debugStackTrace string) {
 		panicObj = recoverObj
 	}))
 

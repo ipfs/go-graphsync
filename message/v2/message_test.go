@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"math/rand"
+	"slices"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -146,12 +147,7 @@ func TestAppendBlock(t *testing.T) {
 }
 
 func contains(strs []string, x string) bool {
-	for _, s := range strs {
-		if s == x {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(strs, x)
 }
 
 func TestRequestCancel(t *testing.T) {

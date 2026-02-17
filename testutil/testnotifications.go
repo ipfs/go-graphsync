@@ -72,7 +72,7 @@ func (ts *TestSubscriber) ExpectClosesAnyOrder(ctx context.Context, t *testing.T
 
 func (ts *TestSubscriber) ExpectNCloses(ctx context.Context, t *testing.T, n int) {
 	t.Helper()
-	for i := 0; i < n; i++ {
+	for range n {
 		AssertDoesReceive(ctx, t, ts.closed, "should receive another event")
 	}
 }

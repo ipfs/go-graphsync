@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"slices"
 	"sync"
 	"testing"
 
@@ -24,10 +25,8 @@ func NewTestConnManager() *TestConnManager {
 func (tcm *TestConnManager) Protect(p peer.ID, tag string) {
 	tcm.protectedConnsLk.Lock()
 	defer tcm.protectedConnsLk.Unlock()
-	for _, tagCmp := range tcm.protectedConns[p] {
-		if tag == tagCmp {
-			return
-		}
+	if slices.Contains(tcm.protectedConns[p], tag) {
+		return
 	}
 	tcm.protectedConns[p] = append(tcm.protectedConns[p], tag)
 }

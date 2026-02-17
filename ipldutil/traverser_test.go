@@ -115,7 +115,7 @@ func TestTraverser(t *testing.T) {
 			},
 		}.Start(ctx)
 		var path ipld.Path
-		for i := 0; i < 6; i++ {
+		for range 6 {
 			path = path.AppendSegment(ipld.PathSegmentOfString("Parents"))
 			path = path.AppendSegment(ipld.PathSegmentOfInt(0))
 		}
@@ -155,7 +155,7 @@ func TestTraverser(t *testing.T) {
 
 		var err error
 		// To ensure the state isn't broken, do multiple calls.
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			err = traverser.Advance(bytes.NewBuffer(nil))
 			require.Error(t, err)
 

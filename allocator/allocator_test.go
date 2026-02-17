@@ -441,7 +441,7 @@ type pendingResultWithChan struct {
 }
 
 type allocStep struct {
-	op              interface{}
+	op              any
 	totals          map[peer.ID]uint64
 	expectedPending []pendingResult
 }

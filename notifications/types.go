@@ -1,13 +1,13 @@
 package notifications
 
 // Topic is a topic that events appear on
-type Topic interface{}
+type Topic any
 
 // Event is a publishable event
-type Event interface{}
+type Event any
 
 // TopicData is data added to every message broadcast on a topic
-type TopicData interface{}
+type TopicData any
 
 // Subscriber is a subscriber that can receive events
 type Subscriber interface {

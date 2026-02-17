@@ -101,7 +101,7 @@ func benchmarkRepeatedDisconnects(ctx context.Context, b *testing.B, numnodes in
 		require.NoError(b, err)
 		start := time.Now()
 		errgrp, grpctx := errgroup.WithContext(ctx)
-		for j := 0; j < numnodes; j++ {
+		for j := range numnodes {
 			instance := instances[j+1]
 			_, errChan := fetcher.Exchange.Request(grpctx, instance.Peer, cidlink.Link{Cid: allCids[i][j]}, allSelector)
 			other := instance.Peer
@@ -152,7 +152,7 @@ func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc,
 	instances, err := ig.Instances(1 + b.N)
 	require.NoError(b, err)
 	var allCids []cid.Cid
-	for i := 0; i < numfiles; i++ {
+	for range numfiles {
 		thisCids := df(ctx, b, instances[:1])
 		allCids = append(allCids, thisCids...)
 	}
@@ -170,7 +170,7 @@ func p2pStrestTest(ctx context.Context, b *testing.B, numfiles int, df distFunc,
 		require.NoError(b, err)
 		start := time.Now()
 		errgrp, grpctx := errgroup.WithContext(ctx)
-		for j := 0; j < numfiles; j++ {
+		for j := range numfiles {
 			responseChan, errChan := fetcher.Exchange.Request(grpctx, instances[0].Peer, cidlink.Link{Cid: allCids[j]}, allSelector)
 			errgrp.Go(func() error {
 				for range responseChan {
@@ -223,7 +223,7 @@ func subtestDistributeAndFetch(ctx context.Context, b *testing.B, numnodes int, 
 		require.NoError(b, err)
 		start := time.Now()
 		errgrp, grpctx := errgroup.WithContext(ctx)
-		for j := 0; j < numnodes; j++ {
+		for j := range numnodes {
 			instance := instances[j]
 			_, errChan := fetcher.Exchange.Request(grpctx, instance.Peer, cidlink.Link{Cid: destCids[j]}, allSelector)
 

@@ -73,7 +73,7 @@ func (g *InstanceGenerator) Next() (Instance, error) {
 // them to each other
 func (g *InstanceGenerator) Instances(n int) ([]Instance, error) {
 	var instances []Instance
-	for j := 0; j < n; j++ {
+	for range n {
 		inst, err := g.Next()
 		if err != nil {
 			return nil, err

@@ -10,7 +10,7 @@ import (
 )
 
 var linkedRemoteItemPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(remotedLinkedItem)
 	},
 }
