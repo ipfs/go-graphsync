@@ -298,7 +298,7 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 
 	td.expectedBlocks = make([]*blockData, 0)
 	links := make([]ipld.Link, 0)
-	for i := 0; i < blockCount; i++ {
+	for i := range blockCount {
 		td.expectedBlocks = append(td.expectedBlocks, newRandomBlock(int64(i)))
 		links = append(links, td.expectedBlocks[i].link)
 	}

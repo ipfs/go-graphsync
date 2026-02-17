@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"math/rand"
+	"slices"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -18,12 +19,7 @@ import (
 
 // ContainsPeer returns true if a peer is found n a list of peers.
 func ContainsPeer(peers []peer.ID, p peer.ID) bool {
-	for _, n := range peers {
-		if p == n {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(peers, p)
 }
 
 // AssertContainsPeer will fail a test if the peer is not in the given peer list
@@ -105,7 +101,7 @@ func CollectErrors(ctx context.Context, t *testing.T, errChan <-chan error) []er
 func ReadNResponses(ctx context.Context, t testing.TB, responseChan <-chan graphsync.ResponseProgress, count int) []graphsync.ResponseProgress {
 	t.Helper()
 	var returnedBlocks []graphsync.ResponseProgress
-	for i := 0; i < count; i++ {
+	for range count {
 		select {
 		case blk, ok := <-responseChan:
 			if !ok {

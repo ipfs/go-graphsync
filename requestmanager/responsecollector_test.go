@@ -54,7 +54,7 @@ func TestBufferingResponseProgress(t *testing.T) {
 		require.Equal(t, block.Cid(), testResponse.LastBlock.Link.(cidlink.Link).Cid, "did not store block correctly")
 	}
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		var testErr error
 		testutil.AssertReceive(ctx, t, outgoingErrors, &testErr, "should have read from channel but couldn't")
 		if i == 0 {

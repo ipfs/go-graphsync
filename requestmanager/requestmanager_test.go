@@ -1046,7 +1046,7 @@ func (fph *fakePeerHandler) AllocateAndBuildMessage(p peer.ID, blkSize uint64,
 
 func readNNetworkRequests(ctx context.Context, t *testing.T, td *testData, count int) []requestRecord {
 	requestRecords := make(map[graphsync.RequestID]requestRecord, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		var rr requestRecord
 		testutil.AssertReceive(ctx, t, td.requestRecordChan, &rr, fmt.Sprintf("did not receive request %d", i))
 		requestRecords[rr.gsr.ID()] = rr

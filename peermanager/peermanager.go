@@ -13,7 +13,7 @@ type PeerProcess interface {
 	Shutdown()
 }
 
-type PeerHandler interface{}
+type PeerHandler any
 
 // PeerProcessFactory provides a function that will create a PeerQueue.
 type PeerProcessFactory func(ctx context.Context, p peer.ID, onShutdown func(peer.ID)) PeerHandler

@@ -93,7 +93,7 @@ func (tq *WorkerTaskQueue) WithPeerTopics(p peer.ID, withPeerTopics func(*peertr
 
 // Startup runs the given number of task workers with the given executor
 func (tq *WorkerTaskQueue) Startup(workerCount uint64, executor Executor) {
-	for i := uint64(0); i < workerCount; i++ {
+	for range workerCount {
 		go tq.worker(executor)
 	}
 }

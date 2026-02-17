@@ -2,6 +2,7 @@ package testnet
 
 import (
 	"context"
+	"slices"
 
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -32,12 +33,7 @@ func (pn *peernet) Adapter(p tnet.Identity) gsnet.GraphSyncNetwork {
 }
 
 func (pn *peernet) HasPeer(p peer.ID) bool {
-	for _, member := range pn.Mocknet.Peers() {
-		if p == member {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(pn.Mocknet.Peers(), p)
 }
 
 var _ Network = (*peernet)(nil)

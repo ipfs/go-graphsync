@@ -124,7 +124,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, extension.Data, extensionData)
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		testutil.AssertDoesReceive(ctx, t, r.connectedPeers, "peers were not notified")
 	}
 

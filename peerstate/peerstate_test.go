@@ -12,7 +12,7 @@ import (
 
 func TestDiagnostics(t *testing.T) {
 	requestIDs := make([]graphsync.RequestID, 0, 5)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		requestIDs = append(requestIDs, graphsync.NewRequestID())
 	}
 	testCases := map[string]struct {

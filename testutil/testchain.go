@@ -156,7 +156,7 @@ func (tbc *TestBlockChain) NodeTipIndex(fromTip int) ipld.Node {
 // PathTipIndex returns the path to the block at the given index from the tip
 func (tbc *TestBlockChain) PathTipIndex(fromTip int) ipld.Path {
 	expectedPath := make([]datamodel.PathSegment, 0, 2*fromTip)
-	for i := 0; i < fromTip; i++ {
+	for range fromTip {
 		expectedPath = append(expectedPath, datamodel.PathSegmentOfString("Parents"), datamodel.PathSegmentOfInt(0))
 	}
 	return datamodel.NewPath(expectedPath)

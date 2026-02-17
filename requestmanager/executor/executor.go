@@ -212,10 +212,7 @@ func (e *Executor) processResult(rt RequestTask, link datamodel.Link, result typ
 
 func (e *Executor) startRemoteRequest(rt RequestTask) error {
 	request := rt.Request
-	doNotSendFirstBlocks := rt.DoNotSendFirstBlocks
-	if doNotSendFirstBlocks < int64(rt.Traverser.NBlocksTraversed()) {
-		doNotSendFirstBlocks = int64(rt.Traverser.NBlocksTraversed())
-	}
+	doNotSendFirstBlocks := max(rt.DoNotSendFirstBlocks, int64(rt.Traverser.NBlocksTraversed()))
 	if doNotSendFirstBlocks > 0 {
 		doNotSendFirstBlocksData := donotsendfirstblocks.EncodeDoNotSendFirstBlocks(doNotSendFirstBlocks)
 		request = rt.Request.ReplaceExtensions([]graphsync.ExtensionData{{Name: graphsync.ExtensionsDoNotSendFirstBlocks, Data: doNotSendFirstBlocksData}})
