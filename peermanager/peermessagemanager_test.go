@@ -2,7 +2,7 @@ package peermanager
 
 import (
 	"context"
-	"math/rand"
+	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -71,7 +71,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	tp := random.Peers(5)
 
 	id := graphsync.NewRequestID()
-	priority := graphsync.Priority(rand.Int31())
+	priority := graphsync.Priority(rand.Int32())
 	root := random.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()

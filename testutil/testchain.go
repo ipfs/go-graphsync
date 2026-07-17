@@ -72,7 +72,7 @@ func createBlock(parents []ipld.Link, size uint64) (ipld.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = mnblnb.AssembleValue().AssignBytes(random.Bytes(int(size)))
+	err = mnblnb.AssembleValue().AssignBytes(random.Bytes(int64(size)))
 	if err != nil {
 		return nil, err
 	}

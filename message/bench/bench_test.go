@@ -2,7 +2,6 @@ package bench
 
 import (
 	"bytes"
-	"math/rand"
 	"reflect"
 	"testing"
 
@@ -21,18 +20,19 @@ import (
 )
 
 func BenchmarkMessageEncodingRoundtrip(b *testing.B) {
-	root := random.Cids(1)[0]
+	rnd := random.New()
+	root := rnd.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	bb := basicnode.Prototype.Bytes.NewBuilder()
-	bb.AssignBytes(random.Bytes(100))
+	bb.AssignBytes(rnd.Bytes(100))
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
 		Data: bb.Build(),
 	}
 	id := graphsync.NewRequestID()
-	priority := graphsync.Priority(rand.Int31())
+	priority := graphsync.Priority(rnd.Int32())
 	status := graphsync.RequestAcknowledged
 
 	builder := message.NewBuilder()

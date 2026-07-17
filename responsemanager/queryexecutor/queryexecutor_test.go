@@ -3,10 +3,8 @@ package queryexecutor
 import (
 	"bytes"
 	"context"
-	crand "crypto/rand"
 	"fmt"
 	"io"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -220,20 +218,14 @@ func TestSmallGraphTask(t *testing.T) {
 	})
 }
 
-func newRandomBlock(index int64) *blockData {
+func newRandomBlock(rnd *random.Random, index int64) *blockData {
 	digest := make([]byte, 32)
-	_, err := crand.Read(digest)
-	if err != nil {
-		panic(err)
-	}
+	_, _ = rnd.Read(digest)
 	mh, _ := multihash.Encode(digest, multihash.SHA2_256)
 	c := cid.NewCidV1(cid.DagCBOR, mh)
 	link := &cidlink.Link{Cid: c}
-	data := make([]byte, rand.Intn(64)+1)
-	_, err = crand.Read(data)
-	if err != nil {
-		panic(err)
-	}
+	data := make([]byte, rnd.IntN(64)+1)
+	_, _ = rnd.Read(data)
 	return &blockData{link, data, index}
 }
 
@@ -266,11 +258,12 @@ type testData struct {
 
 func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData, *QueryExecutor) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
+	rnd := random.New()
 	td := &testData{}
 	td.t = t
 	td.ctx, td.cancel = context.WithTimeout(ctx, 10*time.Second)
-	td.peer = random.Peers(1)[0]
+	td.peer = rnd.Peers(1)[0]
 	td.blockStore = make(map[ipld.Link][]byte)
 	td.persistence = testutil.NewTestStore(td.blockStore)
 	td.task = &peertask.Task{}
@@ -279,8 +272,8 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td.updateHooks = hooks.NewUpdateHooks()
 	td.requestID = graphsync.NewRequestID()
 	td.requestCid, _ = cid.Decode("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
-	td.requestSelector = basicnode.NewInt(rand.Int63())
-	td.extensionData = basicnode.NewBytes(random.Bytes(100))
+	td.requestSelector = basicnode.NewInt(rnd.Int64())
+	td.extensionData = basicnode.NewBytes(rnd.Bytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.responseCode = graphsync.ResponseStatusCode(101)
 
@@ -299,7 +292,7 @@ func newTestData(t *testing.T, blockCount int, expectedTraverse int) (*testData,
 	td.expectedBlocks = make([]*blockData, 0)
 	links := make([]ipld.Link, 0)
 	for i := range blockCount {
-		td.expectedBlocks = append(td.expectedBlocks, newRandomBlock(int64(i)))
+		td.expectedBlocks = append(td.expectedBlocks, newRandomBlock(rnd, int64(i)))
 		links = append(links, td.expectedBlocks[i].link)
 	}
 

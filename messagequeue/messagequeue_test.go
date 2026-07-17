@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -29,7 +28,8 @@ func TestStartupAndShutdown(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	targetPeer := random.Peers(1)[0]
+	rnd := random.New()
+	targetPeer := rnd.Peers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -41,10 +41,10 @@ func TestStartupAndShutdown(t *testing.T) {
 	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, func(peer.ID) {})
 	messageQueue.Startup()
 	id := graphsync.NewRequestID()
-	priority := graphsync.Priority(rand.Int31())
+	priority := graphsync.Priority(rnd.Int32())
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
-	root := random.Cids(1)[0]
+	root := rnd.Cids(1)[0]
 
 	waitGroup.Add(1)
 	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
@@ -63,7 +63,8 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	targetPeer := random.Peers(1)[0]
+	rnd := random.New()
+	targetPeer := rnd.Peers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -79,10 +80,10 @@ func TestShutdownDuringMessageSend(t *testing.T) {
 	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, func(peer.ID) {})
 	messageQueue.Startup()
 	id := graphsync.NewRequestID()
-	priority := graphsync.Priority(rand.Int31())
+	priority := graphsync.Priority(rnd.Int32())
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
-	root := random.Cids(1)[0]
+	root := rnd.Cids(1)[0]
 
 	// setup a message and advance as far as beginning to send it
 	waitGroup.Add(1)
@@ -115,7 +116,8 @@ func TestProcessingNotification(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	targetPeer := random.Peers(1)[0]
+	rnd := random.New()
+	targetPeer := rnd.Peers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -127,13 +129,13 @@ func TestProcessingNotification(t *testing.T) {
 	messageQueue := New(ctx, targetPeer, messageNetwork, allocator, messageSendRetries, sendMessageTimeout, func(peer.ID) {})
 	messageQueue.Startup()
 	waitGroup.Add(1)
-	blks := random.BlocksOfSize(3, 128)
+	blks := rnd.BlocksOfSize(3, 128)
 
 	responseID := graphsync.NewRequestID()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: basicnode.NewBytes(random.Bytes(100)),
+		Data: basicnode.NewBytes(rnd.Bytes(100)),
 	}
 	status := graphsync.RequestCompletedFull
 	blkData := testutil.NewFakeBlockData()
@@ -188,7 +190,8 @@ func TestDedupingMessages(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	targetPeer := random.Peers(1)[0]
+	rnd := random.New()
+	targetPeer := rnd.Peers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -201,10 +204,10 @@ func TestDedupingMessages(t *testing.T) {
 	messageQueue.Startup()
 	waitGroup.Add(1)
 	id := graphsync.NewRequestID()
-	priority := graphsync.Priority(rand.Int31())
+	priority := graphsync.Priority(rnd.Int32())
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
-	root := random.Cids(1)[0]
+	root := rnd.Cids(1)[0]
 
 	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddRequest(gsmsg.NewRequest(id, root, selector, priority))
@@ -212,13 +215,13 @@ func TestDedupingMessages(t *testing.T) {
 	// wait for send attempt
 	waitGroup.Wait()
 	id2 := graphsync.NewRequestID()
-	priority2 := graphsync.Priority(rand.Int31())
+	priority2 := graphsync.Priority(rnd.Int32())
 	selector2 := ssb.ExploreAll(ssb.Matcher()).Node()
-	root2 := random.Cids(1)[0]
+	root2 := rnd.Cids(1)[0]
 	id3 := graphsync.NewRequestID()
-	priority3 := graphsync.Priority(rand.Int31())
+	priority3 := graphsync.Priority(rnd.Int32())
 	selector3 := ssb.ExploreIndex(0, ssb.Matcher()).Node()
-	root3 := random.Cids(1)[0]
+	root3 := rnd.Cids(1)[0]
 
 	messageQueue.AllocateAndBuildMessage(0, func(b *Builder) {
 		b.AddRequest(gsmsg.NewRequest(id2, root2, selector2, priority2))
@@ -266,7 +269,8 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	targetPeer := random.Peers(1)[0]
+	rnd := random.New()
+	targetPeer := rnd.Peers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -280,7 +284,7 @@ func TestSendsVeryLargeBlocksResponses(t *testing.T) {
 	waitGroup.Add(1)
 
 	// generate large blocks before proceeding
-	blks := random.BlocksOfSize(5, 1000000)
+	blks := rnd.BlocksOfSize(5, 1000000)
 	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
 		b.AddBlock(blks[0])
 	})
@@ -324,7 +328,8 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	p := random.Peers(1)[0]
+	rnd := random.New()
+	p := rnd.Peers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -340,7 +345,7 @@ func TestSendsResponsesMemoryPressure(t *testing.T) {
 	waitGroup.Add(1)
 
 	// start sending block that exceeds memory limit
-	blks := random.BlocksOfSize(2, 999)
+	blks := rnd.BlocksOfSize(2, 999)
 	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {
 		b.AddBlock(blks[0])
 	})
@@ -382,7 +387,8 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	targetPeer := random.Peers(1)[0]
+	rnd := random.New()
+	targetPeer := rnd.Peers(1)[0]
 	messagesSent := make(chan gsmsg.GraphSyncMessage)
 	resetChan := make(chan struct{}, 1)
 	fullClosedChan := make(chan struct{}, 1)
@@ -399,7 +405,7 @@ func TestNetworkErrorClearResponses(t *testing.T) {
 	waitGroup.Add(1)
 
 	// generate large blocks before proceeding
-	blks := random.BlocksOfSize(5, 1000000)
+	blks := rnd.BlocksOfSize(5, 1000000)
 	subscriber := testutil.NewTestSubscriber(5)
 
 	messageQueue.AllocateAndBuildMessage(uint64(len(blks[0].RawData())), func(b *Builder) {

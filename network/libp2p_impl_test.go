@@ -2,7 +2,6 @@ package network
 
 import (
 	"context"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -70,16 +69,17 @@ func TestMessageSendAndReceive(t *testing.T) {
 	gsnet1.SetDelegate(r)
 	gsnet2.SetDelegate(r)
 
-	root := random.Cids(1)[0]
+	rnd := random.New()
+	root := rnd.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: basicnode.NewBytes(random.Bytes(100)),
+		Data: basicnode.NewBytes(rnd.Bytes(100)),
 	}
 	id := graphsync.NewRequestID()
-	priority := graphsync.Priority(rand.Int31())
+	priority := graphsync.Priority(rnd.Int32())
 	status := graphsync.RequestAcknowledged
 
 	builder := gsmsg.NewBuilder()
