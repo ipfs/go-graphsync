@@ -2,7 +2,6 @@ package testutil
 
 import (
 	"context"
-	"math/rand"
 	"slices"
 	"testing"
 
@@ -210,9 +209,10 @@ func (fbd fakeBlkData) Index() int64 {
 
 // NewFakeBlockData returns a fake block that matches the block data interface
 func NewFakeBlockData() graphsync.BlockData {
+	rnd := random.New()
 	return &fakeBlkData{
-		link:  cidlink.Link{Cid: random.Cids(1)[0]},
-		size:  rand.Uint64(),
-		index: rand.Int63(),
+		link:  cidlink.Link{Cid: rnd.Cids(1)[0]},
+		size:  rnd.Uint64(),
+		index: rnd.Int64(),
 	}
 }

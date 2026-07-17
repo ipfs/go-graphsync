@@ -3,7 +3,6 @@ package executor_test
 import (
 	"context"
 	"errors"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -205,7 +204,8 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				responses: make(map[datamodel.Link]chan types.AsyncLoadResult),
 			}
 			requestID := graphsync.NewRequestID()
-			p := random.Peers(1)[0]
+			rnd := random.New()
+			p := rnd.Peers(1)[0]
 			requestCtx, requestCancel := context.WithCancel(ctx)
 			defer requestCancel()
 			var responsesReceived []graphsync.ResponseProgress
@@ -215,7 +215,7 @@ func TestRequestExecutionBlockChain(t *testing.T) {
 				pauseMessages:        make(chan struct{}, 1),
 				blockHookResults:     make(map[blockHookKey]hooks.UpdateResult),
 				doNotSendFirstBlocks: 0,
-				request:              gsmsg.NewRequest(requestID, tbc.TipLink.(cidlink.Link).Cid, tbc.Selector(), graphsync.Priority(rand.Int31())),
+				request:              gsmsg.NewRequest(requestID, tbc.TipLink.(cidlink.Link).Cid, tbc.Selector(), graphsync.Priority(rnd.Int32())),
 				tbc:                  tbc,
 				initialRequest:       true,
 				inProgressErr:        make(chan error, 1),

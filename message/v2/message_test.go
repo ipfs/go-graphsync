@@ -3,7 +3,6 @@ package v2
 import (
 	"bytes"
 	"errors"
-	"math/rand"
 	"slices"
 	"testing"
 
@@ -20,16 +19,17 @@ import (
 )
 
 func TestAppendingRequests(t *testing.T) {
+	rnd := random.New()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: basicnode.NewBytes(random.Bytes(100)),
+		Data: basicnode.NewBytes(rnd.Bytes(100)),
 	}
-	root := random.Cids(1)[0]
+	root := rnd.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	id := graphsync.NewRequestID()
-	priority := graphsync.Priority(rand.Int31())
+	priority := graphsync.Priority(rnd.Int32())
 
 	builder := message.NewBuilder()
 	builder.AddRequest(message.NewRequest(id, root, selector, priority, extension))
@@ -154,8 +154,9 @@ func TestRequestCancel(t *testing.T) {
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	id := graphsync.NewRequestID()
-	priority := graphsync.Priority(rand.Int31())
-	root := random.Cids(1)[0]
+	rnd := random.New()
+	priority := graphsync.Priority(rnd.Int32())
+	root := rnd.Cids(1)[0]
 
 	builder := message.NewBuilder()
 	builder.AddRequest(message.NewRequest(id, root, selector, priority))
@@ -184,12 +185,12 @@ func TestRequestCancel(t *testing.T) {
 }
 
 func TestRequestUpdate(t *testing.T) {
-
+	rnd := random.New()
 	id := graphsync.NewRequestID()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: basicnode.NewBytes(random.Bytes(100)),
+		Data: basicnode.NewBytes(rnd.Bytes(100)),
 	}
 
 	builder := message.NewBuilder()
@@ -228,16 +229,17 @@ func TestRequestUpdate(t *testing.T) {
 }
 
 func TestToNetFromNetEquivalency(t *testing.T) {
-	root := random.Cids(1)[0]
+	rnd := random.New()
+	root := rnd.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	extensionName := graphsync.ExtensionName("graphsync/awesome")
 	extension := graphsync.ExtensionData{
 		Name: extensionName,
-		Data: basicnode.NewBytes(random.Bytes(100)),
+		Data: basicnode.NewBytes(rnd.Bytes(100)),
 	}
 	id := graphsync.NewRequestID()
-	priority := graphsync.Priority(rand.Int31())
+	priority := graphsync.Priority(rnd.Int32())
 	status := graphsync.RequestAcknowledged
 
 	builder := message.NewBuilder()
@@ -332,11 +334,12 @@ func TestMergeExtensions(t *testing.T) {
 		}
 		return basicnode.NewString(os + " " + ns), nil
 	}
-	root := random.Cids(1)[0]
+	rnd := random.New()
+	root := rnd.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 	id := graphsync.NewRequestID()
-	priority := graphsync.Priority(rand.Int31())
+	priority := graphsync.Priority(rnd.Int32())
 	defaultRequest := message.NewRequest(id, root, selector, priority, initialExtensions...)
 	t.Run("when merging into empty", func(t *testing.T) {
 		emptyRequest := message.NewRequest(id, root, selector, priority)

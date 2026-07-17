@@ -28,7 +28,8 @@ func TestIPLDRoundTrip(t *testing.T) {
 		Name: extension1Name,
 		Data: extension1Data,
 	}
-	extension2Data := basicnode.NewBytes(random.Bytes(100))
+	rnd := random.New()
+	extension2Data := basicnode.NewBytes(rnd.Bytes(100))
 	extension2Name := graphsync.ExtensionName("Hippity+Hoppity")
 	extension2 := graphsync.ExtensionData{
 		Name: extension2Name,
@@ -49,7 +50,7 @@ func TestIPLDRoundTrip(t *testing.T) {
 		id2: message.NewResponse(id2, graphsync.PartialResponse, metadata2, extension2),
 	}
 
-	blks := random.BlocksOfSize(2, 100)
+	blks := rnd.BlocksOfSize(2, 100)
 
 	blocks := map[cid.Cid]blocks.Block{
 		blks[0].Cid(): blks[0],

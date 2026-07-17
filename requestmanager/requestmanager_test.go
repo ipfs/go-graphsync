@@ -415,8 +415,9 @@ func TestEncodingExtensions(t *testing.T) {
 	require.Equal(t, td.extensionData2, returnedData2, "did not encode second extension correctly")
 
 	t.Run("responding to extensions", func(t *testing.T) {
-		expectedData := basicnode.NewBytes(random.Bytes(100))
-		expectedUpdate := basicnode.NewBytes(random.Bytes(100))
+		rnd := random.New()
+		expectedData := basicnode.NewBytes(rnd.Bytes(100))
+		expectedUpdate := basicnode.NewBytes(rnd.Bytes(100))
 		firstResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
 				graphsync.PartialResponse,
@@ -444,9 +445,9 @@ func TestEncodingExtensions(t *testing.T) {
 		require.True(t, has)
 		require.Equal(t, expectedUpdate, receivedUpdateData, "should have updated with correct extension")
 
-		nextExpectedData := basicnode.NewBytes(random.Bytes(100))
-		nextExpectedUpdate1 := basicnode.NewBytes(random.Bytes(100))
-		nextExpectedUpdate2 := basicnode.NewBytes(random.Bytes(100))
+		nextExpectedData := basicnode.NewBytes(rnd.Bytes(100))
+		nextExpectedUpdate1 := basicnode.NewBytes(rnd.Bytes(100))
+		nextExpectedUpdate2 := basicnode.NewBytes(rnd.Bytes(100))
 
 		secondResponses := []gsmsg.GraphSyncResponse{
 			gsmsg.NewResponse(gsr.ID(),
@@ -525,8 +526,9 @@ func TestBlockHooks(t *testing.T) {
 	require.Equal(t, td.extensionData2, returnedData2, "did not encode second extension correctly")
 
 	t.Run("responding to extensions", func(t *testing.T) {
-		expectedData := basicnode.NewBytes(random.Bytes(100))
-		expectedUpdate := basicnode.NewBytes(random.Bytes(100))
+		rnd := random.New()
+		expectedData := basicnode.NewBytes(rnd.Bytes(100))
+		expectedUpdate := basicnode.NewBytes(rnd.Bytes(100))
 
 		firstBlocks := td.blockChain.Blocks(0, 3)
 		firstMetadata := metadataForBlocks(firstBlocks, graphsync.LinkActionPresent)
@@ -580,9 +582,9 @@ func TestBlockHooks(t *testing.T) {
 			require.Equal(t, uint64(len(blk.RawData())), receivedBlock.BlockSize())
 		}
 
-		nextExpectedData := basicnode.NewBytes(random.Bytes(100))
-		nextExpectedUpdate1 := basicnode.NewBytes(random.Bytes(100))
-		nextExpectedUpdate2 := basicnode.NewBytes(random.Bytes(100))
+		nextExpectedData := basicnode.NewBytes(rnd.Bytes(100))
+		nextExpectedUpdate1 := basicnode.NewBytes(rnd.Bytes(100))
+		nextExpectedUpdate2 := basicnode.NewBytes(rnd.Bytes(100))
 		nextBlocks := td.blockChain.RemainderBlocks(3)
 		nextMetadata := metadataForBlocks(nextBlocks, graphsync.LinkActionPresent)
 		secondResponses := []gsmsg.GraphSyncResponse{
@@ -1123,13 +1125,14 @@ func newTestData(ctx context.Context, t *testing.T) *testData {
 	td.blockStore = make(map[ipld.Link][]byte)
 	td.persistence = testutil.NewTestStore(td.blockStore)
 	td.blockChain = testutil.SetupBlockChain(ctx, t, td.persistence, 100, 5)
-	td.extensionData1 = basicnode.NewBytes(random.Bytes(100))
+	rnd := random.New()
+	td.extensionData1 = basicnode.NewBytes(rnd.Bytes(100))
 	td.extensionName1 = graphsync.ExtensionName("AppleSauce/McGee")
 	td.extension1 = graphsync.ExtensionData{
 		Name: td.extensionName1,
 		Data: td.extensionData1,
 	}
-	td.extensionData2 = basicnode.NewBytes(random.Bytes(100))
+	td.extensionData2 = basicnode.NewBytes(rnd.Bytes(100))
 	td.extensionName2 = graphsync.ExtensionName("HappyLand/Happenstance")
 	td.extension2 = graphsync.ExtensionData{
 		Name: td.extensionName2,

@@ -3,7 +3,7 @@ package responsemanager
 import (
 	"context"
 	"errors"
-	"math/rand"
+	"math/rand/v2"
 	"sync"
 	"testing"
 	"time"
@@ -1232,18 +1232,19 @@ func newTestData(t *testing.T) testData {
 		completedNotifications: td.completedNotifications,
 	}
 
-	td.extensionData = basicnode.NewBytes(random.Bytes(100))
+	rnd := random.New()
+	td.extensionData = basicnode.NewBytes(rnd.Bytes(100))
 	td.extensionName = graphsync.ExtensionName("AppleSauce/McGee")
 	td.extension = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionData,
 	}
-	td.extensionResponseData = basicnode.NewBytes(random.Bytes(100))
+	td.extensionResponseData = basicnode.NewBytes(rnd.Bytes(100))
 	td.extensionResponse = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionResponseData,
 	}
-	td.extensionUpdateData = basicnode.NewBytes(random.Bytes(100))
+	td.extensionUpdateData = basicnode.NewBytes(rnd.Bytes(100))
 	td.extensionUpdate = graphsync.ExtensionData{
 		Name: td.extensionName,
 		Data: td.extensionUpdateData,
@@ -1255,7 +1256,7 @@ func newTestData(t *testing.T) testData {
 	td.updateRequests = []gsmsg.GraphSyncRequest{
 		gsmsg.NewUpdateRequest(td.requestID, td.extensionUpdate),
 	}
-	td.p = random.Peers(1)[0]
+	td.p = rnd.Peers(1)[0]
 	td.peristenceOptions = persistenceoptions.New()
 	td.requestProcessingListeners = listeners.NewRequestProcessingListeners()
 	td.requestHooks = hooks.NewRequestHooks(td.peristenceOptions)
@@ -1417,7 +1418,7 @@ func (td *testData) assertSkippedFirstBlocks(expectedSkipCount int64) {
 
 func (td *testData) notifyStatusMessagesSent() {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int31), []notifications.Event{
+	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int32), []notifications.Event{
 		messagequeue.Event{Name: messagequeue.Sent, Metadata: messagequeue.Metadata{ResponseCodes: td.completedNotifications}},
 	})
 	td.completedNotifications = make(map[graphsync.RequestID]graphsync.ResponseStatusCode)
@@ -1437,7 +1438,7 @@ func (td *testData) notifyBlockSendsSent() {
 
 func (td *testData) notifyStatusMessagesNetworkError(err error) {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int31), []notifications.Event{
+	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int32), []notifications.Event{
 		messagequeue.Event{Name: messagequeue.Error, Err: err, Metadata: messagequeue.Metadata{ResponseCodes: td.completedNotifications}},
 	})
 	td.completedNotifications = make(map[graphsync.RequestID]graphsync.ResponseStatusCode)
@@ -1447,7 +1448,7 @@ func (td *testData) notifyStatusMessagesNetworkError(err error) {
 
 func (td *testData) notifyBlockSendsNetworkError(err error) {
 	td.transactionLk.Lock()
-	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int31), []notifications.Event{
+	td.notifeePublisher.PublishEvents(notifications.Topic(rand.Int32), []notifications.Event{
 		messagequeue.Event{Name: messagequeue.Error, Err: err, Metadata: messagequeue.Metadata{BlockData: td.blkNotifications}},
 	})
 	td.blkNotifications = make(map[graphsync.RequestID][]graphsync.BlockData)

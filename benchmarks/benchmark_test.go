@@ -5,7 +5,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"runtime"
 	"strings"
@@ -263,7 +263,6 @@ const defaultUnixfsChunkSize uint64 = 1 << 10
 const defaultUnixfsLinksPerLevel = 1024
 
 func loadRandomUnixFxFile(ctx context.Context, b *testing.B, bs blockstore.Blockstore, size uint64, unixfsChunkSize uint64, unixfsLinksPerLevel int, useRawNodes bool) cid.Cid {
-
 	data := make([]byte, size)
 	_, err := crand.Read(data)
 	require.NoError(b, err)
@@ -313,7 +312,7 @@ func allFilesMissingTopLevelBlock(size uint64, unixfsChunkSize uint64, unixfsLin
 			ds := merkledag.NewDAGService(blockservice.New(prov.BlockStore, offline.Exchange(prov.BlockStore)))
 			lnks, err := ds.GetLinks(ctx, c)
 			require.NoError(b, err)
-			randLink := lnks[rand.Intn(len(lnks))]
+			randLink := lnks[rand.IntN(len(lnks))]
 			err = ds.Remove(ctx, randLink.Cid)
 			require.NoError(b, err)
 			cids = append(cids, c)
