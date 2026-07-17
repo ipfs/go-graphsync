@@ -2,7 +2,6 @@ package peermanager
 
 import (
 	"context"
-	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -68,11 +67,12 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	messagesSent := make(chan messageSent, 5)
 	peerQueueFactory := makePeerQueueFactory(messagesSent)
 
-	tp := random.Peers(5)
+	rnd := random.New()
+	tp := rnd.Peers(5)
 
 	id := graphsync.NewRequestID()
-	priority := graphsync.Priority(rand.Int32())
-	root := random.Cids(1)[0]
+	priority := graphsync.Priority(rnd.Int32())
+	root := rnd.Cids(1)[0]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	selector := ssb.Matcher().Node()
 
