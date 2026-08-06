@@ -200,6 +200,20 @@ func PanicCallback(callbackFn panics.CallBackFn) Option {
 	}
 }
 
+// ProductionDefaults are a set of alternate defaults for clients and servers
+// with large resources that want to serve heavy loads
+var ProductionDefaults = func(gs *graphsyncConfigOptions) {
+	MaxInProgressIncomingRequests(200)(gs)
+	MaxInProgressOutgoingRequests(200)(gs)
+	MaxMemoryResponder(8 << 30)(gs)
+	MaxMemoryPerPeerResponder(32 << 20)(gs)
+	MaxInProgressIncomingRequestsPerPeer(20)(gs)
+	MessageSendRetries(2)(gs)
+	SendMessageTimeout(2 * time.Minute)(gs)
+	MaxLinksPerIncomingRequests(32 * (1 << 20))(gs)
+	MaxLinksPerOutgoingRequests(32 * (1 << 20))(gs)
+}
+
 // New creates a new GraphSync Exchange on the given network,
 // and the given link loader+storer.
 func New(parent context.Context, network gsnet.GraphSyncNetwork,
